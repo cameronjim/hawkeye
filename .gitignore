@@ -89,3 +89,6 @@ Tools/Data/Anims/*
 Content/AnimSources/
 Content/Mannequin/Animations/Combat/
 Content/Characters/UE5_Mannequins/
+
+# Unreal MCP client config, generated per clone by ModelContextProtocol.GenerateClientConfig
+.mcp.json
