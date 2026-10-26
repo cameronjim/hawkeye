@@ -91,6 +91,36 @@ in about two minutes; tune the day against those, at the same cameras. Two cauti
 them: the pedestal's floating target icon spins, so it can show its plain cream back, and a
 flake near the lens is a big soft white disc.
 
+## Unreal MCP (live editor control, set up 2026-10-26)
+
+UE 5.8 ships Epic's experimental `ModelContextProtocol` plugin: an MCP server inside the editor
+process, loopback only (127.0.0.1), no auth, streamable HTTP at `http://127.0.0.1:8000/mcp`. The
+project enables it plus the Toolset Registry and these toolsets in `Hawkeye.uproject`: Editor
+(viewport and asset captures, actor and asset selection, camera, content browser, console
+variables, PIE start and stop, output log), Automation Test (discover, list, run, results),
+Slate Inspector (screenshot, click, type, inspect widgets), Live Coding (compile), Niagara
+(system, emitter, module editing), Config Settings. The registry also loads Python toolsets for
+actors, assets, blueprints, data assets, data tables, materials, meshes, textures, string tables.
+`Config/DefaultEditorPerProjectUserSettings.ini` sets the server to auto-start with the editor.
+
+- Client config: `.mcp.json` in the project root, `{"mcpServers":{"unreal-mcp":{"type":"http",
+  "url":"http://127.0.0.1:8000/mcp"}}}`. Generate it from the editor console with
+  `ModelContextProtocol.GenerateClientConfig ClaudeCode` (also Cursor, VSCode, Gemini, Codex,
+  All). It is git-ignored; each clone makes its own. Start Claude Code from the project root
+  after the editor is open; `/mcp` should show `unreal-mcp` connected.
+- The server exposes three meta tools (`list_toolsets`, `describe_toolset`, `call_tool`) with
+  `bEnableToolSearch` on. `call_tool` takes `toolset_name` (e.g. `EditorToolset.EditorAppToolset`)
+  and the SHORT `tool_name` (`CaptureViewport`, not the dotted path). Every input the schema lists
+  must be present, including optional ones (`pattern: ""`, a full `captureTransform` with
+  `annotations`); omitted fields are an error, not a default.
+- Console: `ModelContextProtocol.StartServer`, `.StopServer`, `.RefreshTools`. Settings under
+  Edit, Editor Preferences, General, Model Context Protocol.
+- It only runs while the full editor is open, which is the heavy process on this machine. Agents
+  keep using the headless commands below for builds, tests and content; the MCP is for a human
+  session with Claude looking at and poking a live editor. Never run it alongside a headless
+  engine process. Smoke-tested 2026-10-26 with raw JSON-RPC: initialize, tools/list, 27 toolsets
+  listed, `GetLogEntries` read the plugin's own log.
+
 ## Headless editor
 
 Use `UnrealEditor-Cmd.exe` with `-nullrhi` for anything that doesn't need a screen.
