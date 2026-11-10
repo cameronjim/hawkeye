@@ -29,6 +29,9 @@
     /Game/Blueprints/Weapons/DA_Arrow_Confetti    slot 5 (the smoke's: Act 1 never grants smoke), 0 damage,
                                                   cap 3, Smoke with EffectClass BP_Effect_Confetti: chapter 4's
                                                   unlock (claude-docs/gameplay-semantics.md, "Bosses")
+    /Game/Blueprints/Weapons/DA_Arrow_Boomerang   slot 4 (the bola's: Act 1 never grants bolas), 15 damage, cap 2,
+                                                  AReturningArrowProjectile with ReturnFlight: chapter 3's unlock
+                                                  (gameplay-semantics.md, "Trick arrows", returning arrows)
     /Game/Blueprints/Weapons/BP_Effect_Confetti   child of ASmokeCloud retuned by its defaults: 350 cm for 2.5 s
                                                   (thugs in it blinded a moment); its look is NS_PaperBurst
     /Game/Blueprints/Weapons/M_ArrowFx            translucent Color/Opacity: the smoke cloud's puffs
@@ -158,6 +161,8 @@ def arrow_values(name, projectile_classes):
             ("fletching_color", unreal.LinearColor(*TRICKSHOT_VANES, 1.0)),
             ("nock_color", unreal.LinearColor(*TRICKSHOT_VANES, 1.0)),
         ]
+    if name == BOOMERANG:
+        return boomerang_values()
     trick = TRICK_ARROWS.get(name)
     if trick is not None:
         display, short, slot, damage, cap, recoverable, effect = trick
@@ -189,7 +194,42 @@ TRICK_ARROWS = {
     "DA_Arrow_Explosive": ("Explosive arrow", "Explosive", 7, 80.0, 2, False, "EXPLOSIVE"),
     "DA_Arrow_Confetti": ("Confetti arrow", "Confetti", 5, 0.0, 3, False, "SMOKE"),
 }
-ARROW_NAMES = ["DA_Arrow_Standard", "DA_Arrow_Grapple"] + list(TRICK_ARROWS)
+# Chapter 3's boomerang (docs/chapters/ACT1.md): a returning arrow (AReturningArrowProjectile flies it by its ReturnFlight):
+# out through up to two bodies, staggering each, turning at the first wall or switch, back along its path to her. Slot 4,
+# the bola's, which Act 1 never fills; cap 2; it comes back, so it is never left lying about. Numbers on Normal.
+BOOMERANG = "DA_Arrow_Boomerang"
+BOOMERANG_FLIGHT = {"max_targets": 2, "max_range": 2200.0, "speed": 2600.0, "catch_cone_degrees": 70.0, "arrive_radius": 70.0,
+                    "self_hit_damage": 2.0, "path_step": 50.0, "max_flight_seconds": 6.0}
+BOOMERANG_SHAFT = (0.85, 0.42, 0.06)     # orange, so it reads as the odd one in the quiver
+BOOMERANG_VANES = (1.0, 0.82, 0.12)
+
+
+def boomerang_values():
+    cls = getattr(unreal, "ReturningArrowProjectile", None)
+    flight_struct = getattr(unreal, "HawkeyeReturnFlight", None)
+    flight = None
+    if flight_struct is not None:
+        flight = flight_struct()
+        for prop, value in sorted(BOOMERANG_FLIGHT.items()):
+            flight.set_editor_property(prop, value)
+    return [
+        ("display_name", "Boomerang arrow"),
+        ("short_name", "Boomerang"),
+        ("slot", 4),
+        ("projectile_class", cls.static_class() if cls is not None else None),
+        ("damage", 15.0),
+        ("cap", 2),
+        ("recoverable", False),
+        ("on_hit_effect", enum_value("ArrowHitEffect", "NONE")),
+        ("return_flight", flight),
+        ("override_colors", True),
+        ("shaft_color", unreal.LinearColor(*BOOMERANG_SHAFT, 1.0)),
+        ("fletching_color", unreal.LinearColor(*BOOMERANG_VANES, 1.0)),
+        ("nock_color", unreal.LinearColor(0.45, 0.1, 0.75, 1.0)),
+    ]
+
+
+ARROW_NAMES = ["DA_Arrow_Standard", "DA_Arrow_Grapple"] + list(TRICK_ARROWS) + [BOOMERANG]
 
 # Trick arrows whose effect is a Blueprint child of the stock class, retuned by its defaults: arrow -> (Blueprint,
 # parent C++ class, [(property, value)]).
