@@ -765,7 +765,7 @@ def _table_rows(path):
         return None
     names = [str(n) for n in unreal.DataTableFunctionLibrary.get_data_table_row_names(table)]
     columns = {}
-    for column in ("Sender", "Text", "Trigger", "TriggerObjectiveId", "Sequence", "Line", "GapSeconds", "Speaker"):
+    for column in ("Sender", "Text", "Trigger", "TriggerObjectiveId", "CallSequence", "Sequence", "Line", "GapSeconds", "Speaker"):
         try:
             columns[column] = [str(v) for v in unreal.DataTableFunctionLibrary.get_data_table_column_as_string(table, column)]
         except Exception:  # noqa: BLE001 - a column the table does not have
