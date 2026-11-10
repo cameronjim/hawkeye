@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Player/GrappleComponent.h"
 
 #include "Camera/CameraComponent.h"

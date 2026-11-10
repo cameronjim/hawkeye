@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Player/ParkourComponent.h"
 
 #include "Animation/AnimInstance.h"

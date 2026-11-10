@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/HawkeyeResidentAssets.h"
 
 #include "Hawkeye.h"

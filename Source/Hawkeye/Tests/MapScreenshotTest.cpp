@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"

@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Hawkeye.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"

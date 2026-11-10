@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/HawkeyeFrameWatch.h"
 
 bool FHawkeyeFrameWatch::AddFrame(double FrameSeconds, double SinceStartSeconds, bool bScreenshotFrame)

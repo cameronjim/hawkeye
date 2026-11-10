@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Audio/HawkeyeAudioMath.h"
 #include "Audio/HawkeyeMusicRules.h"
 #include "Audio/HawkeyeMusicSubsystem.h"

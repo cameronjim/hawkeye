@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/InteractionComponent.h"
 
 #include "Hawkeye.h"

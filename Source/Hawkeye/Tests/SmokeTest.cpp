@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Components/LightComponent.h"
 #include "Crime/Civilian.h"
 #include "Crime/CrimeDefinition.h"

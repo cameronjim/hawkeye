@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Challenge/ChallengeSubsystem.h"
 
 #include "Hawkeye.h"

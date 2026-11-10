@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Challenge/ChallengeDefinition.h"
 
 int32 UChallengeDefinition::GetStepCount() const

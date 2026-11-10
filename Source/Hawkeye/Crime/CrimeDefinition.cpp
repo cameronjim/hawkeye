@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Crime/CrimeDefinition.h"
 
 #include "Crime/CrimeRules.h"

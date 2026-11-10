@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/BowIKAnimInstance.h"
 
 #include "Animation/BlendSpace.h"

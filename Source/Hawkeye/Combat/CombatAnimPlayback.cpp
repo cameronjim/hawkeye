@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/CombatAnimPlayback.h"
 
 #include "Animation/AnimInstance.h"

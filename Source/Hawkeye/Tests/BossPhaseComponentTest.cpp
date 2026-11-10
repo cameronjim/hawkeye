@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/BossPhaseComponent.h"
 #include "Combat/HealthComponent.h"
 #include "Misc/AutomationTest.h"

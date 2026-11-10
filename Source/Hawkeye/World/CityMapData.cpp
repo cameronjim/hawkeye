@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/CityMapData.h"
 
 const TCHAR* UCityMapData::DefaultPath = TEXT("/Game/City/EastVillage/DA_EastVillage_Map.DA_EastVillage_Map");

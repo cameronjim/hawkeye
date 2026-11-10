@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Crime/CrimeSpot.h"
 
 #include "Components/SceneComponent.h"

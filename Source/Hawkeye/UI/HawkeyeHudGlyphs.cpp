@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/HawkeyeHudGlyphs.h"
 
 #include "Fonts/FontMeasure.h"

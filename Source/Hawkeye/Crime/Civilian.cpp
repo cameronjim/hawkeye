@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Crime/Civilian.h"
 
 #include "AIController.h"

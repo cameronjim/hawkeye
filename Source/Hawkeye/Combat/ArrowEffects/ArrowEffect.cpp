@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/ArrowEffects/ArrowEffect.h"
 
 #include "Hawkeye.h"

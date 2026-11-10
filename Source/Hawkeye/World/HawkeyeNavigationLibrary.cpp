@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/HawkeyeNavigationLibrary.h"
 
 #include "Hawkeye.h"

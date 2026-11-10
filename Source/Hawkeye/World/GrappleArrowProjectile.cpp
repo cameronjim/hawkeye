@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/GrappleArrowProjectile.h"
 
 #include "Components/SphereComponent.h"

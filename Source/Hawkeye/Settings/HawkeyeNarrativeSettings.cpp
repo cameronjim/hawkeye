@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Settings/HawkeyeNarrativeSettings.h"
 
 #include "Engine/DataTable.h"

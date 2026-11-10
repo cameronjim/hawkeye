@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/ThugAim.h"
 
 #include "World/ThugAIController.h"

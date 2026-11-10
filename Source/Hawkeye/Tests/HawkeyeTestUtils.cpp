@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Tests/HawkeyeTestUtils.h"
 
 #include "Player/InventoryComponent.h"

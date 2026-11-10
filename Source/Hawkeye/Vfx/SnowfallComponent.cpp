@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Vfx/SnowfallComponent.h"
 
 #include "Camera/PlayerCameraManager.h"

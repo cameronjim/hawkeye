@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Playtest/PlaytestSubsystem.h"
 
 #include "Challenge/ChallengeDefinition.h"

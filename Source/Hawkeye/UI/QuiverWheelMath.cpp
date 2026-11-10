@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/QuiverWheelMath.h"
 
 int32 UQuiverWheelMath::ComputeWheelSegment(FVector2D Direction, int32 NumSegments, float DeadZone)

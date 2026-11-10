@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Tests/HawkeyeShots.h"
 
 #if WITH_DEV_AUTOMATION_TESTS

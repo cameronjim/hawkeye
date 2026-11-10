@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/HawkeyeHudWidget.h"
 
 #include "Blueprint/WidgetTree.h"

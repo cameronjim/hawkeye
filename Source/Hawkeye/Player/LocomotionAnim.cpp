@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Player/LocomotionAnim.h"
 
 #include "Animation/AnimSequence.h"

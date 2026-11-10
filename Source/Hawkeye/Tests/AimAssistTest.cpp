@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/AimAssist.h"
 #include "Combat/BowComponent.h"
 #include "Combat/BowDefinition.h"

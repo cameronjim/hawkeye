@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Tests/MeleeScreenshots.h"
 
 #include "Camera/CameraActor.h"

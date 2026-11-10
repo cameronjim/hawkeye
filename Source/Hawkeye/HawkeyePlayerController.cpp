@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "HawkeyePlayerController.h"
 
 #include "Blueprint/UserWidget.h"

@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Mission/MissionDefinition.h"
 #include "Mission/MissionObjective.h"
 

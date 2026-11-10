@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/HawkeyePauseWidget.h"
 
 #include "Audio/HawkeyeAudioSubsystem.h"

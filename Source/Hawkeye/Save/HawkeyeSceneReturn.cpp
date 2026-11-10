@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Save/HawkeyeSceneReturn.h"
 
 #include "Engine/World.h"

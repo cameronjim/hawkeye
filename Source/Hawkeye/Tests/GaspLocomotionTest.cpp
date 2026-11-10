@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Components/SkeletalMeshComponent.h"
 #include "InputMappingContext.h"
 #include "Materials/MaterialInterface.h"

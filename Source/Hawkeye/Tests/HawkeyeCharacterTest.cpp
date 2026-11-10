@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Camera/CameraComponent.h"
 #include "Combat/WeaponComponent.h"
 #include "Components/SkeletalMeshComponent.h"

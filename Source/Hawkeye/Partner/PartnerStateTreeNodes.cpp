@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Partner/PartnerStateTreeNodes.h"
 
 #include "Partner/HawkeyePartnerController.h"

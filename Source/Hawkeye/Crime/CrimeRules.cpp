@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Crime/CrimeRules.h"
 
 float UCrimeRules::RollInterval(float MinSeconds, float MaxSeconds, float Override, FRandomStream& Stream)

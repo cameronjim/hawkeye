@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Tests/BowIKScreenshots.h"
 
 #include "AIController.h"

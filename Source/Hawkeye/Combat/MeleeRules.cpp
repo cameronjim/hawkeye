@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/MeleeRules.h"
 
 #include "Combat/HealthComponent.h"

@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Partner/PartnerTreeBuilder.h"
 
 #include "Hawkeye.h"

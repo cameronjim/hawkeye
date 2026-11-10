@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Mission/MissionSubsystem.h"
 
 #include "Hawkeye.h"

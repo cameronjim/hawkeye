@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/WeaponComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/HawkeyeTestUtils.h"

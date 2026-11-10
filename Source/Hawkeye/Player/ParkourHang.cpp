@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 // The hang vocabulary of UParkourComponent (claude-docs/gameplay-semantics.md, traversal, "Hang"): shimmy along
 // the ledge, round its corners, leap sideways or hop back to another ledge, the auto climb, the hands hand over
 // hand, and the hang camera. The rest of the component is in ParkourComponent.cpp.

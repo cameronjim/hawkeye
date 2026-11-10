@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Flashback/FlashbackWidget.h"
 
 #include "Blueprint/WidgetTree.h"

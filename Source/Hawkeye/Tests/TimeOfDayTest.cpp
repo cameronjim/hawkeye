@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/ArrowEffects/ArrowEffectsSubsystem.h"
 #include "Components/AudioComponent.h"
 #include "Components/DirectionalLightComponent.h"

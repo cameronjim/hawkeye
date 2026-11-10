@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/ChapterTitleClock.h"
 
 void FHawkeyeTitleCardClock::Start()

@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "HawkeyeGameMode.h"
 #include "Combat/HealthComponent.h"
 #include "Misc/AutomationTest.h"

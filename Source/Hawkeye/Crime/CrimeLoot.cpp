@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Crime/CrimeLoot.h"
 
 #include "CollisionQueryParams.h"

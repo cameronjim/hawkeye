@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Audio/HawkeyeVolumeSubsystem.h"
 
 #include "Engine/Engine.h"

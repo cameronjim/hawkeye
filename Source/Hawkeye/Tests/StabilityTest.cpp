@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Engine/GameInstance.h"
 #include "HawkeyeGameMode.h"
 #include "Misc/AutomationTest.h"

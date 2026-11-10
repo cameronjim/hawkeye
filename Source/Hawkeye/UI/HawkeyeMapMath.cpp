@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/HawkeyeMapMath.h"
 
 void FHawkeyeMapView::SetFrame(const FVector2D& InWorldMin, const FVector2D& InWorldMax, const FVector2D& InAreaTopLeft,

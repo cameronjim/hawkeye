@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Animation/AnimSequence.h"
 #include "Combat/MeleeComponent.h"
 #include "Components/SkeletalMeshComponent.h"

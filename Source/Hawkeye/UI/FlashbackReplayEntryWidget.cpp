@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/FlashbackReplayEntryWidget.h"
 
 #include "Audio/HawkeyeAudioSubsystem.h"

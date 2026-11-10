@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Playtest/PlaytestTypes.h"
 
 #include "JsonObjectConverter.h"

@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Misc/AutomationTest.h"
 #include "Dialogue/DialogueQueue.h"
 #include "Flashback/FlashbackDefinition.h"

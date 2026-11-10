@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/BowComponent.h"
 #include "Combat/BowIKAnimInstance.h"
 #include "Combat/FinisherComponent.h"

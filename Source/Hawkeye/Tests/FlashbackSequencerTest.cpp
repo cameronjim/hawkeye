@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Flashback/FlashbackDefinition.h"
 #include "Flashback/FlashbackSequencer.h"
 #include "Misc/AutomationTest.h"

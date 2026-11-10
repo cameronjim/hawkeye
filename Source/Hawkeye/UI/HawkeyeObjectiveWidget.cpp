@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "UI/HawkeyeObjectiveWidget.h"
 #include "Hawkeye.h"
 #include "UI/HawkeyeHudGlyphs.h"

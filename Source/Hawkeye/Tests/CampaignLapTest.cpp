@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Audio/HawkeyeMusicSubsystem.h"
 #include "Blueprint/UserWidget.h"
 #include "Camera/CameraComponent.h"

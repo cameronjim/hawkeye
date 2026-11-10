@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/HawkeyeAmbience.h"
 
 #include "Hawkeye.h"

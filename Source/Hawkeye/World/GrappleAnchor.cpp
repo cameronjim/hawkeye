@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/GrappleAnchor.h"
 
 #include "Components/SceneComponent.h"

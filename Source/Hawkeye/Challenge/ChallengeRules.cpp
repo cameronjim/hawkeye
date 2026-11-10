@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Challenge/ChallengeRules.h"
 
 #include "Challenge/ChallengeDefinition.h"

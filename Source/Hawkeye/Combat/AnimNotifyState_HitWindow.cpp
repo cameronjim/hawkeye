@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/AnimNotifyState_HitWindow.h"
 
 #include "Combat/MeleeComponent.h"

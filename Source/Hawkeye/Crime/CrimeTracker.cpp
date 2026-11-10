@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Crime/CrimeTracker.h"
 
 #include "Hawkeye.h"

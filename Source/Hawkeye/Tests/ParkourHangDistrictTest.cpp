@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "CollisionQueryParams.h"

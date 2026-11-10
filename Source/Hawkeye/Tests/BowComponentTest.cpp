@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/ArrowDefinition.h"
 #include "Combat/ArrowProjectile.h"
 #include "Combat/BowComponent.h"

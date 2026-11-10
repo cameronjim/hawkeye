@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/BowIKGraphBuilder.h"
 
 #include "Animation/AnimBlueprint.h"

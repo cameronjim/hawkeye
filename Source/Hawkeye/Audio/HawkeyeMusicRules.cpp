@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Audio/HawkeyeMusicRules.h"
 
 int32 HawkeyeMusic::GetLevel(EHawkeyeMusicState State)

@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/HealthComponent.h"
 #include "Engine/World.h"
 #include "HawkeyePlayerController.h"

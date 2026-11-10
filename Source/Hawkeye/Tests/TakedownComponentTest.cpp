@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Combat/TakedownComponent.h"
 #include "Combat/Takedownable.h"
 #include "Misc/AutomationTest.h"
