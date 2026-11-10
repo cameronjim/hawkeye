@@ -208,7 +208,7 @@ bool FHawkeyeCharacterThirdPersonRig::RunTest(const FString& Parameters)
 	const UCharacterMovementComponent* Movement = Kate->GetCharacterMovement();
 	TestTrue(TEXT("It turns to face where it moves"), Movement && Movement->bOrientRotationToMovement);
 
-	const USkeletalMeshComponent* Body = Kate->GetMesh();
+	const USkeletalMeshComponent* Body = Kate->GetBodyMesh();
 	TestTrue(TEXT("The owner sees the whole body; no bones are hidden for the camera any more"),
 		Body && !Body->bOwnerNoSee);
 

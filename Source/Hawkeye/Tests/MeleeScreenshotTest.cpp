@@ -1180,7 +1180,9 @@ public:
 			const FString Head = ScreenOffset(PC, HeadTop, &bHeadOn);
 			const FString Toes = ScreenOffset(PC, Feet, &bFeetOn);
 			const AThugCharacter* Second = SecondFoe.Get();
-			const bool bHidden = Body && (Body->bOwnerNoSee || !Body->IsVisible());
+			// What is drawn: the look over the hidden driver, when she has one.
+			const USkeletalMeshComponent* Seen = Kate->GetBodyMesh();
+			const bool bHidden = Seen && (Seen->bOwnerNoSee || !Seen->IsVisible());
 			Test->AddInfo(FString::Printf(TEXT("%s: %d alerted thugs engaged, fight alpha %.2f; boom target %.0f cm (hip %.0f), lens %.0f cm ")
 				TEXT("from the pivot, lens pitch %.1f deg; Kate hidden %d, her head %s, feet %s; thugs %s and %s."),
 				*Label, Kate->GetEngagedThugCount(), Kate->GetFightCameraAlpha(), Arm ? Arm->TargetArmLength : 0.f,

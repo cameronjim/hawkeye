@@ -58,6 +58,16 @@ bool AArrowProjectile::IsPartnerOf(const AActor* Shooter, const AActor* Victim)
 
 USkeletalMeshComponent* AArrowProjectile::FindBodyMesh(const AActor* Actor)
 {
+	// The body people see, so a stuck arrow sits in her surface and moves with it (the hidden driver's shapes
+	// are the mannequin's). Its physics asset gives the shapes; it has no collision of its own.
+	if (const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Actor))
+	{
+		USkeletalMeshComponent* Seen = Hawkeye->GetBodyMesh();
+		if (Seen && Seen->GetSkeletalMeshAsset() && Seen->GetPhysicsAsset())
+		{
+			return Seen;
+		}
+	}
 	if (const ACharacter* Character = Cast<ACharacter>(Actor))
 	{
 		if (USkeletalMeshComponent* Mesh = Character->GetMesh(); Mesh && Mesh->GetSkeletalMeshAsset())

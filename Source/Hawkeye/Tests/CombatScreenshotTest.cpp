@@ -633,7 +633,7 @@ bool FHawkeyeCombatShot::Update()
 		const FName Bone = Arrow->GetRootComponent()->GetAttachSocketName();
 		const FVector Tip = Arrow->GetActorLocation();
 		Test->AddInfo(FString::Printf(TEXT("arrow_in_kate.png: stuck on %s of %s, tip %.1f cm outside her body's shapes, %.1f cm from the capsule axis (radius %.0f)."),
-			*Bone.ToString(), Parent == Kate->GetMesh() ? TEXT("her mesh") : *GetNameSafe(Parent), DistanceToBody(Kate->GetMesh(), Tip),
+			*Bone.ToString(), Parent == Kate->GetBodyMesh() ? TEXT("her mesh") : *GetNameSafe(Parent), DistanceToBody(Kate->GetBodyMesh(), Tip),
 			FVector::Dist2D(Tip, Kate->GetActorLocation()), Kate->GetCapsuleComponent()->GetScaledCapsuleRadius()));
 		// From her front-left, level with the arrow, close enough to see where it goes in.
 		const FVector Side = Kate->GetActorRotation().RotateVector(FVector(160.f, -150.f, 15.f));
