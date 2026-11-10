@@ -1,5 +1,3 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "World/CityLedgeSpawner.h"
 
 #include "Hawkeye.h"
