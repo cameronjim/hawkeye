@@ -333,6 +333,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug|Components")
 	UStaticMeshComponent* GetHeldWeaponComponent() const { return HeldWeaponComponent; }
 
+	UFUNCTION(BlueprintPure, Category = "Thug|Components")
+	UStaticMeshComponent* GetHeadwearComponent() const { return Headwear; }
+
+	/**
+	 * Puts the headwear on his head bone, upright and facing his way with HeadwearOffset (his frame, cm) from the bone,
+	 * whatever the skeleton's bone axes are. BeginPlay does it; nothing happens with no headwear mesh.
+	 */
+	void FitHeadwear();
+
 	/**
 	 * Which way the bat points from the grip, in world space, for the swing he is (or is not) in:
 	 * hanging down along the leg (BatHangDirection) while he walks, up to horizontal behind him
@@ -855,6 +864,21 @@ protected:
 	/** Socket the bat hangs off. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Components")
 	FName HeldWeaponSocketName = FName(TEXT("hand_r"));
+
+	/**
+	 * A greybox mask, hat or antlers on his head (a crew's look: chapter 2's reindeer). Empty and drawn as nothing on
+	 * the stock thug; a Blueprint child sets its mesh. Its origin is the middle of his head, +X his facing, +Z up.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug|Components")
+	TObjectPtr<UStaticMeshComponent> Headwear;
+
+	/** The bone the headwear rides on. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Components")
+	FName HeadwearSocketName = FName(TEXT("head"));
+
+	/** Where the headwear sits from that bone, in his own frame (forward, right, up), cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Components")
+	FVector HeadwearOffset = FVector(2.f, 0.f, 10.f);
 
 	/** Scalar parameter on the body material pulsed by FlashHit. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Hit")

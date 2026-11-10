@@ -126,6 +126,12 @@ AThugCharacter::AThugCharacter()
 	HeldWeaponComponent->SetCanEverAffectNavigation(false);
 	HeldWeaponComponent->SetVisibility(false);
 
+	Headwear = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Headwear"));
+	Headwear->SetupAttachment(GetMesh(), HeadwearSocketName);
+	Headwear->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Headwear->SetCanEverAffectNavigation(false);
+	Headwear->SetCastShadow(false);
+
 	// The archer's bow. Inert (no mesh, no draw) on every thug until OwnBow is set. With no draw
 	// animation his hand hangs at his hip, so DA_Bow_Archer names no hand socket and arrows leave
 	// from here: in front of his cheek, where a drawn bow is anchored, high enough to clear his parapet.
@@ -227,6 +233,7 @@ void AThugCharacter::BeginPlay()
 		MeshRelativeTransform = SkeletalMesh->GetRelativeTransform();
 	}
 	RefreshHeldWeapon();
+	FitHeadwear();
 	CreateBodyMaterials();
 	UpdateLocomotionAnimation();
 	ApplyCombatAnimSet();
@@ -333,6 +340,23 @@ void AThugCharacter::UpdateHeldWeaponPose()
 	const FVector Hand = SkeletalMesh->GetSocketLocation(HeldWeaponSocketName);
 	HeldWeaponComponent->SetWorldLocationAndRotation(Hand + Direction * (Length * 0.5f - BatGripFromEnd),
 		FRotationMatrix::MakeFromZ(Direction).Rotator());
+}
+
+void AThugCharacter::FitHeadwear()
+{
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	if (!Headwear || !Headwear->GetStaticMesh() || !SkeletalMesh || !SkeletalMesh->DoesSocketExist(HeadwearSocketName))
+	{
+		return;
+	}
+	Headwear->AttachToComponent(SkeletalMesh, FAttachmentTransformRules::KeepRelativeTransform, HeadwearSocketName);
+	// The bone's frame in the mesh's space, and his own (the capsule's) frame in the mesh's space: the headwear is turned
+	// so it stands in his frame, offset in his frame, whichever way the skeleton points its head bone.
+	const FTransform Bone = SkeletalMesh->GetSocketTransform(HeadwearSocketName, RTS_Component);
+	const FQuat HisFrame = SkeletalMesh->GetRelativeTransform().GetRotation().Inverse();
+	const FQuat Relative = Bone.GetRotation().Inverse() * HisFrame;
+	const FVector Offset = Bone.GetRotation().UnrotateVector(HisFrame.RotateVector(HeadwearOffset)) / Bone.GetScale3D().ComponentMax(FVector(KINDA_SMALL_NUMBER));
+	Headwear->SetRelativeLocationAndRotation(Offset, Relative);
 }
 
 void AThugCharacter::RefreshHeldWeapon()
