@@ -126,7 +126,7 @@ namespace HawkeyeTokenTest
 				{
 					continue;
 				}
-				Brain->Think(Dt);
+				ThinkThug(Brain, Dt);
 				UMeleeComponent* Swing = Thug->GetMeleeComponent();
 				Swing->AdvanceAttack(Dt);
 				const bool bSwinging = Swing->IsAttacking();
@@ -495,7 +495,7 @@ bool FHawkeyeTokensShortOfTheRing::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("The ring is 300 cm out"), Brain->MeleeWaitRingDistance, 300.f);
-	Brain->Think(Brain->ThinkIntervalSeconds);
+	ThinkThug(Brain, Brain->ThinkIntervalSeconds);
 	TestTrue(
 		TEXT("100 cm outside the ring he is ready, and alone he is granted"), Tokens->HoldsToken(Brain->GetThug()));
 	return true;
@@ -556,7 +556,7 @@ bool FHawkeyeTokensNeverLeak::RunTest(const FString& Parameters)
 	}
 	Holder->GetThug()->StaggerFor(Kate, 1.5f);
 	TestWorld.AdvanceClock(Think);
-	Holder->Think(Think);
+	ThinkThug(Holder, Think);
 	TestFalse(TEXT("A staggered holder gives it back within one think"), Tokens->HoldsToken(Holder->GetThug()));
 
 	// Killed: the same.
@@ -567,7 +567,7 @@ bool FHawkeyeTokensNeverLeak::RunTest(const FString& Parameters)
 	}
 	Holder->GetThug()->GetHealthComponent()->ApplyDamage(1000.f, Kate);
 	TestWorld.AdvanceClock(Think);
-	Holder->Think(Think);
+	ThinkThug(Holder, Think);
 	TestFalse(TEXT("A killed holder gives it back within one think"), Tokens->HoldsToken(Holder->GetThug()));
 
 	// Kate going down takes it from everyone: the stand-off.
@@ -576,7 +576,7 @@ bool FHawkeyeTokensNeverLeak::RunTest(const FString& Parameters)
 	Kate->GetHealthComponent()->ApplyDamage(1000.f, nullptr);
 	for (AThugAIController* Brain : Brains)
 	{
-		Brain->Think(Think);
+		ThinkThug(Brain, Think);
 	}
 	TestNull(TEXT("Nobody holds a token on a downed Kate"), FindHolder(Tokens, Brains));
 	return true;

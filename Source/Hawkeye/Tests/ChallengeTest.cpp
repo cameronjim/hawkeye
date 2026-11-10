@@ -394,7 +394,7 @@ bool FHawkeyeChallengeWorldRun::RunTest(const FString& Parameters)
 	Near->ReportStimulus(EStimulusKind::Hearing, FVector::ZeroVector, true, 3.f);
 	TestEqual(TEXT("A gunshot does not wake a calmed thug"), Near->GetAlertState(), EThugAlertState::Calm);
 	Near->ReportStimulus(EStimulusKind::Sight, Player->GetActorLocation(), true);
-	Near->Think(1.f);
+	ThinkThug(Near, 1.f);
 	TestEqual(TEXT("Nor does seeing her"), Near->GetAlertState(), EThugAlertState::Calm);
 	TestEqual(TEXT("Both targets marked"), Missions->GetSecondaryMarkers().Num(), 2);
 

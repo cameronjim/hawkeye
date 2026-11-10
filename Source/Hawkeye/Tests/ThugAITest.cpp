@@ -155,10 +155,10 @@ bool FHawkeyeThugSightConfirmsBeforeAlerting::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A first sighting is only suspicious"), Thug->GetAlertState(), EThugAlertState::Suspicious);
 
 	// Still not long enough: SightConfirmSeconds is 0.6.
-	Controller->Think(0.25f);
+	ThinkThug(Controller, 0.25f);
 	TestEqual(TEXT("A glimpse does not alert him"), Thug->GetAlertState(), EThugAlertState::Suspicious);
 
-	Controller->Think(0.5f);
+	ThinkThug(Controller, 0.5f);
 	TestEqual(TEXT("A sustained look does"), Thug->GetAlertState(), EThugAlertState::Alerted);
 
 	return true;
@@ -184,7 +184,7 @@ bool FHawkeyeThugLosesTargetBackToSuspicious::RunTest(const FString& Parameters)
 	// LoseTargetSeconds is 5; six seconds of nothing drops him back.
 	for (int32 Step = 0; Step < 6; ++Step)
 	{
-		Controller->Think(1.f);
+		ThinkThug(Controller, 1.f);
 	}
 
 	TestEqual(TEXT("With nothing to shoot at he falls back to Suspicious"),

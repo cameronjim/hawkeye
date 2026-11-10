@@ -197,8 +197,8 @@ bool FHawkeyeDeathThugsStandOff::RunTest(const FString& Parameters)
 	UHealthComponent* Health = Kate->GetHealthComponent();
 	Alert(Fists, Kate);
 	Alert(Gunner, Kate);
-	Fists->Think(0.25f);
-	Gunner->Think(0.25f);
+	ThinkThug(Fists, 0.25f);
+	ThinkThug(Gunner, 0.25f);
 	const int32 SwingsBefore = Fists->GetSwingsStarted();
 	TestTrue(TEXT("Standing, the brawler swings at her"), SwingsBefore > 0);
 	TestFalse(TEXT("Nobody stands off from a standing player"), Fists->IsStandingOff() || Gunner->IsStandingOff());
@@ -213,8 +213,8 @@ bool FHawkeyeDeathThugsStandOff::RunTest(const FString& Parameters)
 	}
 	for (float Elapsed = 0.f; Elapsed < 3.f; Elapsed += 0.25f)
 	{
-		Fists->Think(0.25f);
-		Gunner->Think(0.25f);
+		ThinkThug(Fists, 0.25f);
+		ThinkThug(Gunner, 0.25f);
 	}
 	TestTrue(TEXT("The brawler circles instead"), Fists->IsStandingOff());
 	TestTrue(TEXT("So does the gunner"), Gunner->IsStandingOff());
@@ -225,7 +225,7 @@ bool FHawkeyeDeathThugsStandOff::RunTest(const FString& Parameters)
 	// Back up: they come again.
 	Kate->ReviveFromDown(0.3f);
 	TestFalse(TEXT("Revived, she is a target again"), AThugAIController::IsTargetDown(Kate));
-	Fists->Think(0.25f);
+	ThinkThug(Fists, 0.25f);
 	TestFalse(TEXT("The brawler stops circling"), Fists->IsStandingOff());
 	return true;
 }

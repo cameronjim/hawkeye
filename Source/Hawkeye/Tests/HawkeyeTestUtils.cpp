@@ -11,6 +11,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/WorldSettings.h"
 #include "Mission/MissionTracker.h"
+#include "World/ThugAIController.h"
+#include "World/ThugTreeComponent.h"
 
 FHawkeyeTestWorld::FHawkeyeTestWorld()
 {
@@ -77,6 +79,19 @@ void FHawkeyeTestWorld::AdvanceClock(float Seconds) const
 	World->TimeSeconds += Seconds;
 	World->UnpausedTimeSeconds += Seconds;
 	World->RealTimeSeconds += Seconds;
+}
+
+void ThinkThug(AThugAIController* Brain, float DeltaSeconds)
+{
+	if (!Brain)
+	{
+		return;
+	}
+	Brain->Think(DeltaSeconds);
+	if (Brain->StateTreeComponent && Brain->StateTreeComponent->IsRunning())
+	{
+		Brain->StateTreeComponent->TickComponent(DeltaSeconds, LEVELTICK_All, nullptr);
+	}
 }
 
 void UHawkeyeTestListener::HandleHealthChanged(UHealthComponent* /*HealthComponent*/, float NewHealth, float Delta, AActor* DamageInstigator)

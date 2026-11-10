@@ -188,13 +188,13 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 	SetClock(0.0);
 	Brain->SetTarget(Kate);
 	Brain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, Brain->GunshotLoudnessThreshold);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("With a line he draws"), Bow->IsDrawing());
 
 	// She drops behind the parapet 0.6 s into his draw.
 	SetClock(0.6);
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, 0.f));
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("He holds the draw instead of letting it down"), Brain->IsHoldingDraw() && Bow->IsDrawing());
 	TestTrue(TEXT("The glint stays on: the hold still telegraphs"), Archer->IsTelegraphGlintOn());
 	SetClock(1.6);
@@ -216,21 +216,21 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 
 	// In the loose window he cannot draw, even with a line and no cooldown.
 	SetClock(10.0);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestFalse(TEXT("No draw in the loose window"), Bow->IsDrawing());
 	Brain->TickArcherHold(0.55f);
 	TestTrue(TEXT("Still loose 0.55 s after the shot"), Brain->IsInLooseWindow());
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestFalse(TEXT("Still no draw"), Bow->IsDrawing());
 	Brain->TickArcherHold(0.06f);
 	TestFalse(TEXT("0.61 s after the shot the window is shut"), Brain->IsInLooseWindow());
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("And he draws again"), Bow->IsDrawing());
 
 	// Nobody comes back: he relaxes after 2.5 s.
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, 0.f));
 	SetClock(10.5);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	if (TestTrue(TEXT("Holding again behind the parapet"), Brain->IsHoldingDraw()))
 	{
 		SetClock(13.0);
@@ -244,11 +244,11 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 	// A hit still breaks a draw, held or not.
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, -5000.f));
 	SetClock(20.0);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("A fresh draw"), Bow->IsDrawing());
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, 0.f));
 	SetClock(20.5);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("A fresh hold"), Brain->IsHoldingDraw());
 	Archer->GetHealthComponent()->ApplyDamage(5.f, Kate);
 	TestFalse(TEXT("A hit breaks the hold"), Brain->IsHoldingDraw() || Bow->IsDrawing());

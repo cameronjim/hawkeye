@@ -9,13 +9,13 @@
 #include "World/ThugAim.h"
 #include "ThugAIController.generated.h"
 
-class AGrappleAnchor;
 class UAIPerceptionComponent;
 class UAISenseConfig_Hearing;
 class UAISenseConfig_Sight;
-class UStateTreeAIComponent;
+class UHawkeyeThugTreeComponent;
+class UStateTree;
 
-/** Where a stimulus came from, so tests can drive the state machine without a perception system. */
+/** Where a stimulus came from, so tests can drive the senses without a perception system. */
 UENUM(BlueprintType)
 enum class EStimulusKind : uint8
 {
@@ -24,24 +24,21 @@ enum class EStimulusKind : uint8
 };
 
 /**
- * Thug brain. The senses (perception, the archer's own sight check, smoke, the squad alert, the
- * clocks that move Calm, Suspicious and Alerted) run on a 0.25 s think timer. What he does is one
- * EThugMode at a time, chosen by a StateTree (the pawn's ThugStateTree, ST_Thug, built headless by
- * UHawkeyeThugTreeBuilder in the partner's pattern): a state per mode in priority order, each entered
- * on a FHawkeyeThugNeedCondition and running a FHawkeyeThugModeTask that calls RunMode. Without a tree
- * (tests, a thug spawned from C++) Think picks the mode itself with ChooseMode, in the same order.
+ * Thug brain, split in two. The controller is the senses and the hands: perception, the archer's own sight
+ * check, smoke, the squad alert and the clocks that move Calm, Suspicious and Alerted run on a 0.25 s think;
+ * moving, aiming, the pistol's burst, the bow and the swing are actuators. ST_Thug (the pawn's ThugStateTree,
+ * built headless by UHawkeyeThugTreeBuilder) is the one place that decides what he does: its conditions ask
+ * Senses, its tasks call the actuators, and it ticks every frame on UHawkeyeThugTreeComponent.
  *
  * Patrol      Calm: PatrolPoints, waiting PatrolWaitSeconds at each
  * Investigate Suspicious: walk to the last stimulus, wait InvestigateSeconds, back to Calm
- * Attack      Alerted, by weapon. Every attack waits for a token from UCombatTokenSubsystem (a melee or
- *             a ranged budget on his target). Fists and Bat rush in at RushSpeed and, without one, hold a
- *             place on a ring MeleeWaitRingDistance round her; with one, inside MeleeEngageRange (250)
- *             they wind up a swing, close to MeleeCloseDistance, and back off after
- *             MeleeSwingsBeforeBackOff swings. The gunner fires 3-shot bursts after a 0.8 s telegraph
- *             and ducks into cover after a burst or when aimed at. The archer draws for 1.2 s and looses
- *             with lead at the chest.
- * Cover       the gunner at a cover point (EQS_CoverPoints, or a C++ ring of candidates): hides,
- *             peeks for a burst, and relocates every RelocateSeconds.
+ * Attack      Alerted, by weapon. Every attack waits for a token from UCombatTokenSubsystem. Fists and Bat
+ *             hold a place on a ring MeleeWaitRingDistance round her until granted one, then wind up inside
+ *             MeleeEngageRange, close to MeleeCloseDistance, and back off after MeleeSwingsBeforeBackOff
+ *             swings. The gunner fires 3-shot bursts after a 0.8 s telegraph and ducks into cover after a
+ *             burst or when aimed at. The archer draws for 1.2 s and looses with lead at the chest.
+ * Cover       the gunner at a cover point (EQS_CoverPoints, or a C++ ring of candidates): hides, peeks for
+ *             a burst, and relocates every RelocateSeconds.
  * Reposition  the gunner backing off to RetreatToDistance when she is inside RetreatTriggerDistance;
  *             the archer zipping to another roof's grapple anchor when she is inside ArcherCloseRange.
  *
@@ -246,10 +243,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
 	float MeleeStepInMaxSeconds = 1.5f;
 
-	/** True while he is stepping back after a pair of swings. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Melee")
-	bool IsBackingOff() const { return bBackingOff; }
-
 	/** A downed target is circled at this distance, cm: nothing new is started on her (a swing under way finishes). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Behaviour", meta = (ClampMin = "0.0"))
 	float StandOffDistance = 450.f;
@@ -258,21 +251,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Behaviour")
 	float StandOffOrbitDegreesPerSecond = 18.f;
 
-	/** True while his target is a downed or dead player: he circles instead of attacking. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Behaviour")
-	bool IsStandingOff() const { return bStandingOff; }
-
-	/** Swings started in this thug's life (tests). */
-	int32 GetSwingsStarted() const { return SwingsStarted; }
-
-	/** True for a Hawkeye character who is downed or dead: no one attacks her. */
-	static bool IsTargetDown(const AActor* Target);
-
-	/** Swings since the last back-off. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Melee")
-	int32 GetSwingsSinceBackOff() const { return SwingsSinceBackOff; }
-
-	/** How often the state machine runs. */
+	/** How often the senses run. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Behaviour", meta = (ClampMin = "0.01"))
 	float ThinkIntervalSeconds = 0.25f;
 
@@ -283,9 +262,19 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug")
 	TObjectPtr<UAIPerceptionComponent> ThugPerception;
 
+	/** Runs ST_Thug every frame. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug")
+	TObjectPtr<UHawkeyeThugTreeComponent> StateTreeComponent;
+
+	/** The tree for a pawn that names none (a thug spawned from C++): ST_Thug, the asset BP_Thug names. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug")
+	TSoftObjectPtr<UStateTree> DefaultStateTree;
+
+	// --- Senses ----------------------------------------------------------------------------------------
+
 	/**
-	 * The one entry point into the state machine. The perception callback funnels into this, and
-	 * tests call it directly so the whole thing is exercisable without a perception system.
+	 * The one entry point for a stimulus. The perception callback funnels into this, and tests call it
+	 * directly so the senses are exercisable without a perception system.
 	 *
 	 * Loudness is only meaningful for Hearing; a value at or above GunshotLoudnessThreshold is
 	 * treated as a gunshot and alerts the thug on the spot.
@@ -293,9 +282,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Thug")
 	void ReportStimulus(EStimulusKind Kind, FVector Location, bool bSuccessful, float Loudness = 1.f);
 
-	/** Runs one step of the state machine. Called on a timer; tests call it directly. */
+	/** One step of the senses and their clocks, DeltaSeconds long. Called on a timer; tests call it directly. */
 	UFUNCTION(BlueprintCallable, Category = "Thug")
 	void Think(float DeltaSeconds);
+
+	/** One fact about the moment, for ST_Thug's conditions (FHawkeyeThugSenseCondition). */
+	bool Senses(EThugSense Sense) const;
 
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	AThugCharacter* GetThug() const;
@@ -316,8 +308,8 @@ public:
 	void SetTarget(AActor* Target) { TargetActor = Target; }
 
 	/**
-	 * Off: the think timer stops, he stands where he is, and perception is ignored. For scripted
-	 * moments and the screenshot pass. On: the state machine picks up where it left off.
+	 * Off: the think timer stops, he stands where he is (ST_Thug's Stunned), and perception is ignored. For
+	 * scripted moments and the screenshot pass. On: the senses pick up where they left off.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Thug")
 	void SetThinkingEnabled(bool bEnabled);
@@ -334,6 +326,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	bool IsPacified() const { return bPacified; }
+
+	/** True for a Hawkeye character who is downed or dead: no one attacks her. */
+	static bool IsTargetDown(const AActor* Target);
 
 	// --- Trick arrow states (claude-docs/gameplay-semantics.md, "trick arrows") ------------------
 
@@ -369,27 +364,6 @@ public:
 	/** True for a character crouched inside a smoke cloud: undetectable by sight or sound. */
 	static bool IsHiddenInSmoke(const AActor* Actor);
 
-	// --- Modes (the StateTree asks these) ------------------------------------------------------------
-
-	/** Whether Mode's reason to run exists now. Patrol always does. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Modes")
-	bool HasNeed(EThugMode Mode) const;
-
-	/** The first mode with a need, in priority order: Stunned, Reposition, Cover, Attack, Investigate, Patrol. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Modes")
-	EThugMode ChooseMode() const;
-
-	/** One step of Mode, DeltaSeconds long. The StateTree task calls it every tick; so does the fallback. */
-	UFUNCTION(BlueprintCallable, Category = "Thug|Modes")
-	void RunMode(EThugMode Mode, float DeltaSeconds);
-
-	UFUNCTION(BlueprintPure, Category = "Thug|Modes")
-	EThugMode GetMode() const { return CurrentMode; }
-
-	/** True while ST_Thug is running this controller. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Modes")
-	bool IsUsingStateTree() const;
-
 	/** Any hit that cost him health: a burst or a draw in progress is broken. The thug calls it. */
 	UFUNCTION(BlueprintCallable, Category = "Thug")
 	void NotifyDamaged(AActor* By);
@@ -402,10 +376,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug|Squad")
 	float GetSquadAlertRemaining() const { return bSquadAlertPending ? SquadAlertRemaining : -1.f; }
 
-	// --- Gunner state --------------------------------------------------------------------------------
+	// --- What ST_Thug is doing (read from its active states) --------------------------------------
 
+	/** The top-level state ST_Thug is in. */
+	UFUNCTION(BlueprintPure, Category = "Thug|Modes")
+	EThugMode GetMode() const;
+
+	/** True while his target is a downed or dead player: he circles instead of attacking. */
+	UFUNCTION(BlueprintPure, Category = "Thug|Behaviour")
+	bool IsStandingOff() const;
+
+	/** Open, Covering (hiding or changing cover) or Peeking (stepping out for a burst). */
 	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
-	EGunnerPhase GetGunnerPhase() const { return GunnerPhase; }
+	EGunnerPhase GetGunnerPhase() const;
+
+	/** True while the gunner backs away from her. */
+	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
+	bool IsRetreating() const;
+
+	/** True while the archer is on his zip to another roof. */
+	UFUNCTION(BlueprintPure, Category = "Thug|Archer")
+	bool IsZipping() const;
+
+	// --- Gunner ----------------------------------------------------------------------------------------
 
 	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
 	bool IsTelegraphing() const { return Burst.IsTelegraphing(); }
@@ -413,18 +406,6 @@ public:
 	/** Seconds the raised pistol has been up, below 0 when it is not raised. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
 	float GetTelegraphElapsed() const { return Burst.IsTelegraphing() ? Burst.GetElapsed() : -1.f; }
-
-	/**
-	 * The rate an archer's bow counts its draw at so that a bow whose full draw is FullDrawSeconds
-	 * reaches it in WantedSeconds (the difficulty's 1.5 / 1.2 / 1.0). Pure.
-	 */
-	static float ComputeArcherDrawRate(float FullDrawSeconds, float WantedSeconds)
-	{
-		return FullDrawSeconds > 0.f ? FullDrawSeconds / FMath::Max(WantedSeconds, 0.1f) : 1.f;
-	}
-
-	/** A copy of Attack with the difficulty's thug damage multiplier on it. */
-	FHawkeyeMeleeAttack ScaleAttackForDifficulty(const FHawkeyeMeleeAttack& Attack) const;
 
 	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
 	bool IsBursting() const { return Burst.IsActive(); }
@@ -450,9 +431,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
 	FVector GetCoverPoint() const { return CoverPoint; }
 
-	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
-	bool IsRetreating() const { return bRetreating; }
-
+	/** Where his last back-away went. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Gunner")
 	FVector GetRetreatGoal() const { return RetreatGoal; }
 
@@ -495,13 +474,11 @@ public:
 	/** Replaces the aim scatter stream so a test gets the same shots every run. */
 	void SetAimRandomStream(const FRandomStream& InStream) { AimStream = InStream; }
 
-	// --- Archer state --------------------------------------------------------------------------------
+	// --- Archer ----------------------------------------------------------------------------------------
 
+	/** Where his last zip lands. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Archer")
-	bool IsZipping() const { return bZipping; }
-
-	UFUNCTION(BlueprintPure, Category = "Thug|Archer")
-	FVector GetZipEnd() const { return ZipTo; }
+	FVector GetZipEnd() const { return ZipLanding; }
 
 	/** Arrows this archer has loosed. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Archer")
@@ -543,8 +520,20 @@ public:
 	static bool ComputeRetreatGoal(const FVector& Thug, const FVector& Player, float TriggerDistance, float RetreatDistance,
 		FVector& OutGoal);
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug")
-	TObjectPtr<UStateTreeAIComponent> StateTreeComponent;
+	/**
+	 * The rate an archer's bow counts its draw at so that a bow whose full draw is FullDrawSeconds
+	 * reaches it in WantedSeconds (the difficulty's 1.5 / 1.2 / 1.0). Pure.
+	 */
+	static float ComputeArcherDrawRate(float FullDrawSeconds, float WantedSeconds)
+	{
+		return FullDrawSeconds > 0.f ? FullDrawSeconds / FMath::Max(WantedSeconds, 0.1f) : 1.f;
+	}
+
+	/** A copy of Attack with the difficulty's thug damage multiplier on it. */
+	FHawkeyeMeleeAttack ScaleAttackForDifficulty(const FHawkeyeMeleeAttack& Attack) const;
+
+	/** Swings started in this thug's life: the heavy alternates bash and bat on it. */
+	int32 GetSwingsStarted() const { return SwingsStarted; }
 
 	/**
 	 * Where his eyes are and look, for perception's sight. Alerted: along his aim (the control rotation).
@@ -553,8 +542,176 @@ public:
 	 */
 	virtual void GetActorEyesViewPoint(FVector& OutLocation, FRotator& OutRotation) const override;
 
-	/** Degrees his calm gaze is pitched (below 0 is down): a patrol point's pitch while he waits there. */
-	float GetLookPitch() const { return LookPitch; }
+	// --- Actuators: ST_Thug's tasks act through these -------------------------------------------------
+
+	/**
+	 * MoveToActor / MoveToLocation with the failure reported. A goal off the navmesh (she hangs off
+	 * a ledge, lands a zip by a parapet, is down against a wall) is walked to its nearest navigable
+	 * point within SnapExtent; with none, or no path from where he stands, he holds position and it
+	 * is logged at Verbose. Only a world with no navigation data at all warns (once per controller):
+	 * that is a missing NavMeshBoundsVolume, not a bad goal. True when a move was started.
+	 */
+	bool RequestMoveToActor(AActor* Goal, float AcceptanceRadius);
+	bool RequestMoveToLocation(const FVector& Goal, float AcceptanceRadius, const FVector& SnapExtent = NarrowNavSnap,
+		const TCHAR* GoalName = nullptr);
+
+	/** How far a move goal is snapped onto the navmesh: 2 m for most, 3 m for cover, circling, noises and her. */
+	static inline const FVector NarrowNavSnap = FVector(200.f, 200.f, 250.f);
+	static inline const FVector WideNavSnap = FVector(300.f, 300.f, 300.f);
+
+	/** Close enough to a move goal to count as there, cm. */
+	static constexpr float ArriveDistance = 90.f;
+
+	/**
+	 * Turns a stopped thug to face ToTarget. Only ever called when he is not moving: while he
+	 * is, the movement component orients him along his own velocity so the walk cycle points the
+	 * way he is going.
+	 */
+	static void FaceTarget(APawn* Thug, const FVector& ToTarget);
+
+	/** From him to his target, or zero without one. */
+	FVector GetToTarget() const;
+
+	/** Stops and squares up to his target. */
+	void HoldStillFacingTarget();
+
+	/** False when he has no patrol points. */
+	bool HasPatrolRoute() const;
+
+	/** Walks toward the current patrol point; true once he is standing on it. */
+	bool WalkToPatrolPoint();
+
+	/** Waiting on a patrol point that says which way to look (a gunner over a hall): turns and pitches his gaze to it. */
+	void LookFromPatrolPoint();
+
+	/** Done waiting: the next patrol point, gaze level again. */
+	void NextPatrolPoint();
+
+	/** Sets the gaze pitch perception looks along while he is not Alerted. */
+	void SetLookPitch(float Pitch) { LookPitch = Pitch; }
+
+	/** Standing on the noise (or facing it) with nothing to show for it: after InvestigateSeconds he goes back to Calm. */
+	void AdvanceInvestigation(float DeltaSeconds);
+
+	/** Points his aim (the control rotation the weapons trace along) at his target. */
+	void AimAtTarget();
+
+	/** RushSpeed while Alerted with a melee weapon, the pawn's own walking speed otherwise. */
+	void ApplyMoveSpeed();
+
+	/** Drops the burst and the draw and gives back his token. */
+	void StandDown(const TCHAR* Why);
+
+	/** Asks for (or renews) a Kind token on the target (gameplay-semantics.md, "Attack tokens"). */
+	FHawkeyeTokenGrant RequestAttackToken(EHawkeyeAttackKind Kind, bool bReady);
+
+	/** Gives back his token, if he holds one, and leaves the queue. */
+	void ReleaseAttackToken();
+
+	/**
+	 * Walks to the spot SlotYaw round the target at Radius (re-pathing at most every RingRepathSeconds, counted in
+	 * RepathRemaining) and faces her: the stand-off's orbit and a melee thug waiting for a token.
+	 */
+	void CircleTarget(float DeltaSeconds, float Radius, float SlotYaw, float& RepathRemaining, const TCHAR* GoalName);
+
+	/** Without a token: to his place on the ring round her (spread from the others waiting), facing her. */
+	void WaitOnRing(float DeltaSeconds, float& RepathRemaining);
+
+	/** The gunner's clocks that run while he fights: the pause between bursts, and the lease on his token mid-burst. */
+	void TickGunnerClocks(float DeltaSeconds);
+
+	/** True while the pause after his last burst runs. */
+	bool IsBurstPaused() const { return BurstPauseRemaining > 0.f; }
+
+	/** Jammed with the pistol up: lowers it, logged once a jam. */
+	void HoldFireJammed();
+
+	/** With a ranged token: raises the pistol, glint on, for a telegraph no shorter than the token's minimum. */
+	bool StartBurst();
+
+	/** Runs the burst on, firing the shots that came due. True once its last shot is gone (token back, pistol down). */
+	bool AdvanceBurst(float DeltaSeconds);
+
+	/** Stops a burst in progress: glint off, pistol down. */
+	void CancelBurst(const TCHAR* Why);
+
+	/** Picks a cover point away from the target and goes to it. False (and stays out) when there is none. */
+	bool BeginCover(const TCHAR* Why, const FVector* Avoid = nullptr);
+
+	/** Back behind cover after a peek: the shot count toward the next cover starts again. */
+	void ResetShotsSinceCover() { ShotsSinceCover = 0; }
+
+	/** At or on the way to his cover point: the cover clock runs, the pistol is down. */
+	void HoldCover(float DeltaSeconds);
+
+	/** No other cover to move to: this one counts as fresh again. */
+	void RestartCoverClock() { CoverElapsed = 0.f; }
+
+	/** The nearest spot beside CoverPoint with a line on the target, or CoverPoint itself. */
+	FVector FindPeekPoint() const;
+
+	/** Starts backing off to RetreatToDistance from her. False when she is not inside RetreatTriggerDistance. */
+	bool BeginBackAway();
+
+	/** True once the back-away has ended: far enough, there, or RetreatMaxSeconds (Elapsed) gone. Stops him. */
+	bool FinishBackAway(float Elapsed);
+
+	/** Inside ArcherMinRange, not drawing and standing: a few steps back on his roof. True when he set off. */
+	bool StepBackFromTarget();
+
+	/** Points the bow at where she will be when the arrow arrives; the aim point. */
+	FVector AimBow();
+
+	/** A clear line from his eyes to her chest. */
+	bool HasLineToTarget() const;
+
+	/** True once the gap since his last arrow (or broken draw) is over. */
+	bool IsArcherGapOver() const;
+
+	/** With a ranged token: starts the draw, its length from the difficulty and never shorter than the token's minimum. */
+	bool StartArcherDraw();
+
+	/** True while the bow is being drawn. */
+	bool IsDrawingBow() const;
+
+	/** True once the draw is full. */
+	bool IsDrawFull() const;
+
+	/** Looses a full draw at her now: lagged, led, scattered. */
+	void LooseAtTarget();
+
+	/** She went out of his line mid-draw: hold the draw where it points (ArcherHold). */
+	void BeginArcherHold(const FVector& AimPoint);
+
+	/** Lets the string down without shooting. */
+	void CancelArcherDraw(const TCHAR* Why);
+
+	/** The anchor whose landing is best for the band; false when there is none. Starts the relocation cooldown either way. */
+	bool FindArcherRoof(FVector& OutLanding);
+
+	/** Lifts off for a zip: no draw, no walking. */
+	void BeginZip();
+
+	/** Down on the new roof. */
+	void EndZip();
+
+	/** Counts the cooldown after a swing down. */
+	void TickMeleeCooldown(float DeltaSeconds);
+
+	/** Off cooldown, not swinging and on the ring: may be granted a melee token. */
+	bool IsReadyToSwing(float Distance) const;
+
+	/** Starts the next swing of his set, its wind-up no shorter than Token's minimum. True when it started. */
+	bool StartSwing(const FHawkeyeTokenGrant& Token, float Distance);
+
+	/** Gives back his token, counts a finished swing and starts the cooldown. */
+	void FinishSwing();
+
+	/** Steps back MeleeBackOffDistance from her. False (and the swing count starts again) with nowhere to stand. */
+	bool StartBackOff();
+
+	/** The back-off is over: the swing count starts again. */
+	void EndBackOff();
 
 protected:
 	virtual void OnPossess(APawn* InPawn) override;
@@ -567,75 +724,14 @@ protected:
 	/** Timer body. */
 	void TickThink();
 
-	void TickCalm(float DeltaSeconds);
-	void TickSuspicious(float DeltaSeconds);
-	void TickAlerted(float DeltaSeconds);
-
-	/** Moves to the current patrol point, advancing the index once it is reached. */
-	void AdvancePatrol();
-
-	/**
-	 * MoveToActor / MoveToLocation with the failure reported. A goal off the navmesh (she hangs off
-	 * a ledge, lands a zip by a parapet, is down against a wall) is walked to its nearest navigable
-	 * point within SnapExtent; with none, or no path from where he stands, he holds position and it
-	 * is logged at Verbose. Only a world with no navigation data at all warns (once per controller):
-	 * that is a missing NavMeshBoundsVolume, not a bad goal. True when a move was started.
-	 */
-	bool RequestMoveToActor(AActor* Goal, float AcceptanceRadius);
-	bool RequestMoveToLocation(const FVector& Goal, float AcceptanceRadius, const FVector& SnapExtent = NarrowNavSnap,
-		const TCHAR* GoalName = nullptr);
 	void ReportMoveResult(EPathFollowingRequestResult::Type Result, const FString& GoalDescription);
 	/** Stops and logs, at Verbose, why the move to Goal was not started. */
 	void HoldPosition(const FVector& Goal, const TCHAR* Why, const TCHAR* GoalName);
 	/** True when there is a complete navmesh path from the pawn to Point (always true without navigation data). */
 	bool IsReachable(const FVector& Point) const;
 
-	/** How far a move goal is snapped onto the navmesh: 2 m for most, 3 m for cover, circling, noises and her. */
-	static inline const FVector NarrowNavSnap = FVector(200.f, 200.f, 250.f);
-	static inline const FVector WideNavSnap = FVector(300.f, 300.f, 300.f);
-
-	/**
-	 * Turns a stopped thug to face ToTarget. Only ever called when he is not moving: while he
-	 * is, the movement component orients him along his own velocity so the walk cycle points the
-	 * way he is going.
-	 */
-	static void FaceTarget(APawn* Thug, const FVector& ToTarget);
-
 	/** One shot at TargetActor through the thug's weapon, scattered by AimSpreadDegrees. */
 	void FireAtTarget();
-
-	/** The gunner's Attack step: close to EngageRange, then telegraph and burst; to cover after a burst. */
-	void TickGunner(float DeltaSeconds, const FVector& ToTarget);
-
-	/** The gunner's Cover step: to the cover point, hide, then peek or relocate. */
-	void TickGunnerCover(float DeltaSeconds);
-
-	/** The gunner's Reposition step: back off to RetreatToDistance. */
-	void TickGunnerRetreat(float DeltaSeconds);
-
-	/** Picks a cover point away from the target and goes to it. False (and stays out) when there is none. */
-	bool BeginCover(const TCHAR* Why, const FVector* Avoid = nullptr);
-
-	/** The nearest spot beside CoverPoint with a line on the target, or CoverPoint itself. */
-	FVector FindPeekPoint() const;
-
-	/** Stops a burst in progress: glint off, pistol down. */
-	void CancelBurst(const TCHAR* Why);
-
-	/** The archer's Attack step: keep the band, draw, loose with lead. */
-	void TickArcher(float DeltaSeconds, const FVector& ToTarget);
-
-	/** The archer's Reposition step: the zip in flight. */
-	void TickArcherZip(float DeltaSeconds);
-
-	/** A zip to the anchor whose landing is best for the band. False when there is none. */
-	bool StartArcherRelocation(const TCHAR* Why);
-
-	/** Lets the string down without shooting. */
-	void CancelArcherDraw(const TCHAR* Why);
-
-	/** She went out of his line mid-draw: hold the draw where it points (ArcherHold). */
-	void BeginArcherHold(const FVector& AimPoint);
 
 	/** Looses the draw at Target now (a normal full draw, or a held one she stepped back into). */
 	void LooseArcherDraw(const FVector& AimPoint, const TCHAR* Why);
@@ -656,9 +752,6 @@ protected:
 	/** A clear line from this pawn's eyes to Point, ignoring IgnoreActor. */
 	bool HasLineTo(const FVector& Point, const AActor* IgnoreActor) const;
 
-	/** Leaving one mode for another: drop what the old one was holding. */
-	void EnterMode(EThugMode NewMode);
-
 	/** The player's pawn, for the archer's sight when no target is set yet. */
 	APawn* FindPlayerPawn() const;
 
@@ -671,41 +764,17 @@ protected:
 	/** World seconds. */
 	double GetNowSeconds() const;
 
-	/** The Fists and Bat Alerted step: rush, wind up inside MeleeEngageRange, swing, back off. */
-	void TickMeleeRush(float DeltaSeconds, const FVector& ToTarget);
-
-	/** The Alerted step while the target is down: drop the burst and the draw, circle at StandOffDistance. */
-	void TickStandOff(float DeltaSeconds, const FVector& ToTarget);
-
-	/**
-	 * Walks to the spot SlotYaw round the target at Radius (re-pathing at most every RingRepathSeconds) and
-	 * faces her: the stand-off's orbit and a melee thug waiting for a token.
-	 */
-	void CircleTarget(float DeltaSeconds, const FVector& ToTarget, float Radius, float SlotYaw, const TCHAR* GoalName);
-
-	/** Asks for (or renews) a Kind token on the target (gameplay-semantics.md, "Attack tokens"). */
-	FHawkeyeTokenGrant RequestAttackToken(EHawkeyeAttackKind Kind, bool bReady);
-
-	/** Gives back his token, if he holds one, and leaves the queue. */
-	void ReleaseAttackToken();
-
-	/** Without a token: to his place on the ring round her (spread from the others waiting), facing her. */
-	void WaitOnRing(float DeltaSeconds, const FVector& ToTarget);
-
-	/** Starts the next swing of his set, its wind-up no shorter than Token's minimum. */
-	void StartSwing(const FHawkeyeTokenGrant& Token, float Distance);
-
-	/** Gives back his token, counts a finished swing, starts the cooldown, and steps back after enough of them. */
-	void FinishSwing(const FVector& ToTarget);
-
-	/** RushSpeed while Alerted with a melee weapon, the pawn's own walking speed otherwise. */
-	void ApplyMoveSpeed();
-
 	/** The EQS half of FindCoverPoint. False when there is no query or no manager, or nothing passed. */
 	bool FindCoverPointEqs(FVector& OutPoint, const FVector* Avoid) const;
 
 	/** The C++ half: three rings of twelve candidates, kept where the line from Threat is blocked. */
 	bool FindCoverPointRing(const FVector& Threat, FVector& OutPoint, const FVector* Avoid) const;
+
+	/** The archer may relocate: off cooldown, and not holding a draw or in the loose window after one. */
+	bool CanArcherRelocate() const;
+
+	/** True while ST_Thug has State on its active path. */
+	bool IsInState(FName State) const;
 
 	void SetState(EThugAlertState NewState);
 
@@ -744,56 +813,33 @@ private:
 	float SeenSeconds = 0.f;
 	float UnseenSeconds = 0.f;
 	float InvestigateElapsed = 0.f;
-	float PatrolWaitElapsed = 0.f;
-	bool bPatrolWaiting = false;
 
 	/** Latches after the first failed move so a broken navmesh logs once, not four times a second. */
 	bool bLoggedMoveFailure = false;
 
 	bool bThinkingEnabled = true;
 
-	/** Melee rush state. */
-	bool bWasSwinging = false;
-	bool bBackingOff = false;
+	/** Melee: swings since he last stepped back, every swing started, and the cooldown after the last. */
 	int32 SwingsSinceBackOff = 0;
-	/** Every swing he has started: the heavy alternates bash and bat on it. */
 	int32 SwingsStarted = 0;
 	float MeleeCooldownRemaining = 0.f;
-	float BackOffElapsed = 0.f;
-
-	/** Stand-off state: circling a downed target, and where round her. */
-	bool bStandingOff = false;
-	float StandOffAngle = 0.f;
-
-	/** Until the next move toward a spot on a ring round her (the stand-off, waiting for a token), seconds. */
-	float RingRepathRemaining = 0.f;
-
-	/** Seconds since he was granted a melee token without his swing starting. */
-	float StepInElapsed = 0.f;
 
 	/** The pawn's own MaxWalkSpeed, read at possession; the rush speed is laid over it. */
 	float BaseWalkSpeed = 300.f;
 
-	EThugMode CurrentMode = EThugMode::Patrol;
-
-	/** Gunner state. */
-	EGunnerPhase GunnerPhase = EGunnerPhase::Open;
+	/** Gunner: shots toward the next cover, the pause after a burst, the cover point he holds and how long. */
 	int32 ShotsSinceCover = 0;
 	float BurstPauseRemaining = 0.f;
 	bool bHasCover = false;
 	FVector CoverPoint = FVector::ZeroVector;
-	FVector PeekPoint = FVector::ZeroVector;
 	float CoverElapsed = 0.f;
-	float HideElapsed = 0.f;
 	bool bAimedAt = false;
 	bool bLoggedJamHold = false;
 	bool bDeflectNextShot = false;
 	int32 DeflectedShots = 0;
 	/** A failed cover search is not repeated before this world time. */
 	double NextCoverSearchSeconds = -1.0;
-	bool bRetreating = false;
 	FVector RetreatGoal = FVector::ZeroVector;
-	float RetreatElapsed = 0.f;
 
 	/** Ranged aim state. */
 	FHawkeyeTargetTrack TargetTrack;
@@ -808,11 +854,7 @@ private:
 	/** Archer state. */
 	double LastArrowSeconds = -100.0;
 	double LastRelocateSeconds = -100.0;
-	bool bZipping = false;
-	FVector ZipFrom = FVector::ZeroVector;
-	FVector ZipTo = FVector::ZeroVector;
-	float ZipElapsed = 0.f;
-	float ZipSeconds = 0.f;
+	FVector ZipLanding = FVector::ZeroVector;
 	bool bLoggedNoAnchor = false;
 	/** Where the held draw points: the last aim before she went out of his line. */
 	FVector HeldAimPoint = FVector::ZeroVector;

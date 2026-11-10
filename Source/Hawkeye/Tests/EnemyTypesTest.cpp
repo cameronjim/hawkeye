@@ -20,7 +20,7 @@
 /**
  * The enemy types (docs/plans/03-core-systems.md, "Combat, finished"): the gunner's cover, burst,
  * telegraph and retreat; the archer's band, draw telegraph, lead and arrows; the squad alert; the
- * mode priority the StateTree and the C++ fallback share. Definitions are built in code.
+ * mode priority ST_Thug keeps. Definitions are built in code.
  */
 namespace HawkeyeEnemyTest
 {
@@ -119,11 +119,11 @@ bool FHawkeyeGunnerCoverBlocksLine::RunTest(const FString& Parameters)
 	{
 		Clock += 0.25f;
 		Gunner->GetWeaponComponent()->SetTestTimeSeconds(Clock);
-		Brain->Think(0.25f);
+		ThinkThug(Brain, 0.25f);
 	}
 	TestEqual(TEXT("Three shots, then cover"), Gunner->GetWeaponComponent()->CurrentAmmo, 9);
 	TestEqual(TEXT("He is covering"), Brain->GetGunnerPhase(), EGunnerPhase::Covering);
-	TestEqual(TEXT("The mode is Cover"), Brain->ChooseMode(), EThugMode::Cover);
+	TestEqual(TEXT("The mode is Cover"), Brain->GetMode(), EThugMode::Cover);
 
 	// The aim rule.
 	TestTrue(TEXT("Dead on is aimed at"),
@@ -185,7 +185,7 @@ bool FHawkeyeGunnerBurstTelegraph::RunTest(const FString& Parameters)
 		Pistol->SetTestTimeSeconds(Clock);
 		// The world's clock too: a burst's attack token comes back with a gap timed on it.
 		TestWorld.AdvanceClock(0.25f);
-		Brain->Think(0.25f);
+		ThinkThug(Brain, 0.25f);
 	};
 	Step();
 	TestTrue(TEXT("He telegraphs"), Brain->IsTelegraphing());
@@ -250,16 +250,16 @@ bool FHawkeyeGunnerRetreat::RunTest(const FString& Parameters)
 		return false;
 	}
 	Alert(Brain, Kate);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestEqual(TEXT("She is inside 300 cm: Reposition"), Brain->GetMode(), EThugMode::Reposition);
 	TestTrue(TEXT("He backs off"), Brain->IsRetreating());
 	TestEqual(TEXT("To 600 cm from her"), static_cast<float>(FVector::Dist2D(Brain->GetRetreatGoal(), Kate->GetActorLocation())), 600.f, 1.f);
 	TestFalse(TEXT("No telegraph while backing off"), Brain->IsTelegraphing());
 
 	Gunner->SetActorLocation(FVector(580.f, 0.f, 0.f));
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestFalse(TEXT("At 580 cm he is done"), Brain->IsRetreating());
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestEqual(TEXT("And back to the fight"), Brain->GetMode(), EThugMode::Attack);
 	return true;
 }
@@ -321,7 +321,7 @@ bool FHawkeyeArcherRange::RunTest(const FString& Parameters)
 	}
 	ArmArcher(Archer);
 	Alert(Brain, Kate);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	if (!TestTrue(TEXT("Inside 800 cm he relocates"), Brain->IsZipping()))
 	{
 		return false;
@@ -331,7 +331,7 @@ bool FHawkeyeArcherRange::RunTest(const FString& Parameters)
 	TestFalse(TEXT("No draw while he goes"), Archer->GetBowComponent()->IsDrawing());
 	for (int32 Step = 0; Step < 8 && Brain->IsZipping(); ++Step)
 	{
-		Brain->Think(0.25f);
+		ThinkThug(Brain, 0.25f);
 	}
 	TestFalse(TEXT("Landed"), Brain->IsZipping());
 	const float Distance = FVector::Dist2D(Archer->GetActorLocation(), Kate->GetActorLocation());
@@ -360,11 +360,11 @@ bool FHawkeyeArcherTelegraph::RunTest(const FString& Parameters)
 	UBowComponent* Bow = Archer->GetBowComponent();
 	Bow->SetTestTimeSeconds(0.0);
 	Alert(Brain, Kate);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("In the band he draws"), Bow->IsDrawing());
 	TestTrue(TEXT("The purple glint is on"), Archer->IsTelegraphGlintOn());
 	Bow->SetTestTimeSeconds(0.7);
-	Brain->Think(0.25f);
+	ThinkThug(Brain, 0.25f);
 	TestTrue(TEXT("Still drawing at 0.7 s of 1.2"), Bow->IsDrawing());
 
 	Archer->GetHealthComponent()->ApplyDamage(5.f, Kate);
@@ -378,12 +378,12 @@ bool FHawkeyeArcherTelegraph::RunTest(const FString& Parameters)
 	UBowComponent* SecondBow = Second->GetBowComponent();
 	SecondBow->SetTestTimeSeconds(0.0);
 	Alert(SecondBrain, Kate);
-	SecondBrain->Think(0.25f);
+	ThinkThug(SecondBrain, 0.25f);
 	SecondBow->SetTestTimeSeconds(1.1);
-	SecondBrain->Think(0.25f);
+	ThinkThug(SecondBrain, 0.25f);
 	TestEqual(TEXT("Nothing before 1.2 s"), SecondBrain->GetArrowsLoosed(), 0);
 	SecondBow->SetTestTimeSeconds(1.21);
-	SecondBrain->Think(0.25f);
+	ThinkThug(SecondBrain, 0.25f);
 	TestEqual(TEXT("Loosed at full draw"), SecondBrain->GetArrowsLoosed(), 1);
 	TestFalse(TEXT("And the glint is out"), Second->IsTelegraphGlintOn());
 	return true;
@@ -468,9 +468,9 @@ bool FHawkeyeSquadAlert::RunTest(const FString& Parameters)
 	Alert(SpotterBrain, Kate);
 	TestEqual(TEXT("The spotter is alerted"), Spotter->GetAlertState(), EThugAlertState::Alerted);
 	TestEqual(TEXT("The alert goes out in 1.5 s"), SpotterBrain->GetSquadAlertRemaining(), 1.5f, 0.001f);
-	SpotterBrain->Think(1.f);
+	ThinkThug(SpotterBrain, 1.f);
 	TestEqual(TEXT("Nobody told after 1 s"), Near->GetAlertState(), EThugAlertState::Calm);
-	SpotterBrain->Think(0.6f);
+	ThinkThug(SpotterBrain, 0.6f);
 	TestEqual(TEXT("After 1.5 s, the thug 10 m away with a line to him: suspicious"), Near->GetAlertState(),
 		EThugAlertState::Suspicious);
 	TestTrue(TEXT("Toward where the spotter had her"), NearBrain->GetLastStimulusLocation().Equals(Kate->GetActorLocation(), 1.f));
@@ -494,20 +494,25 @@ bool FHawkeyeThugModePriority::RunTest(const FString& Parameters)
 		AddError(TEXT("Could not spawn the thug and Kate."));
 		return false;
 	}
-	TestFalse(TEXT("No tree on a C++ thug: the fallback picks"), Brain->IsUsingStateTree());
-	TestEqual(TEXT("Calm: patrol"), Brain->ChooseMode(), EThugMode::Patrol);
+	ThinkThug(Brain, 0.f);
+	TestEqual(TEXT("Calm: patrol"), Brain->GetMode(), EThugMode::Patrol);
 	Brain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, 1.f);
-	TestEqual(TEXT("Suspicious: investigate"), Brain->ChooseMode(), EThugMode::Investigate);
+	ThinkThug(Brain, 0.f);
+	TestEqual(TEXT("Suspicious: investigate"), Brain->GetMode(), EThugMode::Investigate);
 	Alert(Brain, Kate);
-	TestEqual(TEXT("Alerted: attack"), Brain->ChooseMode(), EThugMode::Attack);
+	ThinkThug(Brain, 0.f);
+	TestEqual(TEXT("Alerted: attack"), Brain->GetMode(), EThugMode::Attack);
 	Brain->SetHeld(true);
-	TestEqual(TEXT("Held beats everything"), Brain->ChooseMode(), EThugMode::Stunned);
+	ThinkThug(Brain, 0.f);
+	TestEqual(TEXT("Held beats everything"), Brain->GetMode(), EThugMode::Stunned);
 	Brain->SetHeld(false);
 	Brain->SetThinkingEnabled(false);
-	TestEqual(TEXT("Switched off: stunned"), Brain->ChooseMode(), EThugMode::Stunned);
+	ThinkThug(Brain, 0.f);
+	TestEqual(TEXT("Switched off: stunned"), Brain->GetMode(), EThugMode::Stunned);
 	Brain->SetThinkingEnabled(true);
 	Thug->Knockdown(Kate);
-	TestEqual(TEXT("On the floor: stunned"), Brain->ChooseMode(), EThugMode::Stunned);
+	ThinkThug(Brain, 0.f);
+	TestEqual(TEXT("On the floor: stunned"), Brain->GetMode(), EThugMode::Stunned);
 
 	// The cover query the builder writes: a donut of candidates, a blocked-trace filter, nearest first.
 	UEnvQuery* Query = NewObject<UEnvQuery>(GetTransientPackage());

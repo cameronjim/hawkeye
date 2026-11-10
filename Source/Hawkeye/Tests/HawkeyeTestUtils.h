@@ -18,6 +18,7 @@
 #include "HawkeyeTestUtils.generated.h"
 
 class AGrappleAnchor;
+class AThugAIController;
 class UArrowDefinition;
 class UBoxComponent;
 class UFlashbackDefinition;
@@ -61,6 +62,12 @@ private:
 
 	UWorld* World = nullptr;
 };
+
+/**
+ * One step of a thug's brain as a frame of the game runs it: his senses (AThugAIController::Think), then ST_Thug,
+ * both DeltaSeconds long. Test worlds tick nothing, so the tree is ticked by hand.
+ */
+HAWKEYE_API void ThinkThug(AThugAIController* Brain, float DeltaSeconds);
 
 /**
  * Counting sink for the project's dynamic multicast delegates. Dynamic delegates cannot bind

@@ -115,8 +115,8 @@ public:
 	UBowComponent* GetBowComponent() const { return BowComponent; }
 
 	/**
-	 * ST_Thug: the brain's StateTree, built headless by UHawkeyeThugTreeBuilder. AThugAIController runs
-	 * it when set; without one (tests, a thug spawned from C++) the controller picks modes in C++.
+	 * The StateTree that decides what he does: ST_Thug, built headless by UHawkeyeThugTreeBuilder. Unset (a thug
+	 * spawned from C++), AThugAIController runs its DefaultStateTree, the same ST_Thug.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|AI")
 	TObjectPtr<UStateTree> ThugStateTree;

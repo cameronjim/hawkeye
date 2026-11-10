@@ -142,7 +142,7 @@ bool FHawkeyeInteriorSquadCrew::RunTest(const FString& Parameters)
 	}
 	SpotterBrain->SetTarget(Kate);
 	SpotterBrain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, SpotterBrain->GunshotLoudnessThreshold);
-	SpotterBrain->Think(1.6f);
+	ThinkThug(SpotterBrain, 1.6f);
 	TestEqual(TEXT("His own crew, 6 m off with a line to him: suspicious"), Mate->GetAlertState(), EThugAlertState::Suspicious);
 	TestEqual(TEXT("Another crew just as near: calm"), Stranger->GetAlertState(), EThugAlertState::Calm);
 	TestEqual(TEXT("A thug with no crew: calm"), Loner->GetAlertState(), EThugAlertState::Calm);
@@ -153,7 +153,7 @@ bool FHawkeyeInteriorSquadCrew::RunTest(const FString& Parameters)
 	SpawnThug(TestWorld, FVector(600.f, 600.f, 0.f), EThugWeapon::Fists, NAME_None, Other);
 	LonerBrain->SetTarget(Kate);
 	LonerBrain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, LonerBrain->GunshotLoudnessThreshold);
-	LonerBrain->Think(1.6f);
+	ThinkThug(LonerBrain, 1.6f);
 	TestEqual(TEXT("No crew tells no crew"), Other ? Other->GetAlertState() : EThugAlertState::Calm, EThugAlertState::Suspicious);
 	return true;
 }
@@ -214,7 +214,7 @@ bool FHawkeyeInteriorArcherCone::RunTest(const FString& Parameters)
 			}
 			Archer->bArcherSeesAllRound = bAllRound;
 			Brain->SetTarget(Kate);
-			Brain->Think(0.25f);
+			ThinkThug(Brain, 0.25f);
 			const bool bSaw = Archer->GetAlertState() != EThugAlertState::Calm;
 			const bool bWant = bAllRound || bInFront;
 			TestEqual(FString::Printf(TEXT("%s archer, Kate 10 m %s him: %s"), bAllRound ? TEXT("A rooftop") : TEXT("An indoor"),
@@ -223,9 +223,9 @@ bool FHawkeyeInteriorArcherCone::RunTest(const FString& Parameters)
 			{
 				// Once he is looking for her he looks all round.
 				Brain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, 1.f);
-				Brain->Think(0.25f);
-				Brain->Think(0.25f);
-				Brain->Think(0.25f);
+				ThinkThug(Brain, 0.25f);
+				ThinkThug(Brain, 0.25f);
+				ThinkThug(Brain, 0.25f);
 				TestEqual(TEXT("Suspicious, the indoor archer sees her behind him and confirms"), Archer->GetAlertState(),
 					EThugAlertState::Alerted);
 			}

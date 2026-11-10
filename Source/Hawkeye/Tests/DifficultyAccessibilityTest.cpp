@@ -225,7 +225,7 @@ bool FHawkeyeDifficultyThugs::RunTest(const FString& Parameters)
 		UHealthComponent* KateHealth = Kate->GetHealthComponent();
 		for (int32 Step = 0; Step < 20 && Gunner->GetWeaponComponent()->CurrentAmmo == Ammo; ++Step)
 		{
-			GunnerBrain->Think(0.1f);
+			ThinkThug(GunnerBrain, 0.1f);
 		}
 		TestTrue(TEXT("He fired"), Gunner->GetWeaponComponent()->CurrentAmmo < Ammo);
 		TestEqual(TEXT("The pistol still reads 12"), Gunner->GetWeaponComponent()->Damage, 12.f);

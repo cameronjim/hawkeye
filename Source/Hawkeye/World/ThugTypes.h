@@ -4,9 +4,8 @@
 #include "ThugTypes.generated.h"
 
 /**
- * What a thug's brain is doing. ST_Thug has one state per mode, tried in this priority order:
- * Stunned, Reposition, Cover, Attack, Investigate, then Patrol as the fallback. Without a tree
- * AThugAIController::ChooseMode picks the same way.
+ * The top-level states of ST_Thug, in the priority order its root tries them: Stunned, Reposition,
+ * Cover, Attack, Investigate, then Patrol as the fallback. The tree's states carry these names.
  */
 UENUM(BlueprintType)
 enum class EThugMode : uint8
@@ -24,6 +23,83 @@ enum class EThugMode : uint8
 	/** Calm: patrol points, or stand. */
 	Patrol
 };
+
+/**
+ * A fact ST_Thug's conditions ask of the controller (AThugAIController::Senses). Each is read when the
+ * condition is tested, so a transition sees what a task changed earlier in the same tick: a token granted,
+ * a swing finished, a cover point taken.
+ */
+UENUM(BlueprintType)
+enum class EThugSense : uint8
+{
+	/** Held by putty, staggered, on the floor, dead, or his thinking is switched off. */
+	Stunned,
+	/** His alert level is Calm. */
+	Calm,
+	/** His alert level is Suspicious. */
+	Suspicious,
+	/** His alert level is Alerted. */
+	Alerted,
+	/** Alerted, with a target he can see: no smoke in the way. */
+	Engaged,
+	/** His target is a downed or dead player. */
+	TargetDown,
+	/** He carries the pistol. */
+	Gunner,
+	/** He carries the bow. */
+	Archer,
+	/** His target is beyond EngageRange. */
+	OutOfRange,
+	/** His target is inside his comfort distance: RetreatTriggerDistance, or ArcherCloseRange for an archer. */
+	Crowded,
+	/** An archer whose relocation is off cooldown and whose bow is free, with her crowding him or beyond ArcherAggroRange. */
+	RoofWanted,
+	/** She is aiming at him. */
+	AimedAt,
+	/** ShotsBeforeCover shots since he last took cover. */
+	CoverOwed,
+	/** A failed cover search is not still cooling down. */
+	CanSearchCover,
+	/** He holds a cover point. */
+	HasCover,
+	/** He has held his cover point for RelocateSeconds. */
+	CoverStale,
+	/** He holds an attack token on his target. */
+	HoldsToken,
+	/** MeleeSwingsBeforeBackOff swings since he last stepped back. */
+	BackOffOwed
+};
+
+/** The names of ST_Thug's states, shared by the builder that writes them and the controller that asks about them. */
+namespace HawkeyeThugStates
+{
+	inline const FName Root(TEXT("Thug"));
+	inline const FName Stunned(TEXT("Stunned"));
+	inline const FName Reposition(TEXT("Reposition"));
+	inline const FName BackAway(TEXT("BackAway"));
+	inline const FName ArcherZip(TEXT("ArcherZip"));
+	inline const FName Cover(TEXT("Cover"));
+	inline const FName Hide(TEXT("Hide"));
+	inline const FName Relocate(TEXT("Relocate"));
+	inline const FName Peek(TEXT("Peek"));
+	inline const FName StepOut(TEXT("StepOut"));
+	inline const FName PeekBurst(TEXT("PeekBurst"));
+	inline const FName Attack(TEXT("Attack"));
+	inline const FName HoldFire(TEXT("HoldFire"));
+	inline const FName StandOff(TEXT("StandOff"));
+	inline const FName Gunner(TEXT("Gunner"));
+	inline const FName Approach(TEXT("Approach"));
+	inline const FName TakeCover(TEXT("TakeCover"));
+	inline const FName Burst(TEXT("Burst"));
+	inline const FName Archer(TEXT("Archer"));
+	inline const FName Draw(TEXT("Draw"));
+	inline const FName Melee(TEXT("Melee"));
+	inline const FName BackOff(TEXT("BackOff"));
+	inline const FName Swing(TEXT("Swing"));
+	inline const FName HoldRing(TEXT("HoldRing"));
+	inline const FName Investigate(TEXT("Investigate"));
+	inline const FName Patrol(TEXT("Patrol"));
+}
 
 /** Where a gunner is in his fight. */
 UENUM(BlueprintType)

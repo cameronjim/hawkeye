@@ -300,7 +300,7 @@ bool FHawkeyeTrickArrowPuttyHoldsAndReleases::RunTest(const FString& Parameters)
 
 	// Held means nothing: a sighting that would alert him does not.
 	Brain->ReportStimulus(EStimulusKind::Sight, FVector(500.f, 0.f, 0.f), true);
-	Brain->Think(1.f);
+	ThinkThug(Brain, 1.f);
 	TestNotEqual(TEXT("A held thug does not confirm a sighting"), Thug->GetAlertState(), EThugAlertState::Alerted);
 
 	Putty->AdvanceEffect(3.9f);
@@ -450,7 +450,7 @@ bool FHawkeyeTrickArrowSmokeBlinds::RunTest(const FString& Parameters)
 	const FVector Kate(2000.f, 0.f, 0.f);
 	Brain->ReportStimulus(EStimulusKind::Sight, Kate, true);
 	TestTrue(TEXT("Seeing her through the cloud blinds him"), Brain->IsBlinded());
-	Brain->Think(1.f);
+	ThinkThug(Brain, 1.f);
 	TestEqual(TEXT("A blinded thug confirms nothing"), Thug->GetAlertState(), EThugAlertState::Calm);
 
 	// Crouched inside it she is gone to eyes and ears; standing, only the geometry counts.
@@ -472,7 +472,7 @@ bool FHawkeyeTrickArrowSmokeBlinds::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Still blocking at 7.9 s"), Cloud->IsBlocking());
 	Cloud->AdvanceEffect(0.2f);
 	TestFalse(TEXT("Gone after 8 s"), IsValid(Cloud));
-	Brain->Think(0.7f);
+	ThinkThug(Brain, 0.7f);
 	TestFalse(TEXT("With the smoke gone he can see"), Brain->IsBlinded());
 	TestEqual(TEXT("And the sighting alerts him"), Thug->GetAlertState(), EThugAlertState::Alerted);
 	return true;
@@ -528,19 +528,19 @@ bool FHawkeyeTrickArrowEmpLightsAndJam::RunTest(const FString& Parameters)
 	GunnerBrain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, 3.f);
 	GunnerBrain->SetTarget(Kate);
 	const int32 Ammo = Gunner->GetWeaponComponent()->CurrentAmmo;
-	GunnerBrain->Think(1.f);
-	GunnerBrain->Think(1.f);
+	ThinkThug(GunnerBrain, 1.f);
+	ThinkThug(GunnerBrain, 1.f);
 	TestEqual(TEXT("Jammed: no shot"), Gunner->GetWeaponComponent()->CurrentAmmo, Ammo);
 	TestFalse(TEXT("Jammed: no telegraph either"), GunnerBrain->IsTelegraphing());
-	GunnerBrain->Think(3.9f);
+	ThinkThug(GunnerBrain, 3.9f);
 	TestTrue(TEXT("Still jammed at 5.9 s"), GunnerBrain->IsJammed());
-	GunnerBrain->Think(0.2f);
+	ThinkThug(GunnerBrain, 0.2f);
 	TestFalse(TEXT("Clear after 6 s"), GunnerBrain->IsJammed());
 	// Six seconds with nothing seen or heard lost him the target; one more shot from Kate brings him back.
 	GunnerBrain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, 3.f);
-	GunnerBrain->Think(1.f);
+	ThinkThug(GunnerBrain, 1.f);
 	TestTrue(TEXT("Unjammed, he telegraphs a burst"), GunnerBrain->IsTelegraphing());
-	GunnerBrain->Think(1.f);
+	ThinkThug(GunnerBrain, 1.f);
 	TestEqual(TEXT("And he shoots again"), Gunner->GetWeaponComponent()->CurrentAmmo, Ammo - 1);
 
 	Effects->Tick(19.9f);
