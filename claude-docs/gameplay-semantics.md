@@ -3,10 +3,10 @@
 What each system promises. Tests in `Source/Hawkeye/Tests` assert these. If you change a
 rule here, change the test and the code in the same commit.
 
-**Pivot note (2026-09-25).** The game is now third person with bows. Sections marked
-LEGACY describe first-person or pistol behaviour that still exists in code until the
-stage 2 cleanup removes it; don't extend them. Sections marked PLANNED are the contract
-for code not yet written; write the tests from them. Everything unmarked stands.
+**Pivot note (2026-09-25).** The game is third person with bows. The first-person
+viewmodel, the player's hitscan pistol, the weapon slots and the prison's choice flags are
+gone from the code, and so from this file. Every section below describes code that exists.
+`UWeaponComponent` survives for two users only: the thugs' pistol and Kate's `Hands` punch.
 
 ## Third-person camera and look (built 2026-09-26)
 - Spring arm behind the character: hip length 350, socket offset (0, 70, 60), FOV 90.
@@ -73,7 +73,8 @@ for code not yet written; write the tests from them. Everything unmarked stands.
 
 ## HUD (third person)
 - No crosshair. A 4 px reticle dot appears only while aiming and flashes white for 0.1 s
-  on a hit. Hotbar slots are Hands, Bow, Reserved until arrows exist.
+  on a hit. The hotbar is the quiver: seven boxes along the bottom, one per arrow slot, each
+  with its key, short name and count ("Inventory and hotbar").
 - Grapple marker: a green hollow diamond with the key under it means a press zips there, always
   (no use limit, and grapple arrows have no count); grey means it would not (an arrow still in
   flight); a smaller grey diamond marks an anchor in view whose line is blocked.
@@ -129,7 +130,7 @@ for code not yet written; write the tests from them. Everything unmarked stands.
     `hint_parry.png` in the Kate pass (`Hawkeye.Screenshot.Hints` on its own) check the line is up, faded in,
     centred on the lower half, over the hotbar and clear of the crime and challenge panels.
 
-## PLANNED: traversal
+## Traversal (built 2026-09-26; moves and zip revised 2026-11-09 and 2026-11-10)
 - Parkour (built 2026-09-26). Vault and mantle run through the Game Animation Sample's
   traversal (`AC_TraversalLogic` on the sample character, called by reflection from
   `GaspTraversal.cpp`); ledge grab, hang, climb, and drop are ours in `UParkourComponent`,
@@ -138,7 +139,7 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   fits the capsule. Mantle: up to 200 cm with room to stand, or over a thin top such as a
   parapet onto a floor no more than 120 cm below. Ledge grab: 200 to 260 cm; hang with
   feet 145 cm below the edge and the capsule 36 cm off the wall; jump climbs, crouch
-  drops (the stick adds shimmy, corners, hang jumps and the auto climb: "Hang" below). Falling past a ledge 150 to 260 cm above the feet catches it. Auto triggers
+  drops (the stick adds shimmy, corners, hang jumps and the auto climb: "Hang" below). Falling past a ledge 150 to 330 cm above the feet catches it (260 while rising). Auto triggers
   within 120 cm while sprinting at 300 cm/s or more, and refuses a vault whose far floor
   is more than 150 cm down (the jump key allows up to 400), so sprinting at a parapet
   never throws the character off a roof. Durations: vault 0.5 s, mantle 0.8 s, jump to
@@ -493,13 +494,11 @@ for code not yet written; write the tests from them. Everything unmarked stands.
 ## Bow and arrows, original rules
 - Draw is a hold: 0 to `FullDrawSeconds` (0.8 Kate, 1.0 Clint). Release below 25% draw
   cancels. Power scales damage from 40% to 100% and spread from 4 degrees to 0.5.
-- Arrows are projectiles with gravity, 6000 cm/s at full draw, penetration off. Headshot
-  bones as today. A perfect release (within 0.1 s of full draw) adds 25% damage.
+- Arrows are projectiles with gravity, 6000 cm/s at full draw, penetration off. A hit on
+  the `head` or `neck_01` bone multiplies damage by 3 (`UBowDefinition::HeadshotMultiplier`). A perfect release (within 0.1 s of full draw) adds 25% damage.
 - Each arrow type is a `UArrowDefinition`: projectile class, on-hit effect, damage, cap,
   and whether it is recoverable. Standard arrows cap at 30 and are always slot 1. Trick
   arrow caps are small (3 to 6). Counts refill at safehouses and from pickups.
-- Focus: a meter that fills on hits and takedowns; while airborne, holding aim slows time
-  to 0.3x and drains it. Empties in 3 s of use.
 
 ## Partner and switching (built 2026-09-26)
 - The partner runs a StateTree (`ST_Partner`, built headless by editor-only C++ through
@@ -594,24 +593,25 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   dangling pause.
 - Voice lines play at slide start. A voice line longer than `HoldSeconds` is cut off at
   the crossfade; the data should be tuned so this doesn't happen.
-- Glitch slides (stage 3): if `ReplacedByImage` is set, the slide shows `Image` for
-  `HoldSeconds - GlitchSeconds`, runs the glitch material for `GlitchSeconds`, then shows
-  `ReplacedByImage` for a second full `HoldSeconds` before crossfading out.
 
 ## Health and damage
 - `CurrentHealth` is clamped to `[0, MaxHealth]`.
 - `ApplyDamage(Amount <= 0)` does nothing and fires nothing.
 - While `bInvulnerable`, damage is ignored entirely: no `OnHealthChanged`, no `OnDeath`.
-- `OnHealthChanged(Old, New, Instigator)` fires on every change, including heals. The
+- `OnHealthChanged(Component, NewHealth, Delta, Instigator)` fires on every change, including heals. The
   dead flag is set before `OnHealthChanged` broadcasts on the killing blow, so a listener
   that checks `IsAlive()` inside that callback already sees false.
 - `OnDeath` fires exactly once when health first reaches 0, after `OnHealthChanged`. Further damage after death
   does nothing. `Heal` after death does nothing; revive is a separate explicit call
   (`Revive(NewHealth)`) that resets the dead flag.
-- Damage types (stage 3): `DT_Bullet`, `DT_Melee`, `DT_Explosion`. Melee damage also
-  fires `OnStaggered` on the health component if the amount is above
-  `StaggerThreshold`. Bullets never stagger. Only the player is affected by
-  `DT_Explosion` falloff; guards take full damage in the radius.
+- There are no damage type assets. Melee goes through `ApplyMeleeDamage`, which also fires
+  `OnStaggered` when the damage landed, the strike allows a stagger and the amount is above
+  `StaggerThreshold` (10). Plain `ApplyDamage` (a bullet) never staggers; an arrow's hit calls
+  `Stagger` itself where it should. The explosive's blast falls off linearly from its full
+  damage at the centre to 0 at its radius for everyone inside, and hurts the shooter's partner
+  at half (see "Trick arrows").
+- `bCannotDie` keeps a component at 1 health or more: damage still lands and still staggers,
+  but `OnDeath` cannot fire. The partner carries it.
 - Downed (built 2026-09-28, playtest note 9): at 0 health the player is down, never stuck.
   The down lasts `DownedMaxSeconds` (8) at most. With the partner's revive coming the HUD
   shows a ring emptying over the 8 s and "[Clint is coming]" (his name), "[Hold on]" once
@@ -631,13 +631,15 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   later save was refused as "a playable scene is running").
 - Player health regenerates after `RegenDelay` seconds without damage at
   `RegenPerSecond`, up to `MaxHealth`. Guards and bosses never regenerate.
-- Headshots: `WeaponComponent` multiplies damage by `HeadshotMultiplier` when the hit
-  bone name is in the `HeadBoneNames` set (`head`, `neck_01`). A guard with default
-  stats dies to 1 headshot or 3 body shots from the pistol.
+- Headshots: `UBowDefinition` multiplies an arrow's damage by `HeadshotMultiplier` (3) when the
+  hit bone is in `HeadBoneNames` (`head`, `neck_01`); the thugs' pistol does the same with its own
+  set. A thug has 100 health on Normal. A full-draw standard arrow does 40, so he dies to one
+  headshot (120) or three body hits; two perfect releases (50 each) kill too.
 
 ## Boss phases
-- Phases are ordered by descending `HealthThresholdPercent`. Phase 0 is active from the
-  start (threshold 100) and entering it is silent: no `OnPhaseChanged`. A boss with N
+- No boss exists yet; `UBossPhaseComponent` is the framework's contract.
+- Phases are ordered by descending `HealthThresholdPercent`, a fraction of max health (1.0 is full). Phase 0 is active from the
+  start (threshold 1.0) and entering it is silent: no `OnPhaseChanged`. A boss with N
   phases has exactly N-1 transitions.
 - A transition happens when health percent drops strictly below the next phase's
   threshold. Overkill that crosses two thresholds in one hit advances to the lowest
@@ -652,43 +654,51 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   to run a timer, restore happens immediately after the broadcast.
 - `BehaviorTag` on each phase is an `FName` written to the boss's blackboard key
   `Phase` by the boss Blueprint on `OnPhaseChanged`. The behavior tree branches on it.
-- Boss health bars show one segment per phase, sized proportionally to the health range
-  each phase covers.
 
-## Weapon (hitscan pistol is LEGACY; the ammo, reload, and definition rules carry into the bow)
-- Bullets trace on the `Weapon` channel (`ECC_GameTraceChannel1`, default Block), never
-  `Visibility`: the engine's Pawn and CharacterMesh profiles ignore Visibility, which is
-  why shots passed through guards in the first playtest. Every damageable character
-  blocks `Weapon` on both its capsule and its mesh. The capsule guarantees the hit; a
-  second trace against the mesh recovers the bone for headshots. `bTraceComplex` stays
-  false.
-- `OnHit(HitActor)` fires when the trace lands on an actor with a health component. The
-  HUD flashes the crosshair white for 0.1 s on it.
-- `Fire()` does nothing if `bHasWeapon` is false (Frank starts unarmed; `GiveWeapon()`
-  from a pickup arms him).
-- `Fire()` does nothing if `CurrentAmmo == 0`, if reloading, or if less than
-  `1 / FireRate` seconds have passed since the last shot. An empty click sound plays in
-  the first case.
-- `Reload()` does nothing if the magazine is full, if reserve is 0, or if already
-  reloading. After `ReloadSeconds`, moves `min(MagazineSize - CurrentAmmo, ReserveAmmo)`
-  rounds from reserve to magazine. Firing during reload is blocked; sprinting cancels it.
+## Hands and the thugs' pistol (`UWeaponComponent`)
+Kate shoots with `UBowComponent` (see "Bow and arrows"). `UWeaponComponent` is left for two users:
+Kate's `Hands` punch while she owns no bow, and the gunner's pistol. Her component is set to
+`DA_Weapon_Hands` by `UInventoryComponent`, so `bHasWeapon` is false there and `Fire()` is a punch.
+- Hands (`DA_Weapon_Hands`, a `UWeaponDefinition` with `bIsMelee`): 15 damage, a 20 cm sphere swept
+  120 cm from the owner's eyes (never the camera), 0.6 s between punches, no ammo. The hit is
+  `ApplyMeleeDamage`, so it staggers. A heavy's shield blocks it from the front. `OnHit(HitActor,
+  Damage)` fires when the sweep lands on an actor with a health component. With a bow in the
+  quiver, left click draws instead (`Input_FirePressed`); the strike on V is the melee system ("Melee and
+  thugs").
+- The pistol's shots trace on the `Weapon` channel (`ECC_GameTraceChannel1`, default Block), never
+  `Visibility`: the engine's Pawn and CharacterMesh profiles ignore Visibility, which is why shots
+  passed through characters in the first playtest. Every damageable character blocks `Weapon` on
+  both its capsule and its mesh. The capsule guarantees the hit; a second trace against the mesh
+  recovers the bone for headshots (`head`, `neck_01`, times 3). `bTraceComplex` stays false.
+- The gunner's pistol (set in `AThugCharacter`): 12 damage (times the difficulty's thug damage),
+  magazine 12, reserve 120, 300 rounds a minute, range 4000 cm. The burst clock, not the fire rate,
+  sets his rhythm ("Thug variety and squad alert").
+- `Fire()` does nothing if `bHasWeapon` is false, if reloading, or if less than `1 / FireRate`
+  seconds have passed since the last shot. With `CurrentAmmo == 0` it plays the empty click
+  (`OnEmptyClick`) instead. A gunner whose magazine is empty reloads instead of firing.
+- `Reload()` does nothing if the magazine is full, if reserve is 0, or if already reloading. After
+  `ReloadSeconds` (2) it moves `min(MagazineSize - CurrentAmmo, ReserveAmmo)` rounds from reserve to
+  magazine. Firing during a reload is blocked; Kate's sprint cancels one.
 - `OnAmmoChanged(Magazine, Reserve)` fires on every change.
-- Range: a line trace of `Range` units from the camera. Past range, no hit. Damage
-  falloff (stage 3) is a curve asset from 0 to `Range`.
-- Spread (stage 3): base spread in degrees, multiplied while moving, reduced while
-  aiming. Applied as a random cone on the trace direction.
+- Range: a line trace of `Range` units from the owner's view point (a thug's eyes). Past range, no
+  hit. The shot direction is scattered in a cone of `HipSpreadDegrees` (2.5), or `AimSpreadDegrees`
+  (0.5) while `SetAiming` is on; the gunner's own aim cone is separate ("Ranged thug accuracy").
+- There is no damage falloff over range.
 
 ## Takedown
-- Valid target: actor with tag `Guard`, implements `ITakedownable`, within `Range`
-  (default 150 units), and the vector from target to player, projected on the ground,
-  is within `MaxAngleDegrees` (default 60) of the target's backward direction.
-- A guard whose AI state is Alerted is not a valid target. Suspicious is fine. This is
-  the stealth reward: you get the takedown if they haven't seen you yet.
-- The player is locked out of movement and firing for `TakedownSeconds` (default 1.2)
-  while the takedown plays. Guards can still shoot the player during this.
+- Valid target: an actor with tag `Thug` that implements `ITakedownable`, within `Range` (150 cm),
+  and the vector from target to player, projected on the ground, is within `MaxAngleDegrees` (60)
+  of the target's backward direction.
+- A thug whose alert state is Alerted is not a valid target (`CanBeTakenDown` vetoes it), unless
+  `bAlertedThugsAreValid` is on. Suspicious is fine. This is the stealth reward: you get the
+  takedown if they haven't seen you yet. The chase's thief refuses one until he is cornered
+  ("Chases").
+- The player is locked out of movement and firing for `TakedownSeconds` (1.2) while the takedown
+  plays. Thugs can still hurt her during this.
+- The body going down makes a noise of loudness 0.6 (`TakedownNoiseLoudness`; see "Guard AI states").
 - `OnTakedownPerformed(Target)` fires once at the start of the takedown.
 
-## LEGACY: player look and viewmodel (first person, to be removed)
+## Look input
 - Look input is multiplied by the sensitivity from `UHawkeyeSettingsSubsystem` (default
   0.2, clamped to [0.02, 1.0]) and, while aiming, by `AimLookMultiplier` (0.7) as well.
   The character's own `LookSensitivity` property is only the fallback when no game
@@ -742,8 +752,10 @@ the last input came from a pad.
 ## Settings
 - `UHawkeyeSettingsSubsystem` (game instance) owns `FHawkeyeSettings` and persists it in the
   save slot `HawkeyeSettings` on every change. Missing or version-mismatched data yields
-  defaults, never a crash. Only mouse sensitivity exists today; every future option (volume,
-  subtitles, invert Y, key rebinds) goes in the same struct with a version bump.
+  defaults, never a crash. The struct holds mouse and stick sensitivity, the invert toggles, four
+  volumes (master 1.0, sfx 1.0, ambient 0.8, music 0.6), difficulty, the accessibility options, the
+  time of day, aim assist, sprint mode and the hints toggle; every new option goes in the same struct
+  with a version bump. Version 10 is current; 5 to 9 migrate (see below), older ones yield defaults.
 - The Settings screen is reached from the pause menu. The game stays paused while it's
   open. Escape in Settings returns to the pause menu, not to the game. Back does the same.
 - Sliders apply live: the value changes the game before the player leaves the screen, so
@@ -781,43 +793,25 @@ the last input came from a pad.
   ends it comes back as the time of day then in force says (off by day, lit at night). Before
   the first change the EMP restores what it recorded, as it always did.
   (`Hawkeye.TimeOfDay.EmpAndLampsDoNotFight`, `Hawkeye.TimeOfDay.GlowScalesByDay`.)
-- Aiming blends FOV from `HipFOV` 90 to `AimFOV` 70 over 0.15 s, multiplies walk speed by
-  0.6, and shrinks the crosshair gap from 8 px to 4 px. Sprinting cancels aim and reload
-  and fades the crosshair to 40%.
-- The crosshair is hidden while unarmed. Four green bars, 7 x 2 px, gap 3 px from centre
-  (2 px while aiming), centred.
-- Hip position is low and close, grip near the bottom edge. Aim brings the slide under the
-  crosshair without pushing the gun far forward; the weapon never fills more than the
-  bottom 40% of the frame and the left arm never crosses screen centre.
 
-## Inventory and hotbar (planned next; semantics fixed now)
-- Three hotbar slots: 1 Hands, 2 Pistol, 3 Rifle (rifle unused until a later mission).
-  Number keys and mouse wheel switch slots. Switching takes `SwapSeconds` (0.4) during
-  which Fire is ignored; the HUD shows the active slot.
-- Hands are a weapon: left click punches (melee damage 15, stagger, 0.6 s cooldown, range
-  120). Takedown (F) is unchanged and available in any slot when the target is valid.
-- A slot is empty until its weapon is picked up. Selecting an empty slot does nothing.
-  Picking up a weapon fills its slot and auto-switches to it only if Hands was active.
-- Inventory (Tab) lists everything carried: weapons with ammo, keycards by id, spare
-  ammo. Read-only for now. Opening it pauses the game like the pause menu does.
-- Inventory clears at mission complete (before the end card) and on mission restart.
-  Nothing carries between missions; each mission's data asset defines starting items
-  (`StartingSlots`, default Hands only).
-- Weapon stats move to `UWeaponDefinition` data assets (`DA_Weapon_Pistol`,
-  `DA_Weapon_Rifle`): damage, magazine, reserve, fire rate, reload, spread, headshot
-  multiplier, viewmodel mesh and pose name. `UWeaponComponent` holds the active
-  definition and per-weapon ammo state keyed by definition.
-- Viewmodel is `UFirstPersonArmsComponent`, a poseable mannequin attached to the camera,
-  owner-only, no shadow, never affecting gameplay. UE 5.8 ships no arms asset, so poses are
-  hand-authored as limb direction targets per bone and blended over 0.2 s. The pistol
-  attaches to the arms' right hand (the template pistol is modelled barrel along +Y, hence
-  the -90 yaw on the hand offset). Fire kicks the arms back 3 cm and up 2 degrees over
-  0.05 s (return over 0.15 s) and flashes a muzzle light at the barrel end for 0.05 s.
-  Reload dips them out of frame for `ReloadSeconds`. Sway scales with speed. Unarmed shows
-  fists in a boxer's guard. A real arms pack from Fab would replace the poseable rig
-  without changing any of these rules.
-- The body mesh under the camera is the same mannequin, visible to everyone, with head,
-  neck, and clavicles hidden for the owner so only one pair of arms is ever seen.
+## Inventory and hotbar (built 2026-09-26; the weapon slots went with the pivot)
+- `UInventoryComponent` holds what Kate carries: a bow (or none), a seven-slot quiver and a keycard
+  ring. The slot, count and cap rules are in "Bow and arrows". The hotbar (`UHawkeyeHotbarWidget`) is
+  the quiver along the bottom: seven boxes, each with its number key, the arrow's short name and its
+  count (a plain number for standard arrows, "count/cap" for a trick arrow, an infinity for the
+  grapple), the active slot bright and an empty slot dimmed.
+- Hands are the fallback, not a slot: with no bow owned, left click punches (`DA_Weapon_Hands`; see
+  "Hands and the thugs' pistol"). With a bow, left click draws. Takedown (F) is unchanged and works
+  either way when the target is valid.
+- A slot is empty until its arrow type is picked up or granted. Selecting an empty slot does nothing.
+- Inventory (Tab, tap) lists the bow, the quiver slot by slot with its count, and keycards by id.
+  Read-only. Opening it pauses the game like the pause menu does.
+- Quiver and bow reset with `Clear()` to the mission's grant (`StartingBow`, `StartingArrows`) on a
+  mission restart, and at mission complete unless the chapter returns to roaming
+  (`bReturnToRoamingAtEnd`; Night Shift does, so she keeps her quiver). Nothing else carries
+  between missions.
+- Weapon stats live in data assets: `UWeaponDefinition` (Hands and the thugs' pistol) and
+  `UBowDefinition` and `UArrowDefinition` for the bow. A new weapon is a new asset.
 
 ## Navigation
 - Nav data is generated at runtime (`RuntimeGeneration=Dynamic`) and the game mode calls
@@ -843,7 +837,7 @@ the last input came from a pad.
   Without clips, strikes are procedural lunges; with them, see "Combat animation clips".
 - Dodge: tap Ctrl while moving and not sprinting dashes 300 cm in 0.4 s, invulnerable for
   the first 0.25 s, cooldown 0.8 s. Ctrl held crouches; Ctrl while sprinting slides.
-- Thug melee: `EThugWeapon {Fists, Bat}` plus the gunner's pistol. Alerted and within
+- Thug melee: `EThugWeapon` is Fists, Bat, Pistol (the gunner), Bow (the archer) and Shield (the heavy); fists and bat rush in. Alerted and within
   250 cm they rush at 450 cm/s, close to 120 cm, and swing after a 0.6 s wind-up (a log
   line and a glowing mask) for 15 (fists) or 25 (bat) with a stagger; cooldown 1.2 s;
   after two swings they back off 2 m. Hitting a thug during the wind-up cancels the swing.
@@ -852,10 +846,10 @@ the last input came from a pad.
   and desaturation plus vignette under 40% health.
 - Tracksuits: red suit, white stripes, black ski mask, all from one material on the old
   mannequin's single slot. No flashlight. Sight and hearing unchanged.
-- CH01 placements: a roof pair (fists, bat) on the `cross_block` roof tagged RoofPair, whose
-  deaths complete `clear_roof` (between `cross_block` and `find_arrow`); a street pair
-  (bat, gunner) patrolling 40 m of the Avenue A sidewalk by the park. Verify projects every
-  thug's feet onto the navmesh.
+- District placements, left from the retired Rooftops chapter (the Night Shift chase has none of its
+  objectives, so they complete nothing): a roof pair (fists, bat) on the `cross_block` roof tagged
+  RoofPair; a street pair (bat, gunner) patrolling 40 m of the Avenue A sidewalk by the park. Verify
+  projects every thug's feet onto the navmesh.
 
 ## Thug variety and squad alert (built 2026-09-26)
 - Thugs run `ST_Thug`, a headless-built StateTree with states Stunned, Reposition, Cover,
@@ -863,7 +857,7 @@ the last input came from a pad.
   included (architecture.md, "Thugs"). Cover points come from `EQS_CoverPoints`, an EnvQuery authored in C++ (never
   save it from the editor), with the C++ candidate ring as fallback.
 - Gunner: 0.8 s telegraph (pistol raised, glint, log line), then a burst of 3 shots of 12
-  damage 0.25 s apart at 4 degrees spread. Takes cover after a burst or when aimed at
+  damage 0.25 s apart, scattered in a 6 degree base cone ("Ranged thug accuracy"). Takes cover after a burst or when aimed at
   within 6 degrees: nearest blocked point within 800 cm on his level, hides 1.2 s, peeks,
   new cover every 6 s. Backs off to 600 cm if the player closes inside 300 cm. EMP jam
   holds fire. Any hit breaks the burst.
@@ -882,20 +876,23 @@ the last input came from a pad.
 - Archer holds (built 2026-09-27): on losing line of sight mid-draw he holds up to 2.5 s and fires within 0.2 s of the player reappearing in his cone; a 0.6 s loose window after a shot leaves him open. Scripted duel: won with 1 hit taken.
 - Readability: a cream "!" for 0.6 s over a thug going Alerted, "?" for Suspicious; a thin health bar over damaged thugs within 1500 cm, fading after 3 s (2026-09-29: a larger red-orange "!" while he winds up a strike, see "Combat readability"). Scripted street fight against bat, gunner, heavy: won, 0 hits, 0 untelegraphed hits, fairness metric 0% staggered time.
 
-## Guard AI states (stage 2/3)
-- `Calm`: patrol. Hearing radius `CalmHearingRadius`, sight cone `SightHalfAngle`.
+## Guard AI states
+Thugs are the guards (`EThugAlertState`, `AThugAIController`). Perception runs on a 0.25 s think.
+- `Calm`: patrol. Sight radius 1500 cm (lose sight at 1800), half-angle 35 degrees, hearing range
+  1200 cm (`SightHalfAngleDegrees`, `HearingRange`).
 - `Suspicious`: heard something or saw something briefly. Walks to the stimulus,
-  waits `InvestigateSeconds`, returns to `Calm`. Takedown still valid.
-- `Alerted`: has confirmed the player. Attacks, seeks cover, alerts squad after
-  `SquadAlertDelay` (1.5 s). Returns to `Suspicious` after `LoseTargetSeconds` without
-  perceiving the player, then to `Calm`.
-- Noise: player sprinting emits a noise event every 0.5 s with loudness 1.0. Walking
-  0.4. Crouching 0. Gunshots 3.0. Takedowns 0.6 (the body drop).
-- Guards animate from animation assets, not an animation Blueprint: `IdleAnim` below
-  20 uu/s ground speed, `WalkAnim` above, switched only on state change. Guards carry a
-  head-mounted spotlight (3000 cd, 25/35 degree cone) that turns off on death. The beam is
-  the visible read of where they're looking; stealth design should treat it as the sight
-  cone's visual.
+  waits `InvestigateSeconds` (4), returns to `Calm`. Takedown still valid. Seeing her for
+  `SightConfirmSeconds` (0.6) makes him Alerted.
+- `Alerted`: has confirmed the player. Attacks, seeks cover, alerts the squad after
+  `SquadAlertDelay` (1.5 s, radius 1500 cm). Returns to `Suspicious` after `LoseTargetSeconds` (5)
+  without perceiving the player, then to `Calm`. A noise of loudness 2 or more
+  (`GunshotLoudnessThreshold`) alerts at once; being hit, and a crime that starts alerted, report one.
+- Noise: the player moving on the ground emits a noise event every 0.5 s (`NoiseIntervalSeconds`):
+  sprinting loudness 1.0, walking or running 0.4, crouching 0, standing still 0. Takedowns 0.6 (the
+  body drop). Heard within `HearingRange` times loudness, with walls in the way ("Interiors").
+- Thugs animate from `IdleAnim` below 20 cm/s ground speed and `WalkAnim` above (and a run clip for
+  the melee rush), switched only on state change. They carry no flashlight: the sight cone has no
+  visual of its own, and the "!" and "?" glyphs are the read ("Readability").
 - Guard death logs the killer and cause at Log level (takedowns name the attacker);
   every bullet hit logs actor, bone, and damage at Verbose so a playtest can be
   reconstructed from `Hawkeye.log`.
@@ -903,7 +900,7 @@ the last input came from a pad.
   physics asset from the High feature pack; the Standard pack's copy is an empty stub and
   must never be used). If the mesh reports it is not simulating afterwards, a procedural
   collapse runs instead: 0.6 s tip of 85 degrees away from the killer, 20 cm drop,
-  animation stopped. Either way the flashlight turns off and the capsule stops colliding.
+  animation stopped. Either way the capsule stops colliding.
   Which path ran is logged once per guard at Warning.
 
 ## Interiors: enemies and the AI indoors (built 2026-09-29, for chapter 4's auction house)
@@ -977,18 +974,24 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   active slot; components are mirrored into save-tagged fields before a save and restored
   after a load; the grapple slot's count is written but ignored on load, so a save from before
   the grapple went unlimited, even one at 0, loads with the grapple ready), thugs (position, dead flag; a dead thug goes down again on load without
-  dropping loot twice), campaign state (version, mission path, completed objectives,
-  safehouses found, play time, which character was controlled). Not saved: stuck arrows,
+  dropping loot twice), campaign state (`UHawkeyeCampaignState`, version 1: mission path, completed objectives,
+  safehouses found and the last one used, noticed places, play time, which character was controlled,
+  the phone's received, read and pending messages, seen chapter titles, played dialogue sequences,
+  challenge bests and completions, crime counts, hints shown and learned, and a running chase's
+  route, progress and beat flags). Not saved: stuck arrows,
   pickups, EMP lamp state, spawner-created actors, the partner's fight state.
-- Autosave on objective completion, safehouse entry, new game, and after 60 s of roaming
+- Autosave on objective completion, safehouse entry and visit, fast travel, a finished challenge or
+  crime, entering an interior or a playable scene, new game, quit to menu, and after 60 s of roaming
   (the clock runs only while the player is alive, on the ground, and no thug is alerted; a
   fight pauses it). Death (the down running out, see "Health and damage"), or Restart,
   fades to black and loads the last save; with no save it reloads the level.
-- Continue reads the header first: version mismatch starts a new game with a warning; a
-  missing mission asset starts a new game with an error. A migration hook exists.
+- Continue reads the header first: a version mismatch starts a new game with a warning; a
+  missing mission asset (a save that names the deleted `DA_CH01_Rooftops`, say) starts a new game with
+  an error. Never crash on stale data. The migration hook (`CanMigrateFrom`) exists and has no
+  migrations, so only the current version loads.
 - Safehouse: `City_Safehouse` on 140 East 7th Street (OSM W248142338) facing the park. E
-  heals to full, marks it found, autosaves, and opens Refill arrows, Save, Fast travel
-  (stub), Chapter select (stub), Leave.
+  heals to full, marks it found, autosaves, and opens Refill arrows, Save, Fast travel,
+  Chapter select (a stub), Leave.
 - Main menu overlays the paused district on first boot: Continue (when a save exists),
   New Game, Settings, Quit. The pause menu has Quit to menu.
 - Quit to menu saves first (reason "quit to menu"; refused and logged, as any save is, while she is
@@ -998,25 +1001,6 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   16 m from where the player left it and her health from the last objective (`Hawkeye.Lap.Campaign`).
 - Interaction now also works when the player stands inside an interactable's zone (the
   camera trace alone couldn't reach from 350 cm behind her).
-
-## Save data, original contract (stage 3)
-- One slot, `HawkeyeSave`, autosaved at mission complete and at checkpoints. Manual save
-  is not exposed.
-- Contents: mission id, completed objective ids, player health, weapon magazine and
-  reserve, checkpoint id within the level, flashbacks seen, `bKilledDoctor`,
-  `bKilledWarden`, settings blob, play time seconds.
-- Loading a save whose mission asset no longer exists starts a new game and logs an
-  error. Never crash on stale data.
-- Version field on the save. A version mismatch runs a migration function or, if none
-  exists, starts a new game.
-
-## Choices
-- Two flags only: `bKilledDoctor` (M5), `bKilledWarden` (M7). Both default false.
-- `bKilledDoctor` changes one line in M8's dialogue table (row `m08_frank_doctor_alive`
-  vs `m08_frank_doctor_dead`).
-- `bKilledWarden` changes the final skull decal material (`MI_Skull_Blood` vs
-  `MI_Skull_Paint`).
-- Nothing else in the game reads these. Keep it that way.
 
 ## Audio (built 2026-09-27, all synthesized, nothing downloaded)
 - 45 MetaSounds (37 one-shots, 8 loops) under `/Game/Audio`, authored headless by
@@ -1140,7 +1124,7 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   flashback if set, then back to roaming with a "[Chapter complete]" toast. The retired Rooftops
   chapter's was the purple-fletched arrow in `City_ChapterEndTower`; it stays in the district, dark and
   never offered, since Night Shift has no find_arrow (a chase's catch ends that chapter).
-  Not examined while a thug is alerted (CH01's ArcherPair guards the arrow: examined under them, the
+  Not examined while a thug is alerted (the district's ArcherPair guards the arrow: examined under them, the
   sequence ran and the return from the scene put Kate back in their sight, down 4 s after the toast)
   or while she is down (the sequence ran with her on the ground and the objective's autosave was
   refused). Down or dead, nothing is interactable: no prompt, and E does nothing
@@ -1463,7 +1447,7 @@ hit her at once from off screen.
   `-Difficulty=Story|Normal|Hard` on the
   command line overrides without saving. Every scripted fight is won on all three.
 - Accessibility, all persisted (settings version 5; 6 adds the time of day; 7 the aim assist; 8 the
-  sprint mode, and 5 to 7 migrate with it at Default): subtitle size
+  sprint mode; 9 the music volume; 10 the hints toggle; 5 to 9 migrate with the new fields at their defaults): subtitle size
   20 / 26 / 34 px with a
   background opacity slider; hold or toggle for aim (default hold) and crouch (default
   toggle); a 1 px outline on the alert glyphs; four colour palettes (default,
