@@ -1379,8 +1379,8 @@ hit her at once from off screen.
   only when nobody on screen is asking or he is overdue, and his telegraph then lasts at least 1.2 / 1.0 /
   0.8 s (a swing's wind-up, a burst's raised pistol, a draw), so a blow from behind never comes faster
   than the warning.
-- Only an attacker ready to attack is granted (a melee thug off his cooldown and not backing off, a gunner
-  off his pause and not jammed, an archer past his gap with a line).
+- Only an attacker ready to attack is granted (a melee thug within reach of his place on the ring, off his
+  cooldown and not backing off; a gunner off his pause and not jammed; an archer past his gap with a line).
 - A melee thug without a token closes to a ring 300 cm round her and holds his place on it facing her;
   places are spread at least 40 degrees apart in the order the thugs stand round her, each moving as
   little as he can (no random slots). Granted, he steps in and swings as before; if he has not started
@@ -1394,6 +1394,14 @@ hit her at once from off screen.
 - `hawkeye.DebugTokens 1` draws a red line from each holder to his target and a grey one from each
   waiter, with his place in the queue over his head, and logs every grant and return at Log (Verbose
   otherwise).
+- Measured (standalone, Normal, 2026-11-10, seconds / hits taken, main just before then after): roof 4.4 / 0
+  then 4.3 / 0; archer duel 8.9 / 0 then 8.0 / 0; street 16.6 / 0 then 16.7 / 0 (0 untelegraphed); mugging
+  8.0 / 0 then 8.1 to 13.6 / 0 over three runs; ambush 14.6 / 2 then 12.4 to 16.1 / 0 to 2; the loud interior
+  lap 32.4 / 4 (84 damage) then 39.9 / 4 (66), its hall fight 18.9 then 27.3 s. All won. Headless, four fists
+  thugs round a still Kate for 30 s: at most one swinging at once on Normal (two on Hard), every one swinging 3
+  or 4 times, every swing from behind her winding up for 1.0 s. `token_ring.png` (`Hawkeye.Screenshot.Melee`):
+  four who came at her from 7 m, after 5 s two in front 233 cm out and two behind 366 cm out, all standing,
+  each facing her.
 
 ## Side challenges (built 2026-09-27; names are placeholders)
 - `AChallengeStart` pedestals (purple-lit, E to start) and one `UChallengeDefinition` per

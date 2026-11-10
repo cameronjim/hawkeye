@@ -105,6 +105,15 @@ UMissionSubsystem (world subsystem)
   `ITakedownable::OnTakedown` on it. Fires `OnTakedownPerformed`.
 - `ITakedownable`: one BlueprintNativeEvent, `OnTakedown(AActor* Attacker)`. Guards
   implement it in Blueprint (ragdoll, drop pickup, notify AI).
+- Attack tokens (`UCombatTokenSubsystem`, a `UWorldSubsystem`; rules in `UHawkeyeCombatTokenRules`): per target,
+  a melee and a ranged budget of who may be attacking her now. Attackers call `RequestToken` from their own
+  think (asking and renewing are the same call, so nothing here ticks or sweeps actors) and `ReleaseToken` when
+  the attack ends or anything stops it; budgets hold attackers by weak pointer and let a silent holder's token
+  lapse. `GetBudgetView` is the read-only view (`hawkeye.DebugTokens`, the HUD). The thug controller asks inside
+  its Attack mode functions only (`TickMeleeRush`, `TickGunner`, `TickArcher`), so whatever picks the mode can
+  change without touching the tokens. Written from scratch: the engine has no shared attacker budget, and
+  Smart Object slots claim places, not turns. Budgets, gap and the off-screen telegraph
+  are rows in the difficulty table.
 
 ### World (`Source/Hawkeye/World`)
 - `IInteractable`: `Interact(Interactor)`, `GetInteractPrompt()`, `CanInteract(Interactor)`.
