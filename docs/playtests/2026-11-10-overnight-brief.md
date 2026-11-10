@@ -25,8 +25,19 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   `hawkeye.StartChapter DA_CH04_SocialClub`. 534 tests pass; the scripted lap wins in
   about 110 s. Rough: too easy (every jab parries into a finisher), Tomas is near black at
   night, stock bat and shield instead of candy canes, the Santa passes through props and
-  never hits Tomas. A second pass for set-piece transitions, required-arrow solves and
-  finisher cameras is next.
+  never hits Tomas.
+- **Tomas, second pass (boss feel).** A parry only staggers him; he can be finished only
+  while winded. He guards outside that window (hits land at 20%), and a confetti arrow
+  breaks the guard. His haymaker is unblockable with its own "!!" telegraph and dodge
+  prompt. The Santa's sweep winds him too and shoves the presents; a putty arrow pins it
+  for 4 s. Each phase change and the final blow is a short locked-camera beat (skippable),
+  and the phase-ending finisher gets a slow-motion push-in. He has 680 health on Normal.
+  538 tests pass; the lap fights for 94 s, winds him 10 times and dodges 8 haymakers.
+  Rough: luring him into the Santa's lane worked in 1 of 4 runs, the defeat beat's camera
+  is weak, his head glows orange on a telegraph, and two of your lines moved into beats
+  ("knees" and "Good try, me"). **Feel check:** does he play like a boss or a thug?
+- **Flake, again.** The rooftop crew crime lap timed out once (Kate aiming at an archer on
+  another roof) and passed on re-run. Being diagnosed next.
 - **Chapter 1 is Night Shift.** The rooftop chase after the bike thief replaces the old
   Rooftops chapter and its purple-arrow ending. The thief runs a 152 m route planned from
   the district data and rubber-bands to stay in sight; fall 45 m behind for 6 s and you
