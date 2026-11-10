@@ -615,6 +615,12 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 
 void AThugCharacter::Knockdown(AActor* By)
 {
+	if (bResistsKnockdown)
+	{
+		StartHitLean(By);
+		UE_LOG(LogHawkeye, Log, TEXT("%s: takes %s's heavy on his feet."), *GetName(), *GetNameSafe(By));
+		return;
+	}
 	if (IsHeavy())
 	{
 		// Kate's heavy does not put the heavy down; it knocks his guard open for GuardBreakSeconds.

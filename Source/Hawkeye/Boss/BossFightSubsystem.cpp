@@ -429,6 +429,7 @@ AThugCharacter* UBossFightSubsystem::SpawnBoss()
 	Him->bRefusesTakedown = true;
 	Him->ComboAttacks = Definition->Moves.Combo;
 	Him->FinisherDamageFraction = Definition->Moves.FinisherDamageFraction;
+	Him->bResistsKnockdown = Definition->Moves.bResistsKnockdown;
 	UHealthComponent* Health = Him->GetHealthComponent();
 	const float HealthScale = UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ThugHealth);
 	Health->SetMaxHealth(Definition->MaxHealth * HealthScale, /*bResetCurrent=*/true);

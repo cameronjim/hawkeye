@@ -333,7 +333,13 @@ UMissionDefinition* AHawkeyeGameMode::FindChapter(const FString& Name)
 bool AHawkeyeGameMode::StartChapter(UMissionDefinition* Chapter)
 {
 	UMissionSubsystem* Missions = UMissionSubsystem::Get(this);
-	if (!Chapter || !Missions || !Missions->StartMission(Chapter))
+	if (!Chapter || !Missions)
+	{
+		return false;
+	}
+	// Chosen, not cut short: the chapter before is put away without the warning StartMission gives a replaced one.
+	Missions->AbortMission();
+	if (!Missions->StartMission(Chapter))
 	{
 		return false;
 	}

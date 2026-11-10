@@ -120,6 +120,10 @@ struct HAWKEYE_API FBossMoveSet
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Moves", meta = (ClampMin = "0.0"))
 	float StaggerThreshold = 40.f;
 
+	/** Kate's heavy strike does not knock him down (AThugCharacter::bResistsKnockdown); a blast or a bola still does. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Moves")
+	bool bResistsKnockdown = true;
+
 	/** Seconds between one swing ending and the next starting (the thug's MeleeCooldownSeconds). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Moves", meta = (ClampMin = "0.0"))
 	float SwingCooldownSeconds = 0.6f;

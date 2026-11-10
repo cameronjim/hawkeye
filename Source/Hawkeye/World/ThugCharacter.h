@@ -196,6 +196,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float FinisherDamageFraction = 0.f;
 
+	/**
+	 * Kate's heavy strike does not put him on the floor (Knockdown leans him back and nothing more): a boss stands his
+	 * ground, so his finisher window is earned (winded, a parry), not a heavy away. A blast or a bola (KnockdownFor)
+	 * still does.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	bool bResistsKnockdown = false;
+
 	/** The heavy's shield bash: 30 damage after a 0.8 s telegraph, knocks her back 250 cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
 	FHawkeyeMeleeAttack ShieldBashAttack;
