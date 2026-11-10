@@ -53,15 +53,19 @@ You need:
   Without it Kate is the grey mannequin in a purple suit and everything still plays. After adding it, run
   `.\Tools\import-anims.ps1` once: it copies Sparrow in and builds her look.
 
-The scripts currently expect the engine at `C:\Program Files\Epic Games\UE_5.8` and the
-sample at `C:\Users\camer\code\GASP`. `claude-docs/infrastructure.md` has the details.
+The scripts find the engine and the sample on their own (`Tools\hawkeye.env.ps1`). Engine, in order:
+`-Engine`, env `HAWKEYE_UE_ROOT`, `Tools\local.json`, the registry, the Epic launcher's install list, then
+`C:\Program Files\Epic Games\UE_5.8`. Sample: env `HAWKEYE_GASP_ROOT`, `Tools\local.json`, then
+`C:\Users\camer\code\GASP`. If yours live elsewhere, copy `Tools\local.example.json` to `Tools\local.json`
+(git-ignored) and edit it. `.\Tools\test-env.ps1` checks the lookup without the engine, and
+`claude-docs/infrastructure.md` has the details.
 
 ```powershell
 # Copy the sample's assets in and generate every game asset (safe to run twice)
 .\Tools\create-content.ps1
 
 # Build the editor target
-& "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" HawkeyeEditor Win64 Development -project="<repo>\Hawkeye.uproject" -waitmutex
+. .\Tools\hawkeye.env.ps1; & (Get-HawkeyeBuildBat (Resolve-HawkeyeEngine)) HawkeyeEditor Win64 Development -project="<repo>\Hawkeye.uproject" -waitmutex
 
 # Run the tests
 .\Tools\run-tests.ps1
