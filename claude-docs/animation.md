@@ -279,6 +279,65 @@ Nobody can watch a headless run, so the scripts read bones:
   log gives the clip, the slot weight, every IK alpha, the string hand's distance off the arrow line
   and the nocked arrow's angle to the launch direction for each.
 
+## Kate's visible mesh (built 2026-11-10)
+
+Kate is drawn as Paragon's Sparrow, in purple, over the Game Animation Sample's UEFN mannequin. The mannequin
+(`GetMesh()`, the driver) keeps doing everything it did: the sample's motion-matched AnimBP, every montage, the
+bow-IK post-process graph (hands, string, hit lean, hang hands), root motion, notifies, collision and the sockets
+gameplay reads; the bow is attached to it. It is hidden (`SetVisibility(false)`, Visibility Based Anim Tick Option
+`AlwaysTickPoseAndRefreshBones`, so it still poses unseen, and a hidden component casts no shadow). A child
+skeletal mesh, `BodyLook`, shows Sparrow at the driver's own transform (so it takes the 0.93 scale and the roll's
+tumble), ticks after it, has no collision, and is posed every frame by one Retarget Pose From Mesh node whose source
+is the parent component. That is how the sample shows its retargeted characters (its `ABP_GenericRetarget`); the
+sample's AnimBP is not copied because it hard-references every retargeter in the sample.
+
+| Asset | Built by | What |
+|-------|----------|------|
+| `/Game/Characters/Kate/Look/IK_Kate_Sparrow` | `create_kate_look.py` | IK Rig on Sparrow: the manifest's `ue4` chains (the names `IK_Kate_UEFN` uses), a goal on each hand and foot, one limb solver per limb |
+| `.../RTG_Kate_To_Sparrow` | same | `IK_Kate_UEFN` -> `IK_Kate_Sparrow`: the default op stack plus an IK Chains op under Run IK Rig (5.8's defaults have none), chains by name, Sparrow's retarget pose auto-aligned to the mannequin's; the arm chains blend fully to the source (place and turn) |
+| `.../ABP_Kate_Sparrow` | `UHawkeyeRetargetGraphBuilder` (C++, editor-only), called by the script | Retarget Pose From Mesh, parent component, that retargeter |
+| `.../MI_Kate_Sparrow_TorsoArms`, `_ChestBag`, `_LegsHands` | same script, `_materials.ensure_material_instance` | Sparrow's cloth colour parameters set to purples; Paragon's materials are untouched |
+| `BP_Kate.BodyLook` (`FHawkeyeBodyLook`) | same script | soft references to the mesh, the AnimBP class and the instances per slot, and the bones to hide |
+
+The `Look` folder is git-ignored like the other Paragon-derived assets; BP_Kate (committed) only holds soft
+references. Without Sparrow on disk (a fresh clone) the script logs one `skipped` line and changes nothing, and at
+runtime `HawkeyeBodyLook::Apply` finds the packages missing, logs one Display line and leaves the mannequin drawn,
+exactly as before. The script runs in `create_all.py` after the bow IK and at the end of `Tools\import-anims.ps1`
+(which is what copies Sparrow in).
+
+**Which mesh is read.** `AHawkeyeCharacter::GetBodyMesh()` is the mesh people see (the look, else the driver);
+`GetMesh()` stays the driver. Read the body mesh for how she looks: the camera's close-up hide
+(`UpdateBodyVisibilityForCamera`) and arrows stuck in her (`AArrowProjectile::FindBodyMesh`: Sparrow's physics
+asset, so an arrow sits in Sparrow's surface and rides her bone). Everything else reads the driver: the bow
+(placement, string, grip socket, holster bone), montages and notifies (melee hit windows), the hang hands, the zip
+line's hand, the strike-contact height, `IsBodyDrivenByAnimBlueprint`. Footstep and landing effects spawn at the
+capsule's bottom and the camera's arm is on the capsule, so neither reads a mesh.
+No material on Kate is driven at runtime (low health and colour-blind palettes are post-process and UI; hit flash is
+the thugs'), so nothing else needed moving.
+
+**The bow.** Sparrow's mesh carries her own bow (`bow_base` and its shaft and string bones under `hand_l`) and a
+nocked arrow (`arrow_nock` under `hand_r`). Both are hidden (`HideBoneByName`), and Kate keeps the game's bow: it
+already has the string IK, the nocked arrow, the holster and the draw timing, and keeping it means no bow code
+changes. Sparrow's bow bones are not driven by the retarget (they are not in a chain), so hers could not draw anyway.
+Her back quiver stays: it is the only quiver she has.
+
+**Proportions.** Sparrow is taller and longer-legged than the mannequin: pelvis 110 cm against 93, head bone 165
+against 152, arm (shoulder to wrist) 53 cm against 48, in the reference poses. At the driver's 0.93 scale she
+stands about 170 cm, which is Kate's height, so no extra scale. The retarget scales the pelvis's height by her
+pelvis ratio (1.18), so standing and running her feet reach the floor on her own leg length (the legs' IK goals
+keep the retarget's placement). Her hands are blended fully onto the driver's hands, so the bow grip, the
+string hand at the anchor and a hang's hands on the ledge are exactly where the driver's IK put them; her longer
+arm reaches them from her higher shoulders. Where the driver's arm is straight down by its side she cannot quite
+reach (her shoulder is about 12 cm higher) and her arm stays straight, a few cm short.
+
+**Hair and cloth.** Sparrow's mesh has no clothing assets, and her hair, hood, skirt and feather bones are not
+simulated here (her Paragon AnimBP did that with AnimDynamics, which this AnimBP does not run): they follow their
+parents rigidly. Nothing simulates, so a zip, a vault or a fast-travel teleport cannot throw them about.
+
+**Swapping the look** (a licensed Kate later): put the new skeletal mesh in, point `create_kate_look.py`'s
+`SPARROW_MESH`, chain map, material slots and `HIDDEN_BONES` at it (or set `BP_Kate.BodyLook` by hand for a test),
+and run the script. Nothing in C++ names Sparrow. Clint and the thugs have no look.
+
 ## Known limits
 
 - Kate's clip-timed lights land at 0.25 s, not the procedural 0.1 s (a clip needs a visible swing).

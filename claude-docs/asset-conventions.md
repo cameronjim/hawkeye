@@ -46,6 +46,10 @@ Content/
                         M_Grass, M_Emissive and its MI_ instances, M_FluorescentFlicker
                         (built by Tools/Editor/_materials.py; kept for interiors)
   Characters/Thug/      M_ThugTracksuit, M_ThugTrim, M_ThugBody, M_ThugVisor
+  Characters/Kate/      M_KateSuit, M_KateSuitDark (the mannequin's suit, drawn when there is no look)
+  Characters/Kate/Look/ Kate's body look, all built by create_kate_look.py from Paragon's Sparrow and
+                        git-ignored: IK_Kate_Sparrow, RTG_Kate_To_Sparrow, ABP_Kate_Sparrow,
+                        MI_Kate_Sparrow_<Part>. Never edit Paragon's own assets; tint with an MI here.
   Environment/          Final art, one subfolder per area
   Characters/           Kate/, Thug/, later Clint/, Bosses/
   Materials/            M_ master materials, MI_ instances, MF_ functions
@@ -126,6 +130,15 @@ floor k at k x 330):
   (CarriedPickups); it must open a locked door. The old `patrols` list still reads, as enemies.
 - Actors are labelled `Int_<Room>_<Kind>_<n>` and tagged `Interior`; thugs also `enemy:<id>` and `alert:<crew>`,
   carried keycards `carried:<id>`. A second run with the same layout changes nothing and does not save.
+
+## A character's look
+What a character looks like can be a different skeletal mesh from the one that animates it: `BodyLook` on
+`AHawkeyeCharacter` (soft mesh, retarget AnimBP, material per slot, bones to hide) draws it over the hidden
+animated mesh. Swapping Kate's look is a data change: a new mesh plus the assets `create_kate_look.py` builds for
+it (its constants name the mesh, the chain map, the tinted slots and the hidden bones), never a new class. Content
+from a pack we may not redistribute (Paragon) stays git-ignored; only the soft references on the Blueprint are
+committed, and a clone without the pack falls back to the animated mesh. Details: `animation.md`, "Kate's
+visible mesh".
 
 ## Blueprint hygiene
 - Parent class is the C++ class when one exists. `BP_Guard` derives `AGuardCharacter`,

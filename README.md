@@ -48,7 +48,10 @@ You need:
 - Git LFS (`git lfs install` before cloning)
 - Epic's **Game Animation Sample** project, created from the Epic Launcher's Samples tab.
   Kate's locomotion comes from it and it is not redistributed here.
-- Optional: **Paragon: Sparrow** from Fab, for the bow animations.
+- Recommended: **Paragon: Sparrow** from Fab (free), added to the Game Animation Sample project. It gives
+  Kate her intended look (Sparrow, in purple, drawn over the sample's mannequin) and the bow animations.
+  Without it Kate is the grey mannequin in a purple suit and everything still plays. After adding it, run
+  `.\Tools\import-anims.ps1` once: it copies Sparrow in and builds her look.
 
 The scripts currently expect the engine at `C:\Program Files\Epic Games\UE_5.8` and the
 sample at `C:\Users\camer\code\GASP`. `claude-docs/infrastructure.md` has the details.
