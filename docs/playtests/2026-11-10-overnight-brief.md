@@ -36,8 +36,17 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   Rough: luring him into the Santa's lane worked in 1 of 4 runs, the defeat beat's camera
   is weak, his head glows orange on a telegraph, and two of your lines moved into beats
   ("knees" and "Good try, me"). **Feel check:** does he play like a boss or a thug?
-- **Flake, again.** The rooftop crew crime lap timed out once (Kate aiming at an archer on
-  another roof) and passed on re-run. Being diagnosed next.
+- **Chapter 2 is Reindeer Games.** Run 200 m to the toy drive on Avenue B, fight five
+  thugs in antlers and red noses, carry three toy sacks back to the table. The foam arrow
+  (the putty arrow, renamed on screen) unlocks on arrival. The courier scene is on the
+  way, unmarked and optional, and sets a save flag for later acts. Then the end card, the
+  "Visiting hours" slides and the phone threads. Order is now 1 → 2 → 4. 544 tests pass.
+  Rough: the fight is over in 14 s with no hits taken, the arrival queues 14 s of lines so
+  the first-parry line lands late, foam unlocks on arrival rather than after the first
+  parry, the sacks read as dark balls, and the courier reads as "something on the ground".
+- **Rooftop flake fixed.** It was a game bug: the crime's archer escaped by zip to anchors
+  on other roofs. Thugs now have a leash; five runs in a row passed.
+- **Santa lure fixed.** The lane is sized from Tomas's reach; the lap asserts a catch.
 - **Chapter 1 is Night Shift.** The rooftop chase after the bike thief replaces the old
   Rooftops chapter and its purple-arrow ending. The thief runs a 152 m route planned from
   the district data and rubber-bands to stay in sight; fall 45 m behind for 6 s and you
