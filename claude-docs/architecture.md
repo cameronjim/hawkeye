@@ -179,7 +179,21 @@ UMissionSubsystem (world subsystem)
   starts a zip with an `FHawkeyeZipLine`, lets go with `ReleaseZip`, reads progress, direction and
   speed back, and answers the movement component's three callbacks: a hit (drop, retry, or
   straighten a chain's swing), each sub-step (release the start supports), and the end (arrived,
-  blocked, released, interrupted). Parkour moves and hangs still use `MOVE_Flying`.
+  blocked, released, interrupted).
+  The second mode is the traversal (`PhysTraversal`, since 2026-11-10; moves and hangs were
+  `MOVE_Flying` with the capsule placed by hand). `UParkourComponent` keeps the rules: the probe, which
+  move, the roof-edge guard, the hang, shimmy and corners, the log, the buffered press, which clip and
+  the warp targets (`FrontLedge`, `BackLedge`, `BackFloor` on the `MotionWarping` component). It hands
+  the movement one `FHawkeyeTraversalMove` with `StartTraversal`: path keys (capsule centre and yaw at
+  even steps over the move's time) or none, when the montage's root motion moves her; the actors the move
+  passes through (ignored only until it ends); and the exit (hold, Walk or Fall, and the exit velocity
+  worked out from her entry speed). The movement sub-steps it, sweeps, slides along anything else, sets a
+  truthful `Velocity`, and at the end holds still (a hang) or leaves. `MoveTraversalHold` moves the held
+  point (a shimmy), `ReleaseTraversal` lets go (a drop, the hop off), and `OnTraversalEnded` reports
+  held, exited, released or interrupted, which is how the parkour component enters the hang, finishes a
+  move, or drops its state when something else changed the mode. The parkour component ticks first
+  (a tick prerequisite), so a frame's rules are in before the movement runs them. The sample's own
+  traversal (`AC_TraversalLogic`) still runs in Flying.
 - `AHawkeyePlayerController`: the glue for UI. Creates `HudWidgetClass` on BeginPlay,
   subscribes to the mission subsystem, owns `FlashbackWidgetClass`, hides the HUD during a
   flashback, opens the next level when it finishes. Stage 3 adds end cards, subtitles,
