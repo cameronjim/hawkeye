@@ -684,7 +684,9 @@ gone from the code, and so from this file. Every section below describes code th
   down (limp or dead). Every phase a big hit skipped ends the same way, in order.
 - The boss: `bRefusesTakedown` (no stealth kill on a boss), max health `MaxHealth` times the difficulty's thug health
   scale, never regenerating, melee damage above `StaggerThreshold` staggers him (40: Kate's light strike, 15, does
-  not, so he swings through it; her heavy, 35, does not either), his swings are the move set's `Combo` in order
+  not, so he swings through it; her heavy, 35, does not either), her heavy does not knock him down
+  (`bResistsKnockdown`: he leans back from it; a blast or a bola still puts him over), so his finisher window is
+  earned by a parry or his winded window, his swings are the move set's `Combo` in order
   through the thug's own tree (`ST_Thug`'s melee, attack tokens and all: he asks for a token like anyone), and he does
   not back off after two swings.
 - Winded: once `WindedAfterSwings` swings have started since the last winded window (or the phase start) and the
@@ -721,8 +723,8 @@ gone from the code, and so from this file. Every section below describes code th
 - Campaign order: the chain of `UMissionDefinition::NextChapter` from the district's `StartingMission` (Night Shift,
   then The Social Club while chapters 2 and 3 do not exist). Chapter select in the safehouse lists it: a chapter at or
   before the one in progress is open, the one after it opens once it is complete, the rest say "[Locked]"; picking an
-  open chapter that is not the one in progress starts it (`AHawkeyeGameMode::StartChapter`: the mission, its opening,
-  and a save 1.5 s later). `-HawkeyeChapter=<mission asset>` on the command line starts the district on that chapter,
+  open chapter that is not the one in progress starts it (`AHawkeyeGameMode::StartChapter`: the chapter before is put
+  away without the replaced-mission warning, then the mission, its opening, and a save 1.5 s later). `-HawkeyeChapter=<mission asset>` on the command line starts the district on that chapter,
   and the console command `hawkeye.StartChapter <mission asset>` starts it at once (laps and tests).
 
 ### Chapter 4's boss, Tomas (`DA_Boss_CH04_Tomas`; numbers on Normal)
@@ -730,7 +732,8 @@ gone from the code, and so from this file. Every section below describes code th
   with gold stripes and no ski mask.
 - Combo: a jab (12 damage, 0.75 s wind-up, 0.5 s recovery, 150 cm), a jab (12, 0.6 s, 0.5 s), a haymaker (22, 1.1 s
   wind-up, 0.8 s recovery, 170 cm, shoves 200 cm); 0.6 s between swings; winded after 3 swings for 3 s; 1.5 times
-  damage winded; a finisher takes 0.15 of his max (60, 90 winded); stagger threshold 40; walks at 380.
+  damage winded; a finisher takes 0.15 of his max (60, 90 winded); stagger threshold 40; resists the heavy's
+  knockdown; walks at 380.
 - Phases: "Crew" (he watches, out of the fight; four of his guys: two bats, fists, a shield; `beat_crew`), "Tomas"
   (opened by the crew going down; 1.5 s protected transition; `beat_tomas`), "Santa" (under 0.4 of his health; 2 s
   protected transition; the inflatable Santa comes loose; 3 confetti arrows; `survive_santa`, which completes once he
@@ -739,7 +742,8 @@ gone from the code, and so from this file. Every section below describes code th
   170 cm either side of its lane and 160 cm along it, a 700 cm/s shove.
 - The confetti arrow (`DA_Arrow_Confetti`, slot 5, the smoke arrow's slot, which Act 1 never fills otherwise): a smoke
   effect retuned by data (`BP_Effect_Confetti`, a child of `ASmokeCloud`: 350 cm for 2.5 s, the wrapping-paper burst
-  as its look), so thugs in it are blinded for a moment; 10 damage, cap 3, not recoverable.
+  as its look), so thugs in it are blinded for a moment; no damage, cap 3, not recoverable. Kate's first one loosed
+  in the Santa phase is Tomas's "Oh, that's nice" line.
 
 ## Hands and the thugs' pistol (`UWeaponComponent`)
 Kate shoots with `UBowComponent` (see "Bow and arrows"). `UWeaponComponent` is left for two users:
