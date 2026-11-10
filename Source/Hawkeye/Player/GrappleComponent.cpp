@@ -19,6 +19,7 @@
 #include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
 #include "NiagaraComponent.h"
+#include "Traversal/GrappleReachQuery.h"
 #include "Vfx/HawkeyeVfxSubsystem.h"
 #include "World/GrappleAnchor.h"
 #include "World/GrappleArrowProjectile.h"
@@ -189,49 +190,45 @@ bool UGrappleComponent::IsAnchorValid(const AGrappleAnchor* Anchor, const FVecto
 		return false;
 	}
 
-	const FVector ToAnchor = (Marker - ViewLocation).GetSafeNormal();
-	const float Cosine = FMath::Clamp(FVector::DotProduct(ViewForward.GetSafeNormal(), ToAnchor), -1.f, 1.f);
-	OutAngleDegrees = FMath::RadiansToDegrees(FMath::Acos(Cosine));
+	OutAngleDegrees = FGrappleReachQuery::AngleOffViewDegrees(ViewLocation, ViewForward, Marker);
 	return OutAngleDegrees <= ConeDegrees && IsOnScreen(ViewLocation, ViewForward, Marker);
 }
 
 bool UGrappleComponent::IsOnScreen(const FVector& ViewLocation, const FVector& ViewForward, const FVector& Point) const
 {
-	// The view's own axes with no roll, as the camera has: the marker's angles off the middle, across and up.
-	const FRotationMatrix View(ViewForward.GetSafeNormal().Rotation());
-	const FVector Local = View.InverseTransformVector(Point - ViewLocation);
-	if (Local.X <= KINDA_SMALL_NUMBER)
-	{
-		return false;
-	}
-	const float HalfAcross = FMath::DegreesToRadians(FMath::Clamp(ViewFieldOfView, 10.f, 170.f) * 0.5f);
-	const float HalfUp = FMath::Atan(FMath::Tan(HalfAcross) / FMath::Max(ViewAspectRatio, 0.1f));
-	const float Margin = FMath::DegreesToRadians(ScreenEdgeMarginDegrees);
-	return FMath::Abs(FMath::Atan2(Local.Y, Local.X)) <= HalfAcross - Margin
-		&& FMath::Abs(FMath::Atan2(Local.Z, Local.X)) <= HalfUp - Margin;
+	FGrappleReachRules Rules;
+	Rules.ViewFieldOfView = ViewFieldOfView;
+	Rules.ViewAspectRatio = ViewAspectRatio;
+	Rules.ScreenEdgeMarginDegrees = ScreenEdgeMarginDegrees;
+	return FGrappleReachQuery::IsOnScreen(Rules, ViewLocation, ViewForward, Point);
 }
 
 int32 UGrappleComponent::ChoosePick(const TArray<FVector2f>& AnglesAndDistances, float TieDegrees)
 {
-	// Nearest the middle of the screen; of those within TieDegrees of that, the nearest to her.
-	int32 Middle = INDEX_NONE;
-	for (int32 Index = 0; Index < AnglesAndDistances.Num(); ++Index)
+	return FGrappleReachQuery::ChoosePick(AnglesAndDistances, TieDegrees);
+}
+
+FGrappleReachRules UGrappleComponent::MakeReachRules() const
+{
+	FGrappleReachRules Rules;
+	Rules.Range = Range;
+	Rules.MinRange = MinRange;
+	Rules.ConeDegrees = ConeDegrees;
+	Rules.PickTieDegrees = PickTieDegrees;
+	Rules.ScreenEdgeMarginDegrees = ScreenEdgeMarginDegrees;
+	Rules.ViewFieldOfView = ViewFieldOfView;
+	Rules.ViewAspectRatio = ViewAspectRatio;
+	Rules.SightTolerance = SightTolerance;
+	Rules.SupportRadius = SupportRadius;
+	Rules.ZipLaunchHeight = ZipLaunchHeight;
+	Rules.ZipStartIgnoreRadius = ZipStartIgnoreRadius;
+	const ACharacter* Character = GetCharacter();
+	if (const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr)
 	{
-		if (Middle == INDEX_NONE || AnglesAndDistances[Index].X < AnglesAndDistances[Middle].X)
-		{
-			Middle = Index;
-		}
+		Rules.CapsuleRadius = Capsule->GetScaledCapsuleRadius();
+		Rules.CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
 	}
-	int32 Best = Middle;
-	for (int32 Index = 0; Index < AnglesAndDistances.Num() && Middle != INDEX_NONE; ++Index)
-	{
-		if (AnglesAndDistances[Index].X <= AnglesAndDistances[Middle].X + TieDegrees
-			&& AnglesAndDistances[Index].Y < AnglesAndDistances[Best].Y)
-		{
-			Best = Index;
-		}
-	}
-	return Best;
+	return Rules;
 }
 
 bool UGrappleComponent::HasLineOfSight(const AGrappleAnchor* Anchor, const FVector& ViewLocation) const
@@ -764,20 +761,7 @@ bool UGrappleComponent::IsZipClear(const FVector& From, const AGrappleAnchor* An
 	}
 
 	// Where the start supports count again: the first point on the line that far from From.
-	const float Release = GetStartReleaseDistance();
-	const FVector Line = End - Launch;
-	const float Length = Line.Size();
-	FVector ReleasePoint = End;
-	if (Length > KINDA_SMALL_NUMBER)
-	{
-		const FVector Dir = Line / Length;
-		const FVector Offset = Launch - From;
-		const float B = FVector::DotProduct(Offset, Dir);
-		const float C = Offset.SizeSquared() - Release * Release;
-		const float Disc = B * B - C;
-		const float S = Disc >= 0.f ? -B + FMath::Sqrt(Disc) : 0.f;
-		ReleasePoint = Launch + Dir * FMath::Clamp(S, 0.f, Length);
-	}
+	const FVector ReleasePoint = FGrappleReachQuery::ComputeStartReleasePoint(From, Launch, End, GetStartReleaseDistance());
 
 	const FCollisionShape Shape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
 	FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());

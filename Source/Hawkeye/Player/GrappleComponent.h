@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Player/HawkeyeMovementTypes.h"
+#include "Traversal/GrappleReachTypes.h"
 #include "GrappleComponent.generated.h"
 
 class ACharacter;
@@ -139,6 +140,12 @@ public:
 	 */
 	static int32 ChoosePick(const TArray<FVector2f>& AnglesAndDistances, float TieDegrees);
 
+	/**
+	 * This component's rules as plain numbers, the capsule's size included, for FGrappleReachQuery: the traversal
+	 * debugger and the audit commandlet read them off the pawn's class default, so BP_Kate's tuning is what they check.
+	 */
+	FGrappleReachRules MakeReachRules() const;
+
 	/** Re-picks the target from this view. RefreshTarget passes the camera's. */
 	void UpdateTarget(const FVector& ViewLocation, const FVector& ViewForward);
 
@@ -238,18 +245,18 @@ public:
 
 	/** Farthest an anchor can be from the character, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float Range = 2500.f;
+	float Range = GrappleReachDefaults::Range;
 
 	/**
 	 * Anchors closer than this are never targeted: the one just landed beside would otherwise keep
 	 * the marker lit and a press would zip less than a metre. cm.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float MinRange = 300.f;
+	float MinRange = GrappleReachDefaults::MinRange;
 
 	/** Largest angle between the camera forward and the anchor, degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0", ClampMax = "90.0"))
-	float ConeDegrees = 30.f;
+	float ConeDegrees = GrappleReachDefaults::ConeDegrees;
 
 	/** How far along a zip a second arrow may be fired to chain, 0..1. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -275,18 +282,18 @@ public:
 
 	/** An anchor this close to the middle-most one's angle (degrees) that is nearer to her is marked instead. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float PickTieDegrees = 0.5f;
+	float PickTieDegrees = GrappleReachDefaults::PickTieDegrees;
 
 	/** A candidate's marker must be this far inside every edge of the screen, degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float ScreenEdgeMarginDegrees = 2.f;
+	float ScreenEdgeMarginDegrees = GrappleReachDefaults::ScreenEdgeMarginDegrees;
 
 	/** The view's horizontal field of view and width over height; RefreshTarget reads them from the camera and viewport. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Grapple")
-	float ViewFieldOfView = 90.f;
+	float ViewFieldOfView = GrappleReachDefaults::ViewFieldOfView;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Grapple")
-	float ViewAspectRatio = 16.f / 9.f;
+	float ViewAspectRatio = GrappleReachDefaults::ViewAspectRatio;
 
 	/** Seconds between target refreshes. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.01"))
@@ -294,7 +301,7 @@ public:
 
 	/** A line-of-sight hit this close to the anchor still counts as seeing it (the parapet it sits on). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float SightTolerance = 60.f;
+	float SightTolerance = GrappleReachDefaults::SightTolerance;
 
 	/**
 	 * Static geometry within this of the anchor counts as the anchor's building and does not
@@ -302,21 +309,21 @@ public:
 	 * tenement's parapet too. cm.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float SupportRadius = 150.f;
+	float SupportRadius = GrappleReachDefaults::SupportRadius;
 
 	/**
 	 * From the ground, the straight line starts this far above the capsule centre she stood at:
 	 * her feet 120 cm up clear a 90 cm parapet, so level and downward lines work. cm.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float ZipLaunchHeight = 120.f;
+	float ZipLaunchHeight = GrappleReachDefaults::ZipLaunchHeight;
 
 	/**
 	 * Static geometry within this of where she stood (her own roof, parapet and fire escape) does
 	 * not block the zip; it counts again once the capsule is this far plus its radius away. cm.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float ZipStartIgnoreRadius = 250.f;
+	float ZipStartIgnoreRadius = GrappleReachDefaults::ZipStartIgnoreRadius;
 
 	/** Within this of an anchor, its stuck arrows go back in the quiver, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
