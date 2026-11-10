@@ -859,8 +859,8 @@ the last input came from a pad.
 
 ## Thug variety and squad alert (built 2026-09-26)
 - Thugs run `ST_Thug`, a headless-built StateTree with states Stunned, Reposition, Cover,
-  Attack, Investigate, Patrol in priority order; the C++ mode picker remains the fallback
-  (tests). Cover points come from `EQS_CoverPoints`, an EnvQuery authored in C++ (never
+  Attack, Investigate, Patrol in priority order; every thug runs it, tests and C++ spawns
+  included (architecture.md, "Thugs"). Cover points come from `EQS_CoverPoints`, an EnvQuery authored in C++ (never
   save it from the editor), with the C++ candidate ring as fallback.
 - Gunner: 0.8 s telegraph (pistol raised, glint, log line), then a burst of 3 shots of 12
   damage 0.25 s apart at 4 degrees spread. Takes cover after a burst or when aimed at

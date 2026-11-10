@@ -109,9 +109,9 @@ UMissionSubsystem (world subsystem)
   a melee and a ranged budget of who may be attacking her now. Attackers call `RequestToken` from their own
   think (asking and renewing are the same call, so nothing here ticks or sweeps actors) and `ReleaseToken` when
   the attack ends or anything stops it; budgets hold attackers by weak pointer and let a silent holder's token
-  lapse. `GetBudgetView` is the read-only view (`hawkeye.DebugTokens`, the HUD). The thug controller asks inside
-  its Attack mode functions only (`TickMeleeRush`, `TickGunner`, `TickArcher`), so whatever picks the mode can
-  change without touching the tokens. Written from scratch: the engine has no shared attacker budget, and
+  lapse. `GetBudgetView` is the read-only view (`hawkeye.DebugTokens`, the HUD). Thugs ask from the fight's tasks
+  (`HoldRing`, `Swing`, `Burst`, `Draw` in ST_Thug, below) and give the token back when the swing, burst or draw
+  ends or the fight is left. Written from scratch: the engine has no shared attacker budget, and
   Smart Object slots claim places, not turns. Budgets, gap and the off-screen telegraph
   are rows in the difficulty table.
 
@@ -127,16 +127,62 @@ UMissionSubsystem (world subsystem)
   keycard set; Ammo adds reserve. Optional `CompletesObjectiveId`. Destroys itself.
 - `ADoorActor`: frame and door meshes, `bLocked`, `RequiredKeycardId`, lerps open over
   `OpenSeconds` in Tick, completes `CompletesObjectiveId` the first time it opens.
-- `AGuardCharacter`: 100 HP, tag `Guard`, its own `UWeaponComponent` at 12 damage,
-  `EGuardAlertState {Calm, Suspicious, Alerted}` with `OnAlertStateChanged`. Implements
-  `ITakedownable`: `CanBeTakenDown` is false when Alerted. On takedown or death, drops
-  the `DropOnDeath` pickups once and goes limp.
-- `AGuardAIController`: perception (sight 1500 / lose 1800 / half angle 35, hearing
-  1200) feeding a C++ state machine on a 0.25 s think timer. Calm patrols
-  `PatrolPoints`, Suspicious investigates the stimulus, Alerted faces and shoots with a
-  `AimSpreadDegrees` cone and loses the target after `LoseTargetSeconds`.
-  `ReportStimulus(Kind, Location, bSuccessful)` is the single entry point both perception
-  and tests use. No behavior tree yet; stage 3 decides whether one is needed.
+
+### Thugs (`Source/Hawkeye/World/Thug*`)
+The controller senses and acts; the StateTree `ST_Thug` decides. Nothing in C++ picks what a thug does next.
+- `AThugCharacter`: the body. `EThugWeapon` (Fists, Bat, Shield, Pistol, Bow), `EThugAlertState` with
+  `OnAlertStateChanged`, health, stagger and knockdown, the telegraph glint, `ITakedownable`.
+- `AThugAIController`, the senses: perception (sight 1500 / lose 1800 / half angle 35, hearing 1200 through
+  `HawkeyeThugHearing`, so walls and closed doors stop it), the archer's own sight, smoke, being aimed at, the
+  squad alert, and the clocks that move Calm, Suspicious and Alerted, on a 0.25 s think (`Think`; tests call it).
+  `ReportStimulus` is the one entry point for perception and tests. `Senses(EThugSense)` answers the tree's
+  questions, read when asked so a transition sees what a task did earlier in the same tick.
+- `AThugAIController`, the hands: public actuators the tasks call (`RequestMoveToActor`, `StartBurst`,
+  `AdvanceBurst`, `StartSwing`, `BeginCover`, `StartArcherDraw`, `FindArcherRoof`, token request and release).
+  Clocks that belong to a weapon stay with it: the burst, the archer's hold and loose window, cooldowns.
+- `ST_Thug` (`/Game/Blueprints/AI/Thug`, written by `UHawkeyeThugTreeBuilder` from `Tools/Editor/create_enemies.py`,
+  run every frame by `UHawkeyeThugTreeComponent`): one condition type, `FHawkeyeThugSenseCondition`, and tasks
+  that each do one thing and report Running, Succeeded or Failed (`ThugStateTreeNodes`, `ThugGunnerTasks`,
+  `ThugArcherTasks`, `ThugMeleeTasks`). A top-level state leaves for the root when a higher one is wanted or
+  its own reason is gone; the fight's steps chain on completion. Where the thug is in a fight (swinging,
+  backing off, peeking, standing off) is the active state and its task's instance data, not a flag on the
+  controller. A pawn that names no tree (spawned from C++, every test) runs the controller's
+  `DefaultStateTree`, the same asset.
+
+```
+Thug                    children tried in order: [condition]  -> transition
+├─ Stunned              [Stunned]
+├─ Reposition           [Engaged]
+│  ├─ BackAway          [Gunner, Crowded]             done -> Thug
+│  └─ ArcherZip         [RoofWanted]                  done -> Thug
+├─ Cover                [Engaged, Gunner, HasCover]
+│  ├─ Hide                                            done -> Relocate if CoverStale, else Peek
+│  ├─ Relocate                                        found -> Hide, none -> Peek
+│  └─ Peek
+│     ├─ StepOut                                      -> PeekBurst
+│     └─ PeekBurst                                    -> Hide if CoverOwed, else again
+├─ Attack               [Alerted]   aims, rush speed; leaving gives the token back
+│  ├─ HoldFire          [not Engaged]
+│  ├─ StandOff          [TargetDown]
+│  ├─ Gunner            [Gunner]
+│  │  ├─ Approach       [OutOfRange]
+│  │  ├─ TakeCover      [AimedAt or CoverOwed]        found -> Cover, none -> Burst
+│  │  └─ Burst                                        aimed at -> TakeCover, done -> Gunner
+│  ├─ Archer            [Archer]
+│  │  └─ Draw                                         loosed -> Draw
+│  └─ Melee
+│     ├─ BackOff        [BackOffOwed]                 done -> Melee
+│     ├─ Swing          [HoldsToken]                  done -> Melee
+│     └─ HoldRing                                     granted -> Melee
+├─ Investigate          [Suspicious]
+└─ Patrol
+```
+- Debugging: `hawkeye.DebugThugs 1` draws each thug's active path over his head (`Thug > Attack > Melee >
+  HoldRing`); `hawkeye.DebugTokens 1` adds the token ring. For why a transition fired, open ST_Thug in the
+  editor and use the StateTree debugger (in 5.8 it records through the Rewind Debugger; Ctrl+Shift+R starts a
+  recording before PIE): pick the thug by his controller's name, step state changes with
+  Ctrl+arrows, and read each condition's result and each task's status per frame. Breakpoints go on a state's
+  enter or exit. A standalone run records with `-trace=default,StateTreeDebug` for Unreal Insights.
 
 ### Inventory and weapons (`Source/Hawkeye/Player`, `Source/Hawkeye/Combat`)
 - `UWeaponDefinition` (primary data asset, type `Weapon`): every stat for one weapon, its
@@ -218,9 +264,9 @@ UMissionSubsystem (world subsystem)
   ordering, phase thresholds, ammo counts: C++.
 - Widgets: layout in `WBP_*`, behaviour in the C++ parent. A widget Blueprint with more
   than a screenful of graph nodes is a sign the parent needs a function.
-- AI: behavior trees and blackboards are content (`Content/Blueprints/AI`). C++ provides
-  perception setup, a base `AGuardCharacter` (stage 2), and BT tasks/services only where
-  a Blueprint task is measurably too slow (the yard riot with 30 guards is the likely case).
+- AI: decisions are StateTrees (`Content/Blueprints/AI`), written by C++ builders so the script is the one
+  description of each tree. C++ provides senses, actuators, conditions and tasks; a choice of what to do next
+  in a controller is a bug.
 
 ## Lifecycle of a mission, end to end
 1. Level `L_M0X` loads. Its Level Blueprint (or a `AMissionStarter` actor, stage 2) calls
