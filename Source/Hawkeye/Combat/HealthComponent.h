@@ -57,7 +57,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0.0"))
 	float StaggerThreshold = 10.f;
 
-	/** Applies DamageAmount. Returns the damage actually taken (0 when invulnerable or dead). */
+	/**
+	 * Every incoming hit is multiplied by this before it lands (a boss's guard: 0.35; a scripted beat: 0, so nothing
+	 * lands and nothing fires). 1 for everyone else.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0.0"))
+	float IncomingDamageScale = 1.f;
+
+	/** Applies DamageAmount times IncomingDamageScale. Returns the damage actually taken (0 when invulnerable or dead). */
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	float ApplyDamage(float DamageAmount, AActor* DamageInstigator = nullptr);
 

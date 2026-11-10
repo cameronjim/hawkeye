@@ -50,6 +50,7 @@ void UHealthComponent::Stagger(AActor* DamageInstigator)
 
 float UHealthComponent::ApplyDamage(float DamageAmount, AActor* DamageInstigator)
 {
+	DamageAmount *= FMath::Max(IncomingDamageScale, 0.f);
 	if (DamageAmount <= 0.f || bInvulnerable || bIsDead)
 	{
 		return 0.f;
