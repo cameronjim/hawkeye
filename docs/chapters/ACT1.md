@@ -36,7 +36,12 @@ Free roam sits between chapters, with crimes and challenges as now.
 ## The Tomas fight
 
 Built 2026-11-10 as chapter 4 on the boss framework (`CH04.md`; rules in `claude-docs/gameplay-semantics.md`,
-"Bosses"). It follows chapter 1 in the campaign's order until chapters 2 and 3 exist.
+"Bosses"). It follows chapter 2 in the campaign's order until chapter 3 exists.
+
+## Chapter 2, Reindeer Games
+ 2026-11-10 (`CH02.md`): the toy drive on Avenue B as a chapter site, the reindeer crew, the sticky foam
+(the putty arrow, shown as "Foam") unlocked on arrival, the courier as an optional unmarked examine raising
+`saw_courier`, the "Visiting hours" slides and the phone thread after.
 
 Three phases on the boss phase system. A formality, and funny.
 
