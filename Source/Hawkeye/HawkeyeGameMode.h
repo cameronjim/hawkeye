@@ -66,6 +66,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Save")
 	bool IsInCombat() const { return IsWorldInCombat(GetWorld()); }
 
+	/**
+	 * Who and what a chapter has on stage: benches the partner when Mission->bPartnerPresent is off (back on
+	 * otherwise), and hides every actor tagged objective:<id> whose objective the chapter does not have.
+	 * Static so a test can apply it to a bare world.
+	 */
+	static void ApplyChapterCast(UWorld* World, const UMissionDefinition* Mission);
+
 	/** IsInCombat for any world; static so a test can ask it of a bare test world. */
 	static bool IsWorldInCombat(const UWorld* World);
 

@@ -127,7 +127,8 @@ void UBanterComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		return;
 	}
 	TActorIterator<AHawkeyePartnerController> PartnerIt(World);
-	if (!PartnerIt || !PartnerIt->GetPawn())
+	// Two speakers or none: a benched partner (a chapter without him) has no lines either.
+	if (!PartnerIt || !PartnerIt->GetPartner())
 	{
 		return;
 	}

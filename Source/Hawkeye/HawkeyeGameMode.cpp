@@ -322,6 +322,42 @@ void AHawkeyeGameMode::HandleObjectiveUpdated(UMissionObjective* Objective, int3
 	}
 }
 
+void AHawkeyeGameMode::ApplyChapterCast(UWorld* World, const UMissionDefinition* Mission)
+{
+	if (!World || !Mission)
+	{
+		return;
+	}
+	for (TActorIterator<AHawkeyePartnerController> It(World); It; ++It)
+	{
+		It->SetBenched(!Mission->bPartnerPresent);
+	}
+	// Another chapter's beacons (tagged objective:<id>) stay dark while this one runs.
+	TSet<FName> Ids;
+	for (const UMissionObjective* Objective : Mission->Objectives)
+	{
+		if (Objective)
+		{
+			Ids.Add(Objective->ObjectiveId);
+		}
+	}
+	static const FString Prefix(TEXT("objective:"));
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		for (const FName Tag : It->Tags)
+		{
+			const FString Text = Tag.ToString();
+			if (Text.StartsWith(Prefix))
+			{
+				const bool bOurs = Ids.Contains(FName(*Text.RightChop(Prefix.Len())));
+				It->SetActorHiddenInGame(!bOurs);
+				It->SetActorEnableCollision(bOurs);
+				break;
+			}
+		}
+	}
+}
+
 bool AHawkeyeGameMode::IsWorldInCombat(const UWorld* World)
 {
 	if (!World)
@@ -594,6 +630,7 @@ UInventoryComponent* AHawkeyeGameMode::FindPlayerInventory() const
 
 void AHawkeyeGameMode::HandleMissionStarted(UMissionDefinition* Mission)
 {
+	ApplyChapterCast(GetWorld(), Mission);
 	UInventoryComponent* Inventory = FindPlayerInventory();
 	if (!Inventory || !Mission)
 	{

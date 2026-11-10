@@ -90,7 +90,7 @@ void AThugGroupObjective::HandleMemberDeath(UHealthComponent* /*Health*/, AActor
 	}
 
 	bCleared = true;
-	if (UMissionSubsystem* Missions = UMissionSubsystem::Get(this))
+	if (UMissionSubsystem* Missions = UMissionSubsystem::Get(this); Missions && Missions->HasObjective(ObjectiveId))
 	{
 		Missions->CompleteObjective(ObjectiveId);
 	}

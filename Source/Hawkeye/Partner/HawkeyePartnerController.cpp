@@ -10,6 +10,8 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Mission/MissionDefinition.h"
+#include "Mission/MissionSubsystem.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "NavigationSystem.h"
 #include "Player/GrappleComponent.h"
@@ -129,6 +131,15 @@ void AHawkeyePartnerController::OnPossess(APawn* InPawn)
 		*GetNameSafe(InPawn), IsUsingStateTree() ? *FString::Printf(TEXT("StateTree %s"), *GetNameSafe(PartnerStateTree))
 		: TEXT("C++ mode selection, no StateTree"));
 
+	// A chapter without him: off stage from his first possession (the game mode benches any already possessed). A
+	// later possession is a switch handing him the other Hawkeye, which a test or Act 2 asked for: left alone.
+	if (const UMissionSubsystem* Missions = UMissionSubsystem::Get(this); !bEverPossessed
+		&& Missions && Missions->GetCurrentMission() && !Missions->GetCurrentMission()->bPartnerPresent)
+	{
+		SetBenched(true);
+	}
+	bEverPossessed = true;
+
 	if (UWorld* World = GetWorld(); World && bThinkingEnabled)
 	{
 		World->GetTimerManager().SetTimer(ThinkTimerHandle, this, &AHawkeyePartnerController::TickThink,
@@ -189,7 +200,40 @@ void AHawkeyePartnerController::EnsureLeader()
 
 AHawkeyeCharacter* AHawkeyePartnerController::GetPartner() const
 {
-	return Cast<AHawkeyeCharacter>(GetPawn());
+	return bBenched ? nullptr : Cast<AHawkeyeCharacter>(GetPawn());
+}
+
+void AHawkeyePartnerController::SetBenched(bool bInBenched)
+{
+	APawn* Benched = GetPawn();
+	if (bBenched == bInBenched || !Benched)
+	{
+		return;
+	}
+	if (bInBenched)
+	{
+		SetThinkingEnabled(false);
+	}
+	bBenched = bInBenched;
+	Benched->SetActorHiddenInGame(bInBenched);
+	Benched->SetActorEnableCollision(!bInBenched);
+	if (ACharacter* Body = Cast<ACharacter>(Benched))
+	{
+		if (bInBenched)
+		{
+			Body->GetCharacterMovement()->DisableMovement();
+		}
+		else
+		{
+			Body->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		}
+	}
+	if (!bInBenched)
+	{
+		SetThinkingEnabled(true);
+	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: %s %s."), *GetName(), *GetNameSafe(Benched),
+		bInBenched ? TEXT("benched: this chapter has no partner") : TEXT("back from the bench"));
 }
 
 void AHawkeyePartnerController::SetLeader(AHawkeyeCharacter* NewLeader)
@@ -331,7 +375,7 @@ void AHawkeyePartnerController::NotifyShotAt(AActor* Shooter)
 
 bool AHawkeyePartnerController::RequestRevive(AHawkeyeCharacter* Downed)
 {
-	if (!Downed || Downed != Leader.Get() || !GetPawn())
+	if (!Downed || Downed != Leader.Get() || !GetPawn() || bBenched)
 	{
 		return false;
 	}

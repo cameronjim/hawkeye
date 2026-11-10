@@ -6,6 +6,7 @@
 #include "MissionDefinition.generated.h"
 
 class UBowDefinition;
+class UChaseRouteDefinition;
 class UMissionObjective;
 class UFlashbackDefinition;
 class UWorld;
@@ -67,6 +68,24 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
 	bool bAllowSwitching = false;
+
+	/**
+	 * Whether the partner (Clint) is in this chapter. Off, the game mode benches him when it starts: no AI
+	 * partner on screen, no HUD partner line, nothing to switch to (gameplay-semantics.md, "Chases", Partner).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	bool bPartnerPresent = true;
+
+	/** The chase this chapter runs, from its opening. None for a chapter without one. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TSoftObjectPtr<UChaseRouteDefinition> Chase;
+
+	/**
+	 * The title, subtitle, end card line and toast are a draft (docs/chapters/ACT1-script.md) waiting for the
+	 * owner's edit, so they can be found and replaced.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	bool bDraftText = false;
 
 	/** Flashback slideshow played when this mission completes. Optional. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")

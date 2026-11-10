@@ -52,4 +52,8 @@ struct HAWKEYE_API FHawkeyeDialogueLine : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue", meta = (ClampMin = "0.0"))
 	float DurationSeconds = 0.f;
+
+	/** The line is a draft (docs/chapters/ACT1-script.md) waiting for the owner's edit, so it can be found and replaced. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue")
+	bool bDraft = false;
 };

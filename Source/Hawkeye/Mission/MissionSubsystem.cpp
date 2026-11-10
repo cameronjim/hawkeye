@@ -103,6 +103,11 @@ bool UMissionSubsystem::IsMissionComplete() const
 	return Tracker && Tracker->IsMissionComplete();
 }
 
+bool UMissionSubsystem::HasObjective(FName ObjectiveId) const
+{
+	return Tracker && Tracker->FindObjective(ObjectiveId) != nullptr;
+}
+
 void UMissionSubsystem::RegisterObjectiveLocation(FName ObjectiveId, FVector Location)
 {
 	if (Tracker)

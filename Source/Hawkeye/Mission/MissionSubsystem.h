@@ -53,6 +53,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Mission")
 	bool IsMissionComplete() const;
 
+	/**
+	 * Whether the running mission has an objective ObjectiveId. World furniture of another chapter (a volume, a
+	 * thug group) asks before completing, so it stays quiet instead of logging an unknown id.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Mission")
+	bool HasObjective(FName ObjectiveId) const;
+
 	/** Records Location as ObjectiveId's marker point. AObjectiveTriggerVolume calls this at BeginPlay. */
 	UFUNCTION(BlueprintCallable, Category = "Mission|Marker")
 	void RegisterObjectiveLocation(FName ObjectiveId, FVector Location);

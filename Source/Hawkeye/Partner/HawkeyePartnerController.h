@@ -227,7 +227,18 @@ public:
 	FText GetStatusText() const;
 
 	UFUNCTION(BlueprintPure, Category = "Partner")
-	bool IsInFight() const { return FightClock.IsInFight(GetNowSeconds()); }
+	bool IsInFight() const { return !bBenched && FightClock.IsInFight(GetNowSeconds()); }
+
+	/**
+	 * Benched: off stage for a chapter without him (UMissionDefinition::bPartnerPresent off). Thinking off, his
+	 * pawn hidden with its collision and movement off; GetPartner returns null, so the HUD, the switch, the mark,
+	 * banter, revives and the fight check all see no partner. Off again puts him back where he stands.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Partner")
+	void SetBenched(bool bInBenched);
+
+	UFUNCTION(BlueprintPure, Category = "Partner")
+	bool IsBenched() const { return bBenched; }
 
 	/** The senses and, without a StateTree, the mode. The timer calls it; tests call it directly. */
 	UFUNCTION(BlueprintCallable, Category = "Partner")
@@ -358,6 +369,8 @@ private:
 	bool bLoggedMoveFailure = false;
 
 	bool bThinkingEnabled = true;
+	bool bBenched = false;
+	bool bEverPossessed = false;
 	bool bUseTestTime = false;
 	double TestTimeSeconds = 0.0;
 

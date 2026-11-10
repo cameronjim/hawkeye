@@ -51,6 +51,12 @@ void AObjectiveTriggerVolume::HandleActorBeginOverlap(AActor* /*OverlappedActor*
 	{
 		return;
 	}
+	if (!MissionSubsystem->HasObjective(ObjectiveId))
+	{
+		// Another chapter's volume: quiet (gameplay-semantics.md, "Chases", world furniture).
+		UE_LOG(LogHawkeye, Verbose, TEXT("%s: '%s' is not in the running chapter; ignored."), *GetName(), *ObjectiveId.ToString());
+		return;
+	}
 
 	if (MissionSubsystem->CompleteObjective(ObjectiveId))
 	{

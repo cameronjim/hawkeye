@@ -36,6 +36,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
 	FText Hint;
 
+	/** The title, description and hint are a draft (docs/chapters/ACT1-script.md) waiting for the owner's edit. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
+	bool bDraft = false;
+
 	/** Optional objectives do not block mission completion. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
 	bool bOptional = false;

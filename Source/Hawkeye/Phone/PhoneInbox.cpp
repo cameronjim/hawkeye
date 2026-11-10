@@ -101,7 +101,7 @@ int32 UPhoneInbox::MarkThreadRead(const FString& Sender)
 	for (const FName Id : Received)
 	{
 		const FHawkeyePhoneMessage* Row = Messages.Find(Id);
-		if (Row && Row->Sender.ToString() == Sender && MarkRead(Id))
+		if (Row && Row->GetThreadName() == Sender && MarkRead(Id))
 		{
 			++Count;
 		}
@@ -125,7 +125,7 @@ int32 UPhoneInbox::GetUnreadCountFrom(const FString& Sender) const
 	for (const FName Id : Received)
 	{
 		const FHawkeyePhoneMessage* Row = Messages.Find(Id);
-		Count += Row && !Read.Contains(Id) && Row->Sender.ToString() == Sender ? 1 : 0;
+		Count += Row && !Read.Contains(Id) && Row->GetThreadName() == Sender ? 1 : 0;
 	}
 	return Count;
 }
@@ -137,7 +137,7 @@ TArray<FString> UPhoneInbox::GetContacts() const
 	{
 		if (const FHawkeyePhoneMessage* Row = Messages.Find(Received[Index]))
 		{
-			Contacts.AddUnique(Row->Sender.ToString());
+			Contacts.AddUnique(Row->GetThreadName());
 		}
 	}
 	return Contacts;
@@ -149,7 +149,7 @@ TArray<FHawkeyeReceivedMessage> UPhoneInbox::GetThread(const FString& Sender) co
 	for (const FName Id : Received)
 	{
 		const FHawkeyePhoneMessage* Row = Messages.Find(Id);
-		if (Row && Row->Sender.ToString() == Sender)
+		if (Row && Row->GetThreadName() == Sender)
 		{
 			FHawkeyeReceivedMessage& Entry = Thread.AddDefaulted_GetRef();
 			Entry.Id = Id;

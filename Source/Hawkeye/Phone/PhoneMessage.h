@@ -27,9 +27,16 @@ struct HAWKEYE_API FHawkeyePhoneMessage : public FTableRowBase
 {
 	GENERATED_BODY()
 
-	/** Who sent it. Messages are grouped into contacts by this text. */
+	/** Who sent it. Messages are grouped into contacts by this text, unless Thread says otherwise. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
 	FText Sender;
+
+	/**
+	 * The conversation it belongs to, by the other person's name: Kate's own replies sit in Clint's thread
+	 * (Sender "Kate", Thread "Clint"). Empty: the Sender's thread.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
+	FText Thread;
 
 	/** The message. The notification shows its first line. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone", meta = (MultiLine = "true"))
@@ -60,4 +67,11 @@ struct HAWKEYE_API FHawkeyePhoneMessage : public FTableRowBase
 	/** Arrives already read: no notification, not counted on the badge (old texts in the history). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
 	bool bRead = false;
+
+	/** The text is a draft (docs/chapters/ACT1-script.md) waiting for the owner's edit, so it can be found and replaced. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
+	bool bDraft = false;
+
+	/** The contact whose thread shows this message: Thread, or Sender when Thread is empty. */
+	FString GetThreadName() const { return Thread.IsEmpty() ? Sender.ToString() : Thread.ToString(); }
 };
