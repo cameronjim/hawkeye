@@ -1360,6 +1360,41 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   holds Normal's sprint to 7 or fewer (about one in three) for both, Story at or under Normal, Hard
   at or over it, and a standing Kate hit at least 15 times by the archer.
 
+## Attack tokens (built 2026-11-10)
+Rules in `Source/Hawkeye/Combat/CombatTokenRules.h` (pure, tested by `Hawkeye.Tokens.*`); the state is
+`UCombatTokenSubsystem`, one per world. Before, every thug swung and fired on his own clock, so four of them
+hit her at once from off screen.
+- Each target (Kate, or Clint when a thug is fighting him) has two budgets, melee (fists, bat, the heavy's
+  bash and swing) and ranged (a gunner's burst, an archer's draw): how many of her attackers may be
+  attacking at once. Melee 1 / 1 / 2 and ranged 1 / 1 / 2 at Story / Normal / Hard, so a swing and a shot
+  can overlap but two swings cannot below Hard.
+- A token is held from its grant until the attack is over: a melee thug's step in, telegraph, swing and
+  recovery; a gunner's telegraph and burst; an archer's draw (a hold included) until he looses. After a
+  token is given back, that budget grants nothing for a gap of 0.9 / 0.6 / 0.4 s, so attacks come as a
+  sequence she can read rather than a chain.
+- Who gets it when several ask, in order: anyone who has waited 4 s (oldest first, so nobody starves);
+  then anyone but the one who attacked last on that budget (he goes to the back); then whoever is on
+  screen (within 50 degrees of where she looks: her camera, or the eyes of an AI target) before anyone
+  off it; then the nearest (in 50 cm steps); then whoever has waited longest. An off-screen thug is granted
+  only when nobody on screen is asking or he is overdue, and his telegraph then lasts at least 1.2 / 1.0 /
+  0.8 s (a swing's wind-up, a burst's raised pistol, a draw), so a blow from behind never comes faster
+  than the warning.
+- Only an attacker ready to attack is granted (a melee thug off his cooldown and not backing off, a gunner
+  off his pause and not jammed, an archer past his gap with a line).
+- A melee thug without a token closes to a ring 300 cm round her and holds his place on it facing her;
+  places are spread at least 40 degrees apart in the order the thugs stand round her, each moving as
+  little as he can (no random slots). Granted, he steps in and swings as before; if he has not started
+  his swing 1.5 s after the grant he gives it back. A gunner or archer without one holds his aim and waits.
+- Tokens never leak: one is given back when the attack ends or is broken, and taken away on a stagger,
+  a knockdown, putty or a bola, death, losing the target, leaving the attack, her going down, a
+  challenge's calm, thinking off, or a new target. The budget holds attackers by weak reference, so a
+  destroyed one simply goes; a holder who stops asking for 0.75 s, or has held one for 6 s, loses it.
+- Unchanged: the back-off after two swings, the cooldowns, the stand-off round a downed player (the
+  same ring walk, 450 cm, orbiting), difficulty damage, squad alerts.
+- `hawkeye.DebugTokens 1` draws a red line from each holder to his target and a grey one from each
+  waiter, with his place in the queue over his head, and logs every grant and return at Log (Verbose
+  otherwise).
+
 ## Side challenges (built 2026-09-27; names are placeholders)
 - `AChallengeStart` pedestals (purple-lit, E to start) and one `UChallengeDefinition` per
   challenge under `/Game/Challenges`, planned by `create_challenges.py` and placed by the
@@ -1396,7 +1431,9 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   10 HP/s (regen didn't exist before and applies to Kate only); fall damage 0.5 / 1.0 /
   1.0; Story adds 2 to each trick arrow cap (never the grapple, which has no count). Added 2026-09-28 ("Ranged thug accuracy", "Bow aim
   assist"): ranged tracking lag 0.4 / 0.32 / 0.25 s; ranged cone scale 1.4 / 1.0 / 0.7; archer
-  gap before the next draw 3.0-4.0 / 1.5-2.5 / 1.2-1.8 s; aim assist scale 1.25 / 1.0 / 0.5.
+  gap before the next draw 3.0-4.0 / 1.5-2.5 / 1.2-1.8 s; aim assist scale 1.25 / 1.0 / 0.5. Added
+  2026-11-10 ("Attack tokens"): melee tokens 1 / 1 / 2; ranged tokens 1 / 1 / 2; gap between tokens
+  0.9 / 0.6 / 0.4 s; an off-screen attacker's shortest telegraph 1.2 / 1.0 / 0.8 s.
   `-Difficulty=Story|Normal|Hard` on the
   command line overrides without saving. Every scripted fight is won on all three.
 - Accessibility, all persisted (settings version 5; 6 adds the time of day; 7 the aim assist; 8 the
