@@ -57,7 +57,8 @@ The scripts find the engine and the sample on their own (`Tools\hawkeye.env.ps1`
 `-Engine`, env `HAWKEYE_UE_ROOT`, `Tools\local.json`, the registry, the Epic launcher's install list, then
 `C:\Program Files\Epic Games\UE_5.8`. Sample: env `HAWKEYE_GASP_ROOT`, `Tools\local.json`, then
 `C:\Users\camer\code\GASP`. If yours live elsewhere, copy `Tools\local.example.json` to `Tools\local.json`
-(git-ignored) and edit it. `.\Tools\test-env.ps1` checks the lookup without the engine, and
+(git-ignored) and edit it. A path you set in the env var or `local.json` that does not hold an engine is an
+error, never a silent fallback. `.\Tools\test-env.ps1` checks the lookup without the engine, and
 `claude-docs/infrastructure.md` has the details.
 
 ```powershell

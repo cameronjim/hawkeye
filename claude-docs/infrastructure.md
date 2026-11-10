@@ -33,10 +33,13 @@ Engine root, first hit wins (a candidate must contain `Engine\Build\BatchFiles\B
 5. the Epic launcher's `C:\ProgramData\Epic\UnrealEngineLauncher\LauncherInstalled.dat` (`UE_5.8`)
 6. `C:\Program Files\Epic Games\UE_5.8`
 
-If none qualifies the script stops and lists every source it tried. Game Animation Sample root:
+If none qualifies the script stops and lists every source it tried. A `HAWKEYE_UE_ROOT` or `engineRoot`
+that is set but wrong stops the script at once and names itself; it never falls through to another install. Game Animation Sample root:
 env var `HAWKEYE_GASP_ROOT`, then `Tools\local.json` key `gaspRoot`, then
 `C:\Users\camer\code\GASP`. `create-content.ps1` hands it to the editor-side Python as
-`HAWKEYE_GASP_ROOT` and `HAWKEYE_GASP_CONTENT` (`import_gasp.py` reads them). The repo root is
+`HAWKEYE_GASP_ROOT` and `HAWKEYE_GASP_CONTENT` (`import_gasp.py` reads them); `import-anims.ps1` exports
+`HAWKEYE_UE_ROOT` and `HAWKEYE_GASP_CONTENT` for the sources in `Tools\Data\Anims\manifest.json`
+(`path_env`, and `{HAWKEYE_UE_ROOT}` inside a path). The repo root is
 always derived from the script's own location. Helpers: `Resolve-HawkeyeEngine`,
 `Resolve-HawkeyeGaspRoot`, `Get-HawkeyeBuildBat`, `Get-HawkeyeEditorCmd`, `Get-HawkeyeRepoRoot`.
 `Tools\test-env.ps1` self-tests the precedence with fake folders (no engine needed; CI runs it).
