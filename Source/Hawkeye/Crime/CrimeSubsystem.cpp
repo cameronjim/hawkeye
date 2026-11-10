@@ -447,6 +447,31 @@ bool UCrimeSubsystem::StartCrimeAt(ACrimeSpot* Spot, UCrimeDefinition* Definitio
 	const FVector Centre = Spot->GetActorLocation();
 	SpawnProps(Definition, Spot);
 	SpawnRoster(Definition, Centre, Spot->GetActorRotation().Yaw, Player, Spot->bAlley);
+	if (Definition->LeashRadius > 0.f)
+	{
+		// The roster relocates only round the spot; on a roof, only onto that roof.
+		AActor* Ground = nullptr;
+		if (Spot->bRooftop)
+		{
+			FHitResult Hit;
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(CrimeLeashGround), false, Spot);
+			for (const TWeakObjectPtr<AThugCharacter>& Weak : Thugs)
+			{
+				Params.AddIgnoredActor(Weak.Get());
+			}
+			if (GetWorld()->LineTraceSingleByChannel(Hit, Centre + FVector(0.f, 0.f, 100.f), Centre - FVector(0.f, 0.f, 300.f), ECC_Visibility, Params))
+			{
+				Ground = Hit.GetActor();
+			}
+		}
+		for (const TWeakObjectPtr<AThugCharacter>& Weak : Thugs)
+		{
+			if (AThugAIController* Brain = Weak.IsValid() ? Cast<AThugAIController>(Weak->GetController()) : nullptr)
+			{
+				Brain->SetLeash(Centre, Definition->LeashRadius, Ground);
+			}
+		}
+	}
 	if (!Tracker->StartCrime(Definition, Centre, Thugs.Num()))
 	{
 		return false;

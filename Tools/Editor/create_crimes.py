@@ -102,6 +102,8 @@ STREET_CRIMES = ("mugging", "robbery", "ambush")
 ALLEY_CRIMES = ("mugging", "ambush")
 ROOF_CRIMES = ("rooftop",)
 VICTIM_HITS = 3
+# cm the roster may relocate from its spot (the archer's zip); a roof spot also keeps him on its roof. 0: free.
+LEASH_RADIUS = {"rooftop": 2500.0}
 REWARD_ARROWS = 5
 
 
@@ -555,6 +557,7 @@ def _fields(crime, civilian_class):
         ("victim_class", civilian_class if ctype == "Mugging" else None),
         ("escape_distance", ESCAPE_DISTANCE),
         ("alert_on_start", alert),
+        ("leash_radius", LEASH_RADIUS.get(cid, 0.0)),
         ("reward", _enum("CrimeReward", "ArrowRefill")),
         ("reward_arrows", REWARD_ARROWS),
     ]

@@ -83,6 +83,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crime")
 	bool bAlertOnStart = false;
 
+	/**
+	 * How far from the spot the roster may relocate (the archer's zip to an anchor), cm; 0 leaves them free. On a
+	 * rooftop spot the landing must be on the spot's own roof too (AThugAIController::SetLeash).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crime", meta = (ClampMin = "0.0"))
+	float LeashRadius = 0.f;
+
 	/** The player further than this from the spot abandons the crime, cm. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crime", meta = (ClampMin = "100.0"))
 	float AbandonDistance = 15000.f;
