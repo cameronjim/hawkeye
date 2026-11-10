@@ -46,6 +46,18 @@ struct HAWKEYE_API FHawkeyeThugOverhead
 	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
 	bool bParryCue = false;
 
+	/** His swing is unblockable: the glyph is "!!" in the unblockable colour, flashing, the dodge key over it. */
+	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
+	bool bUnblockable = false;
+
+	/** The glyph's colour this frame (the flash) for an unblockable. */
+	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
+	FLinearColor UnblockableTint = FLinearColor::White;
+
+	/** The dodge key on the device in use ("Ctrl", "B"), shown over an unblockable's glyph. */
+	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
+	FString DodgeKey;
+
 	/** The melee assist's pick: the ring at his feet and the brighter bar, at this opacity (0 for none). */
 	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
 	float MarkerAlpha = 0.f;
@@ -111,6 +123,13 @@ public:
 	/** The telegraph glyph: red-orange in the default palette. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Thugs")
 	FLinearColor TelegraphColor = FLinearColor(1.f, 0.16f, 0.03f, 1.f);
+
+	/**
+	 * An unblockable swing's glyph: a hot yellow kept apart from every palette's danger colour, flashing white. It reads
+	 * by shape too: "!!" instead of "!", and the dodge key over it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Thugs")
+	FLinearColor UnblockableColor = FLinearColor(1.f, 0.85f, 0.05f, 1.f);
 
 	/** The ring at the assist's pick's feet: Kate's purple. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Thugs")

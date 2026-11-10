@@ -154,4 +154,27 @@ namespace HawkeyeCombatReadability
 		OutElapsed = UHawkeyeMeleeRules::GetTelegraphElapsed(Thug);
 		return OutElapsed >= 0.f;
 	}
+
+	bool GetUnblockableTelegraph(const AThugCharacter* Thug, float& OutElapsed, float& OutWindupSeconds)
+	{
+		OutElapsed = -1.f;
+		OutWindupSeconds = 0.f;
+		if (!UHawkeyeMeleeRules::IsUnblockableWindup(Thug))
+		{
+			return false;
+		}
+		OutWindupSeconds = Thug->GetMeleeComponent()->GetCurrentAttack().WindupSeconds;
+		OutElapsed = UHawkeyeMeleeRules::GetTelegraphElapsed(Thug);
+		return OutElapsed >= 0.f;
+	}
+
+	FLinearColor ComputeUnblockableColor(const FLinearColor& Base, float Elapsed, float FlashScale, float PulseHz)
+	{
+		// A square flash, not a pulse: on the beat it is white, between beats its colour.
+		const bool bFlash = FMath::Frac(FMath::Max(Elapsed, 0.f) * FMath::Max(PulseHz, 0.f)) < 0.5f;
+		const float Amount = bFlash ? FMath::Clamp(FlashScale, 0.f, 1.f) : 0.f;
+		FLinearColor Out = FMath::Lerp(Base, FLinearColor::White, Amount);
+		Out.A = Base.A;
+		return Out;
+	}
 }

@@ -143,4 +143,13 @@ namespace HawkeyeCombatReadability
 	 */
 	HAWKEYE_API bool GetStrikeTelegraph(const AThugCharacter* Thug, const FVector& Viewer, float GunnerRange, float& OutElapsed,
 		float& OutWindupSeconds);
+
+	/**
+	 * Whether Thug winds up an unblockable swing (UHawkeyeMeleeRules::IsUnblockableWindup): its own glyph, "!!" in the
+	 * unblockable colour flashing white on every beat, with the dodge key under it. Gives the seconds into it and its length.
+	 */
+	HAWKEYE_API bool GetUnblockableTelegraph(const AThugCharacter* Thug, float& OutElapsed, float& OutWindupSeconds);
+
+	/** The unblockable glyph's colour at Elapsed: Base, flashing to white PulseHz times a second (FlashScale dims the flash). */
+	HAWKEYE_API FLinearColor ComputeUnblockableColor(const FLinearColor& Base, float Elapsed, float FlashScale, float PulseHz = 6.f);
 }

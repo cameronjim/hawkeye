@@ -171,11 +171,23 @@ EHawkeyeParryKind UHawkeyeMeleeRules::ClassifyParry(const AThugCharacter* Thug)
 		return Brain && Brain->IsTelegraphing() ? EHawkeyeParryKind::Burst : EHawkeyeParryKind::None;
 	}
 	const UMeleeComponent* Melee = Thug->GetMeleeComponent();
-	if (!Melee || !Melee->IsWindingUp() || Melee->GetCurrentAttack().WindupSeconds < MinTelegraphSeconds)
+	if (!Melee || !Melee->IsWindingUp() || Melee->GetCurrentAttack().WindupSeconds < MinTelegraphSeconds
+		|| Melee->GetCurrentAttack().bUnblockable)
 	{
 		return EHawkeyeParryKind::None;
 	}
 	return Thug->IsHeavy() && Melee->GetCurrentAttack().KnockbackDistance > 0.f ? EHawkeyeParryKind::Bash : EHawkeyeParryKind::Swing;
+}
+
+bool UHawkeyeMeleeRules::IsUnblockableWindup(const AThugCharacter* Thug)
+{
+	const UHealthComponent* Health = Thug ? Thug->GetHealthComponent() : nullptr;
+	if (!Health || !Health->IsAlive() || Thug->IsLimp() || Thug->IsIncapacitated())
+	{
+		return false;
+	}
+	const UMeleeComponent* Melee = Thug->GetMeleeComponent();
+	return Melee && Melee->IsWindingUp() && Melee->GetCurrentAttack().bUnblockable;
 }
 
 float UHawkeyeMeleeRules::GetTelegraphElapsed(const AThugCharacter* Thug)

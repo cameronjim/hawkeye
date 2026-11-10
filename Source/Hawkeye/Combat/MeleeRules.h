@@ -95,6 +95,13 @@ public:
 	static EHawkeyeParryKind ClassifyParry(const AThugCharacter* Thug);
 
 	/**
+	 * Thug is alive, on his feet and winding up an unblockable swing (FHawkeyeMeleeAttack::bUnblockable): no parry
+	 * answers it, a dodge does.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Melee")
+	static bool IsUnblockableWindup(const AThugCharacter* Thug);
+
+	/**
 	 * True when Thug is alive, open to a finisher (knocked down, parry-staggered, or within a second of a
 	 * combo ender landing: AThugCharacter::IsFinisherOpen), and within Range of From (flat, 200 cm up or down).
 	 */

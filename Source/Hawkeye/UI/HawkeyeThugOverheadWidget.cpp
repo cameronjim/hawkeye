@@ -1,5 +1,6 @@
 #include "UI/HawkeyeThugOverheadWidget.h"
 
+#include "HawkeyePlayerController.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Camera/PlayerCameraManager.h"
@@ -15,6 +16,7 @@
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateRenderer.h"
 #include "Settings/HawkeyeAccessibility.h"
+#include "UI/HawkeyeHints.h"
 #include "Styling/CoreStyle.h"
 #include "World/ThugCharacter.h"
 
@@ -71,8 +73,8 @@ void UHawkeyeThugOverheadWidget::GatherEntries()
 		Entry.Position = Entry.GlyphPosition;
 		if (Entry.bTelegraph)
 		{
-			// The strike coming outranks the alert it came with.
-			Entry.Glyph = TEXT("!");
+			// The strike coming outranks the alert it came with; an unblockable one says so by shape.
+			Entry.Glyph = Entry.bUnblockable ? TEXT("!!") : TEXT("!");
 		}
 		else if (Glyph)
 		{
@@ -101,6 +103,18 @@ bool UHawkeyeThugOverheadWidget::GatherCombatReads(const AThugCharacter* Thug, c
 		Entry.TelegraphScale = Look.Scale;
 		Entry.GlyphAlpha = Look.Alpha;
 		Entry.bParryCue = Kate && Kate->CanParryNow(Thug);
+	}
+	else if (HawkeyeCombatReadability::GetUnblockableTelegraph(Thug, Elapsed, Windup))
+	{
+		const float Flash = UHawkeyeAccessibility::GetFlashScaleFor(this);
+		const FHawkeyeTelegraphLook Look = HawkeyeCombatReadability::ComputeTelegraphLook(Elapsed, Windup, Flash);
+		Entry.bTelegraph = true;
+		Entry.bUnblockable = true;
+		Entry.TelegraphScale = Look.Scale * 1.15f;
+		Entry.GlyphAlpha = 1.f;
+		Entry.UnblockableTint = HawkeyeCombatReadability::ComputeUnblockableColor(UnblockableColor, Elapsed, Flash);
+		const AHawkeyePlayerController* HawkeyePC = Cast<AHawkeyePlayerController>(PC);
+		Entry.DodgeKey = UHawkeyeHintRules::GetKeyName(TEXT("Dodge"), HawkeyePC && HawkeyePC->IsUsingGamepad());
 	}
 
 	const FHawkeyeTargetMarker* Marker = Kate ? &Kate->GetMeleeTargetMarker() : nullptr;
@@ -276,9 +290,17 @@ int32 UHawkeyeThugOverheadWidget::NativePaint(const FPaintArgs& Args, const FGeo
 			Box(Layer + 1, CueTopLeft, ParryCueSize, GlyphColor);
 			Bottom -= ParryCueSize.Y + 2.f + StackGap;
 		}
-		FLinearColor Color = TelegraphColor;
+		FLinearColor Color = Entry.bUnblockable ? Entry.UnblockableTint : TelegraphColor;
 		Color.A *= Entry.GlyphAlpha;
-		PaintGlyph(OutDrawElements, Layer, AllottedGeometry, Entry.Glyph, GetTelegraphFont(Entry.TelegraphScale), Color, X, Bottom);
+		const float Height = PaintGlyph(OutDrawElements, Layer, AllottedGeometry, Entry.Glyph, GetTelegraphFont(Entry.TelegraphScale), Color, X,
+			Bottom);
+		if (Entry.bUnblockable && !Entry.DodgeKey.IsEmpty())
+		{
+			// The dodge prompt, keycap style as the hints draw a key: "[Ctrl]" over the "!!".
+			FLinearColor Cue = GlyphColor;
+			PaintGlyph(OutDrawElements, Layer, AllottedGeometry, FString::Printf(TEXT("[%s]"), *Entry.DodgeKey), Font, Cue, X,
+				Bottom - Height * 0.8f - StackGap);
+		}
 	}
 	return Layer + 2;
 }

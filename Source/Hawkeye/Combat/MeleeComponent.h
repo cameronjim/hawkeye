@@ -72,6 +72,13 @@ struct HAWKEYE_API FHawkeyeMeleeAttack
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee", meta = (ClampMin = "0.01"))
 	float LungeSeconds = 0.1f;
 
+	/**
+	 * No parry answers it (UHawkeyeMeleeRules::ClassifyParry says None): it has its own telegraph (the "!!" and the
+	 * dodge key over him) and must be dodged. A boss's heavy swing; every thug's swing leaves it off.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee")
+	bool bUnblockable = false;
+
 	/** Seconds from the start of the swing until another can start. */
 	float GetTotalSeconds() const { return WindupSeconds + RecoverSeconds; }
 };
