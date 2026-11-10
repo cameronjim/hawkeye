@@ -1834,15 +1834,15 @@ def archer_target(district):
     return (x, y, roof_z + ARCHER_TARGET_CHEST)
 
 
-_ARCHER_CACHE = {}
-
-
 def archer_placements(district):
-    """[(label, x, y, z, yaw, osm id, distance cm)] for the two archers, best first; [] if none fit."""
-    key = id(district)
-    if key not in _ARCHER_CACHE:
-        _ARCHER_CACHE[key] = _archer_placements(district)
-    return _ARCHER_CACHE[key]
+    """[(label, x, y, z, yaw, osm id, distance cm)] for the two archers, best first; [] if none fit.
+    Worked out once per District and kept on it (as grapple_reach keeps its GrappleReach): a cache
+    keyed on id() could hand a new District the placements of a collected one that had the same id."""
+    cached = getattr(district, "_archer_placements", None)
+    if cached is None:
+        cached = _archer_placements(district)
+        district._archer_placements = cached
+    return cached
 
 
 def _archer_placements(district):
