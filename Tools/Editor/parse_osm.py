@@ -140,6 +140,35 @@ def building_records(elements):
     return out
 
 
+def park_rings(elements):
+    """(id, name, outer ring) for every outer ring of every leisure=park way and relation.
+
+    A relation with several outer rings gets ``R<id>_1``, ``R<id>_2``... in stitch order, so
+    every record id is unique; a single ring keeps the plain ``W<id>`` / ``R<id>``.
+    """
+    out = []
+    for e in elements:
+        t = e.get("tags", {})
+        if t.get("leisure") != "park":
+            continue
+        if e["type"] == "way":
+            rings = [geom_latlon(e["geometry"])[:-1]]
+            prefix = "W"
+        else:
+            rings = stitch_rings([geom_latlon(m.get("geometry", [])) for m in e.get("members", [])
+                                  if m.get("role") == "outer"])
+            prefix = "R"
+        base = "{0}{1}".format(prefix, e["id"])
+        for idx, ring in enumerate(rings, 1):
+            out.append((base if len(rings) == 1 else "{0}_{1}".format(base, idx), t.get("name"), ring))
+    return out
+
+
+def sort_parks(parks):
+    """Deterministic park order: by id, then by outer ring. ``district.parks[0]`` is 'the park'."""
+    return sorted(parks, key=lambda p: (p["id"], p["outer"]))
+
+
 def road_width(tags):
     w = geo.parse_length_m(tags.get("width"))
     if w is not None and 3.0 <= w <= 60.0:
@@ -243,21 +272,15 @@ def main(raw_path):
 
     # --- parks and POIs -------------------------------------------------------------------
     parks = []
-    for rid, osm_type, osm_id, outers, holes, tags in [
-            (("W" if e["type"] == "way" else "R") + str(e["id"]), e["type"], e["id"],
-             [geom_latlon(e["geometry"])[:-1]] if e["type"] == "way" else
-             stitch_rings([geom_latlon(m.get("geometry", [])) for m in e.get("members", [])
-                           if m.get("role") == "outer"]),
-             [], e.get("tags", {}))
-            for e in elements if e.get("tags", {}).get("leisure") == "park"]:
-        for ring in outers:
-            pts = [geo.project(la, lo, lat0, lon0) for la, lo in ring]
-            if len(pts) < 3:
-                continue
-            c = frame.to_local(geo.centroid(pts))
-            if box[0] <= c[0] <= box[2] and box[1] <= c[1] <= box[3]:
-                parks.append({"id": rid, "name": tags.get("name"),
-                              "outer": [[round(la, 7), round(lo, 7)] for la, lo in ring]})
+    for park_id, park_name, ring in park_rings(elements):
+        pts = [geo.project(la, lo, lat0, lon0) for la, lo in ring]
+        if len(pts) < 3:
+            continue
+        c = frame.to_local(geo.centroid(pts))
+        if box[0] <= c[0] <= box[2] and box[1] <= c[1] <= box[3]:
+            parks.append({"id": park_id, "name": park_name,
+                          "outer": [[round(la, 7), round(lo, 7)] for la, lo in ring]})
+    parks = sort_parks(parks)
 
     pois = []
     for e in elements:
