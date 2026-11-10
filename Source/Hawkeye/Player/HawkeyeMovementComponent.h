@@ -8,6 +8,7 @@
 /** The zip's sweep hit something: Hit, whether a chain's turn was under way, whether the step reached the end. */
 DECLARE_DELEGATE_RetVal_ThreeParams(EHawkeyeZipHitResponse, FHawkeyeZipHitDelegate, const FHitResult&, bool, bool);
 DECLARE_DELEGATE_OneParam(FHawkeyeZipEndedDelegate, EHawkeyeZipEnd);
+DECLARE_DELEGATE_OneParam(FHawkeyeTraversalEndedDelegate, EHawkeyeTraversalEnd);
 
 /**
  * The character's movement, with Hawkeye's custom modes on top of the engine's
@@ -19,6 +20,12 @@ DECLARE_DELEGATE_OneParam(FHawkeyeZipEndedDelegate, EHawkeyeZipEnd);
  * and accelerates to ZipSpeed; a chain started mid-line keeps the speed and turns onto the new line
  * over RedirectBlendSeconds. The grapple owns the rules about what the capsule may pass through, so a
  * hit is put to OnZipHit; OnZipStep and OnZipEnded tell it where the zip got to and how it finished.
+ *
+ * Traversal (gameplay-semantics.md, "Traversal movement"): StartTraversal takes the move the parkour
+ * component chose and moves the capsule in PhysTraversal, along the move's path by time or by the
+ * montage's root motion, swept except through the move's own obstacle. When the time is up it holds
+ * (a hang) or leaves with the move's exit velocity; MoveTraversalHold slides the held point (a shimmy)
+ * and ReleaseTraversal lets go. OnTraversalEnded says how each move or hang finished.
  */
 UCLASS(ClassGroup = (Hawkeye), meta = (BlueprintSpawnableComponent))
 class HAWKEYE_API UHawkeyeMovementComponent : public UCharacterMovementComponent
@@ -63,8 +70,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Movement|Zip")
 	FVector GetZipLaunch() const { return ZipLaunch; }
 
+	/** Starts Move, replacing any move or hold under way; the obstacles it passes through are ignored until it ends. */
+	void StartTraversal(const FHawkeyeTraversalMove& Move);
+
+	/** Holding (a hang): the capsule goes to Location on the next movement tick, swept, and holds there. */
+	void MoveTraversalHold(const FVector& Location);
+
+	/** Lets go of a move or hold: a swept StepOff first, then Falling with NewVelocity. */
+	void ReleaseTraversal(const FVector& NewVelocity, const FVector& StepOff);
+
+	UFUNCTION(BlueprintPure, Category = "Movement|Traversal")
+	bool IsTraversing() const;
+
+	/** In the traversal mode with the move's time run out: a hang. */
+	UFUNCTION(BlueprintPure, Category = "Movement|Traversal")
+	bool IsTraversalHolding() const { return IsTraversing() && bTraversalHolding; }
+
 	virtual float GetMaxSpeed() const override;
 	virtual FString GetMovementName() const override;
+
+	/** Once, when a move ends in a hold or leaves the mode, or a hold is let go or interrupted. */
+	FHawkeyeTraversalEndedDelegate OnTraversalEnded;
 
 	/** Asked whenever the zip's sweep hits something; unbound, every hit stops the zip. */
 	FHawkeyeZipHitDelegate OnZipHit;
@@ -126,7 +152,37 @@ protected:
 	/** Leaves the zip with Velocity and the mode that goes with Reason. */
 	void EndZip(EHawkeyeZipEnd Reason, const FVector& NewVelocity);
 
+	/** The traversal owns the facing (its path's yaw, or the montage's root motion), not the movement input. */
+	virtual void PhysicsRotation(float DeltaTime) override;
+
+	/** Sub-steps a traversal move or hold the CharacterMovementComponent way. */
+	void PhysTraversal(float DeltaTime, int32 Iterations);
+
+	/** Moves the capsule to Target facing Yaw (or keeping its facing when Yaw is unset), swept; slides along a hit. */
+	void StepTraversalTo(const FVector& Target, TOptional<float> Yaw);
+
+	/** The move's time is up: hold at its end, or leave with its exit velocity. */
+	void FinishTraversal();
+
+	/** Stops ignoring the move's obstacles; every way out of the traversal goes through it. */
+	void ClearTraversalPassThrough();
+
+	/** Leaves the traversal mode for Mode with NewVelocity, reporting End. */
+	void LeaveTraversal(EMovementMode Mode, const FVector& NewVelocity, EHawkeyeTraversalEnd End);
+
 private:
+	FHawkeyeTraversalMove TraversalMove;
+	/** The move's PassThrough actors the capsule was not already ignoring: the ones to stop ignoring after. */
+	TArray<TWeakObjectPtr<AActor>> TraversalIgnored;
+	float TraversalElapsed = 0.f;
+	FVector TraversalHoldPoint = FVector::ZeroVector;
+	bool bTraversalHolding = false;
+	/** A hit was logged for this move already. */
+	bool bTraversalHitLogged = false;
+
+	/** What OnTraversalEnded reports for the next mode change out of the traversal; anything not ours is an interruption. */
+	EHawkeyeTraversalEnd PendingTraversalEnd = EHawkeyeTraversalEnd::Interrupted;
+
 	FVector ZipLaunch = FVector::ZeroVector;
 	FVector ZipEnd = FVector::ZeroVector;
 	FVector ZipHopStart = FVector::ZeroVector;

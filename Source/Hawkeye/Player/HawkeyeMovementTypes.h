@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "HawkeyeMovementTypes.generated.h"
 
+class AActor;
+
 /**
  * How the player is moving across the ground. Each gait has its own top speed on
  * AHawkeyeCharacter; the character picks one from the input every frame (SelectGait).
@@ -66,7 +68,7 @@ enum class EHawkeyeParkourRoute : uint8
 	None,
 	/** The Game Animation Sample's AC_TraversalLogic (motion-warped montage, its own detection). */
 	SampleTraversal,
-	/** UParkourComponent: a sample clip for the pose, the capsule moved along its warped root motion. */
+	/** UParkourComponent's own move, run by UHawkeyeMovementComponent's traversal mode. */
 	Procedural,
 };
 
@@ -240,6 +242,81 @@ enum class EHawkeyeCustomMovement : uint8
 	None,
 	/** A grapple zip: a hop, then a straight line to the anchor's landing point (PhysZip). */
 	Zip,
+	/** A parkour move or a hang (PhysTraversal). */
+	Traversal,
+};
+
+/** How a traversal move leaves the mode when its time is up. */
+UENUM()
+enum class EHawkeyeTraversalExit : uint8
+{
+	/** Stays in the mode, held still at the path's end: a hang. */
+	Hold,
+	/** Walking on the floor under the end, or Falling when there is none. */
+	Walk,
+	/** Falling. */
+	Fall,
+};
+
+/** Why UHawkeyeMovementComponent::OnTraversalEnded fired. */
+UENUM()
+enum class EHawkeyeTraversalEnd : uint8
+{
+	/** The move's time ran out and it ended in a hold. */
+	Held,
+	/** The move's time ran out and it left the mode (Walk or Fall). */
+	Exited,
+	/** ReleaseTraversal let go. */
+	Released,
+	/** Something else changed the movement mode. */
+	Interrupted,
+};
+
+/** One point of a traversal path: the capsule centre and the facing (yaw in degrees, unwound so turns interpolate). */
+USTRUCT()
+struct HAWKEYE_API FHawkeyeTraversalKey
+{
+	GENERATED_BODY()
+
+	FVector Location = FVector::ZeroVector;
+	float Yaw = 0.f;
+};
+
+/** A parkour move as UParkourComponent hands it to UHawkeyeMovementComponent::StartTraversal. */
+USTRUCT()
+struct HAWKEYE_API FHawkeyeTraversalMove
+{
+	GENERATED_BODY()
+
+	/** Evenly spaced in time, the first where she starts and the last where she ends. Empty: root motion moves her. */
+	TArray<FHawkeyeTraversalKey> Keys;
+
+	/** How long the move lasts, s. */
+	float Seconds = 0.f;
+
+	/** What the sweep passes through, for this move only: the obstacle it climbs over, the walls of a hang. */
+	TArray<TWeakObjectPtr<AActor>> PassThrough;
+
+	EHawkeyeTraversalExit Exit = EHawkeyeTraversalExit::Walk;
+
+	/** The velocity she leaves with (Walk or Fall). */
+	FVector ExitVelocity = FVector::ZeroVector;
+
+	/** Where the path is at Alpha (0..1 of the move's time), interpolated between its keys. */
+	FHawkeyeTraversalKey Sample(float Alpha) const
+	{
+		if (Keys.Num() < 2)
+		{
+			return Keys.Num() == 1 ? Keys[0] : FHawkeyeTraversalKey();
+		}
+		const float Scaled = FMath::Clamp(Alpha, 0.f, 1.f) * (Keys.Num() - 1);
+		const int32 Index = FMath::Min(FMath::FloorToInt32(Scaled), Keys.Num() - 2);
+		const float Blend = Scaled - Index;
+		FHawkeyeTraversalKey Out;
+		Out.Location = FMath::Lerp(Keys[Index].Location, Keys[Index + 1].Location, Blend);
+		Out.Yaw = FMath::Lerp(Keys[Index].Yaw, Keys[Index + 1].Yaw, Blend);
+		return Out;
+	}
 };
 
 /** How a zip ended; UHawkeyeMovementComponent::OnZipEnded passes it to the grapple. */

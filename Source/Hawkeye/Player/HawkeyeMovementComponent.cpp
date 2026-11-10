@@ -1,5 +1,8 @@
 #include "Player/HawkeyeMovementComponent.h"
 
+#include "GameFramework/Actor.h"
+#include "Hawkeye.h"
+
 namespace HawkeyeZip
 {
 	static constexpr uint8 ZipMode = static_cast<uint8>(EHawkeyeCustomMovement::Zip);
@@ -8,9 +11,19 @@ namespace HawkeyeZip
 	static constexpr int32 MaxHitResponses = 2;
 }
 
+namespace HawkeyeTraversal
+{
+	static constexpr uint8 TraversalMode = static_cast<uint8>(EHawkeyeCustomMovement::Traversal);
+}
+
 bool UHawkeyeMovementComponent::IsZipping() const
 {
 	return MovementMode == MOVE_Custom && CustomMovementMode == HawkeyeZip::ZipMode;
+}
+
+bool UHawkeyeMovementComponent::IsTraversing() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == HawkeyeTraversal::TraversalMode;
 }
 
 float UHawkeyeMovementComponent::GetZipProgress() const
@@ -29,7 +42,11 @@ float UHawkeyeMovementComponent::GetMaxSpeed() const
 
 FString UHawkeyeMovementComponent::GetMovementName() const
 {
-	return IsZipping() ? TEXT("Zip") : Super::GetMovementName();
+	if (IsZipping())
+	{
+		return TEXT("Zip");
+	}
+	return IsTraversing() ? TEXT("Traversal") : Super::GetMovementName();
 }
 
 void UHawkeyeMovementComponent::StartZip(const FHawkeyeZipLine& Line)
@@ -90,6 +107,11 @@ void UHawkeyeMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
 	if (CustomMovementMode == HawkeyeZip::ZipMode)
 	{
 		PhysZip(DeltaTime, Iterations);
+		return;
+	}
+	if (CustomMovementMode == HawkeyeTraversal::TraversalMode)
+	{
+		PhysTraversal(DeltaTime, Iterations);
 		return;
 	}
 	Super::PhysCustom(DeltaTime, Iterations);
@@ -234,15 +256,192 @@ void UHawkeyeMovementComponent::EndZip(EHawkeyeZipEnd Reason, const FVector& New
 void UHawkeyeMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
 {
 	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
-	if (PreviousMovementMode != MOVE_Custom || PreviousCustomMode != HawkeyeZip::ZipMode || IsZipping())
+	if (PreviousMovementMode != MOVE_Custom)
 	{
 		return;
 	}
-	const EHawkeyeZipEnd Reason = PendingZipEnd;
-	PendingZipEnd = EHawkeyeZipEnd::Interrupted;
-	bZipHopping = false;
-	bZipRedirecting = false;
-	ZipDirection = FVector::ZeroVector;
-	ZipLineSpeed = 0.f;
-	OnZipEnded.ExecuteIfBound(Reason);
+	if (PreviousCustomMode == HawkeyeZip::ZipMode && !IsZipping())
+	{
+		const EHawkeyeZipEnd Reason = PendingZipEnd;
+		PendingZipEnd = EHawkeyeZipEnd::Interrupted;
+		bZipHopping = false;
+		bZipRedirecting = false;
+		ZipDirection = FVector::ZeroVector;
+		ZipLineSpeed = 0.f;
+		OnZipEnded.ExecuteIfBound(Reason);
+	}
+	else if (PreviousCustomMode == HawkeyeTraversal::TraversalMode && !IsTraversing())
+	{
+		// Our own ways out cleared it before the mode changed; anything else must not leave an obstacle ignored.
+		ClearTraversalPassThrough();
+		const EHawkeyeTraversalEnd Reason = PendingTraversalEnd;
+		PendingTraversalEnd = EHawkeyeTraversalEnd::Interrupted;
+		bTraversalHolding = false;
+		TraversalMove = FHawkeyeTraversalMove();
+		OnTraversalEnded.ExecuteIfBound(Reason);
+	}
+}
+
+void UHawkeyeMovementComponent::StartTraversal(const FHawkeyeTraversalMove& Move)
+{
+	if (!UpdatedComponent)
+	{
+		return;
+	}
+	ClearTraversalPassThrough();
+	TraversalMove = Move;
+	TraversalElapsed = 0.f;
+	bTraversalHolding = false;
+	bTraversalHitLogged = false;
+	if (UpdatedPrimitive)
+	{
+		for (const TWeakObjectPtr<AActor>& Actor : TraversalMove.PassThrough)
+		{
+			if (Actor.IsValid() && !UpdatedPrimitive->GetMoveIgnoreActors().Contains(Actor.Get()))
+			{
+				UpdatedPrimitive->IgnoreActorWhenMoving(Actor.Get(), true);
+				TraversalIgnored.Add(Actor);
+			}
+		}
+	}
+	if (!IsTraversing())
+	{
+		PendingTraversalEnd = EHawkeyeTraversalEnd::Interrupted;
+		SetMovementMode(MOVE_Custom, HawkeyeTraversal::TraversalMode);
+	}
+}
+
+void UHawkeyeMovementComponent::MoveTraversalHold(const FVector& Location)
+{
+	if (IsTraversalHolding())
+	{
+		TraversalHoldPoint = Location;
+	}
+}
+
+void UHawkeyeMovementComponent::ReleaseTraversal(const FVector& NewVelocity, const FVector& StepOff)
+{
+	if (!IsTraversing())
+	{
+		return;
+	}
+	ClearTraversalPassThrough();
+	if (!StepOff.IsNearlyZero())
+	{
+		FHitResult Hit;
+		SafeMoveUpdatedComponent(StepOff, UpdatedComponent->GetComponentQuat(), /*bSweep=*/true, Hit);
+	}
+	LeaveTraversal(MOVE_Falling, NewVelocity, EHawkeyeTraversalEnd::Released);
+}
+
+void UHawkeyeMovementComponent::PhysicsRotation(float DeltaTime)
+{
+	if (!IsTraversing())
+	{
+		Super::PhysicsRotation(DeltaTime);
+	}
+}
+
+void UHawkeyeMovementComponent::PhysTraversal(float DeltaTime, int32 Iterations)
+{
+	if (bTraversalHolding)
+	{
+		// The held point moves only when a shimmy moves it, once a frame: one step covers it.
+		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+		StepTraversalTo(TraversalHoldPoint, {});
+		Velocity = DeltaTime > 0.f ? (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime : FVector::ZeroVector;
+		return;
+	}
+	// Set from the montage's root motion before the physics ran; constant over the frame's sub-steps.
+	const bool bRootMotion = TraversalMove.Keys.IsEmpty();
+	const FVector RootMotionVelocity = bRootMotion && HasAnimRootMotion() ? Velocity : FVector::ZeroVector;
+	float RemainingTime = DeltaTime;
+	while (IsTraversing() && !bTraversalHolding && RemainingTime >= MIN_TICK_TIME && Iterations < MaxSimulationIterations)
+	{
+		++Iterations;
+		const float TimeTick = GetSimulationTimeStep(RemainingTime, Iterations);
+		RemainingTime -= TimeTick;
+		bJustTeleported = false;
+		// The path is a function of time, not of the steps taken, so the frame rate cannot change where she goes.
+		TraversalElapsed = FMath::Min(TraversalElapsed + TimeTick, TraversalMove.Seconds);
+		const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+		if (bRootMotion)
+		{
+			StepTraversalTo(OldLocation + RootMotionVelocity * TimeTick, {});
+		}
+		else
+		{
+			const FHawkeyeTraversalKey Key = TraversalMove.Sample(
+				TraversalMove.Seconds > 0.f ? TraversalElapsed / TraversalMove.Seconds : 1.f);
+			StepTraversalTo(Key.Location, Key.Yaw);
+		}
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / TimeTick;
+		if (TraversalElapsed >= TraversalMove.Seconds)
+		{
+			FinishTraversal();
+		}
+	}
+}
+
+void UHawkeyeMovementComponent::StepTraversalTo(const FVector& Target, TOptional<float> Yaw)
+{
+	const FVector Delta = Target - UpdatedComponent->GetComponentLocation();
+	const FQuat Rotation = Yaw.IsSet() ? FRotator(0.f, Yaw.GetValue(), 0.f).Quaternion() : UpdatedComponent->GetComponentQuat();
+	FHitResult Hit;
+	SafeMoveUpdatedComponent(Delta, Rotation, /*bSweep=*/true, Hit);
+	if (!Hit.IsValidBlockingHit())
+	{
+		return;
+	}
+	if (!bTraversalHitLogged)
+	{
+		bTraversalHitLogged = true;
+		UE_LOG(LogHawkeye, Log, TEXT("%s: traversal: %s is in the way at %s; sliding along it"), *GetNameSafe(GetOwner()),
+			*GetNameSafe(Hit.GetActor()), *FVector(Hit.ImpactPoint).ToCompactString());
+	}
+	SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit, /*bHandleImpact=*/true);
+}
+
+void UHawkeyeMovementComponent::FinishTraversal()
+{
+	if (TraversalMove.Exit == EHawkeyeTraversalExit::Hold)
+	{
+		// Held where she is (the path's end unless something stopped her); the hang's wall stays passed through.
+		bTraversalHolding = true;
+		TraversalHoldPoint = UpdatedComponent->GetComponentLocation();
+		Velocity = FVector::ZeroVector;
+		OnTraversalEnded.ExecuteIfBound(EHawkeyeTraversalEnd::Held);
+		return;
+	}
+	// The top she climbed onto is a floor again before Walking looks for one.
+	ClearTraversalPassThrough();
+	const bool bWalk = TraversalMove.Exit == EHawkeyeTraversalExit::Walk;
+	LeaveTraversal(bWalk ? MOVE_Walking : MOVE_Falling, TraversalMove.ExitVelocity, EHawkeyeTraversalEnd::Exited);
+}
+
+void UHawkeyeMovementComponent::ClearTraversalPassThrough()
+{
+	if (UpdatedPrimitive)
+	{
+		for (const TWeakObjectPtr<AActor>& Actor : TraversalIgnored)
+		{
+			if (Actor.IsValid())
+			{
+				UpdatedPrimitive->IgnoreActorWhenMoving(Actor.Get(), false);
+			}
+		}
+	}
+	TraversalIgnored.Reset();
+}
+
+void UHawkeyeMovementComponent::LeaveTraversal(EMovementMode Mode, const FVector& NewVelocity, EHawkeyeTraversalEnd End)
+{
+	PendingTraversalEnd = End;
+	Velocity = NewVelocity;
+	SetMovementMode(Mode);
+	// Entering Walking found the floor; a landing over a drop has none.
+	if (MovementMode == MOVE_Walking && !CurrentFloor.IsWalkableFloor())
+	{
+		SetMovementMode(MOVE_Falling);
+	}
 }
