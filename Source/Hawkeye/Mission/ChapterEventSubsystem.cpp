@@ -16,6 +16,7 @@
 // --- Rules ---------------------------------------------------------------------------------------------------
 
 const FName UHawkeyeChapterEventRules::Parry(TEXT("parry"));
+const FName UHawkeyeChapterEventRules::Takedown(TEXT("takedown"));
 
 TArray<int32> UHawkeyeChapterEventRules::Match(const TArray<FHawkeyeChapterEvent>& Events, FName Event, const TArray<FName>& Fired)
 {
@@ -167,7 +168,7 @@ int32 UChapterEventSubsystem::Notify(FName Event)
 			++Lines;
 			if (Dialogue)
 			{
-				Dialogue->PlayLine(Line);
+				Dialogue->PlayLine(Line, Entry.bReactive);
 			}
 		}
 		for (const FHawkeyeArrowGrant& Grant : Entry.Arrows)

@@ -55,15 +55,55 @@ float UDialogueQueue::GetLineSeconds(const FHawkeyeDialogueLine& Line) const
 	return Line.DurationSeconds > 0.f ? Line.DurationSeconds : DefaultLineSeconds;
 }
 
-bool UDialogueQueue::PlayLine(FName Row)
+bool UDialogueQueue::PlayLine(FName Row, bool bReactive)
 {
 	if (!Lines.Contains(Row))
 	{
 		UE_LOG(LogHawkeye, Warning, TEXT("%s: no dialogue line '%s'."), *GetNameSafe(this), *Row.ToString());
 		return false;
 	}
-	Pending.Add({ Row, NAME_None, 0.f, false });
+	FEntry Entry{ Row, NAME_None, 0.f, false };
+	Entry.bReactive = bReactive;
+	if (!bReactive)
+	{
+		Pending.Add(Entry);
+		return true;
+	}
+	// Ahead of the story lines, behind the reactive lines already waiting.
+	const int32 At = Pending.IndexOfByPredicate([](const FEntry& Other) { return !Other.bReactive; });
+	Pending.Insert(Entry, At == INDEX_NONE ? Pending.Num() : At);
 	return true;
+}
+
+TArray<FName> UDialogueQueue::GetPendingLines() const
+{
+	TArray<FName> Out;
+	for (const FEntry& Entry : Pending)
+	{
+		Out.Add(Entry.Line);
+	}
+	return Out;
+}
+
+void UDialogueQueue::DropStale(float DeltaSeconds)
+{
+	for (int32 Index = Pending.Num() - 1; Index >= 0; --Index)
+	{
+		FEntry& Entry = Pending[Index];
+		if (!Entry.bReactive)
+		{
+			continue;
+		}
+		Entry.WaitedSeconds += DeltaSeconds;
+		if (Entry.WaitedSeconds > ReactiveMaxLateSeconds + KINDA_SMALL_NUMBER)
+		{
+			UE_LOG(LogHawkeye, Log, TEXT("%s: reactive line '%s' dropped, %.1f s late."), *GetNameSafe(this), *Entry.Line.ToString(),
+				Entry.WaitedSeconds);
+			LastDropped = Entry.Line;
+			++DroppedCount;
+			Pending.RemoveAt(Index);
+		}
+	}
 }
 
 bool UDialogueQueue::PlaySequence(FName Sequence, bool bEvenIfPlayed)
@@ -119,6 +159,7 @@ FName UDialogueQueue::Advance(float DeltaSeconds, bool bInCombat)
 {
 	float Remaining = FMath::Max(DeltaSeconds, 0.f);
 	bHeldForCombat = false;
+	DropStale(Remaining);
 	if (IsSpeaking())
 	{
 		const float Used = FMath::Min(Remaining, CurrentSecondsLeft);

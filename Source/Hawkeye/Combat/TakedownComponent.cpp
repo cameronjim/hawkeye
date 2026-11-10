@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
+#include "Mission/ChapterEventSubsystem.h"
 #include "TimerManager.h"
 
 UTakedownComponent::UTakedownComponent()
@@ -146,6 +147,11 @@ bool UTakedownComponent::TryTakedown()
 	const FVector BodyAt = Target->GetActorLocation();
 	ITakedownable::Execute_OnTakedown(Target, GetOwner());
 	OnTakedownPerformed.Broadcast(Target);
+	// The player's stealth takedown is a chapter event (the grotto's "Naughty list.").
+	if (const APawn* Owner = Cast<APawn>(GetOwner()); Owner && Owner->IsPlayerControlled())
+	{
+		UChapterEventSubsystem::NotifyEvent(this, UHawkeyeChapterEventRules::Takedown);
+	}
 	// The body drop: anyone near enough, with nothing solid in the way, comes to look.
 	if (APawn* Attacker = Cast<APawn>(GetOwner()); Attacker && TakedownNoiseLoudness > 0.f)
 	{

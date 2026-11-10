@@ -29,9 +29,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Dialogue", meta = (WorldContext = "WorldContextObject"))
 	static UDialogueSubsystem* Get(const UObject* WorldContextObject);
 
-	/** Speaks DT_Dialogue's row now, or after whatever is already queued. False for an unknown row. */
+	/**
+	 * Speaks DT_Dialogue's row now, or after whatever is already queued. A reactive line (a parry's quip) goes ahead of
+	 * queued story lines and is dropped if it cannot start in time (UDialogueQueue::ReactiveMaxLateSeconds). False for an
+	 * unknown row.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
-	bool PlayLine(FName RowName);
+	bool PlayLine(FName RowName, bool bReactive = false);
 
 	/**
 	 * Queues a walk-and-talk sequence. False for an unknown sequence, one already queued, or one

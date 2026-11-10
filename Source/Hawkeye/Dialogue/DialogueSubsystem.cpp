@@ -73,9 +73,9 @@ bool UDialogueSubsystem::IsInCombat() const
 	return CombatOverride.IsSet() ? CombatOverride.GetValue() : AHawkeyeGameMode::IsWorldInCombat(GetWorld());
 }
 
-bool UDialogueSubsystem::PlayLine(FName RowName)
+bool UDialogueSubsystem::PlayLine(FName RowName, bool bReactive)
 {
-	if (!Queue || !Queue->PlayLine(RowName))
+	if (!Queue || !Queue->PlayLine(RowName, bReactive))
 	{
 		return false;
 	}

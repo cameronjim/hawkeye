@@ -27,6 +27,14 @@ struct HAWKEYE_API FHawkeyeChapterEvent
 	/** Arrows put in the player's quiver, up to each cap: an unlock. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chapter events")
 	TArray<FHawkeyeArrowGrant> Arrows;
+
+	/**
+	 * Lines that react to the moment (a parry, a trick arrow landing): they go ahead of story lines already queued and are
+	 * dropped when they could not start within UDialogueQueue::ReactiveMaxLateSeconds (gameplay-semantics.md, "Narrative
+	 * plumbing", reactive lines). Off: queued behind everything, said however late.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chapter events")
+	bool bReactive = false;
 };
 
 /** The pure part of chapter events: which entries an event fires. */
@@ -53,4 +61,13 @@ public:
 
 	/** "parry". */
 	static const FName Parry;
+
+	/** "takedown": the player's stealth takedown landed. */
+	static const FName Takedown;
+
+	/**
+	 * Whether a line queued at an event of this entry is reactive (FHawkeyeChapterEvent::bReactive): it jumps ahead of
+	 * story lines and is dropped when it cannot start within the queue's lateness limit (UDialogueQueue).
+	 */
+	static bool IsReactive(const FHawkeyeChapterEvent& Entry) { return Entry.bReactive; }
 };

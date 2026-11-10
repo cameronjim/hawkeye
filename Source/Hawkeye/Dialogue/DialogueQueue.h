@@ -35,8 +35,12 @@ public:
 	/** Groups Rows by Sequence and sorts each group by Order (stable). Tests call this. */
 	void SetSequenceRows(const TArray<FHawkeyeDialogueSequenceRow>& Rows);
 
-	/** Queues one line by row name. False, with a warning, for an unknown row. */
-	bool PlayLine(FName Row);
+	/**
+	 * Queues one line by row name. False, with a warning, for an unknown row. A reactive line (bReactive: a quip at a
+	 * parry, at a trick arrow landing) goes ahead of every story line queued (behind other reactive ones) and is dropped,
+	 * never spoken, if it has waited more than ReactiveMaxLateSeconds without starting.
+	 */
+	bool PlayLine(FName Row, bool bReactive = false);
 
 	/**
 	 * Queues every line of Sequence behind its gap. False for an unknown or empty sequence, one
@@ -100,6 +104,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue", meta = (ClampMin = "0.5"))
 	float DefaultLineSeconds = 4.f;
 
+	/** A reactive line that has not started this long after it was queued is stale: dropped. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue", meta = (ClampMin = "0.0"))
+	float ReactiveMaxLateSeconds = 3.f;
+
+	/** Reactive lines dropped as stale, and the last one's row (tests and the log). */
+	int32 GetDroppedCount() const { return DroppedCount; }
+	FName GetLastDropped() const { return LastDropped; }
+
+	/** Rows queued, in the order they will start (tests). */
+	TArray<FName> GetPendingLines() const;
+
 private:
 	struct FEntry
 	{
@@ -107,7 +122,13 @@ private:
 		FName Sequence;
 		float GapSeconds = 0.f;
 		bool bLastOfSequence = false;
+		bool bReactive = false;
+		/** Seconds since it was queued (a reactive line's staleness clock). */
+		float WaitedSeconds = 0.f;
 	};
+
+	/** Drops every reactive line queued longer than ReactiveMaxLateSeconds; ages the rest by DeltaSeconds first. */
+	void DropStale(float DeltaSeconds);
 
 	/** Starts Pending[0]; returns its row. */
 	FName StartNext();
@@ -116,6 +137,9 @@ private:
 	TMap<FName, TArray<FHawkeyeDialogueSequenceRow>> Sequences;
 	TArray<FEntry> Pending;
 	TSet<FName> Played;
+
+	int32 DroppedCount = 0;
+	FName LastDropped;
 
 	FName CurrentLine;
 	FName CurrentSequence;
