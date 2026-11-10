@@ -1,7 +1,7 @@
 # Asset conventions
 
 ## Naming after the pivot (2026-09-25)
-Chapters replace missions: `DA_CH01_Rooftops`, `L_CH04_AuctionHouse`, one-pagers in
+Chapters replace missions: `DA_CH01_NightShift`, `L_CH04_AuctionHouse`, one-pagers in
 `docs/chapters/CH0X.md`. Districts are open-world maps: `L_District_<Name>`. Characters:
 `BP_Kate`, `BP_Clint`, `BP_Thug`, `BP_Thug_Gunner`, `BP_Archer`, `BP_Trickshot`,
 `BP_Lucky`. Arrows: `DA_Arrow_Standard`, `DA_Arrow_Grapple`, `DA_Arrow_Putty` and
@@ -15,7 +15,8 @@ and pistol assets are gone (prison content removed 2026-09-26).
 ```
 Content/
   Maps/                 L_District_EastVillage (the only map), later L_MainMenu, L_CH0X_*
-  Missions/             DA_CH01_Rooftops ...   (UMissionDefinition)
+  Missions/             DA_CH01_NightShift ...   (UMissionDefinition)
+    Chases/             DA_Chase_<Chapter> (UChaseRouteDefinition, planned by create_chase.py)
   Flashbacks/
     Definitions/        DA_FBXX_Name (UFlashbackDefinition; none yet)
     Images/             T_FBXX_01 ... (one folder per flashback if it gets big)
@@ -39,7 +40,8 @@ Content/
                         DA_EastVillage_CityProps (UCityLedgeData: ledges, anchors, fire escapes,
                         clutter) and DA_EastVillage_Map (UCityMapData: 2D footprints, park, street
                         centre lines, bounds for the world map) are written by the same script.
-  Kit/                  Grey-box modular meshes and M_Greybox materials
+  Kit/                  Grey-box modular meshes and M_Greybox materials; Kit/Chase/ the chase's props
+                        (SM_Kit_Dumpster, SM_Kit_RoofVent, SM_Kit_RoofBulkhead)
   Mannequin/            UE mannequin feature pack, copied verbatim (assets hard-reference
                         /Game/Mannequin, so the path is fixed). Used for thugs.
   Materials/            Procedural M_Concrete, M_ConcreteFloor, M_SteelPainted, M_Asphalt,

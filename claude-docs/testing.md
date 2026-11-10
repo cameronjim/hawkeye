@@ -119,24 +119,32 @@ So every pass that touches materials, meshes, lighting, or the viewmodel must al
 
 ## 2c. The campaign lap (Chapter 1 from a cold start)
 
-`Hawkeye.Lap.Campaign` (standalone `-game`, about 4 minutes) plays CH01 as a new tester: the main menu
-with no save (its own slot, `HawkeyeCampaignLap`, deleted first; the settings put back after), New Game,
-Normal, the title card, the first text read on the phone, `reach_roof` and `cross_block` by grapple (a
-planner that walks to a spot whose zip and camera line are clear, aims and presses Q; the camera line is the
-hip camera turned to the anchor, `HawkeyeGrappleView::PredictLens`, as `Hawkeye.Grapple.Audit` has it; with
-nothing in reach from a roof she goes down its fire escape and grapples up again from the street), the RoofPair with
-a bola, the bow and melee, Esc > Quit to menu > Continue compared field by field (objective, quiver,
-thugs, hints, crime and challenge counts, phone, safehouses, position, health), the ArcherPair from
-parapet cover (`find_arrow`'s roof reached by grapple, never put on it: from cross_block down a fire escape and
-up to the facade anchor on its street wall, an error if it cannot), the examine, the close-up, end card, slides
-and the placeholder room walked to its
-trigger, then on the street the save, map, music, a challenge, a fast travel, an ambush lost on purpose
-and its reload, and Quit and Continue again. Every step checks input, HUD, pause, dilation, fade, the
-grey post process and the widgets left in the viewport. It writes `Saved/Automation/campaign_lap.json`
-(timeline, checks, the LogHawkeye warnings, and everything it had to force, marked `[lap]` for a gap in
-its own driving and `[game]` for one in the game) and `Saved/Screenshots/Campaign/campaign_*.png`.
-`AHawkeyePlayerController::bAutomationPlaysAsPlayer` is the hook that gives it the boot menu, the prompt,
-the opening, the notices and the crime schedule; `hawkeye.Hints 2` turns the hints on.
+`Hawkeye.Lap.Campaign` (standalone `-game`, about 2 minutes) plays Chapter 1, "Night Shift", as a new tester:
+the main menu with no save (its own slot, `HawkeyeCampaignLap`, deleted first; the settings put back after), New
+Game, Normal, and the chapter opens mid-chase under its title card. The scripted player runs the route the chase's
+data asset lays out (`DA_Chase_CH01_NightShift`): a sprint over the vent boxes (vaults), the bulkhead (a mantle;
+the jump key if the sprint stops short), the first grapple at its stand (aimed at the route's anchor, Q only on a
+green marker), the grapple and its chain mid-zip, the grapple that goes wrong into the dumpster (its three moves
+watched phase by phase), out of the alley along the navmesh, and a takedown from behind where the thief is
+cornered. After the first grapple lands, Esc > Quit to menu > Continue is compared field by field (objective,
+quiver, thugs, hints, crimes, challenges, phone, safehouses, position, health, and the chase: state, both
+progresses, waypoints reached, the beat). Then the end card, the street with "[Chapter complete]", Clint's texts
+read on the phone (no "Kate" contact: her replies sit in his thread), the save, map, music, a challenge, a fast
+travel, an ambush lost on purpose and its reload, and Quit and Continue again. Every step checks input, HUD, pause,
+dilation, fade, the grey post process and the widgets left in the viewport. It writes
+`Saved/Automation/campaign_lap.json` (timeline, the chase's lead sampled each second, `chase_seconds`,
+`lead_min_cm`/`lead_max_cm`, checks, the LogHawkeye warnings, and everything it had to force, `[lap]` for a gap in
+its own driving and `[game]` for one in the game) and `Saved/Screenshots/Campaign/campaign_*.png` (open, grapple
+prompt, thief on a roof, dumpster, cornered, end card, street, phone).
+
+`Hawkeye.Lap.ChaseFallBehind` (about 30 s, its own process) starts the same way and then stands still: the chase is lost
+("[He got away]"), the checkpoint (the new game's save) reloads, and the chase picks up from it with the thief no
+further than `RestoreMaxLead` ahead and running. `campaign_fall_behind.json`, `campaign_lost*.png`.
+
+`AHawkeyePlayerController::bAutomationPlaysAsPlayer` is the hook that gives both the boot menu, the prompt, the
+opening and its chase, the notices and the crime schedule; `hawkeye.Hints 2` turns the hints on. Run each in a
+process of its own: the campaign state lives in the game instance, so a second lap in one process starts with the
+first one's (its title card already seen).
 
 ## 3. Playtest checklist (human)
 
@@ -207,7 +215,8 @@ screenshot tests.
 ## CI
 `.github/workflows/ci.yml` runs on push and pull request to main, with no Unreal install
 (the engine is too big for a hosted runner, so the C++ build and automation tests stay local
-via `Toolsun-tests.ps1`). Jobs: `python-tests` (unittest discovery over
+via `Tools
+un-tests.ps1`). Jobs: `python-tests` (unittest discovery over
 `Tools/Editor/test_*.py`), `osm-determinism` (re-parse the committed Overpass data, fail if
 the parsed JSON changes), `lint-python` (ruff, rules in `ruff.toml`), and `format-cpp`
 (clang-format on C++ files changed under `Source/` only). Checkouts skip LFS.
