@@ -127,6 +127,8 @@ from _reach import (  # noqa: E402,F401 - re-exported for gen.X callers
     REACH_ROOF_SPOT_EDGE, REACH_NEIGHBOUR_GAP, REACH_TOUCHING, REACH_WALKABLE_RISE, REACH_ESCAPE_MARGIN,
     REACH_CELL, _anchor_marker, _anchor_landing, GrappleReach, _outward_edges, _along_options, _facade_anchor,
     _street_edges, _roof_reached, grapple_reach, anchor_spots)
+from _ledges import (  # noqa: E402,F401 - re-exported for gen.X callers
+    LEDGE_PREFIX, LEDGE_MIN_EDGE, LEDGE_OUTSET, LEDGE_SLAB_HEIGHT, LEDGE_SPLINE, ledge_spots)
 
 MAP_PATH = "/Game/Maps/L_District_EastVillage"
 MESH_DIR = "/Game/City/EastVillage/Meshes"
@@ -2339,24 +2341,11 @@ def anchor_class():
 # traversable ledges and parkour test obstacles
 # --------------------------------------------------------------------------------------
 
-# The Game Animation Sample's traversal (AC_TraversalLogic on BP_Kate) sweeps forward on its
-# Traversable trace channel - our first custom channel - and only acts on a LevelBlock_Traversable
-# it hits. That block is a 1 m cube (pivot at a bottom corner) with four ledge splines on its top
-# edges, Ledge_1 along local y = 0 facing -Y and Ledge_2 opposite it along y = 100; a spline's up
-# vector is the ledge's outward normal. So each roof edge gets one, scaled into a slab: local X
-# along the edge, local -Y out of the facade, the top at the parapet top. Ledge_1 is then the
-# outer top edge of the parapet (corner to corner), Ledge_2 its inner edge, and the short ends are
-# narrower than the sample's 60 cm minimum ledge width. The slab is hidden, stands LEDGE_OUTSET
-# proud of the facade so the sweep meets it before the wall, and blocks only that channel.
-LEDGE_PREFIX = "City_Ledge_"
+# Where the ledges go, and why the slab is shaped as it is, is _ledges (ledge_spots).
 # BP_TraversableBlock (create_world_blueprints.py) is LevelBlock_Traversable with the sample's
 # level-style lookup switched off; the sample's cast accepts it.
 TRAVERSABLE_PATH = "/Game/Blueprints/World"
 TRAVERSABLE_NAME = "BP_TraversableBlock"
-LEDGE_MIN_EDGE = 100.0      # cm; shorter roof edges get no ledge (the sample wants 60 cm of it)
-LEDGE_OUTSET = 2.0          # cm the slab stands out from the facade
-LEDGE_SLAB_HEIGHT = 400.0   # cm down from the top; covers a step up from a lower neighbour's roof
-LEDGE_SPLINE = "Ledge_1"
 
 # --------------------------------------------------------------------------------------
 # fire escapes (where they go is _fire_escapes.fire_escape_spots)
@@ -2401,47 +2390,6 @@ def traversable_channel():
         if hasattr(unreal.CollisionChannel, name):
             return getattr(unreal.CollisionChannel, name)
     return None
-
-
-def ledge_spots(district):
-    """[(label, osm id, origin, yaw, scale, outer corner a, outer corner b, hash)] in a stable order.
-
-    One per roof edge of LEDGE_MIN_EDGE or more, on every building. ``origin`` is the slab's
-    bottom corner; ``a`` and ``b`` are where Ledge_1 should end: on the parapet top, LEDGE_OUTSET
-    outside the facade line, at the two ends of the edge.
-    """
-    spots = []
-    for rec in sorted(district.buildings, key=lambda r: r["id"]):
-        ring = geo.clean_ring(district.ring_cm(rec["outer"]), min_edge=5.0, collinear_tol=2.0)
-        if len(ring) < 3:
-            continue
-        height_cm = rec["height_m"] * 100.0
-        parapet = rec["height_m"] >= PARAPET_MIN_HEIGHT_M
-        top = height_cm + (PARAPET_HEIGHT if parapet else 0.0)
-        slab = min(top, LEDGE_SLAB_HEIGHT)
-        depth = PARAPET_THICK + LEDGE_OUTSET
-        inward = 1.0 if geo.is_ccw(ring) else -1.0
-        n = len(ring)
-        for i in range(n):
-            ax, ay = ring[i]
-            bx, by = ring[(i + 1) % n]
-            length = math.hypot(bx - ax, by - ay)
-            if length < LEDGE_MIN_EDGE:
-                continue
-            nx, ny = -(by - ay) / length * inward, (bx - ax) / length * inward
-            ux, uy = ny, -nx                       # local X: turning it +90 degrees gives the inward normal
-            if (ax * ux + ay * uy) > (bx * ux + by * uy):
-                ax, ay, bx, by = bx, by, ax, ay
-            ox, oy = ax - nx * LEDGE_OUTSET, ay - ny * LEDGE_OUTSET
-            corner_a = (ox, oy, top)
-            corner_b = (bx - nx * LEDGE_OUTSET, by - ny * LEDGE_OUTSET, top)
-            yaw = math.degrees(math.atan2(uy, ux))
-            scale = (length / 100.0, depth / 100.0, slab / 100.0)
-            origin = (ox, oy, top - slab)
-            spec = geo.record_hash(GENERATOR_VERSION, "ledge", rec["id"], i, list(origin), yaw, list(scale))
-            spots.append((LEDGE_PREFIX + "{0}_{1}".format(rec["id"], i), rec["id"], origin, yaw, scale,
-                          corner_a, corner_b, spec))
-    return spots
 
 
 def _set_components(actor, visible, traversable_only, context):
