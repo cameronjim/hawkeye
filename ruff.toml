@@ -1,0 +1,14 @@
+# Lint for the Python tooling. Deliberately narrow: real errors only.
+#   F   pyflakes (undefined names, unused imports/variables, ...)
+#   E9  syntax errors and I/O errors
+# The code base was not written against a style linter, so style rules (E4, E5, E7, W, ...)
+# are not enabled. Editor scripts import the engine-only `unreal` module, which is not
+# installed in CI; ruff does not resolve imports, so that is fine.
+target-version = "py311"
+extend-exclude = ["__pycache__"]
+
+[lint]
+select = ["F", "E9"]
+# F841 (unused local variable) is ignored: create_challenges.py has three tuple-unpacking
+# locals (`rec`, `box`) that are harmless; fix them in the code, then drop this ignore.
+ignore = ["F841"]
