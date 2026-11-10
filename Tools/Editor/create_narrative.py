@@ -123,6 +123,35 @@ CH02_LINES = [
 ]
 CH02_ID = "DA_CH02_ReindeerGames"
 
+# Chapter 3's lines (ACT1-script.md, "Chapter 3: The Grotto", all drafts), the same shape. Most are spoken by the
+# chapter's events (DA_CH03_Grotto.Events, create_mission_data.CH03_EVENTS); Santa's line and Kate's over him are the
+# boss's sequences, and the video call from the farm is a phone call's sequence (CH03_MESSAGES). ch03_spotted is ours, not
+# the script's: the objective says she was seen and so does she.
+CH03_LINES = [
+    ("ch03_hook", "Kate", "A department store lost a sleigh. An animated one. Eight reindeer. How do you lose that?", 5.0),
+    ("ch03_outside", "Kate", "\"Santa's Grotto.\" Photos twelve dollars. Santa's been busy.", 4.0),
+    ("ch03_first_guard", "Kate", "Elves with radios. Sure.", 2.5),
+    ("ch03_overheard_01", "Elf", "He wants the sleigh gone by Friday. Nobody buys a hot sleigh.", 4.0),
+    ("ch03_overheard_02", "Elf", "Somebody'll buy a hot sleigh.", 2.5),
+    ("ch03_takedown", "Kate", "Naughty list.", 1.5),
+    ("ch03_boomerang_unlocked", "Kate", "Boomerang arrow. It comes back. That's the whole thing, it comes back.", 4.0),
+    ("ch03_boomerang_back", "Kate", "Ow. It came back.", 2.0),
+    ("ch03_spotted", "Kate", "Okay. They've seen me. New plan: the old plan, louder.", 3.0),
+    ("ch03_vault", "Kate", "That's the sleigh. That's four sleighs. And a lot of watches.", 4.0),
+    ("seq_ch03_santa_01", "Santa", "Ho, ho\u2014 oh, no.", 2.5),
+    ("seq_ch03_santa_down_01", "Kate", "You're a mall Santa. You had one job and it was the opposite of this.", 4.5),
+    ("ch03_ornament_01", "Kate", "That's not mine. It's a little target. Cute. Somebody thinks they're funny.", 4.5),
+    ("ch03_ornament_02", "Kate", "...I'm keeping it. It's a nice ornament.", 3.0),
+    ("seq_ch03_call_01", "Clint", "You look terrible.", 2.0),
+    ("seq_ch03_call_02", "Kate", "I look like a hero.", 2.0),
+    ("seq_ch03_call_03", "Lila (off screen)", "Is that Kate? Ask her about the dumpster!", 3.0),
+    ("seq_ch03_call_04", "Kate", "How does she know about the dumpster.", 2.5),
+    ("seq_ch03_call_05", "Clint", "Everybody knows about the dumpster.", 2.5),
+    ("seq_ch03_call_06", "Laura (off screen)", "Take a night off, Kate!", 2.5),
+    ("seq_ch03_call_07", "Kate", "Great talk, love you all, bye.", 2.5),
+]
+CH03_ID = "DA_CH03_Grotto"
+
 # Chapter 2's slides, "Visiting hours" (ACT1-script.md): (caption, tint). Solid colours until there are images.
 FB02_NAME = "DA_FB02_VisitingHours"
 FB02_TITLE = "Visiting hours"
@@ -153,6 +182,11 @@ SEQUENCE_STEPS = [
     # the cruiser, then Kate over the city, a beat apart).
     (row, row[:-3], int(row[-2:]), row, 1.2 if row == "seq_ch04_after_05" or row == "seq_ch04_after_09" else 0.4)
     for row, _speaker, _text, _seconds in CH04_LINES if row.startswith("seq_ch04_")
+] + [
+    # Chapter 3: Santa's line as Kate walks into the workshop, hers over him once he is down, and the call from the farm
+    # (the phone's msg_ch03_call plays it), a beat between voices.
+    (row, row[:-3], int(row[-2:]), row, 0.3)
+    for row, _speaker, _text, _seconds in CH03_LINES if row.startswith("seq_ch03_")
 ]
 
 # DT_Messages: (row, sender, thread, text, trigger, objective or event, delay seconds, arrives read). After the
@@ -178,6 +212,12 @@ CH02_MESSAGES = [
     ("msg_ch02_03", "Kate", "Clint", "Do you put \"vigilante\" on a résumé", "ObjectiveCompleted", "return_toys", 12.0, True),
     ("msg_ch02_04", "Clint", "", "no", "ObjectiveCompleted", "return_toys", 15.0, False),
     ("msg_ch02_05", "Clint", "", "laura says put \"project management\"", "ObjectiveCompleted", "return_toys", 19.0, False),
+]
+
+# Chapter 3 (its rows carry CH03_ID): after the roof, the video call from the farm. It arrives as a call (CallSequence):
+# its row is the record in Clint's thread, and the voices play as seq_ch03_call. Nobody is on screen.
+CH03_MESSAGES = [
+    ("msg_ch03_call", "Clint", "", "[Video call from the farm]", "ObjectiveCompleted", "leave_roof", 8.0, False, "seq_ch03_call"),
 ]
 
 # DA_FB00_Placeholder's slides: (caption, tint). Solid colours until there are images.
@@ -244,13 +284,15 @@ def ensure_table(name, struct_name, rows):
 
 def message_rows():
     rows = []
-    for chapter, messages in ((CH01_ID, MESSAGES), (CH02_ID, CH02_MESSAGES)):
-        for name, sender, thread, text, trigger, key, delay, read in messages:
+    for chapter, messages in ((CH01_ID, MESSAGES), (CH02_ID, CH02_MESSAGES), (CH03_ID, CH03_MESSAGES)):
+        for message in messages:
+            name, sender, thread, text, trigger, key, delay, read = message[:8]
             rows.append({
                 "Name": name, "Sender": sender, "Thread": thread, "Text": text, "Trigger": trigger,
                 "TriggerObjectiveId": key if trigger != "Event" else "None",
                 "TriggerEvent": key if trigger == "Event" else "None",
                 "ChapterId": chapter, "DelaySeconds": delay, "bRead": read, "bDraft": True,
+                "CallSequence": message[8] if len(message) > 8 else "None",
             })
     return rows
 

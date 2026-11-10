@@ -785,12 +785,16 @@ def check_narrative():
         say("  DT_Messages: {0} rows, triggers {1} on {2}".format(len(names), cols.get("Trigger"), cols.get("TriggerObjectiveId")))
         import create_mission_data as md  # noqa: PLC0415 - the chapters' objectives
         import create_narrative as cn  # noqa: PLC0415 - the rows it writes
-        wanted = len(cn.MESSAGES) + len(cn.CH02_MESSAGES)
+        wanted = len(cn.MESSAGES) + len(cn.CH02_MESSAGES) + len(cn.CH03_MESSAGES)
         if len(names) != wanted:
-            fail("DT_Messages has {0} rows, expected chapters 1 and 2's {1}".format(len(names), wanted))
-        known = {o[0] for o in md.CH01_OBJECTIVES + md.CH02_OBJECTIVES} | {"None"}
+            fail("DT_Messages has {0} rows, expected chapters 1 to 3's {1}".format(len(names), wanted))
+        known = {o[0] for o in md.CH01_OBJECTIVES + md.CH02_OBJECTIVES + md.CH03_OBJECTIVES} | {"None"}
         if not all(o in known for o in cols.get("TriggerObjectiveId", [])):
-            fail("DT_Messages names an objective chapters 1 and 2 do not have")
+            fail("DT_Messages names an objective chapters 1 to 3 do not have")
+        calls = [seq for seq in cols.get("CallSequence", []) if seq != "None"]
+        say("  DT_Messages calls: {0}".format(calls))
+        if calls != [m[8] for m in cn.CH03_MESSAGES if len(m) > 8]:
+            fail("DT_Messages' calls are not chapter 3's video call")
     sequences = _table_rows("/Game/Data/DT_DialogueSequences")
     dialogue = _table_rows("/Game/Data/DT_Dialogue")
     if sequences is None or dialogue is None:
@@ -801,14 +805,15 @@ def check_narrative():
         lines = dialogue[0]
         import create_narrative as cn  # noqa: PLC0415
         import create_partner as cp  # noqa: PLC0415
-        if len(names) != len(cn.SEQUENCE_STEPS) or not all(seq.startswith(("seq_ch01_", "seq_ch04_")) for seq in cols.get("Sequence", [])):
-            fail("DT_DialogueSequences is not chapters 1 and 4's {0} steps".format(len(cn.SEQUENCE_STEPS)))
+        if len(names) != len(cn.SEQUENCE_STEPS) or not all(seq.startswith(("seq_ch01_", "seq_ch03_", "seq_ch04_"))
+                                                            for seq in cols.get("Sequence", [])):
+            fail("DT_DialogueSequences is not chapters 1, 3 and 4's {0} steps".format(len(cn.SEQUENCE_STEPS)))
         if not all(line in lines for line in cols.get("Line", [])):
             fail("DT_DialogueSequences names a line DT_Dialogue does not have")
         say("  DT_Dialogue: {0} rows".format(len(lines)))
         wanted = len(cp.dialogue_rows())
         if len(lines) != wanted:
-            fail("DT_Dialogue has {0} rows, expected the banter and chapters 1, 2 and 4's lines, {1}".format(len(lines), wanted))
+            fail("DT_Dialogue has {0} rows, expected the banter and chapters 1 to 4's lines, {1}".format(len(lines), wanted))
 
     flashback = c.load_or_none("/Game/Flashbacks/Definitions/DA_FB00_Placeholder")
     if flashback is None:
@@ -869,6 +874,50 @@ def base_material(material):
             return None
         seen += 1
     return material if isinstance(material, unreal.Material) else None
+
+
+def check_grotto():
+    """Chapter 3: the chapter between 2 and 4, its two sites (the interior's naming L_Int_Grotto), Santa in that map, the
+    boomerang flying as a returning arrow, the elves' hats."""
+    say("---- grotto ----")
+    import create_mission_data as md  # noqa: PLC0415
+
+    def path_of(value):
+        return str(value.get_path_name()).split(".")[0] if value is not None else ""
+
+    two = c.load_or_none("/Game/Missions/DA_CH02_ReindeerGames")
+    three = c.load_or_none("/Game/Missions/DA_CH03_Grotto")
+    if three is None or two is None:
+        fail("DA_CH03_Grotto or DA_CH02_ReindeerGames")
+        return
+    order = (path_of(prop(two, "next_chapter")), path_of(prop(three, "next_chapter")))
+    say("  campaign order: 2 -> {0} -> {1}".format(*order))
+    if order != ("/Game/Missions/DA_CH03_Grotto", "/Game/Missions/DA_CH04_SocialClub"):
+        fail("the campaign order is not 1, 2, 3, 4")
+    ids = [str(prop(o, "objective_id")) for o in prop(three, "objectives") or []]
+    if ids != [o[0] for o in md.CH03_OBJECTIVES]:
+        fail("DA_CH03_Grotto objectives are {0}".format(ids))
+    inside = [path_of(site) for site in prop(three, "interior_sites") or []]
+    sites = [c.load_or_none(p) for p in inside]
+    maps = [path_of(prop(site, "map")) for site in sites if site is not None]
+    say("  interior sites {0} in {1}".format(inside, maps))
+    if maps != ["/Game/Maps/L_Int_Grotto"]:
+        fail("DA_CH03_Grotto's interior site does not name L_Int_Grotto")
+    boss = prop(three, "boss")
+    if boss is None or path_of(prop(boss, "map")) != "/Game/Maps/L_Int_Grotto":
+        fail("DA_Boss_CH03_Santa is not in L_Int_Grotto")
+    boomerang = c.load_or_none("/Game/Blueprints/Weapons/DA_Arrow_Boomerang")
+    cls = prop(boomerang, "projectile_class") if boomerang is not None else None
+    say("  DA_Arrow_Boomerang: slot {0}, projectile {1}".format(prop(boomerang, "slot") if boomerang else None, cls))
+    if boomerang is None or "ReturningArrowProjectile" not in str(cls) or prop(boomerang, "slot") != 4:
+        fail("DA_Arrow_Boomerang is not a slot 4 returning arrow")
+    four = c.load_or_none("/Game/Missions/DA_CH04_SocialClub")
+    grants = [path_of(prop(g, "arrow")).split("/")[-1] for g in prop(four, "starting_arrows") or []] if four else []
+    if "DA_Arrow_Boomerang" not in grants:
+        fail("DA_CH04_SocialClub does not carry chapter 3's boomerang in")
+    elf = c.load_or_none("/Game/Blueprints/AI/BP_Thug_Elf")
+    if elf is None:
+        fail("BP_Thug_Elf")
 
 
 def check_skeletal_material_usage():
@@ -1074,6 +1123,7 @@ def main():
     check_weapon_data()
     check_data_assets()
     check_narrative()
+    check_grotto()
     check_audio()
     check_vfx()
     check_combat_anims()
