@@ -25,6 +25,13 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   second. `hawkeye.DebugTokens 1` shows who holds and who waits. Every scripted fight is
   still won; the loud interior lap takes 39.9 s, up from 32.4. **Feel check:** fight four
   thugs and say whether the turn-taking reads as fair or as thugs standing around.
+- **Kate is a character now.** She appears as Paragon's Sparrow, tinted purple, in place
+  of the grey mannequin. The mannequin still animates unseen and Sparrow copies its pose
+  each frame, so every system kept working; the game's own bow is the one shown. 511 tests
+  pass; idle frame time went from 4.7 to 5.0 ms. Without the Paragon files (a fresh clone)
+  she is the mannequin as before. Still off: the lighter cloth reads lavender, the boots
+  are brown, the holstered bow crosses her body, and hair and skirt are rigid. Thugs and
+  Clint are still mannequins.
 - **Thug StateTree.** `ST_Thug` is now the only thing that decides what a thug does.
   The duplicate C++ mode chooser is deleted; the fight's steps (HoldRing, Swing, BackOff,
   TakeCover, Peek, Burst, Draw) are tree states you can read in the StateTree editor.
