@@ -31,7 +31,15 @@ enum class EDifficultyStat : uint8
 	ArcherShotGapMinSeconds,
 	ArcherShotGapMaxSeconds,
 	/** Multiplier on every cone, pull and bend of the bow's aim assist: 1.25 / 1.0 / 0.5. */
-	AimAssistScale
+	AimAssistScale,
+	/** Thugs who may be swinging at one target at once (the melee attack tokens): 1 / 1 / 2. */
+	MeleeTokens,
+	/** Thugs who may be shooting or drawing on one target at once: 1 / 1 / 2. */
+	RangedTokens,
+	/** After a token is given back, seconds before its budget grants again: 0.9 / 0.6 / 0.4. */
+	TokenGapSeconds,
+	/** The shortest telegraph of an attack granted from off her screen, seconds: 1.2 / 1.0 / 0.8. */
+	OffScreenTelegraphSeconds
 };
 
 /**

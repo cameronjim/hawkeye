@@ -30,6 +30,10 @@ namespace HawkeyeDifficulty
 		{ EDifficultyStat::ArcherShotGapMinSeconds, { 3.0f, 1.5f, 1.2f } },
 		{ EDifficultyStat::ArcherShotGapMaxSeconds, { 4.0f, 2.5f, 1.8f } },
 		{ EDifficultyStat::AimAssistScale, { 1.25f, 1.0f, 0.5f } },
+		{ EDifficultyStat::MeleeTokens, { 1.f, 1.f, 2.f } },
+		{ EDifficultyStat::RangedTokens, { 1.f, 1.f, 2.f } },
+		{ EDifficultyStat::TokenGapSeconds, { 0.9f, 0.6f, 0.4f } },
+		{ EDifficultyStat::OffScreenTelegraphSeconds, { 1.2f, 1.0f, 0.8f } },
 	};
 
 	/** The command line's -Difficulty=, read once. */
