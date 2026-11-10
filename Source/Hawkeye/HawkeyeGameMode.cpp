@@ -20,6 +20,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Mission/MissionObjective.h"
 #include "Partner/HawkeyePartnerController.h"
+#include "Save/HawkeyeCampaignState.h"
 #include "Save/HawkeyeSaveSubsystem.h"
 #include "TimerManager.h"
 #include "World/ThugCharacter.h"
@@ -382,6 +383,11 @@ void AHawkeyeGameMode::HandleObjectiveUpdated(UMissionObjective* Objective, int3
 	UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this);
 	if (Save && Objective && Objective->IsCompleted())
 	{
+		// The objective's story flag, if it has one, goes into this very save.
+		if (UHawkeyeCampaignState* Campaign = Save->GetCampaignState(); Campaign && Campaign->ApplyObjectiveFlag(Objective))
+		{
+			UE_LOG(LogHawkeye, Log, TEXT("Campaign flag %s raised by %s."), *Objective->CampaignFlag.ToString(), *Objective->ObjectiveId.ToString());
+		}
 		// Before OnMissionComplete, which clears the quiver for the end card.
 		Save->SaveCampaign(FString::Printf(TEXT("objective %s"), *Objective->ObjectiveId.ToString()));
 	}

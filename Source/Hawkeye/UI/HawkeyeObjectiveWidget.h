@@ -31,6 +31,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD|Objective")
 	void PushToast(FText Heading, FText Title, EHawkeyeUISound Sound = EHawkeyeUISound::Toast);
 
+	/** A completed objective gets the "Objective complete" toast, unless it is an unmarked optional one. Pure. */
+	static bool ShouldToastCompletion(const UMissionObjective* Objective);
+
 	/** Drops every queued toast, the showing one included (a chapter ending supersedes them). */
 	UFUNCTION(BlueprintCallable, Category = "HUD|Objective")
 	void ClearToasts();

@@ -1,5 +1,6 @@
 #include "Save/HawkeyeCampaignState.h"
 
+#include "Mission/MissionObjective.h"
 #include "Misc/PackageName.h"
 #include "UObject/SoftObjectPath.h"
 
@@ -36,6 +37,23 @@ void UHawkeyeCampaignState::ResetCampaign()
 	bChasePulledAhead = false;
 	bChaseVaulted = false;
 	BossHeard.Reset();
+	CampaignFlags.Reset();
+	FiredChapterEvents.Reset();
+}
+
+bool UHawkeyeCampaignState::RaiseFlag(FName Flag)
+{
+	if (Flag.IsNone() || CampaignFlags.Contains(Flag))
+	{
+		return false;
+	}
+	CampaignFlags.Add(Flag);
+	return true;
+}
+
+bool UHawkeyeCampaignState::ApplyObjectiveFlag(const UMissionObjective* Objective)
+{
+	return Objective && Objective->IsCompleted() && RaiseFlag(Objective->CampaignFlag);
 }
 
 bool UHawkeyeCampaignState::CanMigrateFrom(int32 SavedVersion)

@@ -158,9 +158,30 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Boss")
 	TArray<FString> BossHeard;
 
+	/**
+	 * Story facts a chapter leaves for later ones ("saw_courier"), raised by UMissionObjective::CampaignFlag. Unlike the
+	 * objectives they outlive the chapter; only a new game clears them.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Narrative")
+	TArray<FName> CampaignFlags;
+
+	/** The running chapter's events that have fired (UChapterEventSubsystem), so a load repeats no line or grant. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Narrative")
+	TArray<FName> FiredChapterEvents;
+
 	/** Back to a fresh campaign. */
 	UFUNCTION(BlueprintCallable, Category = "Save")
 	void ResetCampaign();
+
+	/** Raises Flag. False when it is None or already up. */
+	UFUNCTION(BlueprintCallable, Category = "Save")
+	bool RaiseFlag(FName Flag);
+
+	UFUNCTION(BlueprintPure, Category = "Save")
+	bool HasFlag(FName Flag) const { return !Flag.IsNone() && CampaignFlags.Contains(Flag); }
+
+	/** A completed objective's CampaignFlag goes up (AHawkeyeGameMode calls this before the objective's autosave). */
+	bool ApplyObjectiveFlag(const class UMissionObjective* Objective);
 
 	/**
 	 * Whether a save of SavedVersion can be brought up to CurrentVersion. There are no migrations

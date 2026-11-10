@@ -45,6 +45,24 @@ public:
 	bool bOptional = false;
 
 	/**
+	 * Never on the HUD: no "Objective complete" toast when it completes, no marker and no compass bearing (it is never
+	 * the current objective, which only a required one can be). For an optional thing the player finds or not, like an
+	 * examine off the path. Ignored on a required objective, which the HUD has to show.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
+	bool bUnmarked = false;
+
+	/**
+	 * Raised in the campaign (UHawkeyeCampaignState::CampaignFlags) when this completes, for later chapters to read;
+	 * kept across chapters until a new game. None raises nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
+	FName CampaignFlag;
+
+	/** bUnmarked on an optional objective: the HUD leaves it out entirely. */
+	bool IsHiddenFromHud() const { return bUnmarked && bOptional; }
+
+	/**
 	 * Use WorldLocation as the HUD marker's point. Leave off for objectives completed by an
 	 * AObjectiveTriggerVolume: the volume registers its own centre at BeginPlay.
 	 */

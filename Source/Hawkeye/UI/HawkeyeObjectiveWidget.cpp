@@ -93,11 +93,16 @@ void UHawkeyeObjectiveWidget::HandleMissionStarted(UMissionDefinition* /*Mission
 
 void UHawkeyeObjectiveWidget::HandleObjectiveUpdated(UMissionObjective* Objective, int32 /*ObjectiveIndex*/)
 {
-	if (Objective && Objective->IsCompleted())
+	if (ShouldToastCompletion(Objective))
 	{
 		PushToast(ObjectiveCompleteHeading, Objective->Title, EHawkeyeUISound::ObjectiveComplete);
 	}
 	NoteCurrentObjective();
+}
+
+bool UHawkeyeObjectiveWidget::ShouldToastCompletion(const UMissionObjective* Objective)
+{
+	return Objective && Objective->IsCompleted() && !Objective->IsHiddenFromHud();
 }
 
 void UHawkeyeObjectiveWidget::NoteCurrentObjective()
