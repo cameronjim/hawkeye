@@ -95,7 +95,6 @@ import json
 import math
 import os
 import sys
-import zlib
 
 import unreal
 
@@ -103,6 +102,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 import _geo as geo  # noqa: E402
 import _materials as m  # noqa: E402
+from _geomutil import (  # noqa: E402,F401 - re-exported for gen.X callers
+    closest_point_on_polyline, _segments_cross, ring_distance, oriented_rect, _segment_distance,
+    _edge_clearance, _segment_params, _edge_distance, _point_quad_distance, stable_hash, _near_segment)
 
 DISTRICT = "east_village"
 MAP_PATH = "/Game/Maps/L_District_EastVillage"
@@ -889,21 +891,6 @@ def ensure_labelled(existing, actor_class, label, location, rotation=None):
     return actor, 1
 
 
-def closest_point_on_polyline(p, path):
-    best = None
-    for i in range(len(path) - 1):
-        ax, ay = path[i]
-        bx, by = path[i + 1]
-        dx, dy = bx - ax, by - ay
-        L2 = dx * dx + dy * dy
-        t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - ay) * dy) / L2))
-        q = (ax + t * dx, ay + t * dy)
-        d = math.hypot(q[0] - p[0], q[1] - p[1])
-        if best is None or d < best[0]:
-            best = (d, q)
-    return best
-
-
 PLAYER_START_STREET = "East 7th Street"
 
 
@@ -1122,14 +1109,6 @@ def remove_prison_actors(existing):
     return removed
 
 
-def _segments_cross(a, b, p, q):
-    def orient(o, s, t):
-        return (s[0] - o[0]) * (t[1] - o[1]) - (s[1] - o[1]) * (t[0] - o[0])
-    d1, d2 = orient(p, q, a), orient(p, q, b)
-    d3, d4 = orient(a, b, p), orient(a, b, q)
-    return (d1 > 0) != (d2 > 0) and (d3 > 0) != (d4 > 0)
-
-
 def streets_crossed(district, a, b):
     """Names of the road centre lines the segment a-b crosses."""
     names = set()
@@ -1139,35 +1118,6 @@ def streets_crossed(district, a, b):
             if any(_segments_cross(a, b, p, q) for p, q in zip(path, path[1:])):
                 names.add(rec.get("name") or rec["id"])
     return names
-
-
-def ring_distance(pt, ring):
-    """0 inside the ring, else the distance to its nearest edge."""
-    if geo.point_in_polygon(pt, ring):
-        return 0.0
-    return closest_point_on_polyline(pt, list(ring) + [ring[0]])[0]
-
-
-def oriented_rect(ring):
-    """Smallest rectangle around the ring with a side along one of its edges:
-    (centre x, centre y, half length, half width, yaw degrees)."""
-    best = None
-    n = len(ring)
-    for i in range(n):
-        ax, ay = ring[i]
-        bx, by = ring[(i + 1) % n]
-        L = math.hypot(bx - ax, by - ay)
-        if L < 1.0:
-            continue
-        ux, uy = (bx - ax) / L, (by - ay) / L
-        us = [x * ux + y * uy for x, y in ring]
-        vs = [-x * uy + y * ux for x, y in ring]
-        area = (max(us) - min(us)) * (max(vs) - min(vs))
-        if best is None or area < best[0]:
-            cu, cv = (max(us) + min(us)) * 0.5, (max(vs) + min(vs)) * 0.5
-            best = (area, cu * ux - cv * uy, cu * uy + cv * ux,
-                    (max(us) - min(us)) * 0.5, (max(vs) - min(vs)) * 0.5, math.degrees(math.atan2(uy, ux)))
-    return best[1:] if best else None
 
 
 def objective_roofs(district):
@@ -1483,14 +1433,6 @@ def ensure_chapter_end_meshes():
     return out
 
 
-def _segment_distance(p, a, b):
-    ax, ay, bx, by = a[0], a[1], b[0], b[1]
-    dx, dy = bx - ax, by - ay
-    length2 = dx * dx + dy * dy
-    t = 0.0 if length2 <= 0.0 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - ay) * dy) / length2))
-    return math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy))
-
-
 def chapter_end_spot(district):
     """{tower (x, y), direction to the beacon (dx, dy), roof z} for the find_arrow tower, or None.
 
@@ -1640,12 +1582,6 @@ CROSSING_CLEARANCE = 300.0        # cm; a patrol point this far from any other r
 THUG_LOADOUT = (("FISTS", ROOF_PAIR_TAG), ("BAT", ROOF_PAIR_TAG),
                 ("BAT", STREET_PAIR_TAG), ("PISTOL", STREET_PAIR_TAG),
                 ("SHIELD", STREET_GROUP_TAG))
-
-
-def _edge_clearance(pt, ring):
-    """Distance inside the ring to its nearest edge; negative outside."""
-    d = closest_point_on_polyline(pt, list(ring) + [ring[0]])[0]
-    return d if geo.point_in_polygon(pt, ring) else -d
 
 
 def roof_pair_spots(district):
@@ -1935,28 +1871,6 @@ def _building_tops(district):
         top = rec["height_m"] * 100.0 + (ARCHER_PARAPET if rec["height_m"] >= 6.0 else 0.0)
         out.append((rec, ring, geo.bounds(ring), top))
     return out
-
-
-def _segment_params(a, b, ring):
-    """Parameters (0..1) along a->b where it crosses the ring's edges, plus 0 and 1 if an end is inside."""
-    ts = []
-    if geo.point_in_polygon(a, ring):
-        ts.append(0.0)
-    if geo.point_in_polygon(b, ring):
-        ts.append(1.0)
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    n = len(ring)
-    for i in range(n):
-        p, q = ring[i], ring[(i + 1) % n]
-        ex, ey = q[0] - p[0], q[1] - p[1]
-        den = dx * ey - dy * ex
-        if abs(den) < 1e-9:
-            continue
-        t = ((p[0] - a[0]) * ey - (p[1] - a[1]) * ex) / den
-        u = ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / den
-        if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0:
-            ts.append(t)
-    return ts
 
 
 def archer_line_blockers(a3, b3, tops):
@@ -2432,10 +2346,6 @@ ANCHOR_MIN_INTERIOR = 45.0        # degrees; sharper corners put the landing too
 ANCHOR_LANDING_INBOARD = 60.0     # cm from the anchor to the landing point, square to each edge
 ANCHOR_LANDING_CLEARANCE = 70.0   # cm from any roof edge: the parapet (30) plus Kate's capsule (34)
 ANCHOR_BURIED_DISTANCE = 40.0     # cm; an anchor this close to a taller neighbour is in its wall
-
-
-def _edge_distance(pt, ring):
-    return closest_point_on_polyline(pt, list(ring) + [ring[0]])[0]
 
 
 def _corner_anchor_spots(district):
@@ -3400,12 +3310,6 @@ def _rects_overlap(a, b):
     return True
 
 
-def _point_quad_distance(pt, quad):
-    if geo.point_in_polygon(pt, quad):
-        return 0.0
-    return closest_point_on_polyline(pt, list(quad) + [quad[0]])[0]
-
-
 def fire_escape_spots(district):
     """[(osm id, floor, (x, y, z), yaw, ladder drop, ladder side)] in a stable order.
 
@@ -4141,12 +4045,6 @@ CLUTTER_MATERIALS = {
 }
 
 
-def stable_hash(*parts):
-    """0..1 from the parts' text, the same on every run and machine."""
-    text = "|".join(str(p) for p in parts)
-    return (zlib.crc32(text.encode("utf-8")) & 0xffffffff) / 4294967296.0
-
-
 def _bx(mesh, cx, cy, z0, sx, sy, sz, yaw=0.0):
     xf = unreal.Transform(location=unreal.Vector(cx, cy, z0), rotation=unreal.Rotator(0.0, 0.0, yaw))
     GS_PRIM.append_box(mesh, unreal.GeometryScriptPrimitiveOptions(), xf, sx, sy, sz, 0, 0, 0,
@@ -4276,10 +4174,6 @@ def ensure_clutter_meshes():
 
 def ensure_clutter_materials():
     return {key: m.ensure_prop_instance(key, rgb, rough) for key, (rgb, rough) in sorted(CLUTTER_MATERIALS.items())}
-
-
-def _near_segment(pt, a, b):
-    return closest_point_on_polyline(pt, [a, b])[0]
 
 
 def clutter_keepouts(district):

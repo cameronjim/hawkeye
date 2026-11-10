@@ -43,6 +43,7 @@ import _common as c  # noqa: E402
 import _geo as geo  # noqa: E402
 import _materials as m  # noqa: E402
 import create_blueprints as cb  # noqa: E402
+from _geomutil import _segment_distance  # noqa: E402 - was a copy of the same formula here
 
 CRIME_PATH = "/Game/Crimes"
 ASSET_PREFIX = "DA_Crime_"
@@ -241,13 +242,6 @@ def _ray_hit(origin, direction, reach, tops):
             if 0.0 <= t <= 1.0 and 1.0 < s <= reach and (best is None or s < best):
                 best = s
     return best
-
-
-def _segment_distance(pt, a, b):
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    L2 = dx * dx + dy * dy
-    t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / L2))
-    return math.hypot(a[0] + t * dx - pt[0], a[1] + t * dy - pt[1])
 
 
 def _carriageway_distance(world, pt):

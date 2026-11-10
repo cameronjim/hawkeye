@@ -228,8 +228,7 @@ LEDGE_TOLERANCE_CM = 5.0
 
 
 
-def closest_point_on_ring(pt, ring):
-    return gen.closest_point_on_polyline(pt, list(ring) + [ring[0]])[0]
+closest_point_on_ring = gen._edge_distance   # was the same expression, written out here
 
 
 def check_ledges(district, actors):
