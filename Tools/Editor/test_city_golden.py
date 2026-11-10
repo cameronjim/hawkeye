@@ -30,6 +30,7 @@ GOLDEN = {
     "anchor_spots": "7dab19e466ea9fd2",
     "archer_placements": "3aa6f24537b5d483",
     "clutter_plan": "647ed3d9105e0e97",
+    "chase_plan": "f48c5dee01ea1533",
 }
 
 
@@ -122,6 +123,12 @@ class GoldenTest(unittest.TestCase):
 
     def test_clutter_plan(self):
         self.check("clutter_plan", self.gen.clutter_plan(self.district))
+
+    def test_chase_plan(self):
+        """Act 1's chase route (_chase.plan_chase, create_chase.py): planned from the same records over the
+        challenges' grapple model; about a minute, most of it the planning world."""
+        import _chase
+        self.check("chase_plan", _chase.plan_chase(self.district))
 
 
 if __name__ == "__main__":
