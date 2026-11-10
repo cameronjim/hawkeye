@@ -17,13 +17,11 @@ is left of the old design is small and named here so nobody builds on it:
 | Leftover | What it is now |
 |----------|----------------|
 | `UWeaponComponent`, `UWeaponDefinition` | The thugs' hitscan pistol, and Kate's `Hands` punch while she owns no bow. The player shoots with `UBowComponent`. |
-| `UBossPhaseComponent` | Built and tested, but no asset uses it yet (Part 1's boss is not built). The music reads it to tell a boss from a thug. |
 | `AHawkeyeGameMode::RestartMission` | Reloads the level. Death and the pause menu's restart use `ReloadLastCheckpoint`, which loads the last save. |
-| Chapter select in the safehouse menu | A stub that lists `[CH01]` and the rest as locked. |
 | `gameplay-semantics.md` sections marked LEGACY or `Choices` | Punisher text, kept until the chapters that replace it are written. |
 
-Still planned: World Partition (the district is one map with it off), a boss, and chapters
-after the first.
+Still planned: World Partition (the district is one map with it off) and chapters 2 and 3 of Act 1 (chapter 4,
+the boss, is built and follows chapter 1 in the campaign's order until they exist).
 
 ## The systems
 
@@ -105,10 +103,11 @@ Rules: `gameplay-semantics.md`, "Flashback".
   `ApplyMeleeDamage` can stagger. Every damageable thing has one: Kate, Clint, thugs, shootable lights.
   Rules: "Health and damage".
 - `UBossPhaseComponent`: requires a `UHealthComponent` on the same actor. An ordered
-  `FBossPhase` array with health-percent thresholds. Listens to `OnHealthChanged`, advances
-  the phase index when health drops below the next threshold, optionally sets
-  `bInvulnerable` for `TransitionSeconds`, fires `OnPhaseChanged(Old, New, Phase)`. It does
-  not know what a phase means; the boss Blueprint and its StateTree react. Rules: "Boss phases".
+  `FBossPhase` array: health thresholds (a fraction), an entry (health below, or the crew of the phase before
+  down: `NotifyCrewDown`), a whole-phase invulnerability, a protected transition. Listens to `OnHealthChanged`,
+  walks phases with `UBossRules::ResolvePhase`, fires `OnPhaseChanged(Old, New, Phase)`; `RestorePhase` is a
+  checkpoint. It does not know what a phase means; `UBossFightSubsystem` (Boss, below) reacts. The music reads it
+  to tell a boss from a thug. Rules: "Boss phases".
 - `UBowComponent`, `UBowDefinition`: the player's bow. `StartDraw` on the fire press,
   `ReleaseDraw` on release; the draw fraction sets speed, damage and spread, with a bonus
   for a release in the perfect window. Spends one arrow of the active quiver slot and spawns
@@ -287,6 +286,32 @@ Rules: "Chases". Built for Act 1's "Night Shift".
   checkpoint), and mirrors its state into `UHawkeyeCampaignState`. `AHawkeyePlayerController`
   starts it as the chapter's opening begins.
 
+### Boss (`Source/Hawkeye/Boss`)
+Rules: "Bosses". Built for Act 1's "The Social Club".
+- `UBossDefinition` (primary data asset, `DA_Boss_CH04_Tomas`): the boss's body class (a thug Blueprint,
+  `BP_Boss_Tomas`), health, scale, move set (`FBossMoveSet`: the combo, the winded window, finisher share, stagger
+  threshold), his phases (`FBossPhaseDefinition`: the `FBossPhase` rule plus objective, fights or watches, crew,
+  hazard, start and end lines, barks, arrow grants), the arena (`FBossArena`: the roof's outline, the fight's
+  centre, the street stand and its anchor, his spot, the hazard's lane and mesh, props and lights) and the hazard's
+  tuning. Written by `Tools/Editor/create_boss.py`, the arena planned from the district by `_arena.py`. A chapter
+  names it on `UMissionDefinition::Boss`; a second boss is another asset.
+- `UBossRules` and `FBossComboClock`: the pure rules (phase walk, damageable, winded bonus, finisher share,
+  checkpoint from objectives and its health, the hazard's clock and its hits, barks, intro, on the roof). Tests:
+  `Hawkeye.Boss.*`, `Hawkeye.BossPhase.*`, `Hawkeye.Campaign.*`.
+- `UBossFightSubsystem` (world, ticking): on the chapter's start dresses the roof and stands the boss and the first
+  crew there (thugs spawned from data with their thinking off, `bSkipSave`; the boss gets his combo, finisher share,
+  knockdown resistance and a `UBossPhaseComponent` added at spawn, so he needs no class of his own), completes the
+  meet objective when Kate's feet are on the roof, plays the pre-fight sequence, runs the phases (crews alerted, the
+  boss fighting through `ST_Thug` with his combo or watching, the winded window from his swing count, barks from
+  what it sees, the hazard loose, arrows granted), completes each phase's objective as the next opens and the last
+  after the after sequence, and restarts at the save's checkpoint on a load (`OnCampaignLoaded`).
+  `AHawkeyePlayerController` calls `BeginChapter` with the chapter's opening (Kate to the street stand).
+- `ABossArenaHazard`: the arena's moving hazard (the inflatable Santa): tethered, then telegraph, sweep and rest on
+  the rules' clock, a lit strip and a red light for the telegraph, hits Kate only in its lane while it sweeps.
+- Campaign order (`Mission/CampaignOrder`, `UHawkeyeCampaignOrder`): the chain of `UMissionDefinition::NextChapter`
+  from the district's starting chapter; the safehouse's chapter select lists it and starts an open chapter with
+  `AHawkeyeGameMode::StartChapter`, which `-HawkeyeChapter=` and `hawkeye.StartChapter` use too.
+
 ### Crime and challenges (`Source/Hawkeye/Crime`, `Source/Hawkeye/Challenge`)
 Rules: "Street crimes", "Side challenges". Both follow one shape: pure rules, a tracker with no world,
 a world subsystem that applies them, data assets written by a `create_*.py` script, and counts mirrored
@@ -422,7 +447,7 @@ in `WBP_*`; behaviour in the C++ parent.
 ### Tools (`Tools/`)
 Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
 - `Tools/Editor/create_all.py` runs the `create_*.py` and `import_*.py` scripts in dependency order
-  (input, audio, vfx, GASP import, blueprints, world blueprints, weapon data, chase, missions, partner,
+  (input, audio, vfx, GASP import, blueprints, world blueprints, weapon data, chase, boss, missions, partner,
   enemies, narrative, crimes, challenges, combat clips, bow IK, Kate's look). Each is idempotent: it
   checks before creating and prints one line per asset. `verify_*.py` are read-only checks.
 - `generate_city.py`: the district from OSM records (`parse_osm.py` makes them; `Tools/fetch-osm.ps1`
@@ -430,9 +455,10 @@ Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
   modules it re-exports so they run and test under CPython: `_geo` and `_geomutil` (projection and 2D
   geometry), `_district` (the records, shared dimensions, street layout, facade style, lamps),
   `_reach` (the grapple's reach model and anchor placement), `_ledges` (one slab per roof edge),
-  `_fire_escapes`. `_chase.py` plans the chase from the same records with the same reach model.
+  `_fire_escapes`. `_chase.py` plans the chase from the same records with the same reach model; `_arena.py` picks
+  and lays out the boss's roof the same way (`create_boss.py`).
   Python tests: `test_geo.py`, `test_city_geometry.py`, `test_city_golden.py`, `test_interior.py`,
-  `test_parse_osm.py`. `verify_city.py` checks the generated map against the records.
+  `test_parse_osm.py`, `test_arena.py`. `verify_city.py` checks the generated map against the records.
 - Interiors: `generate_interior.py` and `_interior.py` from `Tools/Interiors/*.json`.
 
 ## Boundaries
@@ -453,8 +479,10 @@ Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
    calls `MissionSubsystem->StartMission(DA_CH01_NightShift)`. A save load starts it the same way, then
    `ApplyPendingRestore` puts the objectives and actors back.
 2. Subsystem duplicates objectives, marks the first as current, fires `OnMissionStarted`. The game mode
-   applies the chapter's cast and grants its bow and arrows. The player controller shows the chapter title
-   (once per campaign), plays the opening dialogue, and starts the chase if the mission names one.
+   applies the chapter's cast and grants its bow and arrows; a boss chapter's roof is set up. The player
+   controller shows the chapter title (once per campaign), plays the opening dialogue, starts the chase if the
+   mission names one, and puts Kate on the boss arena's street stand if it names a boss. Another chapter starts
+   the same way from chapter select (`AHawkeyeGameMode::StartChapter`).
 3. Player plays. World actors call `CompleteObjective` by id. Order is not enforced unless
    `UMissionDefinition::bEnforceOrder` is on. Each completed objective autosaves.
 4. When every non-optional objective is complete: `OnMissionComplete` (the autosave has already run). If
