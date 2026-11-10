@@ -84,6 +84,19 @@ FGrappleReachProfile FGrappleReachWorld::MakeProfile(const APawn* Pawn)
 	return Profile;
 }
 
+FGrappleReachProfile FGrappleReachWorld::MakePlayerProfile(const UWorld* World, TSubclassOf<APawn> PawnClass)
+{
+	if (!PawnClass || !PawnClass->IsChildOf(AHawkeyeCharacter::StaticClass()))
+	{
+		PawnClass = FindPlayerPawnClass(World);
+	}
+	if (!PawnClass || !PawnClass->IsChildOf(AHawkeyeCharacter::StaticClass()))
+	{
+		PawnClass = AHawkeyeCharacter::StaticClass();
+	}
+	return MakeProfile(PawnClass->GetDefaultObject<APawn>());
+}
+
 TSubclassOf<APawn> FGrappleReachWorld::FindPlayerPawnClass(const UWorld* World)
 {
 	const AWorldSettings* Settings = World ? World->GetWorldSettings(false, false) : nullptr;

@@ -73,6 +73,12 @@ struct HAWKEYE_API FGrappleReachWorld
 	/** The profile of Pawn (a live pawn or a class default). Falls back to the rules' defaults for anything missing. */
 	static FGrappleReachProfile MakeProfile(const APawn* Pawn);
 
+	/**
+	 * The profile of the player: PawnClass when it is a Hawkeye character, else the map's game mode's default pawn,
+	 * else AHawkeyeCharacter's class default.
+	 */
+	static FGrappleReachProfile MakePlayerProfile(const UWorld* World, TSubclassOf<APawn> PawnClass = nullptr);
+
 	/** The pawn class the map's game mode spawns for the player, or null. */
 	static TSubclassOf<APawn> FindPlayerPawnClass(const UWorld* World);
 
