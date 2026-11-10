@@ -25,6 +25,7 @@
 #include "GameFramework/Controller.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Mission/ChapterEventSubsystem.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/GrappleComponent.h"
 #include "Player/InventoryComponent.h"
@@ -501,6 +502,10 @@ bool UBowComponent::FireArrow(float Elapsed)
 
 	FollowThroughUntilSeconds = GetNowSeconds() + FollowThroughSeconds;
 	OnArrowFired.Broadcast(Arrow);
+	if (const APawn* Shooter = Cast<APawn>(Owner); Shooter && Shooter->IsPlayerControlled())
+	{
+		UChapterEventSubsystem::NotifyEvent(this, UHawkeyeChapterEventRules::ArrowLoosed(Arrow));
+	}
 	return true;
 }
 

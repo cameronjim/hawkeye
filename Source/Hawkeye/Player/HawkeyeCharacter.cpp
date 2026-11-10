@@ -37,6 +37,7 @@
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
+#include "Mission/ChapterEventSubsystem.h"
 #include "Player/LocomotionAnim.h"
 #include "Player/ParkourComponent.h"
 #include "Misc/ScopeExit.h"
@@ -494,6 +495,7 @@ void AHawkeyeCharacter::CaptureSaveSnapshot()
 	SavedBowPath.Reset();
 	SavedArrowPaths.Reset();
 	SavedArrowCounts.Reset();
+	SavedKeycards.Reset();
 	SavedActiveArrowSlot = 1;
 	if (!InventoryComponent)
 	{
@@ -510,6 +512,8 @@ void AHawkeyeCharacter::CaptureSaveSnapshot()
 		}
 	}
 	SavedActiveArrowSlot = InventoryComponent->GetActiveArrowSlot();
+	SavedKeycards = InventoryComponent->GetKeycards().Array();
+	SavedKeycards.Sort(FNameLexicalLess());
 }
 
 void AHawkeyeCharacter::ApplySaveSnapshot()
@@ -541,6 +545,10 @@ void AHawkeyeCharacter::ApplySaveSnapshot()
 		Slot.Count = SavedArrowCounts[Index];
 	}
 	InventoryComponent->RestoreQuiver(SavedBow, Slots, SavedActiveArrowSlot);
+	for (const FName Keycard : SavedKeycards)
+	{
+		InventoryComponent->GiveKeycard(Keycard);
+	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: restored from the save at %.0f health, bow %s, %d arrow type(s)."), *GetName(),
 		SavedHealth, *GetNameSafe(SavedBow), Slots.Num());
 }
@@ -2745,6 +2753,10 @@ bool AHawkeyeCharacter::TryParry()
 	}
 	UpdateArmPoses();
 	++ParryCount;
+	if (IsPlayerControlled())
+	{
+		UChapterEventSubsystem::NotifyEvent(this, UHawkeyeChapterEventRules::Parry);
+	}
 
 	const FVector Contact = (GetActorLocation() + Thug->GetActorLocation()) * 0.5f + FVector(0.f, 0.f, 40.f);
 	UHawkeyeAudioSubsystem::PlayAt(this, ParrySound, Contact, TEXT("parry"));

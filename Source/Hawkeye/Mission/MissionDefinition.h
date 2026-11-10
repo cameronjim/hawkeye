@@ -3,9 +3,11 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Combat/ArrowDefinition.h"
+#include "Mission/ChapterEvents.h"
 #include "MissionDefinition.generated.h"
 
 class UBossDefinition;
+class UChapterSiteDefinition;
 class UBowDefinition;
 class UChaseRouteDefinition;
 class UMissionObjective;
@@ -87,6 +89,21 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
 	TSoftObjectPtr<UBossDefinition> Boss;
+
+	/**
+	 * The chapter's set piece on the district (gameplay-semantics.md, "Chapter sites"): props, lights, objective volumes,
+	 * a crew, pickups and examines, spawned by UChapterSiteSubsystem while the chapter is the running one. None for a
+	 * chapter without one.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TSoftObjectPtr<UChapterSiteDefinition> Site;
+
+	/**
+	 * What the chapter does the first time something happens in it (gameplay-semantics.md, "Chapter events"): lines
+	 * spoken and arrows granted on a parry, an arrow loosed, an objective completed or started.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TArray<FHawkeyeChapterEvent> Events;
 
 	/**
 	 * The chapter after this one in the campaign's order (UHawkeyeCampaignOrder): it opens in chapter select once this

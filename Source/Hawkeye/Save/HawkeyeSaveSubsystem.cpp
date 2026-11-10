@@ -1,4 +1,6 @@
 #include "Save/HawkeyeSaveSubsystem.h"
+#include "Mission/ChapterEventSubsystem.h"
+#include "Misc/ScopeExit.h"
 
 #include "Hawkeye.h"
 #include "HawkeyePlayerController.h"
@@ -183,6 +185,10 @@ void UHawkeyeSaveSubsystem::CaptureCampaign(UWorld* World)
 	if (const UBossFightSubsystem* Boss = World->GetSubsystem<UBossFightSubsystem>())
 	{
 		Boss->MirrorToCampaign();
+	}
+	if (const UChapterEventSubsystem* Events = World->GetSubsystem<UChapterEventSubsystem>())
+	{
+		Events->MirrorToCampaign();
 	}
 }
 
@@ -374,7 +380,11 @@ void UHawkeyeSaveSubsystem::ApplyPendingRestore(UWorld* World)
 	{
 		return;
 	}
-	bRestorePending = false;
+	// Still a load while the saved chapter is started below: its listeners (the chapter's events) must see one.
+	ON_SCOPE_EXIT
+	{
+		bRestorePending = false;
+	};
 
 	UMissionSubsystem* Missions = UMissionSubsystem::Get(World);
 	UMissionTracker* Tracker = Missions ? Missions->GetTracker() : nullptr;

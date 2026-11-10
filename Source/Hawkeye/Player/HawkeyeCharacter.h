@@ -1916,6 +1916,10 @@ protected:
 	UPROPERTY(SaveGame)
 	int32 SavedActiveArrowSlot = 1;
 
+	/** The keycard ring (the toy sacks a chapter asks for are keycards too), so a load keeps what she carries. */
+	UPROPERTY(SaveGame)
+	TArray<FName> SavedKeycards;
+
 	/** Set while waiting for the partner's revive. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Hawkeye|Health")
 	bool bDowned = false;
