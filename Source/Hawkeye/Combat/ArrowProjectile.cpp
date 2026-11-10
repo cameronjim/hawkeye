@@ -34,6 +34,7 @@
 #include "UI/HawkeyeObjectiveWidget.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vfx/HawkeyeVfxSubsystem.h"
+#include "World/ArrowSwitch.h"
 #include "World/ThugCharacter.h"
 
 namespace HawkeyeArrow
@@ -356,6 +357,11 @@ void AArrowProjectile::LaunchWithVelocity(const FVector& Velocity)
 	{
 		Movement->OnProjectileStop.AddDynamic(this, &AArrowProjectile::HandleImpact);
 	}
+	StartFlightEffects();
+}
+
+void AArrowProjectile::StartFlightEffects()
+{
 	const UBowComponent* SourceBow = Source.Get();
 	if (SourceBow)
 	{
@@ -368,6 +374,15 @@ void AArrowProjectile::LaunchWithVelocity(const FVector& Velocity)
 		Trail = UHawkeyeVfxSubsystem::SpawnAttached(bOwnTrail ? Arrow->FlightVfx : SourceBow->ArrowTrailVfx, Collision,
 			bOwnTrail ? UHawkeyeVfxSubsystem::TrickEffectEvent : UHawkeyeVfxSubsystem::ArrowTrailEvent);
 	}
+}
+
+void AArrowProjectile::StopFlightEffects()
+{
+	if (UAudioComponent* Air = Whistle.Get())
+	{
+		Air->Stop();
+	}
+	UHawkeyeVfxSubsystem::Release(Trail);
 }
 
 void AArrowProjectile::PlayImpactSound(const FHitResult& Hit) const
@@ -542,11 +557,7 @@ void AArrowProjectile::HandleImpact(const FHitResult& Hit)
 
 	bInFlight = false;
 	bStuck = true;
-	if (UAudioComponent* Air = Whistle.Get())
-	{
-		Air->Stop();
-	}
-	UHawkeyeVfxSubsystem::Release(Trail);
+	StopFlightEffects();
 
 	// The explosive's damage is the blast's, falling off from the centre; a direct hit is not
 	// also a stab for the full 80.
@@ -598,6 +609,11 @@ void AArrowProjectile::HandleImpact(const FHitResult& Hit)
 	if (AChallengeTarget* Target = Cast<AChallengeTarget>(Hit.GetActor()))
 	{
 		Target->HandleArrowHit(Hit.ImpactPoint, Shooter.Get());
+	}
+	// A switch decides for itself whether a plain arrow trips it (most want a returning arrow's blunt head).
+	if (AArrowSwitch* Switch = Cast<AArrowSwitch>(Hit.GetActor()))
+	{
+		Switch->HandleArrowHit(this, Shooter.Get());
 	}
 	Embed(Hit, Direction, Bone, bBody ? &EntryPoint : nullptr, EntryBone);
 	SpawnHitEffect(Hit);

@@ -163,6 +163,12 @@ protected:
 	/** Turns the arrow to face along its velocity. */
 	void FaceVelocity();
 
+	/** The whistle and the trail riding on it, as it leaves the bow. */
+	void StartFlightEffects();
+
+	/** The whistle stops and the trail is let go to fade (it landed, or came back). */
+	void StopFlightEffects();
+
 	/** Tip. Root and the only thing that collides. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Arrow")
 	TObjectPtr<USphereComponent> Collision;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Combat/ReturnFlight.h"
 #include "Engine/DataAsset.h"
 #include "ArrowDefinition.generated.h"
 
@@ -121,6 +122,13 @@ public:
 	/** How long GroundDecal stays, fading over its last quarter, s. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arrow|Effects", meta = (ClampMin = "0.0"))
 	float GroundDecalSeconds = 30.f;
+
+	/**
+	 * How it flies when its ProjectileClass is AReturningArrowProjectile (the boomerang): out, through up to MaxTargets,
+	 * back along its path to her. Unused by any other projectile.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arrow|Return")
+	FHawkeyeReturnFlight ReturnFlight;
 
 	/** Hotbar icon. TODO(stage3): unused until icons are drawn; the hotbar shows ShortName. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arrow")
