@@ -1,4 +1,5 @@
 #include "Boss/BossFightSubsystem.h"
+#include "Mission/ChapterMaps.h"
 
 #include "Hawkeye.h"
 #include "Boss/BossArenaHazard.h"
@@ -164,6 +165,11 @@ bool UBossFightSubsystem::IsDown(const AThugCharacter* Thug) const
 void UBossFightSubsystem::HandleMissionStarted(UMissionDefinition* Mission)
 {
 	UBossDefinition* Wanted = Mission ? Mission->Boss.LoadSynchronous() : nullptr;
+	// A fight in an interior runs only in that interior; the roof fights only in the district.
+	if (Wanted && !UHawkeyeChapterMaps::BelongsInWorld(Wanted->Map, GetWorld()))
+	{
+		Wanted = nullptr;
+	}
 	if (!Wanted)
 	{
 		if (State != EBossFightState::Idle)
@@ -178,7 +184,7 @@ void UBossFightSubsystem::HandleMissionStarted(UMissionDefinition* Mission)
 bool UBossFightSubsystem::BeginChapter(const UMissionDefinition* Mission)
 {
 	UBossDefinition* Wanted = Mission ? Mission->Boss.LoadSynchronous() : nullptr;
-	if (!Wanted)
+	if (!Wanted || !UHawkeyeChapterMaps::BelongsInWorld(Wanted->Map, GetWorld()))
 	{
 		return false;
 	}

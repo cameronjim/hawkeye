@@ -19,6 +19,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Mission/ChapterMaps.h"
 #include "Mission/MissionDefinition.h"
 #include "Mission/MissionSubsystem.h"
 #include "Phone/PhoneSubsystem.h"
@@ -127,9 +128,10 @@ FString UHawkeyeSaveSubsystem::GetSaveRefusal(UWorld* World) const
 	{
 		return TEXT("a save or load is already under way");
 	}
-	if (SceneReturn.bInScene || SceneReturn.bReturnPending)
+	if (!SceneReturn.AllowsSave())
 	{
-		// The slot holds the district; a scene saved over it could never be returned from.
+		// The slot holds the district; a scene saved over it could never be returned from. A chapter interior is the
+		// exception: its save keeps where its doors lead (UHawkeyeCampaignState::InteriorReturnMap).
 		return TEXT("a playable scene is running");
 	}
 	const UMissionSubsystem* Missions = UMissionSubsystem::Get(World);
@@ -158,6 +160,10 @@ void UHawkeyeSaveSubsystem::CaptureCampaign(UWorld* World)
 	Campaign->Version = UHawkeyeCampaignState::CurrentVersion;
 	Campaign->MissionPath = Missions ? FSoftObjectPath(Missions->GetCurrentMission()).ToString() : FString();
 	Campaign->CompletedObjectives = Tracker ? Tracker->GetCompletedObjectiveIds() : TArray<FName>();
+	Campaign->SpottedObjectives = Tracker ? Tracker->GetSpottedObjectiveIds() : TArray<FName>();
+	// Inside a chapter interior the save is of the interior: it remembers where its doors lead.
+	Campaign->InteriorReturnMap = IsInChapterInterior() ? SceneReturn.ReturnMap : FString();
+	Campaign->InteriorReturnPoint = IsInChapterInterior() ? SceneReturn.ReturnPointLabel : NAME_None;
 
 	const APlayerController* PC = World->GetFirstPlayerController();
 	const AHawkeyeCharacter* Player = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
@@ -226,6 +232,11 @@ bool UHawkeyeSaveSubsystem::SaveCampaign(const FString& Reason)
 
 	++SaveCount;
 	AutosaveClock.Reset();
+	if (IsInChapterInterior())
+	{
+		// The slot holds this interior now, not the district: the way out opens the district fresh.
+		SceneReturn.bSavedOnEntry = false;
+	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: saved the campaign to %s (%s): %s, %d objective(s) done, playing %s."),
 		*GetName(), *GetSlotName(), *Reason, *Campaign->MissionPath, Campaign->CompletedObjectives.Num(),
 		*Campaign->ControlledCharacter);
@@ -404,7 +415,9 @@ void UHawkeyeSaveSubsystem::ApplyPendingRestore(UWorld* World)
 		}
 	}
 	const int32 Restored = Tracker->RestoreCompletedObjectives(Campaign->CompletedObjectives);
-	UE_LOG(LogHawkeye, Log, TEXT("%s: restored %d completed objective(s) of %s."), *GetName(), Restored, *Campaign->MissionPath);
+	Tracker->RestoreSpottedObjectives(Campaign->SpottedObjectives);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: restored %d completed objective(s) of %s%s."), *GetName(), Restored, *Campaign->MissionPath,
+		bContinuePending ? TEXT(" (carried on, no load)") : TEXT(""));
 }
 
 void UHawkeyeSaveSubsystem::HandleSpudPostLoad(const FString& SlotName, bool bSuccess)
@@ -425,8 +438,17 @@ void UHawkeyeSaveSubsystem::HandleSpudPostLoad(const FString& SlotName, bool bSu
 		return;
 	}
 
+	// A save made inside a chapter interior: back inside it, its doors leading where the save says.
+	if (!Campaign->InteriorReturnMap.IsEmpty())
+	{
+		SceneReturn.BeginInterior(Campaign->InteriorReturnMap, Campaign->InteriorReturnPoint, /*bSaved=*/false);
+		SceneReturn.bChapterContinues = true;
+		SceneReturn.bFadeInOnArrival = false;
+		UE_LOG(LogHawkeye, Log, TEXT("%s: the save is inside a chapter interior; its exits lead to %s at %s."), *GetName(),
+			*SceneReturn.ReturnMap, *SceneReturn.ReturnPointLabel.ToString());
+	}
 	// Dying inside an interior loads the entry save: the district is back and the interior is over.
-	if (SceneReturn.bInScene && SceneReturn.bInterior)
+	else if (SceneReturn.bInScene && SceneReturn.bInterior)
 	{
 		SceneReturn = FHawkeyeSceneReturn();
 	}
@@ -513,6 +535,9 @@ bool UHawkeyeSaveSubsystem::EnterInterior(const TSoftObjectPtr<UWorld>& Interior
 		return false;
 	}
 	const FString District = World->GetOutermost()->GetName();
+	const UMissionSubsystem* Missions = UMissionSubsystem::Get(World);
+	const bool bChapter = Missions && UHawkeyeChapterMaps::ContinuesInto(Missions->GetCurrentMission(),
+		Interior.ToSoftObjectPath().GetLongPackageName());
 	const bool bSaved = SaveCampaign(TEXT("interior"));
 	if (!bSaved)
 	{
@@ -520,9 +545,20 @@ bool UHawkeyeSaveSubsystem::EnterInterior(const TSoftObjectPtr<UWorld>& Interior
 			*GetName(), *Interior.ToString());
 	}
 	CarryQuiver(World);
+	if (bChapter && !bSaved)
+	{
+		CaptureCampaign(World);
+	}
 	SceneReturn.BeginInterior(District, ReturnPointLabel, bSaved);
-	UE_LOG(LogHawkeye, Log, TEXT("%s: entering interior %s (back to %s at %s)."), *GetName(), *Interior.ToString(),
-		*SceneReturn.ReturnMap, *SceneReturn.ReturnPointLabel.ToString());
+	SceneReturn.bChapterContinues = bChapter;
+	if (bChapter)
+	{
+		// The interior starts the chapter where the campaign has it, as a load would (the listeners see one).
+		bRestorePending = true;
+		bContinuePending = true;
+	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: entering interior %s (back to %s at %s)%s."), *GetName(), *Interior.ToString(),
+		*SceneReturn.ReturnMap, *SceneReturn.ReturnPointLabel.ToString(), bChapter ? TEXT(", the chapter carries on inside") : TEXT(""));
 	UGameplayStatics::OpenLevelBySoftObjectPtr(World, Interior);
 	return true;
 }
@@ -534,7 +570,14 @@ bool UHawkeyeSaveSubsystem::ReturnFromInterior(FName ReturnPointOverride)
 		return false;
 	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: leaving the interior for %s."), *GetName(), *SceneReturn.ReturnPointLabel.ToString());
-	CarryQuiver(GetGameWorld());
+	UWorld* World = GetGameWorld();
+	CarryQuiver(World);
+	if (SceneReturn.bChapterContinues && World)
+	{
+		// What happened inside goes out with her: captured now (no longer "in" it, so no interior return is kept).
+		CaptureCampaign(World);
+		CarriedCampaign = DuplicateObject<UHawkeyeCampaignState>(Campaign, this);
+	}
 	TravelBackFromScene();
 	return true;
 }
@@ -597,10 +640,24 @@ void UHawkeyeSaveSubsystem::TravelBackFromScene()
 		SceneReturn.bInterior ? TEXT("interior") : TEXT("playable scene"), *SceneReturn.ReturnMap);
 	if (bExists && DecideLoad(true, SavedVersion, SavedMission) == EHawkeyeLoadDecision::Load && LoadCampaign())
 	{
+		// SPUD has put the entry save's campaign back already (globals load before the map): the interior's is newer.
+		if (CarriedCampaign)
+		{
+			AdoptCampaign(CarriedCampaign);
+			CarriedCampaign = nullptr;
+		}
 		return;
 	}
 	if (UWorld* World = GetGameWorld(); World && !SceneReturn.ReturnMap.IsEmpty())
 	{
+		if (CarriedCampaign)
+		{
+			// The district opens fresh and the chapter carries on in it from the campaign.
+			AdoptCampaign(CarriedCampaign);
+			CarriedCampaign = nullptr;
+			bRestorePending = true;
+			bContinuePending = true;
+		}
 		UGameplayStatics::OpenLevel(World, FName(*SceneReturn.ReturnMap));
 	}
 }
@@ -635,9 +692,37 @@ void UHawkeyeSaveSubsystem::ApplyPendingSceneReturn(UWorld* World)
 	const bool bResume = SceneReturn.ShouldResumeMissionFlow();
 
 	SceneReturn.bInterior = false;
+	SceneReturn.bChapterContinues = false;
 	if (PC && bResume)
 	{
 		PC->HandleReturnedFromScene();
+	}
+}
+
+void UHawkeyeSaveSubsystem::FinishContinuation(UWorld* World)
+{
+	if (!bContinuePending)
+	{
+		return;
+	}
+	bContinuePending = false;
+	bRestorePending = false;
+	UE_LOG(LogHawkeye, Log, TEXT("%s: the chapter carried on into %s."), *GetName(), *GetNameSafe(World));
+	OnCampaignLoaded.Broadcast(true);
+}
+
+void UHawkeyeSaveSubsystem::AdoptCampaign(const UHawkeyeCampaignState* From)
+{
+	if (!From || !Campaign)
+	{
+		return;
+	}
+	for (TFieldIterator<FProperty> It(UHawkeyeCampaignState::StaticClass()); It; ++It)
+	{
+		if (It->HasAnyPropertyFlags(CPF_SaveGame))
+		{
+			It->CopyCompleteValue_InContainer(Campaign, From);
+		}
 	}
 }
 

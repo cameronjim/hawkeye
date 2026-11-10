@@ -39,6 +39,9 @@ void UHawkeyeCampaignState::ResetCampaign()
 	BossHeard.Reset();
 	CampaignFlags.Reset();
 	FiredChapterEvents.Reset();
+	SpottedObjectives.Reset();
+	InteriorReturnMap.Reset();
+	InteriorReturnPoint = NAME_None;
 }
 
 bool UHawkeyeCampaignState::RaiseFlag(FName Flag)

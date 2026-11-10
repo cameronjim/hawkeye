@@ -15,6 +15,28 @@ class UChapterSiteDefinition;
 class UMissionDefinition;
 class UMissionObjective;
 enum class EThugWeapon : uint8;
+class AArrowSwitch;
+class AInteriorEntrance;
+
+/** The pure part of a site's watch (triggers and stealth objectives). */
+UCLASS()
+class HAWKEYE_API UHawkeyeChapterSiteRules : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * A trigger reports its event when Kate is inside it, it has not fired in this run of the chapter, and (for one that
+	 * wants her unseen) no thug is Alerted.
+	 */
+	static bool ShouldFireTrigger(bool bInside, bool bOnlyUnseen, bool bAnyAlerted, bool bAlreadyFired);
+
+	/** The current objective is spotted when it is a stealth one, not yet spotted, and a living thug is Alerted. */
+	static bool ShouldMarkSpotted(bool bCurrentIsStealth, bool bAlreadySpotted, int32 AlertedThugs);
+
+	/** "spotted:<Id>": the chapter event a spotted stealth objective reports. */
+	static FName SpottedEvent(FName ObjectiveId);
+};
 
 /**
  * Spawns the running chapter's UChapterSiteDefinition (claude-docs/gameplay-semantics.md, "Chapter sites") and keeps it
@@ -59,6 +81,15 @@ public:
 	AThugGroupObjective* GetCrewObjective() const { return CrewGroup.Get(); }
 	int32 GetPropCount() const { return Props.Num(); }
 	bool IsCrewAlerted() const { return bCrewAlerted; }
+	TArray<AInteriorEntrance*> GetInteriorDoors() const;
+	TArray<AArrowSwitch*> GetSwitches() const;
+	TArray<AActor*> GetReturnPoints() const;
+
+	/**
+	 * Five times a second (a timer; tests call it): the site's triggers (Kate inside reports their chapter event) and the
+	 * running chapter's stealth objective (a thug Alerted while it is current spots it). Works with no site too.
+	 */
+	void Watch();
 
 	/** When set (tests), stands in for the world's player. */
 	TWeakObjectPtr<APawn> PlayerOverride;
@@ -97,6 +128,10 @@ protected:
 	TArray<TWeakObjectPtr<APickupActor>> Pickups;
 	TArray<TWeakObjectPtr<AChapterEndInteractable>> Examines;
 	TArray<TWeakObjectPtr<AObjectiveTriggerVolume>> Volumes;
+	TArray<TWeakObjectPtr<AInteriorEntrance>> Doors;
+	TArray<TWeakObjectPtr<AArrowSwitch>> Switches;
+	TArray<TWeakObjectPtr<AActor>> ReturnPoints;
 	TWeakObjectPtr<AThugGroupObjective> CrewGroup;
 	bool bCrewAlerted = false;
+	FTimerHandle WatchTimer;
 };

@@ -99,6 +99,13 @@ public:
 	TSoftObjectPtr<UChapterSiteDefinition> Site;
 
 	/**
+	 * The chapter's sites inside interiors, each naming its map (UChapterSiteDefinition::Map): dressed when the chapter
+	 * carries on into that interior (gameplay-semantics.md, "Chapter interiors"). Empty for most chapters.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TArray<TSoftObjectPtr<UChapterSiteDefinition>> InteriorSites;
+
+	/**
 	 * What the chapter does the first time something happens in it (gameplay-semantics.md, "Chapter events"): lines
 	 * spoken and arrows granted on a parry, an arrow loosed, an objective completed or started.
 	 */

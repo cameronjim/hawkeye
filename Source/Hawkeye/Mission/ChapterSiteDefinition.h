@@ -143,6 +143,112 @@ struct HAWKEYE_API FChapterSiteExamine
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site", meta = (ClampMin = "0.1"))
 	float CloseUpSeconds = 2.f;
+
+	/** Offered only once this objective is complete (the ornament waits for the chapter's end). None: no wait. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FName RequiredObjective;
+};
+
+/** A door into an interior map (an AInteriorEntrance) the chapter puts on a facade while it runs. */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FChapterSiteInteriorDoor
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	TSoftObjectPtr<UWorld> Interior;
+
+	/** The middle of the threshold at floor level, world cm; +X (Yaw) points out at the street. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	float Yaw = 0.f;
+
+	/** The sign and the prompt ("[Santa's Grotto]"). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FText DisplayName;
+
+	/** The return point (a ReturnPoints label) the interior's front door comes back out at. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FName ReturnPointLabel;
+
+	/** A tag on the door, so an objective's MarkerActorLabel can point at it. None: none. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FName Tag;
+};
+
+/** A labelled point (a target point tagged Label): where an interior's door, front or roof, comes back out. */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FChapterSiteReturnPoint
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FName Label;
+
+	/** Her feet, world cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	float Yaw = 0.f;
+};
+
+/**
+ * A place that reports a chapter event the first time Kate stands in it (gameplay-semantics.md, "Chapter sites",
+ * triggers): the event's lines and arrows are the chapter's (UMissionDefinition::Events). Overheard talk, a first sight,
+ * an unlock where something is found.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FChapterSiteTrigger
+{
+	GENERATED_BODY()
+
+	/** The chapter event reported ("trigger:overheard"). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FName Event;
+
+	/** The box's centre and half extent, world cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FVector Extent = FVector(300.f, 300.f, 200.f);
+
+	/** Only while no thug is Alerted (an overheard conversation stops when someone has seen her). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	bool bOnlyUnseen = false;
+};
+
+/** Something on a wall an arrow trips (an AArrowSwitch): a buzzer that pulls a guard away, a chapter event. */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FChapterSiteSwitch
+{
+	GENERATED_BODY()
+
+	/** The switch's id; it reports the chapter event "switch:<Id>" when tripped. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FName Id;
+
+	/** The face's middle, world cm; +X (Yaw) points out of the wall. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	float Yaw = 0.f;
+
+	/** What it looks like (a box on the wall). None: the class's own shape. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	TSoftObjectPtr<UStaticMesh> Mesh;
+
+	/** The noise it makes when tripped (a thug hears HearingRange times this), 0 for none. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site", meta = (ClampMin = "0.0"))
+	float NoiseLoudness = 1.f;
+
+	/** Only a returning arrow's blunt head trips it; a plain arrow sticks in it and does nothing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Site")
+	bool bReturningArrowsOnly = true;
 };
 
 /**
@@ -157,6 +263,14 @@ class HAWKEYE_API UChapterSiteDefinition : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
+	/**
+	 * The map this site stands in. None: the district (any map that is not an interior). A site naming an interior is
+	 * one of a chapter's InteriorSites; the chapter carries on into that interior (gameplay-semantics.md, "Chapter
+	 * interiors").
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
+	TSoftObjectPtr<UWorld> Map;
+
 	/** Where the chapter's opening puts Kate (world cm, her feet); zero leaves her where she is. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
 	FVector PlayerStart = FVector::ZeroVector;
@@ -189,6 +303,18 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
 	TArray<FChapterSiteExamine> Examines;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
+	TArray<FChapterSiteInteriorDoor> InteriorDoors;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
+	TArray<FChapterSiteReturnPoint> ReturnPoints;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
+	TArray<FChapterSiteTrigger> Triggers;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Site")
+	TArray<FChapterSiteSwitch> Switches;
 
 	//~ Begin UPrimaryDataAsset interface
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override

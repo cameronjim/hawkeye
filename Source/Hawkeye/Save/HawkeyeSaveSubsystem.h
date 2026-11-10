@@ -196,6 +196,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Save|Scene")
 	bool IsInInterior() const { return SceneReturn.bInScene && SceneReturn.bInterior; }
 
+	/** In an interior the running chapter carries on into (gameplay-semantics.md, "Chapter interiors"): saves allowed. */
+	UFUNCTION(BlueprintPure, Category = "Save|Scene")
+	bool IsInChapterInterior() const { return IsInInterior() && SceneReturn.bChapterContinues; }
+
+	/**
+	 * The game mode calls this after ApplyPendingRestore: a chapter carried into this world without a SPUD load (into a
+	 * chapter interior, or out of one into a district opened fresh) is announced as loaded (OnCampaignLoaded), so the
+	 * chapter's sites, events and boss match the campaign. Does nothing otherwise.
+	 */
+	void FinishContinuation(UWorld* World);
+
 	/**
 	 * Leaves the interior: loads the save made on the way in (or opens the district fresh) and puts the
 	 * player at ReturnPointOverride, or at the entrance's return point when that is None. The chapter's
@@ -288,6 +299,19 @@ private:
 
 	UPROPERTY(Transient)
 	FHawkeyeSceneReturn SceneReturn;
+
+	/**
+	 * The campaign as it stood leaving a chapter interior, put over the district's entry save once that has loaded (or
+	 * kept as it is when the district opens fresh): what happened inside carries out.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UHawkeyeCampaignState> CarriedCampaign;
+
+	/** Copies every saved field of From into Campaign. */
+	void AdoptCampaign(const UHawkeyeCampaignState* From);
+
+	/** A chapter is being carried into the next world without a SPUD load (FinishContinuation announces it). */
+	bool bContinuePending = false;
 
 	/** The quiver on its way through an interior's door (see RestoreCarriedQuiver). */
 	UPROPERTY(Transient)

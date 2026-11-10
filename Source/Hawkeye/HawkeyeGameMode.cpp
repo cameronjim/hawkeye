@@ -312,6 +312,8 @@ void AHawkeyeGameMode::BeginPlay()
 		return;
 	}
 	Save->ApplyPendingRestore(GetWorld());
+	// Into a chapter interior, or out of one into a district opened fresh: the chapter carried on with no load.
+	Save->FinishContinuation(GetWorld());
 	// Back from a playable scene without a save to load: put the player at the return point now.
 	Save->ApplyPendingSceneReturn(GetWorld());
 	GetWorldTimerManager().SetTimer(AutosaveTimerHandle, this, &AHawkeyeGameMode::TickAutosave, AutosaveTickSeconds, true);

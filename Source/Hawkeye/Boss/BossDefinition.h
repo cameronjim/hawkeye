@@ -112,6 +112,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Arena")
 	FBossArena Arena;
 
+	/**
+	 * The map the fight is in. None: the district (any map that is not an interior; the roof fights). An interior's fight
+	 * (the grotto's Santa) names it, and its arena's outline and floor are a room's (gameplay-semantics.md, "Chapter
+	 * interiors").
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Arena")
+	TSoftObjectPtr<UWorld> Map;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Arena")
 	FBossHazardTuning Hazard;
 

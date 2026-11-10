@@ -11,7 +11,11 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Engine/TargetPoint.h"
+#include "Mission/ChapterEventSubsystem.h"
+#include "Mission/ChapterMaps.h"
 #include "Mission/ChapterSiteDefinition.h"
 #include "Mission/MissionDefinition.h"
 #include "Mission/MissionObjective.h"
@@ -22,10 +26,32 @@
 #include "NavigationSystem.h"
 #include "Player/InventoryComponent.h"
 #include "Save/HawkeyeSaveSubsystem.h"
+#include "TimerManager.h"
+#include "World/ArrowSwitch.h"
 #include "World/ChapterEndInteractable.h"
+#include "World/InteriorEntrance.h"
 #include "World/PickupActor.h"
 #include "World/ThugAIController.h"
 #include "World/ThugCharacter.h"
+
+// --- Rules ---------------------------------------------------------------------------------------------------
+
+bool UHawkeyeChapterSiteRules::ShouldFireTrigger(bool bInside, bool bOnlyUnseen, bool bAnyAlerted, bool bAlreadyFired)
+{
+	return bInside && !bAlreadyFired && !(bOnlyUnseen && bAnyAlerted);
+}
+
+bool UHawkeyeChapterSiteRules::ShouldMarkSpotted(bool bCurrentIsStealth, bool bAlreadySpotted, int32 AlertedThugs)
+{
+	return bCurrentIsStealth && !bAlreadySpotted && AlertedThugs > 0;
+}
+
+FName UHawkeyeChapterSiteRules::SpottedEvent(FName ObjectiveId)
+{
+	return FName(*FString::Printf(TEXT("spotted:%s"), *ObjectiveId.ToString()));
+}
+
+// --- Subsystem -----------------------------------------------------------------------------------------------
 
 const FName UChapterSiteSubsystem::CrewTag(TEXT("SiteCrew"));
 const FName UChapterSiteSubsystem::SiteTag(TEXT("ChapterSite"));
@@ -49,6 +75,10 @@ void UChapterSiteSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UChapterSiteSubsystem::Deinitialize()
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(WatchTimer);
+	}
 	if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this))
 	{
 		Save->OnCampaignLoaded.RemoveDynamic(this, &UChapterSiteSubsystem::HandleCampaignLoaded);
@@ -65,6 +95,7 @@ void UChapterSiteSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		Save->OnCampaignLoaded.AddUniqueDynamic(this, &UChapterSiteSubsystem::HandleCampaignLoaded);
 	}
+	InWorld.GetTimerManager().SetTimer(WatchTimer, this, &UChapterSiteSubsystem::Watch, 0.2f, true);
 	// The map's game mode may have started its chapter before this bound.
 	if (const UMissionSubsystem* Missions = UMissionSubsystem::Get(this); Missions && Missions->GetCurrentMission() && !Definition)
 	{
@@ -102,7 +133,8 @@ bool UChapterSiteSubsystem::IsObjectiveDone(FName ObjectiveId) const
 
 void UChapterSiteSubsystem::HandleMissionStarted(UMissionDefinition* Mission)
 {
-	UChapterSiteDefinition* Wanted = Mission ? Mission->Site.LoadSynchronous() : nullptr;
+	// The district's site in the district, an interior's in that interior (gameplay-semantics.md, "Chapter interiors").
+	UChapterSiteDefinition* Wanted = UHawkeyeChapterMaps::FindSiteFor(Mission, GetWorld());
 	if (!Wanted)
 	{
 		ClearSite();
@@ -309,19 +341,71 @@ bool UChapterSiteSubsystem::SpawnSite(UChapterSiteDefinition* InDefinition)
 		Examine->InteractZoneExtent = Spec.InteractZoneExtent;
 		Examine->InteractZoneOffset = FVector(0.f, 0.f, Spec.InteractZoneExtent.Z * 0.5f);
 		Examine->CloseUpSeconds = Spec.CloseUpSeconds;
+		Examine->RequiredObjective = Spec.RequiredObjective;
 		Examine->SetPropMesh(Spec.Mesh.LoadSynchronous());
 		Examine->Tags.Add(SiteTag);
 		Examine->FinishSpawning(At);
 		Examines.Add(Examine);
 	}
 
+	for (const FChapterSiteReturnPoint& Spec : Definition->ReturnPoints)
+	{
+		ATargetPoint* Point = World->SpawnActor<ATargetPoint>(ATargetPoint::StaticClass(), Spec.Location + FVector(0.f, 0.f, 100.f),
+			FRotator(0.f, Spec.Yaw, 0.f), Params);
+		if (!Point)
+		{
+			continue;
+		}
+		// An interior's doors find where to come out by this tag (FHawkeyeSceneReturn::SelectReturnPoint).
+		Point->Tags.Add(Spec.Label);
+		Point->Tags.Add(SiteTag);
+		ReturnPoints.Add(Point);
+	}
+	for (const FChapterSiteInteriorDoor& Spec : Definition->InteriorDoors)
+	{
+		const FTransform At(FRotator(0.f, Spec.Yaw, 0.f), Spec.Location);
+		AInteriorEntrance* Door = World->SpawnActorDeferred<AInteriorEntrance>(AInteriorEntrance::StaticClass(), At, nullptr, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Door)
+		{
+			continue;
+		}
+		Door->Interior = Spec.Interior;
+		Door->ReturnPointLabel = Spec.ReturnPointLabel;
+		Door->DisplayName = Spec.DisplayName;
+		Door->Tags.Add(SiteTag);
+		if (!Spec.Tag.IsNone())
+		{
+			Door->Tags.Add(Spec.Tag);
+		}
+		Door->FinishSpawning(At);
+		Doors.Add(Door);
+	}
+	for (const FChapterSiteSwitch& Spec : Definition->Switches)
+	{
+		const FTransform At(FRotator(0.f, Spec.Yaw, 0.f), Spec.Location);
+		AArrowSwitch* Switch = World->SpawnActorDeferred<AArrowSwitch>(AArrowSwitch::StaticClass(), At, nullptr, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (!Switch)
+		{
+			continue;
+		}
+		Switch->SwitchId = Spec.Id;
+		Switch->NoiseLoudness = Spec.NoiseLoudness;
+		Switch->bReturningArrowsOnly = Spec.bReturningArrowsOnly;
+		Switch->Tags.Add(SiteTag);
+		Switch->FinishSpawning(At);
+		Switch->SetMesh(Spec.Mesh.LoadSynchronous());
+		Switches.Add(Switch);
+	}
+
 	if (Definition->CrewAlertObjective.IsNone())
 	{
 		AlertCrew();
 	}
-	UE_LOG(LogHawkeye, Log, TEXT("%s: site %s dressed: %d prop(s) and light(s), %d volume(s), %d crew, %d pickup(s), %d examine(s)%s."), *GetName(),
-		*Definition->GetName(), Props.Num(), Volumes.Num(), Crew.Num(), Pickups.Num(), Examines.Num(),
-		Player ? TEXT("") : TEXT(" (no player yet)"));
+	UE_LOG(LogHawkeye, Log, TEXT("%s: site %s dressed: %d prop(s) and light(s), %d volume(s), %d crew, %d pickup(s), %d examine(s), %d door(s), %d return point(s), %d trigger(s), %d switch(es)%s."), *GetName(),
+		*Definition->GetName(), Props.Num(), Volumes.Num(), Crew.Num(), Pickups.Num(), Examines.Num(), Doors.Num(), ReturnPoints.Num(),
+		Definition->Triggers.Num(), Switches.Num(), Player ? TEXT("") : TEXT(" (no player yet)"));
 	return true;
 }
 
@@ -365,6 +449,9 @@ void UChapterSiteSubsystem::ClearSite()
 	DestroyAll(Pickups);
 	DestroyAll(Examines);
 	DestroyAll(Volumes);
+	DestroyAll(Doors);
+	DestroyAll(Switches);
+	DestroyAll(ReturnPoints);
 	bCrewAlerted = false;
 	if (Definition)
 	{
@@ -375,7 +462,7 @@ void UChapterSiteSubsystem::ClearSite()
 
 bool UChapterSiteSubsystem::BeginChapter(const UMissionDefinition* Mission)
 {
-	UChapterSiteDefinition* Wanted = Mission ? Mission->Site.LoadSynchronous() : nullptr;
+	UChapterSiteDefinition* Wanted = UHawkeyeChapterMaps::FindSiteFor(Mission, GetWorld());
 	if (!Wanted)
 	{
 		return false;
@@ -476,3 +563,56 @@ TArray<AThugCharacter*> UChapterSiteSubsystem::GetCrew() const { return HawkeyeS
 TArray<APickupActor*> UChapterSiteSubsystem::GetPickups() const { return HawkeyeSiteLive(Pickups); }
 TArray<AChapterEndInteractable*> UChapterSiteSubsystem::GetExamines() const { return HawkeyeSiteLive(Examines); }
 TArray<AObjectiveTriggerVolume*> UChapterSiteSubsystem::GetVolumes() const { return HawkeyeSiteLive(Volumes); }
+TArray<AInteriorEntrance*> UChapterSiteSubsystem::GetInteriorDoors() const { return HawkeyeSiteLive(Doors); }
+TArray<AArrowSwitch*> UChapterSiteSubsystem::GetSwitches() const { return HawkeyeSiteLive(Switches); }
+TArray<AActor*> UChapterSiteSubsystem::GetReturnPoints() const { return HawkeyeSiteLive(ReturnPoints); }
+
+// --- The watch -----------------------------------------------------------------------------------------------
+
+void UChapterSiteSubsystem::Watch()
+{
+	UWorld* World = GetWorld();
+	UMissionSubsystem* Missions = UMissionSubsystem::Get(this);
+	UMissionTracker* Tracker = Missions ? Missions->GetTracker() : nullptr;
+	if (!World || !Tracker || !Missions->GetCurrentMission())
+	{
+		return;
+	}
+	const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this);
+	if (Save && Save->IsLoading())
+	{
+		return;
+	}
+	int32 Alerted = 0;
+	for (TActorIterator<AThugCharacter> It(World); It; ++It)
+	{
+		const UHealthComponent* Health = It->GetHealthComponent();
+		Alerted += It->GetAlertState() == EThugAlertState::Alerted && Health && Health->IsAlive() && !It->IsLimp() ? 1 : 0;
+	}
+	// The current objective, if it is a stealth one, is spotted the moment a thug has her.
+	if (UMissionObjective* Current = Tracker->GetCurrentObjective();
+		Current && UHawkeyeChapterSiteRules::ShouldMarkSpotted(Current->IsStealth(), Current->bSpotted, Alerted))
+	{
+		const FName Id = Current->ObjectiveId;
+		if (Tracker->MarkObjectiveSpotted(Id))
+		{
+			UChapterEventSubsystem::NotifyEvent(this, UHawkeyeChapterSiteRules::SpottedEvent(Id));
+		}
+	}
+	const APawn* Kate = FindPlayer();
+	UChapterEventSubsystem* Events = UChapterEventSubsystem::Get(this);
+	if (!Definition || !Kate || !Events)
+	{
+		return;
+	}
+	const FVector At = Kate->GetActorLocation();
+	for (const FChapterSiteTrigger& Trigger : Definition->Triggers)
+	{
+		const bool bInside = FBox::BuildAABB(Trigger.Location, Trigger.Extent).IsInsideOrOn(At);
+		if (UHawkeyeChapterSiteRules::ShouldFireTrigger(bInside, Trigger.bOnlyUnseen, Alerted > 0, Events->GetFired().Contains(Trigger.Event)))
+		{
+			UE_LOG(LogHawkeye, Log, TEXT("%s: trigger %s at %s."), *GetName(), *Trigger.Event.ToString(), *At.ToCompactString());
+			Events->Notify(Trigger.Event);
+		}
+	}
+}

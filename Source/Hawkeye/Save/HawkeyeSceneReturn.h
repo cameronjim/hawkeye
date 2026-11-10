@@ -59,6 +59,20 @@ struct HAWKEYE_API FHawkeyeSceneReturn
 	UPROPERTY(BlueprintReadOnly, Category = "Save|Scene")
 	bool bFadeInOnArrival = false;
 
+	/**
+	 * A chapter interior: the running chapter carries on inside (one of its sites names this interior), so the
+	 * interior starts it where the campaign has it, saves are allowed inside, and the way out carries what happened
+	 * in there back to the district (gameplay-semantics.md, "Chapter interiors").
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Save|Scene")
+	bool bChapterContinues = false;
+
+	/**
+	 * Whether the campaign may be saved now: never on the way back from a scene or interior, never in a flashback's
+	 * scene or an interior the chapter does not carry on into (the slot holds the district they return to).
+	 */
+	bool AllowsSave() const { return !bReturnPending && (!bInScene || (bInterior && bChapterContinues)); }
+
 	/** Starts an interior: in it, coming back to ReturnPoint in InReturnMap. bSaved: the district was saved on the way in. */
 	void BeginInterior(const FString& InReturnMap, FName InReturnPoint, bool bSaved);
 

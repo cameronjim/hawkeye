@@ -169,6 +169,20 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Narrative")
 	TArray<FName> FiredChapterEvents;
 
+	/** The running chapter's stealth objectives that were seen (UMissionObjective::bSpotted). */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Narrative")
+	TArray<FName> SpottedObjectives;
+
+	/**
+	 * A save made inside a chapter interior (gameplay-semantics.md, "Chapter interiors"): the district map its exits
+	 * lead back to and the doorstep's return point. Empty for a save in the district.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Interior")
+	FString InteriorReturnMap;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Interior")
+	FName InteriorReturnPoint;
+
 	/** Back to a fresh campaign. */
 	UFUNCTION(BlueprintCallable, Category = "Save")
 	void ResetCampaign();
