@@ -25,6 +25,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
 	TObjectPtr<UMissionDefinition> StartingMission;
 
+	/**
+	 * Starts Chapter now in place of whatever runs (chapter select, -HawkeyeChapter=, hawkeye.StartChapter): the mission
+	 * starts (its cast, quiver, opening, chase or boss follow from OnMissionStarted) and the campaign saves 1.5 s later.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Mission")
+	bool StartChapter(UMissionDefinition* Chapter);
+
+	/** The chapter a name means: /Game/Missions/<Name>, or null. */
+	static UMissionDefinition* FindChapter(const FString& Name);
+
 	/** Seconds between the player dying and the level reloading. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission", meta = (ClampMin = "0.0"))
 	float RestartDelaySeconds = 2.f;
@@ -193,6 +203,9 @@ protected:
 	/** Timer body: the first save of a new game, once the world has settled. */
 	void SaveNewGame();
 
+	/** Timer body: the save after a chapter was started by hand. */
+	void SaveChapterStart();
+
 	/** Blueprint hook for end-of-mission scoring, stats screens, achievements. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Mission")
 	void OnMissionCompleted(UMissionDefinition* Mission);
@@ -234,4 +247,5 @@ private:
 	FTimerHandle RestartTimerHandle;
 	FTimerHandle AutosaveTimerHandle;
 	FTimerHandle NewGameSaveTimerHandle;
+	FTimerHandle ChapterSaveTimerHandle;
 };

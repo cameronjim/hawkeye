@@ -4,6 +4,8 @@
 #include "Hawkeye.h"
 #include "Audio/HawkeyeAudioMath.h"
 #include "Chase/ChaseSubsystem.h"
+#include "Boss/BossFightSubsystem.h"
+#include "Mission/CampaignOrder.h"
 #include "Audio/HawkeyeAudioSubsystem.h"
 #include "Vfx/SnowfallComponent.h"
 #include "Audio/HawkeyeVolumeSubsystem.h"
@@ -1346,16 +1348,32 @@ void AHawkeyePlayerController::SafehouseChapterSelect()
 	{
 		return;
 	}
-	// TODO(stage4): real chapters once more than CH01 exists; until then a stub with placeholder rows.
+	// The campaign's order from the district's first chapter (gameplay-semantics.md, "Bosses", Campaign order).
+	const AHawkeyeGameMode* Mode = GetWorld() ? GetWorld()->GetAuthGameMode<AHawkeyeGameMode>() : nullptr;
+	const UMissionSubsystem* Missions = UMissionSubsystem::Get(this);
+	const UMissionDefinition* Current = Missions ? Missions->GetCurrentMission() : nullptr;
+	const bool bComplete = Missions && Missions->IsMissionComplete();
+	ChapterRows.Reset();
+	for (UMissionDefinition* Chapter : UHawkeyeCampaignOrder::Build(Mode ? Mode->StartingMission.Get() : nullptr))
+	{
+		ChapterRows.Add(Chapter);
+	}
+	const int32 CurrentIndex = ChapterRows.IndexOfByKey(Current);
 	TArray<FHawkeyeMenuListRow> Rows;
-	Rows.Add({ NSLOCTEXT("Hawkeye", "ChapterSelectCH01", "[CH01]"), true });
-	for (int32 Slot = 1; Slot < ChapterSelectSlots; ++Slot)
+	for (int32 Index = 0; Index < ChapterRows.Num(); ++Index)
+	{
+		const bool bOpen = UHawkeyeCampaignOrder::IsOpen(Index, CurrentIndex, bComplete, ChapterRows.Num());
+		const FText Name = FText::Format(NSLOCTEXT("Hawkeye", "ChapterSelectRow", "{0}. {1}"),
+			FText::AsNumber(ChapterRows[Index]->MissionNumber), ChapterRows[Index]->MissionName);
+		Rows.Add({ bOpen ? Name : NSLOCTEXT("Hawkeye", "ChapterSelectLocked", "[Locked]"), bOpen });
+	}
+	for (int32 Slot = Rows.Num(); Slot < ChapterSelectSlots; ++Slot)
 	{
 		Rows.Add({ NSLOCTEXT("Hawkeye", "ChapterSelectLocked", "[Locked]"), false });
 	}
 	SafehouseListKind = 2;
 	SafehouseWidget->ShowList(NSLOCTEXT("Hawkeye", "ChapterSelectHeading", "Chapter select"), Rows);
-	SetSafehouseStatus(NSLOCTEXT("Hawkeye", "SafehouseChapters", "[Chapter select is a stub]"));
+	SetSafehouseStatus(NSLOCTEXT("Hawkeye", "SafehouseChapters", "Pick a chapter."));
 }
 
 void AHawkeyePlayerController::HandleSafehouseListPicked(int32 Index)
@@ -1365,9 +1383,25 @@ void AHawkeyePlayerController::HandleSafehouseListPicked(int32 Index)
 		FastTravelTo(TravelRowIds[Index]);
 		return;
 	}
-	if (SafehouseListKind == 2)
+	if (SafehouseListKind != 2)
 	{
-		SetSafehouseStatus(NSLOCTEXT("Hawkeye", "ChapterSelectCurrent", "[CH01] is the chapter in progress."));
+		return;
+	}
+	const UMissionSubsystem* Missions = UMissionSubsystem::Get(this);
+	const int32 CurrentIndex = ChapterRows.IndexOfByKey(Missions ? Missions->GetCurrentMission() : nullptr);
+	const bool bComplete = Missions && Missions->IsMissionComplete();
+	if (!ChapterRows.IsValidIndex(Index) || !UHawkeyeCampaignOrder::CanStart(Index, CurrentIndex, bComplete, ChapterRows.Num()))
+	{
+		SetSafehouseStatus(Index == CurrentIndex
+			? NSLOCTEXT("Hawkeye", "ChapterSelectCurrent", "That is the chapter in progress.")
+			: NSLOCTEXT("Hawkeye", "ChapterSelectClosed", "Not yet."));
+		return;
+	}
+	UMissionDefinition* Chapter = ChapterRows[Index];
+	CloseSafehouseMenu();
+	if (AHawkeyeGameMode* Mode = GetWorld() ? GetWorld()->GetAuthGameMode<AHawkeyeGameMode>() : nullptr)
+	{
+		Mode->StartChapter(Chapter);
 	}
 }
 
@@ -1862,6 +1896,11 @@ void AHawkeyePlayerController::BeginChapterOpening(UMissionDefinition* Mission)
 	if (UChaseSubsystem* Chase = UChaseSubsystem::Get(this))
 	{
 		Chase->BeginChapter(Mission);
+	}
+	// A boss chapter opens on the street under the arena's roof.
+	if (UBossFightSubsystem* BossFight = UBossFightSubsystem::Get(this))
+	{
+		BossFight->BeginChapter(Mission);
 	}
 }
 

@@ -27,6 +27,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/AutomationTest.h"
+#include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMemory.h"
 #include "RenderTimer.h"
 #include "DynamicRHI.h"
@@ -278,9 +279,24 @@ void AHawkeyeGameMode::BeginPlay()
 	MissionSubsystem->OnMissionStarted.AddDynamic(this, &AHawkeyeGameMode::HandleMissionStarted);
 	MissionSubsystem->OnObjectiveUpdated.AddDynamic(this, &AHawkeyeGameMode::HandleObjectiveUpdated);
 
-	if (StartingMission)
+	// -HawkeyeChapter=<asset name>: a lap or a test starts the district on another chapter (a load still wins below).
+	UMissionDefinition* Chapter = StartingMission;
+	FString ChapterName;
+	if (FParse::Value(FCommandLine::Get(), TEXT("HawkeyeChapter="), ChapterName))
 	{
-		MissionSubsystem->StartMission(StartingMission);
+		if (UMissionDefinition* Asked = FindChapter(ChapterName))
+		{
+			Chapter = Asked;
+			UE_LOG(LogHawkeye, Log, TEXT("%s: -HawkeyeChapter starts %s."), *GetName(), *Asked->GetName());
+		}
+		else
+		{
+			UE_LOG(LogHawkeye, Warning, TEXT("%s: -HawkeyeChapter=%s names no chapter under /Game/Missions."), *GetName(), *ChapterName);
+		}
+	}
+	if (Chapter)
+	{
+		MissionSubsystem->StartMission(Chapter);
 	}
 	else
 	{
@@ -303,6 +319,49 @@ void AHawkeyeGameMode::BeginPlay()
 		GetWorldTimerManager().SetTimer(NewGameSaveTimerHandle, this, &AHawkeyeGameMode::SaveNewGame, 1.5f, false);
 	}
 }
+
+UMissionDefinition* AHawkeyeGameMode::FindChapter(const FString& Name)
+{
+	if (Name.IsEmpty())
+	{
+		return nullptr;
+	}
+	const FString Path = Name.StartsWith(TEXT("/")) ? Name : FString::Printf(TEXT("/Game/Missions/%s.%s"), *Name, *Name);
+	return LoadObject<UMissionDefinition>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+}
+
+bool AHawkeyeGameMode::StartChapter(UMissionDefinition* Chapter)
+{
+	UMissionSubsystem* Missions = UMissionSubsystem::Get(this);
+	if (!Chapter || !Missions || !Missions->StartMission(Chapter))
+	{
+		return false;
+	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: chapter %s started by hand."), *GetName(), *Chapter->GetName());
+	GetWorldTimerManager().SetTimer(ChapterSaveTimerHandle, this, &AHawkeyeGameMode::SaveChapterStart, 1.5f, false);
+	return true;
+}
+
+void AHawkeyeGameMode::SaveChapterStart()
+{
+	if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this))
+	{
+		Save->SaveCampaign(TEXT("chapter start"));
+	}
+}
+
+static FAutoConsoleCommandWithWorldAndArgs GHawkeyeStartChapterCommand(
+	TEXT("hawkeye.StartChapter"),
+	TEXT("hawkeye.StartChapter <mission asset name>: starts that chapter now (DA_CH04_SocialClub)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+	{
+		AHawkeyeGameMode* Mode = World ? World->GetAuthGameMode<AHawkeyeGameMode>() : nullptr;
+		UMissionDefinition* Chapter = Args.Num() > 0 ? AHawkeyeGameMode::FindChapter(Args[0]) : nullptr;
+		if (!Mode || !Chapter || !Mode->StartChapter(Chapter))
+		{
+			UE_LOG(LogHawkeye, Warning, TEXT("hawkeye.StartChapter: no such chapter, or no Hawkeye game mode."));
+		}
+	}));
 
 void AHawkeyeGameMode::SaveNewGame()
 {

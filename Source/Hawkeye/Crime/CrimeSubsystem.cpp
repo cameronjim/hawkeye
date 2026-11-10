@@ -4,6 +4,7 @@
 #include "HawkeyeGameMode.h"
 #include "HawkeyePlayerController.h"
 #include "AIController.h"
+#include "Boss/BossFightSubsystem.h"
 #include "Chase/ChaseSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Challenge/ChallengeSubsystem.h"
@@ -219,6 +220,13 @@ bool UCrimeSubsystem::IsInChapterBeat() const
 	}
 	const UWorld* World = GetWorld();
 	if (const UChaseSubsystem* Chase = World ? World->GetSubsystem<UChaseSubsystem>() : nullptr; Chase && Chase->IsChaseRunning())
+	{
+		return true;
+	}
+	// A boss fight on its roof, from the moment she arrives: no street crime drags her off it.
+	if (const UBossFightSubsystem* BossFight = World ? World->GetSubsystem<UBossFightSubsystem>() : nullptr;
+		BossFight && BossFight->GetState() != EBossFightState::Idle && BossFight->GetState() != EBossFightState::Approach
+		&& BossFight->GetState() != EBossFightState::Done)
 	{
 		return true;
 	}

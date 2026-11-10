@@ -466,7 +466,7 @@ public:
 	 */
 	int32 UpdatePlaceNotices();
 
-	/** Chapter select's rows: "[CH01]" then this many less one "[Locked]". */
+	/** Chapter select's rows: the campaign's chapters (UHawkeyeCampaignOrder), then "[Locked]" up to this many. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Safehouse", meta = (ClampMin = "1"))
 	int32 ChapterSelectSlots = 6;
 
@@ -925,6 +925,10 @@ protected:
 
 	/** The fast-travel list's safehouse ids, row for row. */
 	TArray<FName> TravelRowIds;
+
+	/** Chapter select's chapters, row for row (the campaign order). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMissionDefinition>> ChapterRows;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Challenge")
 	TObjectPtr<UChallengeResultsWidget> ChallengeResultsWidget = nullptr;

@@ -5,6 +5,7 @@
 #include "Combat/ArrowDefinition.h"
 #include "MissionDefinition.generated.h"
 
+class UBossDefinition;
 class UBowDefinition;
 class UChaseRouteDefinition;
 class UMissionObjective;
@@ -79,6 +80,20 @@ public:
 	/** The chase this chapter runs, from its opening. None for a chapter without one. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
 	TSoftObjectPtr<UChaseRouteDefinition> Chase;
+
+	/**
+	 * The boss fight this chapter runs (gameplay-semantics.md, "Bosses"): set up on the arena's roof when the chapter
+	 * starts, its objectives completed by the fight. None for a chapter without one.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TSoftObjectPtr<UBossDefinition> Boss;
+
+	/**
+	 * The chapter after this one in the campaign's order (UHawkeyeCampaignOrder): it opens in chapter select once this
+	 * one is complete. None for the last.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
+	TSoftObjectPtr<UMissionDefinition> NextChapter;
 
 	/**
 	 * The title, subtitle, end card line and toast are a draft (docs/chapters/ACT1-script.md) waiting for the

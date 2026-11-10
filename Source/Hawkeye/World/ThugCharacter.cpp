@@ -13,6 +13,7 @@
 #include "Combat/CombatAnimSet.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
+#include "Boss/BossRules.h"
 #include "Combat/MeleeRules.h"
 #include "Combat/WeaponComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -779,8 +780,12 @@ bool AThugCharacter::ReceiveFinisher(AActor* By, FVector Velocity)
 	{
 		return false;
 	}
-	// Straight to the health, round the shield: the finisher is the answer to a guard already broken.
-	HealthComponent->ApplyDamage(HealthComponent->GetCurrentHealth() + HealthComponent->GetMaxHealth(), By);
+	// Straight to the health, round the shield: the finisher is the answer to a guard already broken. A boss
+	// takes a share of his health instead (gameplay-semantics.md, "Bosses").
+	const float Blow = FinisherDamageFraction > 0.f
+		? UBossRules::FinisherDamage(HealthComponent->GetCurrentHealth(), HealthComponent->GetMaxHealth(), FinisherDamageFraction)
+		: HealthComponent->GetCurrentHealth() + HealthComponent->GetMaxHealth();
+	HealthComponent->ApplyDamage(Blow, By);
 	const bool bKilled = !HealthComponent->IsAlive();
 	if (bKilled && IsRagdolling())
 	{
@@ -1418,6 +1423,10 @@ void AThugCharacter::DropLoot()
 
 FHawkeyeMeleeAttack AThugCharacter::GetMeleeAttack(int32 SwingIndex) const
 {
+	if (ComboAttacks.Num() > 0)
+	{
+		return ComboAttacks[FMath::Abs(SwingIndex) % ComboAttacks.Num()];
+	}
 	switch (Weapon)
 	{
 	case EThugWeapon::Bat:

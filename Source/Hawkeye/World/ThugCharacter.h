@@ -176,10 +176,25 @@ public:
 
 	/**
 	 * The swing for his weapon: BatAttack for a Bat thug, FistsAttack for fists, and for the heavy the
-	 * shield bash on even swings (SwingIndex 0, 2, ...) and the slow bat swing on odd ones.
+	 * shield bash on even swings (SwingIndex 0, 2, ...) and the slow bat swing on odd ones. With ComboAttacks set,
+	 * ComboAttacks[SwingIndex % its length] whatever the weapon.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Thug|Combat")
 	FHawkeyeMeleeAttack GetMeleeAttack(int32 SwingIndex = 0) const;
+
+	/**
+	 * A combo in place of the weapon's swing (a boss's move set, set by UBossFightSubsystem from his definition).
+	 * Empty: the weapon's.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	TArray<FHawkeyeMeleeAttack> ComboAttacks;
+
+	/**
+	 * A finisher on him takes this fraction of his max health (killing him only when that is all he has) instead of
+	 * everything: a boss. 0, a thug: lethal.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FinisherDamageFraction = 0.f;
 
 	/** The heavy's shield bash: 30 damage after a 0.8 s telegraph, knocks her back 250 cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
@@ -417,6 +432,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	float GetFinisherWindowRemaining() const { return FinisherWindowRemaining; }
 
+	/** Shuts a window OpenFinisherWindow opened (a boss's winded window after the finisher that used it). */
+	UFUNCTION(BlueprintCallable, Category = "Thug")
+	void CloseFinisherWindow() { FinisherWindowRemaining = 0.f; }
+
 	/** Staggered by a parry and not yet recovered from it. */
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	bool IsParryStaggered() const { return ParryStaggerRemaining > 0.f && IsStaggered(); }
@@ -430,8 +449,8 @@ public:
 	void HoldStagger(float Seconds);
 
 	/**
-	 * A finisher's blow: lethal damage from By whatever his shield or health, then his ragdoll thrown at
-	 * Velocity (cm/s) if it is simulating. True when this killed him.
+	 * A finisher's blow: lethal damage from By whatever his shield or health (a boss: FinisherDamageFraction of his
+	 * max health), then his ragdoll thrown at Velocity (cm/s) if it is simulating. True when this killed him.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Thug")
 	bool ReceiveFinisher(AActor* By, FVector Velocity);
