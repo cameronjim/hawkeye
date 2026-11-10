@@ -17,6 +17,19 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Chapter 3 is The Grotto.** Act 1 now runs 1 → 2 → 3 → 4. Find the department store's
+  grotto 208 m out, get through four elves unseen (being seen starts a fight, it does not
+  fail you), open the workshop with the keypad, beat the mall Santa (a two-phase boss made
+  of data only, no new boss code), leave by the roof. The boomerang arrow unlocks here:
+  it hits up to two targets and comes back, and shooting a wall switch box pulls a guard
+  away. After the end card the farm calls (Lila's line), and an ornament by the safehouse
+  sets a save flag. Reactive lines more than 3 s late are now dropped, and subtitles wrap
+  clear of the prompt. 553 tests pass; all 13 laps passed first try; the unseen lap takes
+  149 s in game with zero alerts. Rough: all greybox, the sign has no lettering, the roof
+  stairs are a door, catching the boomerang has no input or animation, Santa goes down in
+  25 s, the "[E] Leave" prompt floats over the first room, and at the door the corner text
+  already shows the next objective. **Feel check:** is sneaking past the elves a puzzle,
+  or do you just walk behind them?
 - **Chapter 4 is The Social Club.** Tomas's fight runs on a boss framework where a boss is
   data (`UBossDefinition`), so the next boss is new assets. Three phases on a roof picked
   from the district data: his four guys while he watches, then Tomas (three-swing combo,
