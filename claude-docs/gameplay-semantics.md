@@ -610,6 +610,8 @@ gone from the code, and so from this file. Every section below describes code th
   `Stagger` itself where it should. The explosive's blast falls off linearly from its full
   damage at the centre to 0 at its radius for everyone inside, and hurts the shooter's partner
   at half (see "Trick arrows").
+- `IncomingDamageScale` (1 for everyone) multiplies every hit before it lands: a boss's guard (0.35) and a scripted
+  beat (0, so nothing lands and nothing fires) set it; nothing else touches it.
 - `bCannotDie` keeps a component at 1 health or more: damage still lands and still staggers,
   but `OnDeath` cannot fire. The partner carries it.
 - Downed (built 2026-09-28, playtest note 9): at 0 health the player is down, never stuck.
@@ -685,15 +687,57 @@ gone from the code, and so from this file. Every section below describes code th
 - The boss: `bRefusesTakedown` (no stealth kill on a boss), max health `MaxHealth` times the difficulty's thug health
   scale, never regenerating, melee damage above `StaggerThreshold` staggers him (40: Kate's light strike, 15, does
   not, so he swings through it; her heavy, 35, does not either), her heavy does not knock him down
-  (`bResistsKnockdown`: he leans back from it; a blast or a bola still puts him over), so his finisher window is
-  earned by a parry or his winded window, his swings are the move set's `Combo` in order
-  through the thug's own tree (`ST_Thug`'s melee, attack tokens and all: he asks for a token like anyone), and he does
-  not back off after two swings.
+  (`bResistsKnockdown`: he leans back from it; a blast or a bola still puts him over), his swings are the move set's
+  `Combo` in order through the thug's own tree (`ST_Thug`'s melee, attack tokens and all: he asks for a token like
+  anyone), and he does not back off after two swings.
+- His finisher (second pass, 2026-11-10): with the move set's `bFinisherOnlyWhenWinded` (on by default) a finisher
+  takes him only inside his winded window (`AThugCharacter::bFinisherNeedsGrantedWindow`; the rule is
+  `UBossRules::IsFinisherOpen`). A parry, a combo ender or a knockdown opens nothing on a boss; on a thug each still
+  does. A parry staggers him at most `ParryStaggerSeconds` (0.6; a thug takes her full 1.5). The punish is the
+  window, not the parry.
+- Unblockable swings: an attack with `FHawkeyeMeleeAttack::bUnblockable` cannot be parried (`ClassifyParry` says
+  None, so no parry line and no parry hint either). Its telegraph is its own: "!!" instead of "!", in a hot yellow
+  (1, 0.85, 0.05) kept apart from every palette's danger colour, flashing to white six times a second (reduce
+  flashing dims the flash), with the dodge key over it as a hint draws a key ("[Ctrl]", "[B]"). A dodge started
+  through it counts as a perfect dodge, as a parryable swing's does. Every thug's swing leaves it off.
 - Winded: once `WindedAfterSwings` swings have started since the last winded window (or the phase start) and the
   last has finished, he is winded for `WindedSeconds`: held where he stands (a stagger he cannot leave), no swing,
   the finisher open, every hit on him doing `WindedDamageScale` times its damage. A finisher on him takes
   `FinisherDamageFraction` of his max health (killing him only when that is all he has left), and closes the window:
-  one finisher a window.
+  one finisher a window. A broken guard or the hazard catching him winds him at once the same way
+  (`FBossComboClock::ForceWinded`: counted, never stacked on a window already running).
+- Guard: a phase's `GuardDamageFraction` under 1 gives him a guard while he fights and is not winded: every hit on him
+  lands at that fraction (`UHealthComponent::IncomingDamageScale`, which the fight sets every tick by
+  `UBossRules::BossDamageScale`), so chipping at him is slow but never nothing. Winded, the guard drops and hits land
+  at `WindedDamageScale`.
+- Guard breaks: an arrow whose effect is one of the phase's `GuardBreakEffects`, landing within `GuardBreakRadius`
+  (300 cm) of him (or on him) while he guards, breaks it: he is winded at once (`UBossRules::BreaksGuard`). The fight
+  sees each trick arrow's effect actor once. There is no zip-kick or grapple strike in the game, so arrows are the
+  only guard-break source the data can name today.
+- The hazard and him: in a phase with `bHazardWindsBoss`, the sweep catches him by the same lane and height rule as
+  her (`ABossArenaHazard::Reaches`, his own `HitCooldownSeconds`): no damage, a shove out of the lane, and he is
+  winded. That is the lure: stand across its lane from him while it telegraphs. Props with `bHazardPushes` (the
+  presents) are shoved along the lane ahead of its body when its sweep reaches them, never passed through
+  (`UBossRules::PushedAlong`: from half a body behind to a body's reach ahead, never more than a reach past the lane's
+  ends, so the sweep back leaves a prop where the last one put it). A putty arrow landing within `PinRadius` (250 cm)
+  of its body or its tether pins it for `PinSeconds` (4 s): its clock stands still, no sweep, no hit, the lane dark,
+  then it runs on from where it was (`UBossRules::PinsHazard`).
+- Beats: a phase's `TransitionBeat`, and the definition's `DefeatBeat` on the blow that puts him down, when their
+  `Seconds` are over 0: her input held (`AHawkeyeCharacter::SetScriptedLock`, which `IsLockedOutByTakedown` includes,
+  and the controller's move and look input ignored), nothing lands on her or him (both health components' incoming
+  scale 0), the boss and the crew stop thinking and turn to her, the hazard held, the view cut over `BlendSeconds`
+  (0.3) to a camera at `CameraOffset` in the frame of the flat line from her to him (X along it from their middle, Y
+  to its right, Z up), looking `LookAtBoss` of the way from her to him at chest height and pulled in front of
+  anything solid like a spring arm (`UBossRules::BeatCamera`), the beat's lines spoken. Over at its `Seconds`, or on
+  Space / pad A after its first 0.4 s (`UBossRules::IsBeatOver`); then the view blends back, everyone fights as the
+  phase says, and a defeat beat hands over to the after sequence. A beat that comes from her finisher's blow waits
+  for the finisher to finish.
+- The finisher that ends something: a finisher on him whose blow (winded scale included) kills him or puts him under
+  the next phase's health threshold (`UBossRules::IsDecisiveFinisher`) runs with the definition's
+  `FinisherCamera` instead of her own numbers: time 0.25 for 0.8 real seconds and the camera 110 cm in (a thug's:
+  0.5, 0.4 s, 40 cm). Her numbers come back when it ends.
+- His look: a light rides on him (`RimLightColor`, `RimLightLumens`, `RimLightRadius`), 110 cm in front of him and
+  over his shoulder, so a dark suit reads at night.
 - Lines during the fight are DT_Dialogue rows spoken with `PlayLine` (they do not wait out a fight as sequences do),
   queued one after another. Barks are a phase's lines for a moment: his swing landing, her dodge within 450 cm of his
   swing, winded, her finisher on him, a parry of anyone, one of the crew going down, a bat swing from the crew
@@ -705,8 +749,10 @@ gone from the code, and so from this file. Every section below describes code th
   rest at the far end for `RestSeconds`, each sweep going back the way the last came. It hits Kate only while it
   sweeps, only when her feet are within `HalfWidth` across the lane and `HalfLength` along it of its body (and between
   150 cm under it and 350 over), at most once per `HitCooldownSeconds`, for `Damage` times the difficulty's thug damage
-  scale, and shoves her out of the lane the short way. It never hits anyone else and never blocks anything. It
-  settles where it is when the boss goes down.
+  scale, and shoves her out of the lane the short way. It never blocks anything; besides her it reaches only the boss
+  (in a phase that says so) and the props it pushes (above). It settles where it is when the boss goes down. The
+  telegraph's light and strip are pure red (1, 0.02, 0.01 and the strip's emissive at 0.25), since anything with green
+  in it bloomed orange on the snow.
 - Down: when the boss's health reaches 0 the hazard settles, the phase's end lines speak, then the after sequence; the
   remaining phase objectives (the last completes the chapter) complete when the lines are over (after at least 1 s)
   or at `AfterMaxSeconds` (60 s).
@@ -714,9 +760,14 @@ gone from the code, and so from this file. Every section below describes code th
   completed objectives give (`UBossRules::CheckpointPhase`): before the meet objective, the approach (all on the roof,
   waiting); else the first phase whose objective is not complete, with the boss at that phase's checkpoint health (full
   for the first phase and for one a crew opens, on the threshold for one health opens: `CheckpointHealthFraction`),
-  the phase's crew fresh, the hazard loose if the phase looses it, fighting at once, its start lines spoken again and
-  its arrows granted again (the save was taken before the phase granted them). Kate, her health and quiver come back
-  from SPUD as always. Restart from a phase checkpoint was chosen over a mid-phase save because the boss's swing,
+  the phase's crew fresh, the hazard loose if the phase looses it, fighting at once, and its arrows granted again (the
+  save was taken before the phase granted them). The checkpoint is the transition beat's end state: no beat plays,
+  nothing is held. No line is said twice in a run of the fight: story lines (a phase's start and end lines, a beat's)
+  go through `UBossRules::UnheardLines`, and what was heard ("line:<row>", "bark:<phase>:<event>") is kept in the
+  campaign (`UHawkeyeCampaignState::BossHeard`, written with every save) and in memory across a death's reload
+  (`UHawkeyeSaveSubsystem::SessionBossHeard`, since the reload reads back a slot older than the lines said since);
+  a load reads both back, so a once-a-fight bark heard before it stays heard. The chapter's opening and a new game
+  clear them. Kate, her health and quiver come back from SPUD as always. Restart from a phase checkpoint was chosen over a mid-phase save because the boss's swing,
   winded and hazard clocks, the crew's health and the dialogue queue would each need saving and restoring, and a
   phase is short.
 - Street crimes wait while a fight is past its approach.
@@ -727,17 +778,24 @@ gone from the code, and so from this file. Every section below describes code th
   away without the replaced-mission warning, then the mission, its opening, and a save 1.5 s later). `-HawkeyeChapter=<mission asset>` on the command line starts the district on that chapter,
   and the console command `hawkeye.StartChapter <mission asset>` starts it at once (laps and tests).
 
-### Chapter 4's boss, Tomas (`DA_Boss_CH04_Tomas`; numbers on Normal)
-- 400 health (320 / 400 / 480), drawn and sized 1.12 times a thug, `BP_Boss_Tomas`: BP_Thug in a green tracksuit
-  with gold stripes and no ski mask.
-- Combo: a jab (12 damage, 0.75 s wind-up, 0.5 s recovery, 150 cm), a jab (12, 0.6 s, 0.5 s), a haymaker (22, 1.1 s
-  wind-up, 0.8 s recovery, 170 cm, shoves 200 cm); 0.6 s between swings; winded after 3 swings for 3 s; 1.5 times
-  damage winded; a finisher takes 0.15 of his max (60, 90 winded); stagger threshold 40; resists the heavy's
-  knockdown; walks at 380.
-- Phases: "Crew" (he watches, out of the fight; four of his guys: two bats, fists, a shield; `beat_crew`), "Tomas"
-  (opened by the crew going down; 1.5 s protected transition; `beat_tomas`), "Santa" (under 0.4 of his health; 2 s
-  protected transition; the inflatable Santa comes loose; 3 confetti arrows; `survive_santa`, which completes once he
-  is down and the after lines are over).
+### Chapter 4's boss, Tomas (`DA_Boss_CH04_Tomas`; numbers on Normal; second pass 2026-11-10)
+- 680 health (544 / 680 / 816 by the difficulty's thug health scale; 400 before the second pass), drawn and sized 1.12
+  times a thug, `BP_Boss_Tomas`: BP_Thug in a green tracksuit with gold stripes and no ski mask, a cool light (0.75,
+  0.85, 1.0; 260 lm over 380 cm) riding in front of him so he reads at night.
+- Combo: a jab (12 damage, 0.75 s wind-up, 0.5 s recovery, 150 cm; parryable), a jab (12, 0.6 s, 0.5 s; parryable), a
+  haymaker (22, 1.1 s wind-up, 0.8 s recovery, 170 cm, shoves 200 cm; unblockable: dodge it); 0.6 s between swings;
+  winded after 3 swings for 3 s; 1.5 times damage winded; the finisher only in that window, taking 0.05 of his max (34,
+  51 winded; it was 0.15, which with parry-finishers made him a thug with more health); a parry staggers him 0.6 s;
+  stagger threshold 40; resists the heavy's knockdown; walks at 380.
+- Phases: "Crew" (he watches, out of the fight; four of his guys: two bats, which are candy canes
+  (`BP_Thug_CandyCane`), fists, a shield; `beat_crew`), "Tomas" (opened by the crew going down; 1.5 s protected
+  transition; guard 0.2; a 2.5 s beat over her shoulder, his "knees" line; `beat_tomas`), "Santa" (under 0.4 of his
+  health; 2 s protected transition; guard 0.2, broken by the confetti arrow (a Smoke effect) within 300 cm; the Santa
+  comes loose and catches him too; a 3 s high beat, "Nobody tied down the Santa?" and Ivan's line; 3 confetti arrows;
+  `survive_santa`, which completes once he is down and the after lines are over). The blow that puts him down: a 2.5 s
+  low, close beat on him ("Good try, me"). A finisher that ends a phase or him: time 0.25 for 0.8 s, camera 110 cm in.
+- Three presents (`SM_Kit_Present`) sit in the Santa's lane at 0.3, 0.55 and 0.8 of it; it shoves them along. A putty
+  arrow (her quiver carries putty into the chapter) on it or its tether pins it 4 s; the lap does not use it.
 - The Santa: waits 2 s, then telegraphs 1.5 s, sweeps 2.5 s, rests 3.5 s; 20 damage (12 / 20 / 28), once per 2 s,
   170 cm either side of its lane and 160 cm along it, a 700 cm/s shove.
 - The confetti arrow (`DA_Arrow_Confetti`, slot 5, the smoke arrow's slot, which Act 1 never fills otherwise): a smoke
@@ -1254,7 +1312,8 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
 - Parry: a strike tap during a telegraph from a thug within 250 cm and in front staggers
   him 1.5 s with no damage taken, a 4-frame hit stop, `NS_ParryRing`, and `MS_Parry`.
   Works on fists, bat, the heavy's bash and slow swing; cancels only the first shot of a
-  gunner's burst; never on archers.
+  gunner's burst; never on archers, never on an unblockable swing (a boss's, see "Bosses"). A boss's parry stagger is
+  shorter and opens no finisher.
 - Finisher: F on a staggered or knocked-down thug within 200 cm (the stealth takedown is
   tried first). 1.2 s: lunge, camera 40 cm in, time 0.5 for 0.4 s, lethal at 0.35 s,
   thrown ragdoll; input locked, invulnerable. With the bow up it's a sweep. Gate (2026-09-27):
