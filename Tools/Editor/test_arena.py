@@ -94,6 +94,19 @@ class ArenaPlanTest(unittest.TestCase):
         self.assertGreaterEqual(kinds.count("pole"), 2)
         self.assertGreaterEqual(len(self.plan["bulbs"]), 3)
 
+    def test_the_presents_sit_in_the_lane_for_the_santa_to_shove(self):
+        plan = self.plan
+        a, b = plan["lane"]
+        length = math.hypot(b[0] - a[0], b[1] - a[1])
+        ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
+        self.assertEqual(len(plan["presents"]), len(self.arena.PRESENTS))
+        for x, y, z, _yaw in plan["presents"]:
+            along = (x - a[0]) * ux + (y - a[1]) * uy
+            across = abs((x - a[0]) * -uy + (y - a[1]) * ux)
+            self.assertTrue(0.0 < along < length, along)
+            self.assertLess(across, self.arena.SANTA_HALF_WIDTH, "in the lane, where the sweep reaches it")
+            self.assertAlmostEqual(z, plan["roof_z"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,8 @@ roof Act 1's "The Social Club" is fought on (docs/chapters/ACT1.md, chapter 4) a
 * the fight: its centre (the clear circle's), Tomas's spot across it from where Kate lands, four crew places round
   the centre, the inflatable Santa's lane through the middle at right angles to the line from her landing to him, and
   the greybox dressing (string-light poles at the circle's diagonals with their bulbs strung between, a speaker behind
-  him, two folding tables) kept off the lane and the fighters' places.
+  him, two folding tables) kept off the lane and the fighters' places, and three presents in the lane for the Santa
+  to shove along.
 
 Pure: no unreal calls beyond what generate_city and create_challenges need at import (test_arena stubs them).
 Cached per district object.
@@ -53,6 +54,8 @@ SPEAKER_BEHIND = 230.0          # cm behind Tomas the speaker stands
 TABLE = (180.0, 75.0, 74.0)
 PROP_PERSON_CLEAR = 140.0       # cm from any prop to a fighter's place
 PROP_LANE_CLEAR = 60.0          # cm from a blocking prop to the lane's edge
+PRESENTS = (0.3, 0.55, 0.8)     # fractions along the lane: presents the Santa shoves, never passes through
+PRESENT_ACROSS = (40.0, -60.0, 20.0)   # cm off the lane's line, so they do not sit in a row
 
 _PLAN = {}
 
@@ -235,6 +238,10 @@ def _layout(world, gen, top, circle, approach):
             props.append(("table", (table[0], table[1], z, _yaw(toward_her))))
     for pt in poles:
         props.append(("pole", (pt[0], pt[1], z, 0.0)))
+    presents = []
+    for t, side in zip(PRESENTS, PRESENT_ACROSS):
+        pt = _off((lane[0][0] + (lane[1][0] - lane[0][0]) * t, lane[0][1] + (lane[1][1] - lane[0][1]) * t), toward_her, side)
+        presents.append((pt[0], pt[1], z, _yaw(across) + 25.0 * len(presents)))
     wires = []
     for a, b in zip(poles, poles[1:] + poles[:1]):
         if len(poles) < 2:
@@ -260,6 +267,7 @@ def _layout(world, gen, top, circle, approach):
         "props": props,
         "wires": wires,
         "bulbs": bulbs,
+        "presents": presents,
         "grapple": round(math.sqrt((stand[0] - anchor[0]) ** 2 + (stand[1] - anchor[1]) ** 2
                                    + (gen.SIDEWALK_TOP + 90.0 - anchor[2]) ** 2)),
     }
