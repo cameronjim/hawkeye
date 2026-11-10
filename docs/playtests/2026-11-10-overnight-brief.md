@@ -19,6 +19,12 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   accelerates; arrival carries 600 cm/s; a jump release keeps the zip's velocity plus a
   boost. Vaults leave at entry speed. Vault and mantle play the sample's clips with motion
   warping to the measured ledge, replacing the stretched 1 m clip.
+- **Attack tokens.** Thugs take turns. One melee and one ranged attacker at a time on
+  Story and Normal, two on Hard, with a gap between attacks (0.9 / 0.6 / 0.4 s). The rest
+  hold a ring around her, spread by angle. A swing from behind winds up for at least a
+  second. `hawkeye.DebugTokens 1` shows who holds and who waits. Every scripted fight is
+  still won; the loud interior lap takes 39.9 s, up from 32.4. **Feel check:** fight four
+  thugs and say whether the turn-taking reads as fair or as thugs standing around.
 - **Generator split.** `generate_city.py` went from 5,356 to 4,143 lines; the reach model,
   fire escapes, ledges, district data and geometry helpers are plain-Python modules with
   unit tests and golden hashes. Regenerating the city in the editor rebuilt nothing.
@@ -33,6 +39,9 @@ Open the editor before we talk so the Unreal MCP tools can connect.
 - Edit or replace the draft lines in `ACT1-script.md`.
 - The download list below. One "yes" covers what you want; logins and licence clicks are yours.
 - Confirm the internship's enrolment rule and deadline.
+- Read the new `README.md`. Its last section says plainly that the code is written with
+  Claude Code under your direction. I think that is the right call for a hiring reader, who
+  will see `CLAUDE.md` and the commit pace anyway; it is yours to reword or cut.
 
 ## Download list
 Nothing was downloaded. Already on disk and usable with no download: the Paragon Sparrow
