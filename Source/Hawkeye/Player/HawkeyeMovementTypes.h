@@ -234,3 +234,54 @@ struct HAWKEYE_API FHawkeyeCameraTargets
 		return Out;
 	}
 };
+
+/** UHawkeyeMovementComponent's custom movement modes (MOVE_Custom's sub-mode). */
+UENUM(BlueprintType)
+enum class EHawkeyeCustomMovement : uint8
+{
+	None,
+	/** A grapple zip: a hop, then a straight line to the anchor's landing point (PhysZip). */
+	Zip,
+};
+
+/** How a zip ended; UHawkeyeMovementComponent::OnZipEnded passes it to the grapple. */
+UENUM(BlueprintType)
+enum class EHawkeyeZipEnd : uint8
+{
+	/** On the landing point: Walking (Falling with no floor there), carrying some of the speed. */
+	Arrived,
+	/** Something on the line the grapple would not let her through: Falling, no velocity. */
+	Blocked,
+	/** Let go with jump or crouch: Falling with the zip's velocity. */
+	Released,
+	/** Something else changed the movement mode. */
+	Interrupted,
+};
+
+/** What the grapple says about a hit on the zip's sweep (UHawkeyeMovementComponent::OnZipHit). */
+UENUM()
+enum class EHawkeyeZipHitResponse : uint8
+{
+	/** The zip is blocked. */
+	Stop,
+	/** The grapple stopped colliding with what was hit: sweep the rest of the step again. */
+	Retry,
+	/** A chain's turn clipped something off the line: finish the turn and sweep along the line itself. */
+	Straighten,
+};
+
+/** The straight line a zip runs along, as the grapple works it out. */
+USTRUCT()
+struct HAWKEYE_API FHawkeyeZipLine
+{
+	GENERATED_BODY()
+
+	/** Where the straight line starts (the capsule centre). */
+	FVector Launch = FVector::ZeroVector;
+
+	/** The capsule centre on the anchor's landing point. */
+	FVector End = FVector::ZeroVector;
+
+	/** Ease up from where she is to Launch first (a zip from the ground). */
+	bool bHop = false;
+};
