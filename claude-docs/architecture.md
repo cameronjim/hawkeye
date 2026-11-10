@@ -20,8 +20,8 @@ is left of the old design is small and named here so nobody builds on it:
 | `AHawkeyeGameMode::RestartMission` | Reloads the level. Death and the pause menu's restart use `ReloadLastCheckpoint`, which loads the last save. |
 | `gameplay-semantics.md` sections marked LEGACY or `Choices` | Punisher text, kept until the chapters that replace it are written. |
 
-Still planned: World Partition (the district is one map with it off) and chapter 3 of Act 1 (chapters 1, 2 and 4 are
-built; the campaign's order runs 1, 2, 4 until it exists).
+Still planned: World Partition (the district is one map with it off). Act 1's four chapters are built (chapter 3 on
+2026-11-10); the campaign's order runs 1, 2, 3, 4.
 
 ## The systems
 
@@ -85,8 +85,18 @@ Rules: `gameplay-semantics.md`, "Mission", "Objective markers and compass".
 - Chapter sites (`UChapterSiteDefinition`, `UChapterSiteSubsystem`, world): a chapter's set piece on the district as data
   (props, lights, objective volumes, a crew and its group objective, keycard pickups, examines), spawned when the
   chapter starts, cleared when another does, matched to the save on a load, and the opening's start point. Built for
-  chapter 2's toy drive (`DA_Site_CH02_ToyDrive`, `Tools/Editor/create_site.py`, planned by `_site.py`). Rules: "Chapter
-  sites".
+  chapter 2's toy drive (`DA_Site_CH02_ToyDrive`, `Tools/Editor/create_site.py`, planned by `_site.py`). Since chapter 3
+  a site names its map and can carry interior doors, return points, triggers (a box that reports a chapter event) and
+  switches (`AArrowSwitch`); its watch (`Watch`, a 0.2 s timer) fires the triggers and spots stealth objectives
+  (`UMissionObjective::SpottedTitle`, `UMissionTracker::MarkObjectiveSpotted`). Rules: "Chapter sites", "Mission".
+- Chapter interiors (`UHawkeyeChapterMaps`, `ChapterMaps.h`): which map a site or boss belongs in, and whether the running
+  chapter carries on into an interior (`UMissionDefinition::InteriorSites`). `UHawkeyeSaveSubsystem` does the carrying:
+  `EnterInterior` marks a continuation, the interior's game mode restores the chapter and calls `FinishContinuation`
+  (which broadcasts `OnCampaignLoaded`), saves inside are allowed and keep the way out (`InteriorReturnMap`), and
+  `ReturnFromInterior` carries the campaign out over the district's entry save or into a fresh district
+  (`CarriedCampaign`, `AdoptCampaign`). Built for chapter 3's grotto (`DA_Site_CH03_Grotto`, `DA_Site_CH03_GrottoInside`,
+  `Tools/Editor/create_grotto.py`, planned by `_grotto.py` and `Tools/Interiors/Grotto.json`). Rules: "Chapter
+  interiors".
 - `UMissionFlowController`: the order of the end-of-mission beats (close-up, end card,
   flashback, playable scene, then next level, return to roaming, or the final card), with
   no UMG, world or travel in it, so tests drive `Begin` and `Advance`. The player
@@ -129,7 +139,9 @@ Rules: `gameplay-semantics.md`, "Flashback".
 - `UArrowDefinition` (primary data asset): one arrow type, its projectile, on-hit effect,
   damage, cap and whether it can be pulled back out. `AArrowProjectile` flies, hits, embeds
   and is recoverable. A new arrow is a new asset. The quiver has seven slots
-  (`HawkeyeQuiverSlotCount`), six with number keys.
+  (`HawkeyeQuiverSlotCount`), six with number keys. A returning arrow (the boomerang) is an arrow asset whose projectile
+  is `AReturningArrowProjectile`, flown by its `ReturnFlight` (`Combat/ReturnFlight.h`: the struct and
+  `UHawkeyeReturnFlightRules`, pure); it trips `AArrowSwitch`es (World). Rules: "Trick arrows", returning arrows.
 - Trick arrows (`Combat/ArrowEffects`): the projectile spawns an `AArrowEffect` at the
   impact and the effect runs on its own clock (`AHeldEffect` putty, `ABolaEffect`,
   `ASmokeCloud`, `AEmpPulse`, `AExplosiveBlast`). Custom actors, not the Gameplay Ability
@@ -171,7 +183,8 @@ Rules: `gameplay-semantics.md`, "Flashback".
 ### World (`Source/Hawkeye/World`)
 - `IInteractable`: `Interact(Interactor)`, `GetInteractPrompt()`, `CanInteract(Interactor)`.
   Anything the player presses E on implements it: `ADoorActor`, `APickupActor`, `ASafehouse`,
-  `AChallengeStart`, `AChapterEndInteractable`, `AInteriorPortal`.
+  `AChallengeStart`, `AChapterEndInteractable`, `AInteriorPortal`. `AChapterEndInteractable::RequiredObjective` holds
+  an examine back until an objective is done.
 - `UInteractionComponent`: on the player. Sphere-sweeps from the camera every 0.1 s out
   to `InteractRange` (250), tracks the focused interactable, pushes its prompt to the HUD,
   `TryInteract()` is bound to IA_Interact. Falls back to a takedown prompt when the
@@ -180,7 +193,8 @@ Rules: `gameplay-semantics.md`, "Flashback".
   adds `KeycardId` to the keycard ring; Arrows adds `ArrowCount` of an arrow type to the
   quiver up to its cap. Optional `CompletesObjectiveId`. Thugs drop them on death.
 - `ADoorActor`: frame and door meshes, swing or slide, `bLocked`, `RequiredKeycardId`, lerps
-  open over `OpenSeconds` in Tick, completes `CompletesObjectiveId` the first time it opens.
+  open over `OpenSeconds` in Tick, completes `CompletesObjectiveId` the first time it opens; `OpensOnObjective` opens it
+  by itself when that objective completes (the grotto's workshop door).
 - The district (data, not actors): `Tools/Editor/generate_city.py` writes the buildings, roads
   and props into the map and the rest into data assets. `UCityLedgeData`
   (`DA_EastVillage_CityProps`) holds every roof-edge ledge, grapple anchor, fire-escape landing and
@@ -276,9 +290,11 @@ Rules: "Partner and switching".
 Rules: "Narrative plumbing". Placeholder text only; the story is written with Cameron.
 - `UDialogueSubsystem` (world): every spoken line, as a subtitle and its audio, in a queue so two
   never overlap, plus walk-and-talk sequences from `DT_DialogueSequences` that wait out fights. The
-  rules are in `UDialogueQueue`. Played sequences are mirrored into the campaign state.
+  rules are in `UDialogueQueue`, reactive lines (ahead of story lines, dropped when 3 s late) among them. Played
+  sequences are mirrored into the campaign state.
 - `UPhoneSubsystem` (world) and `UPhoneInbox` (rules): `DT_Messages` rows triggered by mission
-  events arrive after a delay, show a toast, and are mirrored into the campaign state.
+  events arrive after a delay, show a toast, and are mirrored into the campaign state. A row with a `CallSequence` is
+  a call: its sequence plays as it arrives.
   `UPhoneWidget` is the panel.
 - `UHawkeyeNarrativeSettings` (developer settings) holds the table paths, because world
   subsystems have no Blueprint defaults.
@@ -309,7 +325,8 @@ Rules: "Bosses". Built for Act 1's "The Social Club".
   (`FBossFinisherCamera`), the light that rides on him, the arena (`FBossArena`: the roof's outline, the fight's
   centre, the street stand and its anchor, his spot, the hazard's lane and mesh, props and lights) and the hazard's
   tuning. Written by `Tools/Editor/create_boss.py`, the arena planned from the district by `_arena.py`. A chapter
-  names it on `UMissionDefinition::Boss`; a second boss is another asset.
+  names it on `UMissionDefinition::Boss`; a second boss is another asset: chapter 3's Santa (`DA_Boss_CH03_Santa`,
+  `create_grotto.py`) fights in an interior, his definition's `Map`, his arena a room.
 - `UBossRules` and `FBossComboClock`: the pure rules (phase walk, damageable, winded bonus, finisher share,
   checkpoint from objectives and its health, the hazard's clock and its hits, barks, intro, on the roof; since the
   second pass the finisher's opening, the guard and what breaks it, the decisive finisher, the beat's camera and
@@ -481,9 +498,12 @@ Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
   `_reach` (the grapple's reach model and anchor placement), `_ledges` (one slab per roof edge),
   `_fire_escapes`. `_chase.py` plans the chase from the same records with the same reach model; `_arena.py` picks
   and lays out the boss's roof the same way (`create_boss.py`); `_site.py` picks chapter 2's spot on Avenue B and lays out
-  its toy drive and the courier (`create_site.py`).
+  its toy drive and the courier (`create_site.py`); `_grotto.py` picks chapter 3's grotto (a street door on a
+  building nobody else uses, its roof point) and lays out its frontage and, from `Tools/Interiors/Grotto.json`, its
+  inside (`create_grotto.py`).
   Python tests: `test_geo.py`, `test_city_geometry.py`, `test_city_golden.py`, `test_interior.py`,
-  `test_parse_osm.py`, `test_arena.py`, `test_site.py`. `verify_city.py` checks the generated map against the records.
+  `test_parse_osm.py`, `test_arena.py`, `test_site.py`, `test_grotto.py`. `verify_city.py` checks the generated map
+  against the records.
 - Interiors: `generate_interior.py` and `_interior.py` from `Tools/Interiors/*.json`.
 
 ## Boundaries

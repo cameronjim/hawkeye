@@ -175,6 +175,23 @@ the "Visiting hours" slides, the texts on the phone, and chapter 4 started after
 2 foam). Writes `Saved/Automation/reindeer_games_lap.json` and `Saved/Screenshots/ReindeerGames/reindeer_*.png` (site,
 courier, crew, foam, sack, return, endcard, slides, phone).
 
+## 2f. The grotto laps (chapter 3 from its start)
+
+`Hawkeye.Lap.Grotto` (standalone `-game`, `-Difficulty=Normal`, its own process): the lap starts `DA_CH03_Grotto` the way
+chapter select does and its opening, runs the navmesh to the grotto's frontage (find_sleigh), goes in by its door (the
+chapter carries on in `L_Int_Grotto`), takes the hall's elf down from behind, creeps past the two elves talking in the
+stockroom (overheard) to the boomerang on the shelf, looses the boomerang at the alarm box so the corridor's guard comes
+to look (it trips the box, comes back and is caught), takes the guard down at the box, reaches the workshop door unseen
+(enter_grotto), saves and loads inside the interior (its own slot, `HawkeyeGrottoLap`) and checks the objectives, the
+events (no line again), the boomerangs, the elves down, the door, Santa and Kate's place, opens the door at the keypad
+(open_vault), beats Santa, leaves by the roof stairs and walks onto the roof (leave_roof); then the end card,
+the call from the farm (its subtitles), the ornament at her door (found_ornament) and chapter 4 started after it (2 foam,
+2 boomerangs, Tomas waiting). Fails if any elf is ever Alerted. `Hawkeye.Lap.SeenGrotto` (its own process) creeps to the
+shelf, looses the boomerang out of the stockroom and turns her back so it comes into her (the self-hit and its line, never
+her last health), walks into the hall standing up so the hall's elf sees her (the spotted title and line), fights every
+elf, then the keypad, Santa and the roof. Writes `Saved/Automation/grotto_lap.json` / `grotto_loud_lap.json` and `Saved/Screenshots/Grotto/grotto_*.png` (frontage, inside,
+boomerang out and back, vault, santa, santa_down, roof, endcard, call, ornament).
+
 ## 3. Playtest checklist (human)
 
 Before any commit that touches player feel, AI, or a level, play through this in

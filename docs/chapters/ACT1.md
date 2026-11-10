@@ -36,7 +36,13 @@ Free roam sits between chapters, with crimes and challenges as now.
 ## The Tomas fight
 
 Built 2026-11-10 as chapter 4 on the boss framework (`CH04.md`; rules in `claude-docs/gameplay-semantics.md`,
-"Bosses"). It follows chapter 2 in the campaign's order until chapter 3 exists.
+"Bosses"). It follows chapter 3 in the campaign's order.
+
+## Chapter 3, The Grotto
+ 2026-11-10 (`CH03.md`): the grotto's frontage on a side street as a chapter site, the stealth interior (`L_Int_Grotto`, the
+chapter carrying on inside it) with four elves, the boomerang found on the stockroom shelf and the alarm box only it
+trips, the workshop's four sleighs and Santa on the boss framework, out by the roof stairs; then the ornament at her door
+(`found_ornament`) and the video call from the farm as a phone call.
 
 ## Chapter 2, Reindeer Games
  2026-11-10 (`CH02.md`): the toy drive on Avenue B as a chapter site, the reindeer crew, the sticky foam
@@ -65,7 +71,7 @@ Three phases on the boss phase system. A formality, and funny.
 | Need | Size |
 |------|------|
 | Lucky as a follower in a sweater | Medium. No dog mesh or animation on disk; placeholder until an asset is chosen |
-| Boomerang arrow (returns along its path, can hit on the way back, Kate included) | Small |
+| Boomerang arrow (returns along its path, can hit on the way back, Kate included) | Small. Built 2026-11-10 (`DA_Arrow_Boomerang`, a returning arrow) |
 | Confetti arrow (a burst that blinds briefly; she insists it is tactical) | Small. Built 2026-11-10 as data on the smoke arrow (`DA_Arrow_Confetti`) |
 | Sticky foam (the putty arrow renamed; also sticks to walls as a foothold, *proposal*) | Small |
 | Holiday prop weapons and reindeer masks for thugs | Small, script-built |

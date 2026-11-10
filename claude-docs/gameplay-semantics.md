@@ -88,7 +88,11 @@ gone from the code, and so from this file. Every section below describes code th
   or not a hint is up), and the banter subtitle 8 px over the band's top, never lower than its own 150 px, so
   they never overlap and the subtitle never jumps when a hint comes or goes (at scale 1 the line's top used to
   touch the subtitle's bottom exactly; at 1.4 they overlapped). Subtitle bottoms: 150 px at 0.8, 158 at 1.0,
-  204 at 1.4 (`Hawkeye.Hud.HintAndSubtitleStack`, the real HUD laid out headless). Rules in
+  204 at 1.4 (`Hawkeye.Hud.HintAndSubtitleStack`, the real HUD laid out headless). The subtitle wraps at a fixed width,
+  0.55 of the HUD's (360 to 900 px; 704 at 1280), never at its box's own size: auto-wrap inside a box that sizes to its
+  text wrapped some lines a word at a time (2026-11-10). The interaction prompt (centred under the reticle, 120 px of
+  top padding) moves up when a subtitle's top would come within 12 px of its bottom, never above the top quarter
+  (`UHawkeyeHudWidget::ComputePromptTopPadding`, `Hawkeye.Hud.SubtitleWrapAndPromptClear`). Rules in
   `Source/Hawkeye/UI/HawkeyeHints.h` (`UHawkeyeHintRules`, C++ data on the class default, no asset;
   `FHawkeyeHintQueue`, pure), sensed and saved by `UHawkeyeHintSubsystem`, drawn by `UHawkeyeHintWidget`.
   - Tokens resolve to the device touched last (`IsUsingGamepad`): {Sprint} Shift / L3, {Jump} Space / A,
@@ -488,6 +492,25 @@ gone from the code, and so from this file. Every section below describes code th
   for 6 s. Cap 3.
 - Explosive: 80 damage at the centre falling linearly to 0 at 400 cm, knocks thugs down
   2 s, camera shake, a flash. Kate takes the damage too if she is inside. Cap 2.
+- Returning arrows (built 2026-11-10 for chapter 3's boomerang; `AReturningArrowProjectile`, rules
+  `UHawkeyeReturnFlightRules`, tuning `UArrowDefinition::ReturnFlight`). The projectile moves itself, no drop, at
+  `Speed` (2600 cm/s) both ways. Out: straight, sweeping; every body it meets (anything with health, alive, not her or
+  her partner) is hurt by the arrow's damage and staggered, then flown through, up to `MaxTargets` (2) in the whole
+  flight. It turns back at the first wall or floor, at a switch it trips, after its last target, or at `MaxRange`
+  (2200 cm), in that order of reasons (`TurnBack`); a raised shield is a wall. Back: along the path it flew (points every
+  50 cm, from where it turned to where it left her), then to her chest where she is now, through anything solid, hurting
+  bodies it has not hurt yet while it can (`PointAlongReturn`). Within 70 cm of her it is home: caught when it comes at
+  her from within 70 degrees of where she looks (her control rotation) and she is not busy (a takedown, a traversal, a
+  zip, staggered, down) (`IsCaught`); else it hits her: a stagger and 2 damage, never more than leaves her 1
+  (`SelfHitDamage`), so it cannot kill her. Either way one goes back into her quiver (it is never left lying about). A
+  flight over 6 s ends where it is, back in the quiver. Chapter events: `arrow_caught:<asset>`, `arrow_self_hit:<asset>`
+  (`Hawkeye.ReturnFlight.Rules`, `Hawkeye.ReturnFlight.OutThroughTwoAndBackInAWorld`).
+- The boomerang (`DA_Arrow_Boomerang`, slot 4, the bola's, which Act 1 never fills): 15 damage at full draw, cap 2, an
+  orange shaft and yellow vanes; chapter 3 finds it on the grotto's stockroom shelf (2), and chapter 4 carries 2 in.
+- Switches (`AArrowSwitch`, a chapter site's `FChapterSiteSwitch`): a box on a wall an arrow trips once. Tripped, its
+  red lamp goes out, it makes a noise at itself (`NoiseLoudness`, heard as any noise is, walls and doors counting, the
+  instigator Kate), and it reports `switch:<Id>`. With `bReturningArrowsOnly` (the grotto's alarm box) only a returning
+  arrow's blunt head trips it; a plain arrow sticks in it and nothing happens.
 - Thug AI honours `bHeld`, `bBlinded`, and `bJammed`. CH01 granted 2 putty, 2 bola, 1 smoke and 1 EMP for testing
   until 2026-11-10; Act 1 now unlocks along the campaign order ("Bosses", Campaign order). The putty arrow is the
   story's sticky foam: its display name is "Sticky foam arrow", "Foam" on the hotbar (asset and code keep Putty).
@@ -559,7 +582,14 @@ gone from the code, and so from this file. Every section below describes code th
 - Campaign flags (2026-11-10). An objective's `CampaignFlag` goes up in `UHawkeyeCampaignState::CampaignFlags` when it
   completes, in the game mode's objective handler before that objective's autosave, once. Flags outlive the chapter
   (the completed objectives do not); only a new game clears them (`Hawkeye.Campaign.FlagRaisedOnceAndSaved`).
-  Chapter 2's courier raises `saw_courier` for later acts.
+  Chapter 2's courier raises `saw_courier` for later acts; chapter 3's ornament `found_ornament`.
+- Stealth objectives (2026-11-10, chapter 3's `enter_grotto`). An objective with a `SpottedTitle` is a stealth one: the
+  first time a living thug is Alerted while it is the current objective, it is spotted (the chapter site's watch,
+  `UHawkeyeChapterSiteRules::ShouldMarkSpotted`, five times a second): its title and hint become `SpottedTitle` and
+  `SpottedHint` on the HUD, it fires `OnObjectiveUpdated` (not completed, so no autosave and no toast), and the chapter
+  event `spotted:<id>` fires (her line). Nothing fails: it still completes the way it would have. Spotted objectives are
+  saved (`UHawkeyeCampaignState::SpottedObjectives`) and a load puts the title back
+  (`Hawkeye.Mission.StealthObjectiveSpottedAndTriggers`).
 
 ## Chapter events (built 2026-11-10 for Act 1's "Reindeer Games")
 - `UMissionDefinition::Events`: entries of an event name, DT_Dialogue lines and arrow grants. `UChapterEventSubsystem`
@@ -567,7 +597,16 @@ gone from the code, and so from this file. Every section below describes code th
   the lines through `PlayLine` (queued one after another, fight or not, unlike sequences), the arrows into the
   player's quiver up to each cap. Events: `parry` (the player's parry landed, `AHawkeyeCharacter::TryParry`),
   `arrow_loosed:<arrow asset>` (the player's bow loosed it), `objective_completed:<id>`, `objective_started:<id>` (it
-  became the current one; the first objective's at the chapter's start, never on a load). No chapter is named in C++.
+  became the current one; the first objective's at the chapter's start, never on a load), and since 2026-11-10
+  `takedown` (the player's stealth takedown), `trigger:<name>` (a site trigger), `switch:<id>` (a switch tripped),
+  `spotted:<objective>` (a stealth objective seen), `arrow_caught:<arrow asset>` and `arrow_self_hit:<arrow asset>`
+  (a returning arrow home). No chapter is named in C++.
+- Reactive lines (2026-11-10, from chapter 2's first-parry line landing after the fight). An entry with `bReactive` queues
+  its lines as reactive (`UDialogueQueue::PlayLine(Row, true)`): ahead of every story line already queued, behind any
+  reactive line already waiting, and dropped unspoken when it has waited more than `ReactiveMaxLateSeconds` (3 s)
+  without starting (the line speaking still finishes). Story lines are never dropped however late. Chapter 2's parry and
+  first foam arrow, chapter 3's takedown, boomerang self-hit and spotted lines are reactive
+  (`Hawkeye.Dialogue.ReactiveLinesJumpOrDrop`).
 - What has fired is mirrored into the save (`FiredChapterEvents`) and put back on a load, so a load mid-chapter says no
   line and grants nothing twice; a chapter started afresh (chapter select, a new game) starts with nothing fired.
   `Hawkeye.ChapterEvents.FireOnceARun`.
@@ -590,11 +629,44 @@ gone from the code, and so from this file. Every section below describes code th
 - The chapter's opening puts Kate at the site's `PlayerStart` (zero leaves her where she is).
 - An examine can ask for keycards (`AChapterEndInteractable::RequiredKeycards`): offered only when she carries all of
   them. Kate's keycard ring is saved with her (`SavedKeycards`), so a load keeps what she carries.
+- Since 2026-11-10 (chapter 3) a site also has: `Map` (the map it stands in; none is the district, any map that is not
+  an interior), interior doors (an `AInteriorEntrance` with its interior, its doorstep's return point and a tag an
+  objective's marker can follow), return points (a target point tagged with its label: where an interior's front or roof
+  door comes back out), triggers (a box that reports its chapter event the first time Kate stands in it; `bOnlyUnseen`
+  waits while any thug is Alerted: an overheard conversation, `UHawkeyeChapterSiteRules::ShouldFireTrigger`), switches
+  (`AArrowSwitch`, above), and examines that wait for an objective (`RequiredObjective`: the ornament after the roof). The
+  site's watch (a 0.2 s timer, `UChapterSiteSubsystem::Watch`) fires triggers and spots stealth objectives; it runs
+  with no site too.
 - `Hawkeye.ChapterSite.ChapterTwoCompletesInAWorld`: a site built like chapter 2's in a test world: spawned by the
   mission start, the crew still until the arrival, the courier offered out of order, the table refused without both
   sacks, the chapter complete without the courier, a load matched, another chapter clearing it.
 - Objective ids are `FName`, unique within a mission, lowercase snake_case
   (`find_weapon`, `reach_stairwell`). Reusing an id across missions is fine.
+
+## Chapter interiors (built 2026-11-10 for Act 1's "The Grotto")
+- A chapter carries on into an interior one of its sites names (`UMissionDefinition::InteriorSites`, each with its
+  `Map`; `UHawkeyeChapterMaps::ContinuesInto`). Content picks its map by `UHawkeyeChapterMaps::BelongsInWorld`: a site or a
+  boss naming a map belongs only in that map, one naming none only in maps that are not interiors (the interior game
+  mode's indoor camera), so the district's site never stands inside the grotto and the grotto's Santa never on a roof.
+  Another interior (the auction house) during a chapter is as before: no chapter inside, saves refused.
+- In by its door: the district is saved (the entry save) and the campaign captured; the interior starts the chapter
+  where the campaign has it, as a load does (no title, no opening, no objective_started; `bRestorePending`), and
+  announces it (`UHawkeyeSaveSubsystem::FinishContinuation`: `OnCampaignLoaded`, so the interior's site, the chapter's
+  fired events and the boss's checkpoint match the campaign). Her quiver comes with her as through any interior door.
+- Inside, saves are allowed (`FHawkeyeSceneReturn::AllowsSave`: never on the way back, never in a flashback's scene or
+  a plain interior): objective autosaves, the 60 s roaming autosave, quit to menu. The save is of the interior and keeps
+  where its doors lead (`UHawkeyeCampaignState::InteriorReturnMap`, `InteriorReturnPoint`); a load (Continue, a death's
+  reload) comes back inside with its exits working. Once the slot holds the interior, the entry save is gone.
+- Out by a door: the campaign is captured inside and carried out. With the entry save still in the slot it loads (the
+  district as she left it) and the carried campaign replaces the one it held (everything that happened inside); with
+  the slot holding the interior the district opens fresh and the chapter carries on into it from the campaign the same
+  way. She is put at the door's return point (the front door: the doorstep; the roof stairs: the roof point).
+  `Hawkeye.ChapterMaps.ContentBelongsInItsMap`, and played by `Hawkeye.Lap.Grotto` (in, a save and load inside, out by
+  the roof).
+- Doors an objective opens: a layout door with `"opens_on"` (`ADoorActor::OpensOnObjective`) unlocks and opens by itself
+  when that objective completes, or at once when it already has (a load past it); while it waits it answers no
+  interaction (the keypad beside it opens it) (`Hawkeye.Door.OpensOnObjective`).
+- A layout enemy may name his Blueprint (`"blueprint"`: the grotto's `BP_Thug_Elf`); his type still picks his weapon.
 
 ## Objective markers and compass (specified 2026-09-26)
 - An objective trigger volume registers its centre with the tracker for its id at
@@ -711,7 +783,9 @@ gone from the code, and so from this file. Every section below describes code th
   `FBossPhase` rule plus its objective, whether he fights or watches, its crew, whether the arena's hazard is loose,
   its start and end lines, its barks and the arrows it grants), the arena (the roof's outline and floor, the fight's
   centre and radius, the street stand and the parapet anchor it grapples, his spot, the hazard's lane, mesh and warning
-  strip, the props and lights) and the hazard's tuning, the meet objective, the pre-fight and after sequences. A
+  strip, the props and lights) and the hazard's tuning, the meet objective, the pre-fight and after sequences, and the
+  map the fight is in (`Map`; none is the district's roofs; chapter 3's Santa names L_Int_Grotto, his "roof" the
+  workshop's floor, no street stand and no hazard). A
   chapter names it on `UMissionDefinition::Boss`; `UBossFightSubsystem` runs it. A second boss is a second asset.
 - When the chapter starts (or a save of it loads) the roof is dressed, the boss stands at his spot and the first
   phase's crew round the fight's centre, all calm and not thinking, the boss turning to face Kate, every one of them
@@ -815,10 +889,11 @@ gone from the code, and so from this file. Every section below describes code th
   phase is short.
 - Street crimes wait while a fight is past its approach.
 - Campaign order: the chain of `UMissionDefinition::NextChapter` from the district's `StartingMission` (Night Shift,
-  Reindeer Games, then The Social Club while chapter 3 does not exist). Act 1's arrows unlock along it, and a chapter's
-  `StartingArrows` hold everything unlocked before it, so chapter select can open any chapter cold: chapter 1 the
-  standard arrow and the grapple; chapter 2 the same, and the sticky foam (the putty arrow, shown as "Foam") granted by
-  its arrival event; chapter 4 the standard, the grapple and 2 foam, and the confetti in its last phase. Chapter select in the safehouse lists it: a chapter at or
+  Reindeer Games, The Grotto, The Social Club). Act 1's arrows unlock along it, and a chapter's `StartingArrows` hold
+  everything unlocked before it, so chapter select can open any chapter cold: chapter 1 the standard arrow and the
+  grapple; chapter 2 the same, and the sticky foam (the putty arrow, shown as "Foam") granted by its arrival event;
+  chapter 3 the standard, the grapple and 2 foam, and the boomerang (2) found in the grotto; chapter 4 the standard, the
+  grapple, 2 foam and 2 boomerangs, and the confetti in its last phase. Chapter select in the safehouse lists it: a chapter at or
   before the one in progress is open, the one after it opens once it is complete, the rest say "[Locked]"; picking an
   open chapter that is not the one in progress starts it (`AHawkeyeGameMode::StartChapter`: the chapter before is put
   away without the replaced-mission warning, then the mission, its opening, and a save 1.5 s later). `-HawkeyeChapter=<mission asset>` on the command line starts the district on that chapter,
@@ -853,6 +928,15 @@ gone from the code, and so from this file. Every section below describes code th
   effect retuned by data (`BP_Effect_Confetti`, a child of `ASmokeCloud`: 350 cm for 2.5 s, the wrapping-paper burst
   as its look), so thugs in it are blinded for a moment; no damage, cap 3, not recoverable. Kate's first one loosed
   in the Santa phase is Tomas's "Oh, that's nice" line.
+
+### Chapter 3's boss, Santa (`DA_Boss_CH03_Santa`; numbers on Normal; 2026-11-10)
+- In L_Int_Grotto's workshop (the arena's outline is the room, its floor at 0): 320 health, 1.15 times a thug,
+  `BP_Boss_Santa` (BP_Thug in a red suit with white trim, a Santa hat and beard, a sack in his bat slot drawn at 0.85),
+  no light riding on him (the workshop's tubes light him; a rim light washed his red out). One phase, "Santa" (`beat_santa`), fighting from the start: a sack swing (14,
+  0.8 s wind-up, parryable), a second (14, 0.7 s), an overhead slam (20, 1.1 s, unblockable: dodge it, a 180 cm shove);
+  0.7 s between; winded after 3 for 3 s, 1.5 times damage winded, the finisher only then, 0.12 of his max; guard 0.35;
+  walks at 340. Met at `open_vault` (her feet in the workshop): "Ho, ho- oh, no." (`seq_ch03_santa`, at most 20 s), then
+  the fight; down: a 2 s beat on him, Kate's "You're a mall Santa..." (`seq_ch03_santa_down`), and `beat_santa`.
 
 ## Hands and the thugs' pistol (`UWeaponComponent`)
 Kate shoots with `UBowComponent` (see "Bow and arrows"). `UWeaponComponent` is left for two users:
@@ -1315,7 +1399,10 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   ChapterStart / Event, TriggerObjectiveId, TriggerEvent, ChapterId, DelaySeconds,
   bRead, Thread, bDraft). A message arrives when its trigger fires, with a 2 s HUD notification and an
   unread badge. Read state is saved. Contacts group by `Thread` when set, else by Sender: Kate's own
-  replies (Sender Kate, Thread Clint, arriving read) sit in the thread they answer (2026-11-10). Night
+  replies (Sender Kate, Thread Clint, arriving read) sit in the thread they answer (2026-11-10). A row with a
+  `CallSequence` is a call (2026-11-10, chapter 3's video call from the farm): when it arrives its DT_DialogueSequences
+  sequence plays (the voices as subtitles, nobody on screen; it waits out a fight like any sequence, and plays once a
+  campaign), and the row stays in the thread as the call's record ("[Video call from the farm]"). Night
   Shift has seven drafted rows after `catch_thief` (Clint, Kate's replies, the landlord).
 - Chapter title card (`UChapterTitleWidget`): number, `OpeningTitle`, `OpeningSubtitle`
   from the mission definition, 3 s hold then fade, skippable, input live. Seen-state saved.
