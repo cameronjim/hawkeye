@@ -742,6 +742,7 @@ AUDIO_ARROWS = {
     "DA_Arrow_Smoke": ("MS_Trick_Smoke", True),
     "DA_Arrow_EMP": ("MS_Trick_Emp", False),
     "DA_Arrow_Explosive": ("MS_Trick_Explosion", False),
+    "DA_Arrow_Confetti": ("MS_Trick_Putty", False),
 }
 
 
@@ -878,6 +879,7 @@ VFX_ARROWS = {
     "DA_Arrow_Smoke": [("effect_vfx", "NS_SmokeCloud")],
     "DA_Arrow_EMP": [("effect_vfx", "NS_EmpPulse")],
     "DA_Arrow_Explosive": [("effect_vfx", "NS_Explosion"), ("ground_decal", "M_Decal_Scorch")],
+    "DA_Arrow_Confetti": [("effect_vfx", "NS_PaperBurst")],
 }
 
 

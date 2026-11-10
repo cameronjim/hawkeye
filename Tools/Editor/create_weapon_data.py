@@ -26,6 +26,11 @@
     /Game/Blueprints/Weapons/DA_Arrow_EMP         slot 6, 0 damage, cap 3, EMP
     /Game/Blueprints/Weapons/DA_Arrow_Explosive   slot 7, 80 damage (the blast's, falling off to 0 at
                                                   400 cm), cap 2, Explosive
+    /Game/Blueprints/Weapons/DA_Arrow_Confetti    slot 5 (the smoke's: Act 1 never grants smoke), 0 damage,
+                                                  cap 3, Smoke with EffectClass BP_Effect_Confetti: chapter 4's
+                                                  unlock (claude-docs/gameplay-semantics.md, "Bosses")
+    /Game/Blueprints/Weapons/BP_Effect_Confetti   child of ASmokeCloud retuned by its defaults: 350 cm for 2.5 s
+                                                  (thugs in it blinded a moment); its look is NS_PaperBurst
     /Game/Blueprints/Weapons/M_ArrowFx            translucent Color/Opacity: the smoke cloud's puffs
     /Game/Blueprints/Weapons/M_ArrowGlow          additive unlit Color x Intensity: the EMP ring and
                                                   the explosive's fireball
@@ -156,7 +161,7 @@ def arrow_values(name, projectile_classes):
     trick = TRICK_ARROWS.get(name)
     if trick is not None:
         display, short, slot, damage, cap, recoverable, effect = trick
-        return [
+        values = [
             ("display_name", display),
             ("short_name", short),
             ("slot", slot),
@@ -166,6 +171,9 @@ def arrow_values(name, projectile_classes):
             ("recoverable", recoverable),
             ("on_hit_effect", enum_value("ArrowHitEffect", effect)),
         ]
+        if name in EFFECT_CHILDREN:
+            values.append(("effect_class", projectile_classes.get(EFFECT_CHILDREN[name][0])))
+        return values
     return []
 
 
@@ -178,8 +186,17 @@ TRICK_ARROWS = {
     "DA_Arrow_Smoke": ("Smoke arrow", "Smoke", 5, 0.0, 3, False, "SMOKE"),
     "DA_Arrow_EMP": ("EMP arrow", "EMP", 6, 0.0, 3, False, "EMP"),
     "DA_Arrow_Explosive": ("Explosive arrow", "Explosive", 7, 80.0, 2, False, "EXPLOSIVE"),
+    "DA_Arrow_Confetti": ("Confetti arrow", "Confetti", 5, 0.0, 3, False, "SMOKE"),
 }
 ARROW_NAMES = ["DA_Arrow_Standard", "DA_Arrow_Grapple"] + list(TRICK_ARROWS)
+
+# Trick arrows whose effect is a Blueprint child of the stock class, retuned by its defaults: arrow -> (Blueprint,
+# parent C++ class, [(property, value)]).
+EFFECT_CHILDREN = {
+    "DA_Arrow_Confetti": ("BP_Effect_Confetti", "SmokeCloud",
+                          [("radius", 350.0), ("life_seconds", 2.5), ("grow_seconds", 0.2), ("fade_seconds", 0.6),
+                           ("smoke_color", unreal.LinearColor(0.75, 0.2, 0.35, 1.0)), ("puff_opacity", 0.35)]),
+}
 
 
 def weapon_values(name):
@@ -426,6 +443,41 @@ def ensure_projectile_blueprints():
     return classes
 
 
+def ensure_effect_children():
+    """BP_Effect_* for EFFECT_CHILDREN, their defaults set. Returns {Blueprint name: generated class}."""
+    import create_blueprints as bps  # noqa: PLC0415
+
+    classes = {}
+    for _arrow, (name, parent_name, values) in sorted(EFFECT_CHILDREN.items()):
+        parent = c.find_class(parent_name, "/Script/Hawkeye." + parent_name)
+        full = c.asset_path(WEAPON_PATH, name)
+        if parent is None:
+            c.log("FAILED", full, "A{0} not exposed; build the module".format(parent_name))
+            continue
+        bp, created = bps.make_blueprint(name, WEAPON_PATH, parent, ("BlueprintFactory",))
+        if bp is None:
+            continue
+        bps.ensure_parent(bp, full, parent)
+        cdo = c.blueprint_cdo(bp)
+        changed = []
+        for prop, value in values:
+            try:
+                if same_value(cdo.get_editor_property(prop), value):
+                    continue
+            except Exception:  # noqa: BLE001 - set_props reports a missing property
+                pass
+            if c.set_props(cdo, [(prop, value)], name):
+                changed.append(prop)
+        if created or changed:
+            c.compile_blueprint(bp)
+            c.save(bp)
+            c.log("created" if created else "updated", full, ", ".join(changed) or "defaults")
+        else:
+            c.log("exists", full)
+        classes[name] = c.load_generated_class(WEAPON_PATH, name)
+    return classes
+
+
 def set_component_property(bp_path, bp_name, component_name, prop, value, context):
     """Write one property on an inherited component template through the Blueprint CDO."""
     if value is None:
@@ -477,6 +529,7 @@ def run():
     ensure_fx_material(c.asset_path(WEAPON_PATH, GLOW_MATERIAL), _build_arrow_glow)
     mesh = ensure_bow_mesh(material)
     projectiles = ensure_projectile_blueprints()
+    projectiles.update(ensure_effect_children())
 
     bows = {name: create_data_asset(name, "BowDefinition", bow_values(name, mesh))
             for name in ("DA_Bow_Kate", "DA_Bow_Clint", "DA_Bow_Archer")}
