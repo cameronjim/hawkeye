@@ -637,23 +637,109 @@ gone from the code, and so from this file. Every section below describes code th
   headshot (120) or three body hits; two perfect releases (50 each) kill too.
 
 ## Boss phases
-- No boss exists yet; `UBossPhaseComponent` is the framework's contract.
-- Phases are ordered by descending `HealthThresholdPercent`, a fraction of max health (1.0 is full). Phase 0 is active from the
-  start (threshold 1.0) and entering it is silent: no `OnPhaseChanged`. A boss with N
-  phases has exactly N-1 transitions.
-- A transition happens when health percent drops strictly below the next phase's
-  threshold. Overkill that crosses two thresholds in one hit advances to the lowest
-  matching phase and fires `OnPhaseChanged` once, with `NewPhase` being the final one.
-- The killing blow never advances a phase, even if it also crosses a threshold. Health
-  reaching 0 fires `OnDeath` from the health component; the phase component stays on
-  whatever phase it was in. The boss Blueprint handles the kill.
-- During a transition with `bInvulnerableDuringTransition`, invulnerability is raised
-  first, then `OnPhaseChanged` broadcasts (so listeners see the boss already protected),
-  then after `TransitionSeconds` invulnerability is restored to its previous state (so a
-  boss that was already invulnerable for scripted reasons stays that way). With no world
-  to run a timer, restore happens immediately after the broadcast.
-- `BehaviorTag` on each phase is an `FName` written to the boss's blackboard key
-  `Phase` by the boss Blueprint on `OnPhaseChanged`. The behavior tree branches on it.
+`UBossPhaseComponent` is the phase rule under every boss ("Bosses", below, is the fight around it).
+- Phases are ordered by descending `HealthThresholdPercent`, a fraction of max health (1.0 is full); `Bind` stable-sorts
+  them, so phases with the same threshold keep their authored order. Phase 0 is active from the start (threshold 1.0)
+  and entering it is silent: no `OnPhaseChanged`. A boss with N phases has exactly N-1 transitions.
+- Each later phase has an `Entry`. `HealthBelow` (the default): it opens when health percent drops strictly below its
+  threshold. `CrewDown`: it opens when `NotifyCrewDown` says the phase before it has no crew left standing; a crew
+  flag opens only the phase right after the current one. The walk (`UBossRules::ResolvePhase`) goes on through every
+  next phase whose entry is met and stops at the first that is not, so overkill that crosses two thresholds advances
+  to the lowest matching phase and fires `OnPhaseChanged` once, with `NewPhase` the final one, and no amount of damage
+  skips a phase a crew opens.
+- The killing blow never advances a phase, even if it also crosses a threshold. Health reaching 0 fires `OnDeath` from
+  the health component; the phase component stays on whatever phase it was in.
+- `bBossInvulnerable` holds the boss out of a whole phase (he watches his crew): set when the phase is entered,
+  dropped when a later phase is. It is not a scripted invulnerability: a transition out of such a phase does not
+  restore it.
+- During a transition with `bInvulnerableDuringTransition`, invulnerability is raised first, then `OnPhaseChanged`
+  broadcasts (so listeners see the boss already protected), then after `TransitionSeconds` it goes back to its
+  scripted state (a boss already invulnerable for scripted reasons stays that way) plus the new phase's own. With no
+  world to run a timer, or a 0 s transition, that happens straight after the broadcast.
+- `RestorePhase(i)` (a checkpoint) makes phase i current with its own invulnerability, no broadcast and no transition.
+- `BehaviorTag` names the phase's behaviour for the log and for a boss with a tree of its own; chapter 4's boss is
+  driven by his definition ("Bosses").
+
+## Bosses (built 2026-11-10 for Act 1's "The Social Club"; rules also in Source/Hawkeye/Boss/BossRules.h)
+- A boss is data: a `UBossDefinition` (`DA_Boss_<chapter>_<name>`, written by `Tools/Editor/create_boss.py`): his
+  name, body class (a thug Blueprint with his look), max health, body scale, move set, his phases (each an
+  `FBossPhase` rule plus its objective, whether he fights or watches, its crew, whether the arena's hazard is loose,
+  its start and end lines, its barks and the arrows it grants), the arena (the roof's outline and floor, the fight's
+  centre and radius, the street stand and the parapet anchor it grapples, his spot, the hazard's lane, mesh and warning
+  strip, the props and lights) and the hazard's tuning, the meet objective, the pre-fight and after sequences. A
+  chapter names it on `UMissionDefinition::Boss`; `UBossFightSubsystem` runs it. A second boss is a second asset.
+- When the chapter starts (or a save of it loads) the roof is dressed, the boss stands at his spot and the first
+  phase's crew round the fight's centre, all calm and not thinking, the boss turning to face Kate, every one of them
+  `bSkipSave` (SPUD never brings them back; the checkpoint does). The objective marker is the fight's centre. The
+  chapter's opening (not a load) puts Kate on the arena's street stand, facing the roof, in grapple range of its
+  anchor.
+- Meet: her feet inside the roof's outline, no more than 60 cm under its floor or 250 over it, complete the meet
+  objective. The pre-fight sequence plays; the fight starts when it has finished (after at least 1 s), at
+  `IntroMaxSeconds` (45 s), or the moment she hurts one of the crew.
+- A phase starting: its crew (the first phase's are already there) think and are alerted on her; the boss fights
+  (thinking, alerted, his move set) or watches (still, facing her) as the phase says; the hazard comes loose if the
+  phase says; its arrows go into her quiver (up to their cap); its start lines speak.
+- A phase ending: its end lines speak and its objective completes, then the next phase starts (the objective's
+  autosave is therefore taken before the next phase grants anything). A crew phase ends when every one of its crew is
+  down (limp or dead). Every phase a big hit skipped ends the same way, in order.
+- The boss: `bRefusesTakedown` (no stealth kill on a boss), max health `MaxHealth` times the difficulty's thug health
+  scale, never regenerating, melee damage above `StaggerThreshold` staggers him (40: Kate's light strike, 15, does
+  not, so he swings through it; her heavy, 35, does not either), his swings are the move set's `Combo` in order
+  through the thug's own tree (`ST_Thug`'s melee, attack tokens and all: he asks for a token like anyone), and he does
+  not back off after two swings.
+- Winded: once `WindedAfterSwings` swings have started since the last winded window (or the phase start) and the
+  last has finished, he is winded for `WindedSeconds`: held where he stands (a stagger he cannot leave), no swing,
+  the finisher open, every hit on him doing `WindedDamageScale` times its damage. A finisher on him takes
+  `FinisherDamageFraction` of his max health (killing him only when that is all he has left), and closes the window:
+  one finisher a window.
+- Lines during the fight are DT_Dialogue rows spoken with `PlayLine` (they do not wait out a fight as sequences do),
+  queued one after another. Barks are a phase's lines for a moment: his swing landing, her dodge within 450 cm of his
+  swing, winded, her finisher on him, a parry of anyone, one of the crew going down, a bat swing from the crew
+  starting, the first of the phase's granted arrows loosed. Each speaks at most once a fight unless the data says it
+  repeats (then not within its cooldown).
+- The hazard (`ABossArenaHazard`): tethered at its lane's start (swaying) until a phase looses it. Then, on
+  `UBossRules::HazardStateAt`'s clock: `FirstDelaySeconds` waiting, then over and over a telegraph (the lane's strip
+  lit on the roof, a red light on it, a shudder) for `TelegraphSeconds`, a sweep along the lane for `SweepSeconds`, a
+  rest at the far end for `RestSeconds`, each sweep going back the way the last came. It hits Kate only while it
+  sweeps, only when her feet are within `HalfWidth` across the lane and `HalfLength` along it of its body (and between
+  150 cm under it and 350 over), at most once per `HitCooldownSeconds`, for `Damage` times the difficulty's thug damage
+  scale, and shoves her out of the lane the short way. It never hits anyone else and never blocks anything. It
+  settles where it is when the boss goes down.
+- Down: when the boss's health reaches 0 the hazard settles, the phase's end lines speak, then the after sequence; the
+  remaining phase objectives (the last completes the chapter) complete when the lines are over (after at least 1 s)
+  or at `AfterMaxSeconds` (60 s).
+- Save: the fight is not saved mid-phase. A load (Continue, a death's reload) restarts it at the checkpoint the save's
+  completed objectives give (`UBossRules::CheckpointPhase`): before the meet objective, the approach (all on the roof,
+  waiting); else the first phase whose objective is not complete, with the boss at that phase's checkpoint health (full
+  for the first phase and for one a crew opens, on the threshold for one health opens: `CheckpointHealthFraction`),
+  the phase's crew fresh, the hazard loose if the phase looses it, fighting at once, its start lines spoken again and
+  its arrows granted again (the save was taken before the phase granted them). Kate, her health and quiver come back
+  from SPUD as always. Restart from a phase checkpoint was chosen over a mid-phase save because the boss's swing,
+  winded and hazard clocks, the crew's health and the dialogue queue would each need saving and restoring, and a
+  phase is short.
+- Street crimes wait while a fight is past its approach.
+- Campaign order: the chain of `UMissionDefinition::NextChapter` from the district's `StartingMission` (Night Shift,
+  then The Social Club while chapters 2 and 3 do not exist). Chapter select in the safehouse lists it: a chapter at or
+  before the one in progress is open, the one after it opens once it is complete, the rest say "[Locked]"; picking an
+  open chapter that is not the one in progress starts it (`AHawkeyeGameMode::StartChapter`: the mission, its opening,
+  and a save 1.5 s later). `-HawkeyeChapter=<mission asset>` on the command line starts the district on that chapter,
+  and the console command `hawkeye.StartChapter <mission asset>` starts it at once (laps and tests).
+
+### Chapter 4's boss, Tomas (`DA_Boss_CH04_Tomas`; numbers on Normal)
+- 400 health (320 / 400 / 480), drawn and sized 1.12 times a thug, `BP_Boss_Tomas`: BP_Thug in a green tracksuit
+  with gold stripes and no ski mask.
+- Combo: a jab (12 damage, 0.75 s wind-up, 0.5 s recovery, 150 cm), a jab (12, 0.6 s, 0.5 s), a haymaker (22, 1.1 s
+  wind-up, 0.8 s recovery, 170 cm, shoves 200 cm); 0.6 s between swings; winded after 3 swings for 3 s; 1.5 times
+  damage winded; a finisher takes 0.15 of his max (60, 90 winded); stagger threshold 40; walks at 380.
+- Phases: "Crew" (he watches, out of the fight; four of his guys: two bats, fists, a shield; `beat_crew`), "Tomas"
+  (opened by the crew going down; 1.5 s protected transition; `beat_tomas`), "Santa" (under 0.4 of his health; 2 s
+  protected transition; the inflatable Santa comes loose; 3 confetti arrows; `survive_santa`, which completes once he
+  is down and the after lines are over).
+- The Santa: waits 2 s, then telegraphs 1.5 s, sweeps 2.5 s, rests 3.5 s; 20 damage (12 / 20 / 28), once per 2 s,
+  170 cm either side of its lane and 160 cm along it, a 700 cm/s shove.
+- The confetti arrow (`DA_Arrow_Confetti`, slot 5, the smoke arrow's slot, which Act 1 never fills otherwise): a smoke
+  effect retuned by data (`BP_Effect_Confetti`, a child of `ASmokeCloud`: 350 cm for 2.5 s, the wrapping-paper burst
+  as its look), so thugs in it are blinded for a moment; 10 damage, cap 3, not recoverable.
 
 ## Hands and the thugs' pistol (`UWeaponComponent`)
 Kate shoots with `UBowComponent` (see "Bow and arrows"). `UWeaponComponent` is left for two users:
