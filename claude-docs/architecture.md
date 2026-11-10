@@ -4,34 +4,26 @@ One game module, `Hawkeye`, a handful of subsystems that talk through delegates.
 holds a hard pointer across subsystem boundaries; everything that crosses one is either
 a data asset reference or an event.
 
-## Pivot status (2026-09-25)
-The project pivoted from a first-person Punisher game to a third-person Hawkeye game.
-This document describes the code as it is, plus what changes. Sections below are marked:
-- **keep**: unchanged by the pivot.
-- **rename**: same code, new names (guard becomes thug, weapon becomes arrow or bow).
-- **remove**: deleted in the stage 2 cleanup step. Don't build on it.
-- **planned**: not written yet; the shape it will take.
+This document says where things are and how they connect. What each system promises (the
+numbers, the edge cases) is in `gameplay-semantics.md`; read the matching section there
+before changing a rule. Each section below names it.
 
-| Area | Status |
-|------|--------|
-| Mission, objectives, tracker, subsystem, trigger volume | keep |
-| Flashback definition, sequencer, widget | keep, plus a "playable scene" hook (planned) |
-| Health, boss phases, takedown | keep |
-| Weapon component and definitions | rename to bow and arrow definitions; hitscan path replaced by projectiles (planned) |
-| Inventory and hotbar | rename to quiver; radial UI (planned) |
-| Interaction, pickups, doors | keep |
-| Guard character and AI controller | rename to thug; add melee rush, gunner, archer, heavy variants (planned) |
-| First-person arms component, viewmodel, body-mesh head hiding | remove |
-| Third-person camera, spring arm, aim offset | planned |
-| Locomotion via Game Animation Sample, parkour, grapple | planned |
-| Partner AI and character switching | built: `AHawkeyePartnerController` on a headless-built StateTree, `SwitchCharacter()` on the controller, `UBanterComponent` |
-| Save, checkpoints, safehouse, main menu | built on SPUD: `Plugins/SPUD`, campaign state object, `ASafehouse`, menu widgets |
-| Trick arrows, quiver wheel | built: `Combat/ArrowEffects/*`, radial widget |
-| Objective markers, compass, beacons | built: `UHawkeyeObjectiveWidget`, `UObjectiveMarkerMath` |
-| City generator from OSM, props data, load-time spawner | built: `Tools/Editor/generate_city.py`, `UCityLedgeData`, `ACityLedgeSpawner`; World Partition still off |
-| Settings, pause, end card, HUD, inventory widgets | keep, restyle later |
-| Materials and room-art scripts | keep; extend to facades and streets |
-| Pipeline, tests, verify, screenshots | keep |
+## Pivot status
+The project pivoted from a first-person Punisher game to a third-person Hawkeye game on
+2026-09-25. The pivot is done: the first-person arms, viewmodel and body-mesh head hiding are
+gone, and the camera, locomotion, parkour, grapple, bow, quiver and trick arrows are built. What
+is left of the old design is small and named here so nobody builds on it:
+
+| Leftover | What it is now |
+|----------|----------------|
+| `UWeaponComponent`, `UWeaponDefinition` | The thugs' hitscan pistol, and Kate's `Hands` punch while she owns no bow. The player shoots with `UBowComponent`. |
+| `UBossPhaseComponent` | Built and tested, but no asset uses it yet (Part 1's boss is not built). The music reads it to tell a boss from a thug. |
+| `AHawkeyeGameMode::RestartMission` | Reloads the level. Death and the pause menu's restart use `ReloadLastCheckpoint`, which loads the last save. |
+| Chapter select in the safehouse menu | A stub that lists `[CH01]` and the rest as locked. |
+| `gameplay-semantics.md` sections marked LEGACY or `Choices` | Punisher text, kept until the chapters that replace it are written. |
+
+Still planned: World Partition (the district is one map with it off), a boss, and chapters
+after the first.
 
 ## The systems
 
@@ -39,99 +31,170 @@ This document describes the code as it is, plus what changes. Sections below are
 Player input
     │
     ▼
-AHawkeyeCharacter ──► UWeaponComponent ──► ApplyPointDamage ──► UHealthComponent (on target)
-    │                                                               │
-    ├──► UTakedownComponent ──► ITakedownable::OnTakedown           ├──► OnHealthChanged ──► UBossPhaseComponent ──► OnPhaseChanged
-    │                                                               │                                                  │
-    │                                                               └──► OnDeath                                       └──► BP arena controller, behavior tree
-    │
-    ▼
-World: AObjectiveTriggerVolume, doors, pickups
+AHawkeyeCharacter ──► UBowComponent ──► AArrowProjectile ──► ApplyPointDamage ──► UHealthComponent (on target)
+    │                      │                  │                                        │
+    │                      │                  └─► AArrowEffect (trick arrows)          ├──► OnHealthChanged ──► UBossPhaseComponent ──► OnPhaseChanged
+    │                      └─► UGrappleComponent ──► UHawkeyeMovementComponent (zip)    │
+    ├──► UMeleeComponent / UFinisherComponent / UTakedownComponent                      └──► OnDeath
+    ├──► UParkourComponent ──► UHawkeyeMovementComponent (traversal)
+    └──► UInteractionComponent ──► IInteractable (doors, pickups, safehouses, ...)
+
+Thugs: AThugAIController senses ──► ST_Thug (StateTree) ──► actuators ──► UCombatTokenSubsystem
+Partner: AHawkeyePartnerController ──► ST_Partner (StateTree)
+
+World: AObjectiveTriggerVolume, doors, pickups, chase, crimes, challenges
     │
     ▼
 UMissionSubsystem (world subsystem)
     │  StartMission(UMissionDefinition*)
     │  CompleteObjective(FName)
-    ├──► OnObjectiveUpdated ──► WBP_Hud
-    ├──► OnMissionComplete ──► end card, save
+    ├──► OnObjectiveUpdated ──► WBP_Hud, AHawkeyeGameMode (autosave), phone triggers
+    ├──► OnMissionComplete ──► AHawkeyePlayerController ──► UMissionFlowController
     └──► OnFlashbackRequested(UFlashbackDefinition*)
               │
               ▼
-       AHawkeyePlayerController ──► creates UFlashbackWidget ──► Play()
-                                          │
-                                          └──► OnFlashbackFinished ──► open NextLevel
+       close-up ► end card ► UFlashbackWidget ► playable scene ► next level, roaming or final card
 ```
 
 ### Mission (`Source/Hawkeye/Mission`)
+Rules: `gameplay-semantics.md`, "Mission", "Objective markers and compass".
 - `UMissionDefinition` (primary data asset): the mission's identity, its ordered
-  objectives (instanced `UMissionObjective` objects), the flashback to play after, the
-  next level. One asset per mission in `Content/Missions`.
+  objectives (instanced `UMissionObjective` objects, below), the flashback to play after,
+  the next level, and per-chapter switches: `StartingBow` and `StartingArrows` (what Kate is
+  granted), `bPartnerPresent`, `bAllowSwitching`, `Chase`, `OpeningTitle`, `OpeningSubtitle`,
+  `OpeningDialogueSequence`, `bReturnToRoamingAtEnd`, `bEnforceOrder`, `bShowObjectiveText`.
+  One asset per mission in `Content/Missions`.
 - `UMissionObjective` (instanced UObject): title, description, optional flag, completed
-  flag, an `ObjectiveId` FName used by the world to complete it. Blueprintable so a mission
-  can subclass it for special objectives, but most are the base class with data.
-- `UMissionSubsystem` (world subsystem): the runtime. Duplicates the definition's
-  objectives on `StartMission` so the asset never gets dirtied. Owns "which objective is
-  current" and "is the mission done". Fires the delegates above. Lives per world, so a
-  level transition resets it; the save system (stage 3) restores state on load.
+  flag, an `ObjectiveId` FName used by the world to complete it. Blueprintable, but most
+  are the base class with data.
+- `UMissionTracker`: every mission rule, with no world. Tests create one with `NewObject`.
+- `UMissionSubsystem` (world subsystem): the Blueprint-facing wrapper that gives the tracker
+  a lifetime. Duplicates the definition's objectives on `StartMission` so the asset never
+  gets dirtied. Fires the delegates above. Also holds the marker points the HUD, compass and
+  map read (`RegisterObjectiveLocation`, `SetSecondaryMarkers`). Lives per world, so a level
+  transition resets it; the save system restores state on load.
 - `AObjectiveTriggerVolume`: the common way levels complete objectives. Overlap by the
-  player pawn, calls `CompleteObjective(ObjectiveId)`. Doors, pickups, and scripted beats
-  do the same call from Blueprint.
+  player pawn, calls `CompleteObjective(ObjectiveId)`. `AThugGroupObjective` completes one
+  when every thug with a tag is dead. `AChapterEndInteractable` (World) completes one when
+  Kate examines it. Doors, pickups and scripted beats do the same call from Blueprint. An
+  actor whose objective the running chapter does not have does nothing.
+- `UMissionFlowController`: the order of the end-of-mission beats (close-up, end card,
+  flashback, playable scene, then next level, return to roaming, or the final card), with
+  no UMG, world or travel in it, so tests drive `Begin` and `Advance`. The player
+  controller owns one and performs each step.
 
 ### Flashback (`Source/Hawkeye/Flashback`)
-- `UFlashbackDefinition` (primary data asset): ordered `FFlashbackSlide` array (texture,
-  caption, hold seconds, crossfade seconds, voice line), ambient loop, skippable flag.
-  Stage 3 adds `ReplacedByImage` and `GlitchSeconds` per slide for the lie-breaking effect.
+Rules: `gameplay-semantics.md`, "Flashback".
+- `UFlashbackDefinition` (primary data asset): ordered `FFlashbackSlide` array (image or a
+  tint, caption, hold seconds, crossfade seconds, voice line), ambient loop, skippable flag,
+  and an optional `PlayableScene` map with a `ReturnPointLabel` for the district.
+- `UFlashbackSequencer`: the clock, with no UMG or world.
 - `UFlashbackWidget` (UUserWidget): two stacked `UImage`s crossfaded by opacity, a caption
   block, timing driven from `NativeTick` because the game is paused during playback and
   paused worlds don't run timers. Audio is created as UI sound so it survives the pause.
   Fires `OnFlashbackFinished`. Designers subclass it as `WBP_Flashback` to lay out the
   visuals; the logic stays in C++.
+- `UFlashbackReplayWidget` (pause menu): replays the flashbacks the settings save says were seen.
+- The playable scene and the interiors share one mechanism: `UHawkeyeSaveSubsystem` saves
+  the district, opens the other map, and `FHawkeyeSceneReturn` puts the player back.
 
 ### Combat (`Source/Hawkeye/Combat`)
-- `UHealthComponent`: `MaxHealth`, `CurrentHealth`, `bInvulnerable`. Hooks the owner's
-  `OnTakeAnyDamage`. Fires `OnHealthChanged(Old, New, Instigator)` and `OnDeath`. Every
-  damageable thing has one: player, guards, bosses, shootable lights.
+- `UHealthComponent`: `MaxHealth`, `CurrentHealth`, `bInvulnerable`, `bCannotDie`, optional
+  regeneration. Hooks the owner's `OnTakeAnyDamage`. Fires
+  `OnHealthChanged(Component, NewHealth, Delta, Instigator)`, `OnStaggered` and `OnDeath`.
+  `ApplyMeleeDamage` can stagger. Every damageable thing has one: Kate, Clint, thugs, shootable lights.
+  Rules: "Health and damage".
 - `UBossPhaseComponent`: requires a `UHealthComponent` on the same actor. An ordered
   `FBossPhase` array with health-percent thresholds. Listens to `OnHealthChanged`, advances
   the phase index when health drops below the next threshold, optionally sets
   `bInvulnerable` for `TransitionSeconds`, fires `OnPhaseChanged(Old, New, Phase)`. It does
-  not know what a phase means; the boss Blueprint and behavior tree react.
-- `UWeaponComponent`: hitscan weapon. Magazine, reserve, damage, range, fire rate, reload
-  time. `Fire()` line-traces from the owning pawn's view and applies point damage.
-  `Reload()` is a timer. Fires `OnAmmoChanged`. Stage 3 moves stats to a `UWeaponDefinition`
-  data asset so a shotgun is data, not a subclass.
-- `UTakedownComponent`: on the player. `TryTakedown()` sphere-traces for actors tagged
-  `Guard`, checks the player is behind the target within `MaxAngleDegrees`, calls
-  `ITakedownable::OnTakedown` on it. Fires `OnTakedownPerformed`.
-- `ITakedownable`: one BlueprintNativeEvent, `OnTakedown(AActor* Attacker)`. Guards
-  implement it in Blueprint (ragdoll, drop pickup, notify AI).
+  not know what a phase means; the boss Blueprint and its StateTree react. Rules: "Boss phases".
+- `UBowComponent`, `UBowDefinition`: the player's bow. `StartDraw` on the fire press,
+  `ReleaseDraw` on release; the draw fraction sets speed, damage and spread, with a bonus
+  for a release in the perfect window. Spends one arrow of the active quiver slot and spawns
+  its projectile. Also owns the bow's look (back while holstered, left hand while drawing)
+  and, with `UHawkeyeBowIKAnimInstance` as its post-process AnimBP (built by
+  `UHawkeyeBowIKGraphBuilder`), the two-hand IK. Thugs with a bow have their own. One bow per
+  character: `DA_Bow_Kate`, `DA_Bow_Clint`. Rules: "Bow and arrows".
+- `UArrowDefinition` (primary data asset): one arrow type, its projectile, on-hit effect,
+  damage, cap and whether it can be pulled back out. `AArrowProjectile` flies, hits, embeds
+  and is recoverable. A new arrow is a new asset. The quiver has seven slots
+  (`HawkeyeQuiverSlotCount`), six with number keys.
+- Trick arrows (`Combat/ArrowEffects`): the projectile spawns an `AArrowEffect` at the
+  impact and the effect runs on its own clock (`AHeldEffect` putty, `ABolaEffect`,
+  `ASmokeCloud`, `AEmpPulse`, `AExplosiveBlast`). Custom actors, not the Gameplay Ability
+  System. `UArrowEffectsSubsystem` knows which smoke clouds are up (the thugs' sight check
+  asks) and which street lamps an EMP has put out. Rules: "Trick arrows".
+- The grapple arrow is not a bow projectile: release with it nocked calls
+  `UGrappleComponent::TryFire` (Player, below). `AGrappleArrowProjectile` (World) is the
+  arrow in flight.
+- `UMeleeComponent`: a swing as wind-up, one sweep and recovery, shared by Kate (light,
+  heavy) and the thugs (fists, bat). The attack is data, an `FHawkeyeMeleeAttack`. With a
+  clip, the montage's `ANS_HitWindow` and `ANS_ComboWindow` time the swing and motion warping
+  closes on the target. `MeleeCombo.h`, `StrikePose.h`, `UHawkeyeMeleeRules` (parry rules)
+  and the soft-lock assist hold the pure parts. Rules: "Melee depth", "Melee assist".
+- `UFinisherComponent`: the loud kill on a staggered or downed thug. `UTakedownComponent`:
+  the stealth kill, tried first on the same key. `TryTakedown` sphere-traces for actors
+  tagged `Thug`, checks the player is behind the target within `MaxAngleDegrees`, asks
+  `ITakedownable::CanBeTakenDown` (thugs refuse while alerted) and calls
+  `ITakedownable::OnTakedown`. Fires `OnTakedownPerformed`.
+- Combat animation clips: `UCombatAnimSet` (one data asset per character, a montage per
+  `ECombatAnimRole`), `UHawkeyeCombatMontageBuilder` and `CombatAnimPlayback` (the headless
+  import pipeline and the playback helpers). An empty slot means the procedural fallback.
+  Pipeline: `animation.md`.
+- Combat readability and aim assist: `CombatReadability.h` (target marker, fight camera,
+  telegraph look), `UHawkeyeAimAssist` (the bow's cone, magnetism, snap and bend). Rules:
+  "Combat readability", "Bow aim assist".
 - Attack tokens (`UCombatTokenSubsystem`, a `UWorldSubsystem`; rules in `UHawkeyeCombatTokenRules`): per target,
   a melee and a ranged budget of who may be attacking her now. Attackers call `RequestToken` from their own
   think (asking and renewing are the same call, so nothing here ticks or sweeps actors) and `ReleaseToken` when
   the attack ends or anything stops it; budgets hold attackers by weak pointer and let a silent holder's token
-  lapse. `GetBudgetView` is the read-only view (`hawkeye.DebugTokens`, the HUD). Thugs ask from the fight's tasks
+  lapse. A holder is dropped after `LeaseSeconds` of silence and never keeps a token past `MaxHoldSeconds`. The
+  rules rank the waiters (the overdue first, then not the last to attack, on screen before off, nearest, longest
+  wait) and place the ones without a token on a ring round her (`GetRingSlotYaw`). `GetBudgetView` is the
+  read-only view `hawkeye.DebugTokens` and the tests use. Thugs ask from the fight's tasks
   (`HoldRing`, `Swing`, `Burst`, `Draw` in ST_Thug, below) and give the token back when the swing, burst or draw
   ends or the fight is left. Written from scratch: the engine has no shared attacker budget, and
   Smart Object slots claim places, not turns. Budgets, gap and the off-screen telegraph
-  are rows in the difficulty table.
+  are rows in the difficulty table. Rules: "Attack tokens".
 
 ### World (`Source/Hawkeye/World`)
 - `IInteractable`: `Interact(Interactor)`, `GetInteractPrompt()`, `CanInteract(Interactor)`.
-  Anything the player presses E on implements it.
+  Anything the player presses E on implements it: `ADoorActor`, `APickupActor`, `ASafehouse`,
+  `AChallengeStart`, `AChapterEndInteractable`, `AInteriorPortal`.
 - `UInteractionComponent`: on the player. Sphere-sweeps from the camera every 0.1 s out
   to `InteractRange` (250), tracks the focused interactable, pushes its prompt to the HUD,
   `TryInteract()` is bound to IA_Interact. Falls back to a takedown prompt when the
   takedown component has a valid target.
-- `APickupActor`: `EPickupType {Weapon, Keycard, Ammo}`. Weapon calls `GiveWeapon()` on
-  the player's weapon component and sets ammo; Keycard adds `KeycardId` to the player's
-  keycard set; Ammo adds reserve. Optional `CompletesObjectiveId`. Destroys itself.
-- `ADoorActor`: frame and door meshes, `bLocked`, `RequiredKeycardId`, lerps open over
-  `OpenSeconds` in Tick, completes `CompletesObjectiveId` the first time it opens.
+- `APickupActor`: `EPickupType {Bow, Keycard, Arrows}`. Bow gives the player a bow; Keycard
+  adds `KeycardId` to the keycard ring; Arrows adds `ArrowCount` of an arrow type to the
+  quiver up to its cap. Optional `CompletesObjectiveId`. Thugs drop them on death.
+- `ADoorActor`: frame and door meshes, swing or slide, `bLocked`, `RequiredKeycardId`, lerps
+  open over `OpenSeconds` in Tick, completes `CompletesObjectiveId` the first time it opens.
+- The district (data, not actors): `Tools/Editor/generate_city.py` writes the buildings, roads
+  and props into the map and the rest into data assets. `UCityLedgeData`
+  (`DA_EastVillage_CityProps`) holds every roof-edge ledge, grapple anchor, fire-escape landing and
+  clutter group. `ACityLedgeSpawner` (one in the map) spawns them at BeginPlay, anchors first and
+  ledges nearest first within a frame budget, so the map does not carry thousands of saved actors.
+  `AFireEscapeLanding` is one landing's collision; `AGrappleAnchor` is what an arrow bites.
+  `UCityMapData` (`DA_EastVillage_Map`) is the flat map the world map draws.
+- Interiors: `AInteriorEntrance` and `AInteriorExit` (both `AInteriorPortal`) travel between the
+  district and an `L_Int_*` map through `UHawkeyeSaveSubsystem`. `Tools/Editor/generate_interior.py`
+  builds the maps from layouts in `Tools/Interiors/`. Rules: "Interiors".
+- `ASafehouse` and `USafehouseSubsystem`: heal, discover, autosave, open the safehouse menu;
+  fast travel between discovered ones. Rules: "Safehouses and fast travel".
+- `UTimeOfDaySubsystem`: lights the district for night or day from the setting, without a reload.
+  `AHawkeyeAmbience` is the wind and street bed. `UHawkeyeResidentAssets` (game instance) keeps the
+  heavy shared content loaded across level travel. `FHawkeyeFrameWatch` and `HawkeyeCapture`
+  measure frames and write screenshots for the test passes.
+- `UHawkeyeNavigationLibrary`: navmesh helpers for the headless scripts.
 
 ### Thugs (`Source/Hawkeye/World/Thug*`)
 The controller senses and acts; the StateTree `ST_Thug` decides. Nothing in C++ picks what a thug does next.
+Rules: "Melee and thugs", "Thug variety and squad alert", "Guard AI states", "Interiors: enemies and the AI indoors".
 - `AThugCharacter`: the body. `EThugWeapon` (Fists, Bat, Shield, Pistol, Bow), `EThugAlertState` with
-  `OnAlertStateChanged`, health, stagger and knockdown, the telegraph glint, `ITakedownable`.
+  `OnAlertStateChanged`, health, stagger and knockdown, the telegraph glint, `ITakedownable`,
+  `bRefusesTakedown` (a chase's thief before the corner).
 - `AThugAIController`, the senses: perception (sight 1500 / lose 1800 / half angle 35, hearing 1200 through
   `HawkeyeThugHearing`, so walls and closed doors stop it), the archer's own sight, smoke, being aimed at, the
   squad alert, and the clocks that move Calm, Suspicious and Alerted, on a 0.25 s think (`Think`; tests call it).
@@ -147,7 +210,7 @@ The controller senses and acts; the StateTree `ST_Thug` decides. Nothing in C++ 
   its own reason is gone; the fight's steps chain on completion. Where the thug is in a fight (swinging,
   backing off, peeking, standing off) is the active state and its task's instance data, not a flag on the
   controller. A pawn that names no tree (spawned from C++, every test) runs the controller's
-  `DefaultStateTree`, the same asset.
+  `DefaultStateTree`, the same asset. Cover and roof points come from EQS (`UHawkeyeEnvQueryContext_ThugTarget`).
 
 ```
 Thug                    children tried in order: [condition]  -> transition
@@ -184,60 +247,154 @@ Thug                    children tried in order: [condition]  -> transition
   Ctrl+arrows, and read each condition's result and each task's status per frame. Breakpoints go on a state's
   enter or exit. A standalone run records with `-trace=default,StateTreeDebug` for Unreal Insights.
 
-### Inventory and weapons (`Source/Hawkeye/Player`, `Source/Hawkeye/Combat`)
-- `UWeaponDefinition` (primary data asset, type `Weapon`): every stat for one weapon, its
-  hotbar slot, melee flags, viewmodel mesh, arms pose name, and hand offset. Assets:
-  `DA_Weapon_Hands`, `DA_Weapon_Pistol`, `DA_Weapon_Rifle` in `Content/Blueprints/Weapons`.
-- `UInventoryComponent` on the player: three slots keyed by `EHotbarSlot`, each holding a
-  definition plus magazine and reserve; the keycard set; `ActiveSlot`; select/next/previous
-  with a swap lockout; `AddWeapon`, `AddAmmo`, `Clear`, `ApplyStartingWeapons`. Fires
-  `OnInventoryChanged` and `OnActiveSlotChanged`. Hands are always present.
-- `UWeaponComponent` reads its stats from the active definition and writes ammo through to
-  the inventory slot on every change. Melee definitions do a short sphere sweep and call
-  `UHealthComponent::ApplyMeleeDamage`, which can stagger.
-- Mission lifecycle hooks: starting weapons applied on `OnMissionStarted`, inventory cleared
-  on `OnMissionComplete` (before the end card) and on restart.
+### Partner (`Source/Hawkeye/Partner`, `Dialogue/BanterComponent`)
+Rules: "Partner and switching".
+- `AHawkeyePartnerController` possesses whichever of Kate and Clint the player is not playing and
+  backs up the lead: follow, cover, attack what the lead hit, go to a mark, revive. Which mode runs is
+  the StateTree `ST_Partner`, built headless by `UHawkeyePartnerTreeBuilder` (`create_partner.py`):
+  a state per `EHawkeyePartnerMode` in priority order, each entered on `FHawkeyePartnerNeedCondition`
+  and running `FHawkeyePartnerModeTask`. The controller keeps the senses on a think timer. With no tree
+  (tests) the same timer picks the mode itself with `ChooseMode`.
+- `AHawkeyePlayerController::SwitchCharacter()` swaps the pawns. `UMissionDefinition::bPartnerPresent`
+  and `bAllowSwitching` gate the partner and the switch per chapter; `AHawkeyeGameMode::ApplyChapterCast`
+  applies them.
+- `UBanterComponent` (on the player controller): picks a line from `DT_Dialogue` for the situation and
+  the speaker's turn and speaks it through `UDialogueSubsystem`.
 
-### Settings (`Source/Hawkeye/Settings`)
-- `UHawkeyeSettingsSubsystem` (game instance): owns `FHawkeyeSettings`, persists it to the
+### Dialogue and phone (`Source/Hawkeye/Dialogue`, `Source/Hawkeye/Phone`)
+Rules: "Narrative plumbing". Placeholder text only; the story is written with Cameron.
+- `UDialogueSubsystem` (world): every spoken line, as a subtitle and its audio, in a queue so two
+  never overlap, plus walk-and-talk sequences from `DT_DialogueSequences` that wait out fights. The
+  rules are in `UDialogueQueue`. Played sequences are mirrored into the campaign state.
+- `UPhoneSubsystem` (world) and `UPhoneInbox` (rules): `DT_Messages` rows triggered by mission
+  events arrive after a delay, show a toast, and are mirrored into the campaign state.
+  `UPhoneWidget` is the panel.
+- `UHawkeyeNarrativeSettings` (developer settings) holds the table paths, because world
+  subsystems have no Blueprint defaults.
+
+### Chase (`Source/Hawkeye/Chase`)
+Rules: "Chases". Built for Act 1's "Night Shift".
+- `UChaseRouteDefinition` (primary data asset, `DA_Chase_CH01_NightShift`): the thief's waypoints,
+  each with a leg (`EChaseLeg`: Run, Vault, Climb, JumpGap, Drop), the objectives and dialogue
+  sequences placed along it, the dumpster beat, the props, and `FChaseTuning`. Planned from the
+  district's OSM records by `Tools/Editor/create_chase.py` (`_chase.py`). A chapter names it on
+  `UMissionDefinition::Chase`; another chapter's chase is another asset.
+- `UChaseRules`: the pure rules (progress along the route, the lead and its band, the thief's speed,
+  the lose clock, the catch, the beat trigger, the restore). Tests: `Hawkeye.Chase.*`.
+- `UChaseSubsystem` (world, ticking): spawns the thief (an `AThugCharacter` with its thinking off),
+  moves him along the route with the rubber band, follows Kate's progress, completes the route's
+  objectives, plays the dumpster beat, notices the catch and the loss (the loss reloads the last
+  checkpoint), and mirrors its state into `UHawkeyeCampaignState`. `AHawkeyePlayerController`
+  starts it as the chapter's opening begins.
+
+### Crime and challenges (`Source/Hawkeye/Crime`, `Source/Hawkeye/Challenge`)
+Rules: "Street crimes", "Side challenges". Both follow one shape: pure rules, a tracker with no world,
+a world subsystem that applies them, data assets written by a `create_*.py` script, and counts mirrored
+into the campaign state.
+- Crimes: `UCrimeRules`, `UCrimeTracker`, `UCrimeSubsystem`; `UCrimeDefinition` per type
+  (mugging, robbery, ambush, rooftop); `ACrimeSpot` actors placed by `generate_city.py`; `ACivilian`
+  and `ACrimeLoot`. One crime at a time while she roams.
+- Challenges: `UChallengeRules`, `UChallengeTracker`, `UChallengeSubsystem`; `UChallengeDefinition`
+  per challenge (archery ranges, timed traversal routes); `AChallengeStart` (the pedestal, an
+  `IInteractable`), `AChallengeTarget`, `AChallengeCheckpoint`.
+
+### Save (`Source/Hawkeye/Save`, `Plugins/SPUD`)
+Rules: "Save data".
+- SPUD (MIT, vendored in `Plugins/SPUD`) persists the world. Kate, Clint and thugs implement
+  `ISpudObject`; the part with no actor is `UHawkeyeCampaignState`, registered as SPUD's global
+  object (chapter, objectives, safehouses, seen flashbacks, hints, phone, dialogue, chase, bests).
+- `UHawkeyeSaveSubsystem` (game instance): one campaign slot. Decides when to save (objective
+  complete, safehouse, new game, quit to menu, 60 s of calm roaming through `FHawkeyeAutosaveClock`),
+  whether a save may be loaded (version, stale chapter), and carries the player between the district
+  and a playable scene or interior (`FHawkeyeSceneReturn`). Every travel that is not a SPUD load starts
+  SPUD afresh, so only explicit saves persist.
+- `AHawkeyeGameMode` runs the autosave timer and the death flow; its objective save runs before
+  `OnMissionComplete`, which clears the quiver for the end card.
+
+### Settings and difficulty (`Source/Hawkeye/Settings`)
+- `UHawkeyeSettingsSubsystem` (game instance): owns `FHawkeyeSettings` (sensitivity, audio, difficulty,
+  accessibility, aim assist, sprint mode, time of day, seen flashbacks), persists it to the
   `HawkeyeSettings` save slot on every change, broadcasts `OnSettingsChanged`. The character
-  subscribes so sensitivity changes apply live.
+  subscribes so changes apply live.
+- `UDifficultySubsystem`: one setting and one table of what it changes (`EDifficultyStat`), so tuning
+  lives in one place. Code asks `GetScalarFor(this, Stat)`. Story, Normal, Hard.
+- `UHawkeyeAccessibility`: palettes, subtitle sizes, shake and flash scales, hold versus toggle. Pure.
+
+### Audio, effects and playtest (`Source/Hawkeye/Audio`, `Vfx`, `Playtest`)
+- `UHawkeyeAudioSubsystem` and `UHawkeyeVfxSubsystem` are where every sound and every particle effect
+  is played from. Components hold soft pointers; the subsystems load on first use and log each request
+  so tests assert that the call was made. Sounds are MetaSounds built by `create_audio.py`; systems are
+  Niagara built by `create_vfx.py` through `UHawkeyeVfxBuilder`. `USnowfallComponent` (on the player
+  controller) keeps the snow round the camera.
+- `UHawkeyeMusicSubsystem` plays one layered score and fades its layers from `FHawkeyeMusicDirector`,
+  which reads the thugs, the pawn, the crime and the challenge subsystems. `UHawkeyeVolumeSubsystem`
+  keeps the settings mix loaded.
+- `UPlaytestSubsystem` and `UPlaytestPhotoMode`: F12 notes with a screenshot and log tail, photo mode,
+  and a per-session summary in `Saved/Playtest/`. Nothing else knows they exist. Rules: `testing.md`.
+
+### Inventory (`Source/Hawkeye/Player`)
+- `UInventoryComponent` on the player: the bow, a seven-slot quiver (standard arrows always in slot 1,
+  present even at zero; the grapple arrow has no count), the keycard ring, `ActiveArrowSlot`; select by
+  number, next and previous (empty slots skipped), `AddArrows`, `ConsumeArrow`, `GiveBow`. Fires
+  `OnInventoryChanged` and `OnActiveArrowSlotChanged`. A character with a quiver of its own (Clint)
+  sets `bUseOwnStartingQuiver`.
+- Mission lifecycle hooks: the game mode applies the chapter's `StartingBow` and `StartingArrows` on
+  `OnMissionStarted`, and the inventory goes back to that grant on `OnMissionComplete` (before the end
+  card) and on restart.
+- With no bow, the fire press is `Hands`, the melee fallback on the owner's `UWeaponComponent`.
 
 ### UI (`Source/Hawkeye/UI`)
-- `UHawkeyeHotbarWidget`: three slot boxes at bottom centre, inside the HUD overlay.
-- `UHawkeyeInventoryWidget`: Tab. Read-only list of weapons, keycards, spare ammo. Pauses.
-- `UHawkeyePauseWidget`, `UHawkeyeSettingsWidget`, `UMissionEndCardWidget`: pause menu with
-  Resume, Settings, Restart, Quit; settings with the sensitivity slider; mission end card.
-  All build their own layout when the Blueprint has none, and dim the game with an
-  `FSlateColorBrush` (a `UBorder` default brush has no resource, so tinting it draws nothing).
-- `UHawkeyeHudWidget`: objective title, ammo (`12 / 24`, blank when unarmed), interaction
-  prompt, crosshair. Builds its own layout in `RebuildWidget` when the Blueprint has none.
-  Subscribes to the mission subsystem, the pawn's weapon, and the takedown component.
-  Hidden during flashbacks by the controller. Honours `UMissionDefinition::bShowObjectiveText`.
+Widgets build their own layout in `RebuildWidget` when the Blueprint has none, and dim the game with an
+`FSlateColorBrush` (a `UBorder` default brush has no resource, so tinting it draws nothing). Layout lives
+in `WBP_*`; behaviour in the C++ parent.
+- `UHawkeyeHudWidget`: objective title, interaction prompt, reticle, and the HUD's overlay children:
+  `UHawkeyeHotbarWidget` (seven quiver boxes), `UHawkeyeQuiverWheelWidget` (radial, opened by
+  `AHawkeyeCharacter`), `UHawkeyeObjectiveWidget` (marker, compass, toasts), the grapple marker, the
+  thug overhead glyphs (`UHawkeyeThugOverheadWidget`), the challenge and crime panels, and the first-time
+  hint line (`UHawkeyeHintSubsystem`, `UHawkeyeHintWidget`). Subscribes to the mission subsystem, the
+  pawn's bow, weapon and takedown components. Hidden during flashbacks by the controller. Its ammo line
+  still binds `UWeaponComponent` and stays blank for Kate, who has no ammo count.
+- Menus and cards, all driven by `AHawkeyePlayerController`: `UHawkeyeMainMenuWidget`,
+  `UHawkeyeDifficultyPromptWidget` (once at New Game), `UHawkeyePauseWidget`, `UHawkeyeSettingsWidget`,
+  `UHawkeyeInventoryWidget` (Tab, pauses), `UHawkeyeSafehouseWidget`, `UHawkeyeMapWidget` (the world
+  map, drawn from `UCityMapData`), `UPhoneWidget`, `UChapterTitleWidget`, `UMissionEndCardWidget`,
+  `UChallengeResultsWidget`, `UFlashbackReplayWidget`.
+- The arithmetic is in pure classes with tests: `UObjectiveMarkerMath`,
+  `UQuiverWheelMath`, the map's math (`HawkeyeMapMath.h`), `FHawkeyeTitleCardClock`, `UHawkeyeHintRules`.
 
 ### Player and framework
-- `AHawkeyeCharacter`: first-person camera on the capsule, health, takedown, interaction,
-  weapon (starts with `bHasWeapon` false), noise emitter (1.0 sprinting, 0.4 walking, 0
-  crouched, every 0.5 s; 3.0 on fire), keycard set, `LookSensitivity`. Viewmodel:
-  `ArmsMesh` (the mannequin with legs and head hidden, attached to the camera, owner-only)
-  and `WeaponMesh` (template pistol) with procedural recoil, reload dip, aim lerp, sway,
-  and a muzzle light. Enhanced Input action properties and all viewmodel assets are
-  assigned in `BP_HawkeyeCharacter`. Movement tuning lives on the Blueprint's
-  CharacterMovement component, not in C++.
+- `AHawkeyeCharacter`: third person. A spring arm (`CameraBoom`) behind and above the body, probing with a
+  sphere and pulled in against walls, with `FollowCamera` on its end; aim blends the arm to the right
+  shoulder, a fight lengthens it, an interior map caps it (`IndoorArmLength`). The body turns to face the
+  way it moves, or the camera while aiming. Each frame it picks a gait (`EHawkeyeGait`: walk, run, sprint,
+  crouch, slide) from the input and speeds are properties. Landings are measured from the top of the arc
+  (`EHawkeyeLanding`: dip, roll, stumble; a very long fall costs health, never all of it). Dodge, parry and
+  stagger live here; downing and the partner's revive too (`EnterDowned`, `ReviveFromDown`).
+  It owns: `UHealthComponent`, `UTakedownComponent`, `UInteractionComponent`, `UWeaponComponent` (Hands),
+  `UBowComponent`, `UMeleeComponent`, `UFinisherComponent`, `UInventoryComponent`, `UGrappleComponent`,
+  `UParkourComponent`, and a `UPawnNoiseEmitterComponent` (0.4 loudness walking, 1.0 sprinting, 0
+  crouched or still, every 0.5 s). It implements `ISpudObject` for the save. Enhanced Input actions are
+  assigned in `BP_HawkeyeCharacter`; tuning lives on `BP_Kate`, the playable child.
+- Body animation: `BP_Kate` derives from the Game Animation Sample's `SandboxCharacter_CMC`, whose
+  motion-matching AnimBP owns the body. The character writes its gait, crouch and aim into the sample's
+  `CharacterInputState` every update (`SyncGaspInputState`). `HawkeyeLocomotion` (`LocomotionAnim`) is the
+  idle and walk clip switch for a mesh with no AnimBP (thugs). `FHawkeyeBodyLook` (`BodyLook`) draws a
+  different skeletal mesh over the driver mesh (Kate: Paragon's Sparrow over the UEFN mannequin) through a
+  Retarget Pose From Mesh AnimBP. Setup: `animation.md`.
 - `UHawkeyeMovementComponent` (`Player/HawkeyeMovementComponent`): the character's
   CharacterMovementComponent (`AHawkeyeCharacter` swaps it in with `SetDefaultSubobjectClass`, so
   BP_Kate and BP_Clint keep their tuned values). It adds custom movement modes
-  (`EHawkeyeCustomMovement`); `PhysCustom` runs the zip (`PhysZip`): hop, line, speed and
+  (`EHawkeyeCustomMovement`: `Zip` and `Traversal`); `PhysCustom` runs the zip (`PhysZip`): hop, line, speed and
   acceleration, the chain's turn, the swept move, a truthful `Velocity`, and the velocity she leaves
   with (arrival carry, let-go, blocked). `UGrappleComponent` keeps the rules: targeting, arrows, which
   actors the capsule ignores as start and anchor supports, audio and effects, the delegates. It
   starts a zip with an `FHawkeyeZipLine`, lets go with `ReleaseZip`, reads progress, direction and
   speed back, and answers the movement component's three callbacks: a hit (drop, retry, or
   straighten a chain's swing), each sub-step (release the start supports), and the end (arrived,
-  blocked, released, interrupted).
+  blocked, released, interrupted). Anchors are bucketed into a grid so the pick only looks at nearby cells.
   The second mode is the traversal (`PhysTraversal`, since 2026-11-10; moves and hangs were
   `MOVE_Flying` with the capsule placed by hand). `UParkourComponent` keeps the rules: the probe, which
-  move, the roof-edge guard, the hang, shimmy and corners, the log, the buffered press, which clip and
+  move (`EHawkeyeParkourMove`), the roof-edge guard, the hang, shimmy and corners, the log, the buffered press, which clip and
   the warp targets (`FrontLedge`, `BackLedge`, `BackFloor` on the `MotionWarping` component). It hands
   the movement one `FHawkeyeTraversalMove` with `StartTraversal`: path keys (capsule centre and yaw at
   even steps over the move's time) or none, when the montage's root motion moves her; the actors the move
@@ -248,40 +405,66 @@ Thug                    children tried in order: [condition]  -> transition
   held, exited, released or interrupted, which is how the parkour component enters the hang, finishes a
   move, or drops its state when something else changed the mode. The parkour component ticks first
   (a tick prerequisite), so a frame's rules are in before the movement runs them. The sample's own
-  traversal (`AC_TraversalLogic`) still runs in Flying.
-- `AHawkeyePlayerController`: the glue for UI. Creates `HudWidgetClass` on BeginPlay,
-  subscribes to the mission subsystem, owns `FlashbackWidgetClass`, hides the HUD during a
-  flashback, opens the next level when it finishes. Stage 3 adds end cards, subtitles,
-  and the pause menu here.
-- `AHawkeyeGameMode`: default pawn and controller classes, `StartingMission` which it
-  starts at BeginPlay, `RestartMission()` which reopens the level 2 s after player death.
-  Stage 3 replaces the restart with checkpoints.
+  traversal (`AC_TraversalLogic`, called by reflection through `HawkeyeGaspTraversal`) still runs in
+  Flying; `EHawkeyeParkourRoute` records which route a move took. Rules: "Movement", "Traversal".
+- `AHawkeyePlayerController`: the glue for UI and flow. Creates `HudWidgetClass` on BeginPlay and the
+  other widgets on demand, subscribes to the mission subsystem, owns the `UMissionFlowController` and
+  performs its steps (close-up camera, end card, flashback, playable scene, travel), shows the chapter
+  title and plays the opening dialogue as a chapter starts (and starts its chase), opens the phone
+  (P), map (M), pause and inventory, handles the safehouse menu and fast travel, switches characters, and
+  owns the banter, snowfall and photo-mode components.
+- `AHawkeyeGameMode`: default pawn and controller classes, `StartingMission` which it starts at BeginPlay,
+  the death flow (`ReloadLastCheckpoint` fades and loads the last save; `RestartMission` is the fallback),
+  the autosave timer and its gate (`CanAutosaveNow`, `IsWorldInCombat`), `ApplyChapterCast`, and per-map
+  switches (`bOutdoorWeather`, `bInteriorCamera`, `bBuildNavigationAtStart`). It also builds the navmesh
+  at start, because the generated maps ship with none.
+
+### Tools (`Tools/`)
+Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
+- `Tools/Editor/create_all.py` runs the `create_*.py` and `import_*.py` scripts in dependency order
+  (input, audio, vfx, GASP import, blueprints, world blueprints, weapon data, chase, missions, partner,
+  enemies, narrative, crimes, challenges, combat clips, bow IK, Kate's look). Each is idempotent: it
+  checks before creating and prints one line per asset. `verify_*.py` are read-only checks.
+- `generate_city.py`: the district from OSM records (`parse_osm.py` makes them; `Tools/fetch-osm.ps1`
+  downloads). It is the one script that touches `unreal`; the placement rules are plain Python in
+  modules it re-exports so they run and test under CPython: `_geo` and `_geomutil` (projection and 2D
+  geometry), `_district` (the records, shared dimensions, street layout, facade style, lamps),
+  `_reach` (the grapple's reach model and anchor placement), `_ledges` (one slab per roof edge),
+  `_fire_escapes`. `_chase.py` plans the chase from the same records with the same reach model.
+  Python tests: `test_geo.py`, `test_city_geometry.py`, `test_city_golden.py`, `test_interior.py`,
+  `test_parse_osm.py`. `verify_city.py` checks the generated map against the records.
+- Interiors: `generate_interior.py` and `_interior.py` from `Tools/Interiors/*.json`.
 
 ## Boundaries
 - C++ never references a specific mission, boss, or level by name. If you find
   `"CH01"` in a .cpp file, that's a bug.
 - Blueprints never implement rules that a test should cover. Health math, objective
-  ordering, phase thresholds, ammo counts: C++.
+  ordering, phase thresholds, arrow counts: C++.
 - Widgets: layout in `WBP_*`, behaviour in the C++ parent. A widget Blueprint with more
   than a screenful of graph nodes is a sign the parent needs a function.
 - AI: decisions are StateTrees (`Content/Blueprints/AI`), written by C++ builders so the script is the one
   description of each tree. C++ provides senses, actuators, conditions and tasks; a choice of what to do next
-  in a controller is a bug.
+  in a controller is a bug. The partner follows the same rule.
+- Rules are pure where they can be: a `*Rules` class or namespace with no world, a tracker or clock that
+  holds state, a subsystem that applies them. Tests call the first two directly.
 
 ## Lifecycle of a mission, end to end
-1. Level `L_M0X` loads. Its Level Blueprint (or a `AMissionStarter` actor, stage 2) calls
-   `MissionSubsystem->StartMission(DA_M0X)`.
-2. Subsystem duplicates objectives, marks the first as current, fires `OnObjectiveUpdated`.
-3. Player plays. World actors call `CompleteObjective` by id. Order is not enforced by
-   default; `UMissionDefinition::bEnforceOrder` (stage 2) can require it.
-4. When every non-optional objective is complete: `OnMissionComplete`. Controller shows
-   the end card. If `FlashbackToPlay` is set: `OnFlashbackRequested`.
-5. Controller creates `WBP_Flashback`, pauses, plays. `OnFlashbackFinished` unpauses
-   and, if `NextLevel` is set, calls `OpenLevel`.
-6. Save (stage 3) writes progress at step 4 before the flashback so a quit during the
-   slideshow doesn't lose the mission.
+1. The map's game mode (`BP_GameMode_EastVillage`) names a `StartingMission`; `AHawkeyeGameMode::BeginPlay`
+   calls `MissionSubsystem->StartMission(DA_CH01_NightShift)`. A save load starts it the same way, then
+   `ApplyPendingRestore` puts the objectives and actors back.
+2. Subsystem duplicates objectives, marks the first as current, fires `OnMissionStarted`. The game mode
+   applies the chapter's cast and grants its bow and arrows. The player controller shows the chapter title
+   (once per campaign), plays the opening dialogue, and starts the chase if the mission names one.
+3. Player plays. World actors call `CompleteObjective` by id. Order is not enforced unless
+   `UMissionDefinition::bEnforceOrder` is on. Each completed objective autosaves.
+4. When every non-optional objective is complete: `OnMissionComplete` (the autosave has already run). If
+   `FlashbackToPlay` is set: `OnFlashbackRequested`.
+5. The controller starts `UMissionFlowController`: a close-up if one is running, the end card, the flashback
+   (paused world, `WBP_Flashback`), the flashback's playable scene if it has one (the district is saved first
+   and the player comes back to `ReturnPointLabel`), then the next level, or back to roaming with a toast
+   (`bReturnToRoamingAtEnd`), or the final card and the menu.
 
 ## Things deliberately not built
-No inventory system (one weapon slot, ammo counters). No dialogue tree (linear lines from
-a data table). No branching levels (two boolean choices that change a line and a decal).
-No multiplayer, replication, or networking of any kind; don't add `Replicated` specifiers.
+No branching chapters and no dialogue choices (lines are queued from data tables). No multiplayer,
+replication, or networking of any kind; don't add `Replicated` specifiers. No Gameplay Ability System:
+trick arrows are small actors. No World Partition yet; the district is one map.
