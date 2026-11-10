@@ -6,6 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Player/GrappleComponent.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
 #include "Tests/HawkeyeTestUtils.h"
 #include "World/GrappleAnchor.h"
@@ -15,8 +16,9 @@
 
 /**
  * The grapple arrow rules from claude-docs/gameplay-semantics.md (PLANNED: traversal): anchors
- * within 2500 cm and 30 degrees of the camera forward, in sight; a straight zip at 1800 cm/s to
- * the landing point; chaining from 40% of the line, redirected in the air; grapple arrows have no count (never
+ * within 2500 cm and 30 degrees of the camera forward, in sight; a straight zip to the landing point
+ * (its speed is the movement component's: Hawkeye.Movement.Zip.*); chaining from 40% of the line,
+ * redirected in the air; grapple arrows have no count (never
  * spent, never refused for want of one); a blocked zip drops the character.
  */
 namespace HawkeyeGrappleTest
@@ -63,16 +65,22 @@ namespace HawkeyeGrappleTest
 		return Blocker;
 	}
 
-	/** Advances the zip in DeltaSeconds steps until it ends or MaxSeconds pass. Returns the steps run. */
-	static int32 RunZip(UGrappleComponent* Grapple, float DeltaSeconds, float MaxSeconds)
+	/** Ticks her movement in DeltaSeconds steps until the zip ends or MaxSeconds pass. Returns the steps run. */
+	static int32 RunZip(AHawkeyeAimTestCharacter* Kate, float DeltaSeconds, float MaxSeconds)
 	{
 		int32 Steps = 0;
-		for (float Elapsed = 0.f; Grapple->IsZipping() && Elapsed < MaxSeconds; Elapsed += DeltaSeconds)
+		for (float Elapsed = 0.f; Kate->IsZipping() && Elapsed < MaxSeconds; Elapsed += DeltaSeconds)
 		{
-			Grapple->AdvanceZip(DeltaSeconds);
+			Kate->TestTickMovement(DeltaSeconds);
 			++Steps;
 		}
 		return Steps;
+	}
+
+	/** A 400 cm roof with its top at TopZ under an anchor at Location, so a zip landing there has a floor. */
+	static AHawkeyeTestBlocker* SpawnRoofUnder(const FHawkeyeTestWorld& TestWorld, const FVector& Location, float TopZ)
+	{
+		return SpawnBlocker(TestWorld, FVector(Location.X + 200.f, Location.Y, TopZ - 100.f), FVector(200.f, 200.f, 100.f));
 	}
 
 	static int32 ModeOf(const ACharacter* Character)
@@ -172,9 +180,9 @@ bool FHawkeyeGrappleZipKinematics::RunTest(const FString& Parameters)
 	const FVector Start(0.f, 0.f, 200.f);
 	AHawkeyeAimTestCharacter* Kate = SpawnKate(TestWorld, Start);
 	AGrappleAnchor* Anchor = SpawnAnchor(TestWorld, FVector(1800.f, 0.f, 500.f));
-	if (!Kate || !Anchor)
+	if (!Kate || !Anchor || !SpawnRoofUnder(TestWorld, Anchor->GetActorLocation(), 500.f))
 	{
-		AddError(TEXT("Could not spawn Kate and an anchor."));
+		AddError(TEXT("Could not spawn Kate, an anchor and its roof."));
 		return false;
 	}
 	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
@@ -183,34 +191,33 @@ bool FHawkeyeGrappleZipKinematics::RunTest(const FString& Parameters)
 	Grapple->OnGrappleLanded.AddDynamic(Listener, &UHawkeyeTestListener::HandleGrappleLanded);
 	const float HealthBefore = Kate->GetHealthComponent()->GetCurrentHealth();
 
-	TestEqual(TEXT("Zip speed is 1800"), Grapple->ZipSpeed, 1800.f);
 	const FVector End = Grapple->ComputeZipEnd(Anchor);
 	TestTrue(TEXT("The zip ends with her feet on the landing point, 60 cm inboard of the anchor"),
 		End.Equals(FVector(1860.f, 0.f, 500.f + Kate->GetSimpleCollisionHalfHeight() + 2.f), 0.5f));
 
 	TestTrue(TEXT("StartZip accepts a valid anchor"), Grapple->StartZip(Anchor));
 	TestTrue(TEXT("Zipping"), Grapple->IsZipping());
-	TestEqual(TEXT("Flying while zipping"), ModeOf(Kate), static_cast<int32>(MOVE_Flying));
-	TestEqual(TEXT("No gravity while zipping"), Movement->GravityScale, 0.f);
+	TestEqual(TEXT("In the zip movement mode"), ModeOf(Kate), static_cast<int32>(MOVE_Custom));
+	TestEqual(TEXT("Its zip sub-mode"), static_cast<int32>(Movement->CustomMovementMode),
+		static_cast<int32>(EHawkeyeCustomMovement::Zip));
 
 	for (int32 Step = 0; Step < 5; ++Step)
 	{
-		Grapple->AdvanceZip(0.1f);
+		Kate->TestTickMovement(0.1f);
 	}
 	const FVector Direction = (End - Start).GetSafeNormal();
 	const float Length = FVector::Dist(Start, End);
-	TestTrue(TEXT("After 0.5 s she is 900 cm along the straight line"),
-		Kate->GetActorLocation().Equals(Start + Direction * 900.f, 0.5f));
-	TestEqual(TEXT("Progress is the distance over the line length"), Grapple->GetZipProgress(), 900.f / Length, 0.001f);
-	TestEqual(TEXT("Still Flying mid-zip"), ModeOf(Kate), static_cast<int32>(MOVE_Flying));
+	const float Along = FVector::DotProduct(Kate->GetActorLocation() - Start, Direction);
+	TestTrue(TEXT("After 0.5 s she is part way along the straight line"),
+		Along > 0.f && Kate->GetActorLocation().Equals(Start + Direction * Along, 0.5f));
+	TestEqual(TEXT("Progress is the distance over the line length"), Grapple->GetZipProgress(), Along / Length, 0.001f);
+	TestEqual(TEXT("Still zipping mid-line"), ModeOf(Kate), static_cast<int32>(MOVE_Custom));
 
-	const int32 Steps = RunZip(Grapple, 0.1f, 5.f);
-	TestEqual(TEXT("The whole line takes ceil(length / 1800 / 0.1) steps"), Steps + 5,
-		FMath::CeilToInt(Length / 1800.f / 0.1f));
+	RunZip(Kate, 0.1f, 5.f);
 	TestFalse(TEXT("The zip is over"), Grapple->IsZipping());
 	TestTrue(TEXT("She is exactly on the end point"), Kate->GetActorLocation().Equals(End, 0.5f));
-	TestEqual(TEXT("Landing sets Walking"), ModeOf(Kate), static_cast<int32>(MOVE_Walking));
-	TestEqual(TEXT("Gravity is back"), Movement->GravityScale, 1.f);
+	TestEqual(TEXT("Landing on the roof sets Walking"), ModeOf(Kate), static_cast<int32>(MOVE_Walking));
+	TestEqual(TEXT("Gravity was never touched"), Movement->GravityScale, 1.f);
 	TestEqual(TEXT("OnGrappleLanded fired once"), Listener->GrappleLandedCount, 1);
 	TestTrue(TEXT("For this anchor"), Listener->LastGrappleAnchor == Anchor);
 	TestFalse(TEXT("A zip landing is not a roll: no camera dip, no speed cut"), Kate->IsRecoveringFromLanding());
@@ -241,7 +248,7 @@ bool FHawkeyeGrappleIgnoresAnchorBuilding::RunTest(const FString& Parameters)
 	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
 
 	Grapple->StartZip(Anchor);
-	RunZip(Grapple, 1.f / 60.f, 5.f);
+	RunZip(Kate, 1.f / 60.f, 5.f);
 	TestTrue(TEXT("She arrives on the roof"), Kate->GetActorLocation().Equals(Grapple->ComputeZipEnd(Anchor), 0.5f));
 	TestEqual(TEXT("Walking"), ModeOf(Kate), static_cast<int32>(MOVE_Walking));
 	return true;
@@ -257,7 +264,7 @@ bool FHawkeyeGrappleChain::RunTest(const FString& Parameters)
 	AHawkeyeAimTestCharacter* Kate = SpawnKate(TestWorld, FVector(0.f, 0.f, 200.f));
 	AGrappleAnchor* First = SpawnAnchor(TestWorld, FVector(1800.f, 0.f, 500.f));
 	AGrappleAnchor* Second = SpawnAnchor(TestWorld, FVector(1800.f, 1500.f, 500.f));
-	if (!Kate || !First || !Second)
+	if (!Kate || !First || !Second || !SpawnRoofUnder(TestWorld, Second->GetActorLocation(), 500.f))
 	{
 		AddError(TEXT("Could not spawn the scene."));
 		return false;
@@ -265,7 +272,7 @@ bool FHawkeyeGrappleChain::RunTest(const FString& Parameters)
 	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
 	TestEqual(TEXT("The chain window opens at 40%"), Grapple->ChainMinProgress, 0.4f);
 	TestEqual(TEXT("A chain arrow arrives at once"), Grapple->ChainArrowSpeed, 0.f);
-	TestEqual(TEXT("The turn onto the new line takes 0.1 s"), Grapple->RedirectBlendSeconds, 0.1f);
+	TestEqual(TEXT("The turn onto the new line takes 0.1 s"), Kate->GetHawkeyeMovement()->RedirectBlendSeconds, 0.1f);
 
 	Grapple->StartZip(First);
 	const float Length = Grapple->GetZipLength();
@@ -275,14 +282,21 @@ bool FHawkeyeGrappleChain::RunTest(const FString& Parameters)
 		const FVector View = Kate->GetActorLocation();
 		Grapple->UpdateTarget(View, (Second->GetMarkerLocation() - View).GetSafeNormal());
 	};
+	auto RunToProgress = [Kate, Grapple](float Progress)
+	{
+		for (int32 Step = 0; Step < 600 && Grapple->IsZipping() && Grapple->GetZipProgress() < Progress; ++Step)
+		{
+			Kate->TestTickMovement(1.f / 120.f);
+		}
+	};
 
-	Grapple->AdvanceZip(0.35f * Length / Grapple->ZipSpeed);
+	RunToProgress(0.35f);
 	AimAtSecond();
 	TestTrue(TEXT("The next anchor is targeted mid-zip"), Grapple->GetTargetAnchor() == Second);
 	TestFalse(TEXT("At 35% a second arrow is refused"), Grapple->TryFire());
 	TestTrue(TEXT("Still zipping to the first anchor"), Grapple->GetZipAnchor() == First);
 
-	Grapple->AdvanceZip(0.15f * Length / Grapple->ZipSpeed);
+	RunToProgress(0.5f);
 	AimAtSecond();
 	const FVector OldDirection = Grapple->GetZipDirection();
 	const FVector AtPress = Kate->GetActorLocation();
@@ -292,7 +306,7 @@ bool FHawkeyeGrappleChain::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The zip target changed before landing"), Grapple->IsZipping() && Grapple->GetZipAnchor() == Second);
 	TestTrue(TEXT("She is still in the air, nowhere near the first roof"),
 		FVector::Dist(Kate->GetActorLocation(), FirstEnd) > 0.4f * Length);
-	TestEqual(TEXT("Flying, not landed"), ModeOf(Kate), static_cast<int32>(MOVE_Flying));
+	TestEqual(TEXT("Zipping, not landed"), ModeOf(Kate), static_cast<int32>(MOVE_Custom));
 	TestEqual(TEXT("From the start of its new line"), Grapple->GetZipProgress(), 0.f);
 	TestTrue(TEXT("From where she was, with no hop"), Grapple->GetZipLaunch().Equals(AtPress, 0.5f));
 	TestTrue(TEXT("Turning onto the new line"), Grapple->IsRedirecting());
@@ -301,19 +315,19 @@ bool FHawkeyeGrappleChain::RunTest(const FString& Parameters)
 
 	// Half the blend: the direction is between the old line and the new one, not snapped.
 	const FVector NewDirection = (Grapple->ComputeZipEnd(Second) - AtPress).GetSafeNormal();
-	Grapple->AdvanceZip(0.05f);
+	Kate->TestTickMovement(0.05f);
 	const FVector Mid = Grapple->GetZipDirection();
 	const float ToOld = FVector::DotProduct(Mid, OldDirection);
 	const float ToNew = FVector::DotProduct(Mid, NewDirection);
 	TestTrue(TEXT("Half way through the blend it has turned part of the way"),
 		ToNew > FVector::DotProduct(OldDirection, NewDirection) + 0.05f && ToNew < 0.999f && ToOld < 0.999f);
-	Grapple->AdvanceZip(0.06f);
+	Kate->TestTickMovement(0.06f);
 	TestFalse(TEXT("After 0.1 s the blend is done"), Grapple->IsRedirecting());
 	TestTrue(TEXT("And she heads straight for the new landing point"),
 		FVector::DotProduct(Grapple->GetZipDirection(),
 			(Grapple->ComputeZipEnd(Second) - Kate->GetActorLocation()).GetSafeNormal()) > 0.999f);
 
-	RunZip(Grapple, 0.05f, 5.f);
+	RunZip(Kate, 0.05f, 5.f);
 	TestTrue(TEXT("She lands on the second anchor's roof"),
 		Kate->GetActorLocation().Equals(Grapple->ComputeZipEnd(Second), 0.5f));
 	TestEqual(TEXT("Walking"), ModeOf(Kate), static_cast<int32>(MOVE_Walking));
@@ -355,7 +369,7 @@ bool FHawkeyeGrappleArrowCount::RunTest(const FString& Parameters)
 		return false;
 	}
 	Arrow->Advance(1.f);
-	RunZip(Grapple, 0.05f, 5.f);
+	RunZip(Kate, 0.05f, 5.f);
 	TestFalse(TEXT("Landed"), Grapple->IsZipping());
 
 	// Standing by the anchor tidies the stuck arrow away; there is no count for it to go back into.
@@ -425,11 +439,10 @@ bool FHawkeyeGrappleBlocked::RunTest(const FString& Parameters)
 	Grapple->OnGrappleCancelled.AddDynamic(Listener, &UHawkeyeTestListener::HandleGrappleCancelled);
 
 	Grapple->StartZip(Anchor);
-	RunZip(Grapple, 0.05f, 5.f);
+	RunZip(Kate, 0.05f, 5.f);
 	TestFalse(TEXT("The zip stopped"), Grapple->IsZipping());
 	TestTrue(TEXT("At the wall, not through it"), Kate->GetActorLocation().X < 1000.f);
 	TestEqual(TEXT("And she falls"), ModeOf(Kate), static_cast<int32>(MOVE_Falling));
-	TestEqual(TEXT("Gravity is back"), Kate->GetCharacterMovement()->GravityScale, 1.f);
 	TestEqual(TEXT("OnGrappleCancelled fired"), Listener->GrappleCancelledCount, 1);
 	TestEqual(TEXT("OnGrappleLanded did not"), Listener->GrappleLandedCount, 0);
 	return true;

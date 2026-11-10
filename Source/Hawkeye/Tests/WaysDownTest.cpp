@@ -9,6 +9,7 @@
 #include "Player/GrappleComponent.h"
 #include "Player/InventoryComponent.h"
 #include "Player/ParkourComponent.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Tests/HawkeyeTestUtils.h"
 #include "World/CityLedgeData.h"
 #include "World/FireEscapeLanding.h"
@@ -425,9 +426,10 @@ namespace HawkeyeWaysDownTest
 
 	static void RunZip(UGrappleComponent* Grapple, float MaxSeconds)
 	{
-		for (float T = 0.f; Grapple->IsZipping() && T < MaxSeconds; T += 1.f / 60.f)
+		AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(Grapple->GetOwner());
+		for (float T = 0.f; Kate && Grapple->IsZipping() && T < MaxSeconds; T += 1.f / 60.f)
 		{
-			Grapple->AdvanceZip(1.f / 60.f);
+			Kate->TestTickMovement(1.f / 60.f);
 		}
 	}
 
@@ -463,7 +465,7 @@ bool FHawkeyeGrappleLaunch::RunTest(const FString& Parameters)
 	}
 	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
 	TestEqual(TEXT("The line starts 120 cm up"), Grapple->ZipLaunchHeight, 120.f);
-	TestEqual(TEXT("After a 0.15 s hop"), Grapple->ZipHopSeconds, 0.15f);
+	TestEqual(TEXT("After a 0.15 s hop"), Kate->GetHawkeyeMovement()->ZipHopSeconds, 0.15f);
 	TestEqual(TEXT("Geometry within 250 cm of the start is hers"), Grapple->ZipStartIgnoreRadius, 250.f);
 	TestEqual(TEXT("And within 150 cm of the anchor its building's"), Grapple->SupportRadius, 150.f);
 
@@ -475,10 +477,10 @@ bool FHawkeyeGrappleLaunch::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The line starts at the launch point"), Grapple->GetZipLaunch().Equals(Start + FVector(0.f, 0.f, 120.f)));
 	TestEqual(TEXT("Its length is from the launch point"), Grapple->GetZipLength(),
 		static_cast<float>(FVector::Dist(Start + FVector(0.f, 0.f, 120.f), Grapple->ComputeZipEnd(Anchor))), 0.5f);
-	Grapple->AdvanceZip(0.075f);
+	Kate->TestTickMovement(0.075f);
 	TestTrue(TEXT("Half way through the hop she is on her way up, not along"),
 		Kate->GetActorLocation().Z > Start.Z + 60.f && FMath::IsNearlyEqual(Kate->GetActorLocation().X, Start.X, 0.5f));
-	Grapple->AdvanceZip(0.075f);
+	Kate->TestTickMovement(0.075f);
 	TestFalse(TEXT("The hop is over after 0.15 s"), Grapple->IsHopping());
 	TestTrue(TEXT("At the launch point"), Kate->GetActorLocation().Equals(Start + FVector(0.f, 0.f, 120.f), 0.5f));
 	TestEqual(TEXT("No progress along the line during the hop"), Grapple->GetZipProgress(), 0.f);
@@ -557,7 +559,7 @@ bool FHawkeyeGrappleCancel::RunTest(const FString& Parameters)
 	Grapple->StartZip(Anchor);
 	for (int32 Step = 0; Step < 24; ++Step)
 	{
-		Grapple->AdvanceZip(1.f / 60.f);
+		Kate->TestTickMovement(1.f / 60.f);
 	}
 	TestTrue(TEXT("Mid-zip"), Grapple->IsZipping() && Grapple->GetZipProgress() > 0.1f);
 	Kate->Jump();

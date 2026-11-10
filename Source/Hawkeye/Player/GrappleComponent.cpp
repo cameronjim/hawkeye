@@ -18,6 +18,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
 #include "NiagaraComponent.h"
 #include "Vfx/HawkeyeVfxSubsystem.h"
@@ -55,8 +56,9 @@ void UGrappleComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 float UGrappleComponent::ComputeZipSoundSpeed() const
 {
-	const float Full = FMath::Clamp(ZipSpeed / 2400.f, 0.2f, 1.f);
-	return bHopping ? Full * 0.4f : Full;
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	const float Full = FMath::Clamp((Movement ? Movement->ZipSpeed : 0.f) / 2400.f, 0.2f, 1.f);
+	return IsHopping() ? Full * 0.4f : Full;
 }
 
 UGrappleComponent::UGrappleComponent()
@@ -70,13 +72,13 @@ void UGrappleComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (bZipping)
-	{
-		AdvanceZip(DeltaTime);
-	}
-	if (bZipping)
+	if (IsZipping())
 	{
 		UpdateZipLine();
+		if (ZipLoop)
+		{
+			ZipLoop->SetFloatParameter(SpeedParameter, ComputeZipSoundSpeed());
+		}
 	}
 
 	RefreshAccumulator += DeltaTime;
@@ -177,7 +179,7 @@ void UGrappleComponent::GatherNearbyAnchors(const FVector& Location, TArray<AGra
 bool UGrappleComponent::IsAnchorValid(const AGrappleAnchor* Anchor, const FVector& From, const FVector& ViewLocation,
 	const FVector& ViewForward, float& OutAngleDegrees) const
 {
-	if (!IsValid(Anchor) || !Anchor->bEnabled || (bZipping && Anchor == ZipAnchor.Get()))
+	if (!IsValid(Anchor) || !Anchor->bEnabled || (IsZipping() && Anchor == ZipAnchor.Get()))
 	{
 		return false;
 	}
@@ -305,7 +307,7 @@ AGrappleAnchor* UGrappleComponent::SelectBestAnchor(const FVector& ViewLocation,
 	// ground with the hop, mid-zip (a chain) from here with the line she is on counting as her start.
 	const ACharacter* Character = GetCharacter();
 	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
-	const bool bFromGround = !bZipping && Movement && Movement->IsMovingOnGround();
+	const bool bFromGround = !IsZipping() && Movement && Movement->IsMovingOnGround();
 	return SelectBestAnchorFrom(Owner->GetActorLocation(), bFromGround, ViewLocation, ViewForward, OutBlocked, OutBlockedReason);
 }
 
@@ -339,7 +341,7 @@ AGrappleAnchor* UGrappleComponent::SelectBestAnchorFrom(const FVector& From, boo
 
 	const ACharacter* Character = GetCharacter();
 	TArray<AActor*> CurrentSupports;
-	if (bZipping)
+	if (IsZipping())
 	{
 		for (const TWeakObjectPtr<AActor>& Support : ZipIgnoredSupports)
 		{
@@ -387,7 +389,7 @@ AGrappleAnchor* UGrappleComponent::SelectBestAnchorFrom(const FVector& From, boo
 		}
 		++ClearChecks;
 		AActor* Blocker = nullptr;
-		if (IsZipClear(From, Anchor, bFromGround, &Blocker, bZipping ? &CurrentSupports : nullptr))
+		if (IsZipClear(From, Anchor, bFromGround, &Blocker, IsZipping() ? &CurrentSupports : nullptr))
 		{
 			WindowEnd = Best == INDEX_NONE ? Candidate.Angle + PickTieDegrees : WindowEnd;
 			Best = Index;
@@ -499,7 +501,7 @@ bool UGrappleComponent::TryFire()
 		return true;
 	}
 	InFlightArrow = Arrow;
-	if (bZipping)
+	if (IsZipping())
 	{
 		// A chain: the arrow has to beat the rest of the line, or she lands first and it is a
 		// fresh zip off the roof rather than a redirect in the air.
@@ -855,18 +857,67 @@ void UGrappleComponent::ReleaseStartSupports()
 	}
 }
 
+UHawkeyeMovementComponent* UGrappleComponent::GetMovement() const
+{
+	const ACharacter* Character = GetCharacter();
+	return Character ? Cast<UHawkeyeMovementComponent>(Character->GetCharacterMovement()) : nullptr;
+}
+
+bool UGrappleComponent::IsZipping() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement && Movement->IsZipping();
+}
+
+float UGrappleComponent::GetZipProgress() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement ? Movement->GetZipProgress() : 0.f;
+}
+
+float UGrappleComponent::GetZipLength() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement ? Movement->GetZipLength() : 0.f;
+}
+
+bool UGrappleComponent::IsHopping() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement && Movement->IsZipHopping();
+}
+
+FVector UGrappleComponent::GetZipLaunch() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement ? Movement->GetZipLaunch() : FVector::ZeroVector;
+}
+
+bool UGrappleComponent::IsRedirecting() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement && Movement->IsZipRedirecting();
+}
+
+FVector UGrappleComponent::GetZipDirection() const
+{
+	const UHawkeyeMovementComponent* Movement = GetMovement();
+	return Movement ? Movement->GetZipDirection() : FVector::ZeroVector;
+}
+
 bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 {
 	ACharacter* Character = GetCharacter();
-	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	UHawkeyeMovementComponent* Movement = GetMovement();
 	if (!IsValid(Anchor) || !Movement)
 	{
 		return false;
 	}
 
 	// From the ground there is a hop to the launch point; a chain or a mid-air zip goes straight.
-	const bool bFromGround = !bZipping && Movement->IsMovingOnGround();
-	const bool bRedirect = bZipping && !bHopping;
+	const bool bWasZipping = Movement->IsZipping();
+	const bool bFromGround = !bWasZipping && Movement->IsMovingOnGround();
+	const bool bRedirect = bWasZipping && !Movement->IsZipHopping();
 	// A chain in the air is often right at the old anchor's parapet: that building counts as
 	// where she starts from, ignored until she is clear of it like her own roof on a fresh zip.
 	TArray<TWeakObjectPtr<AActor>> OldAnchorSupports;
@@ -874,7 +925,7 @@ bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 	{
 		OldAnchorSupports = ZipIgnoredSupports;
 	}
-	if (bZipping)
+	if (bWasZipping)
 	{
 		// A chain: the old building stops being ignored, the new one starts, and the old line's
 		// arrow comes back (she never gets within reach of it to pull it out).
@@ -884,11 +935,10 @@ bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 			ReelBackArrow(ZipAnchor.Get(), TEXT("chained off it"));
 		}
 	}
-	else
+	if (bRedirect)
 	{
-		PreZipGravityScale = Movement->GravityScale;
+		++RedirectCount;
 	}
-
 	if (AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Character))
 	{
 		Hawkeye->StopAim();
@@ -896,29 +946,10 @@ bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 
 	ZipAnchor = Anchor;
 	ZipStart = Character->GetActorLocation();
-	ZipLaunch = ComputeZipLaunch(ZipStart, bFromGround);
-	ZipEnd = ComputeZipEnd(Anchor);
-	ZipLength = FVector::Dist(ZipLaunch, ZipEnd);
-	ZipTravelled = 0.f;
-	ZipProgress = 0.f;
-	bZipping = true;
-	bHopping = bFromGround && ZipHopSeconds > 0.f;
-	HopElapsed = 0.f;
-
-	// A chain in the air keeps moving the way it was going and turns onto the new line over
-	// RedirectBlendSeconds; anything else starts on its line.
-	const FVector NewDirection = (ZipEnd - ZipLaunch).GetSafeNormal();
-	bRedirecting = bRedirect && RedirectBlendSeconds > 0.f && !ZipDirection.IsNearlyZero();
-	RedirectElapsed = 0.f;
-	RedirectFromDirection = bRedirecting ? ZipDirection : NewDirection;
-	if (!bRedirecting)
-	{
-		ZipDirection = NewDirection;
-	}
-	if (bRedirect)
-	{
-		++RedirectCount;
-	}
+	FHawkeyeZipLine Line;
+	Line.Launch = ComputeZipLaunch(ZipStart, bFromGround);
+	Line.End = ComputeZipEnd(Anchor);
+	Line.bHop = bFromGround;
 
 	// The line ends on the anchor's roof and clips its parapet on the way in; that building is
 	// expected, and so is the roof and parapet she leaves from until she is clear of them.
@@ -947,15 +978,10 @@ bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 	bStartSupportsIgnored = true;
 	SetSupportsIgnored(true);
 
-	Movement->GravityScale = 0.f;
-	Movement->Velocity = FVector::ZeroVector;
-	Movement->SetMovementMode(MOVE_Flying);
-
-	const FVector Direction = (ZipEnd - ZipStart).GetSafeNormal2D();
-	if (!Direction.IsNearlyZero() && !bRedirecting)
-	{
-		Character->SetActorRotation(FRotator(0.f, Direction.Rotation().Yaw, 0.f));
-	}
+	Movement->OnZipHit.BindUObject(this, &UGrappleComponent::HandleZipHit);
+	Movement->OnZipStep.BindUObject(this, &UGrappleComponent::HandleZipStep);
+	Movement->OnZipEnded.BindUObject(this, &UGrappleComponent::HandleZipEnded);
+	Movement->StartZip(Line);
 
 	if (!ZipLoop)
 	{
@@ -967,203 +993,102 @@ bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 	}
 	UpdateZipLine();
 
-	UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s, %.0f cm at %.0f cm/s (%.2f s), %s, line %+.0f cm, ignoring %s%s and %d start support(s)"),
-		*GetNameSafe(Character), *GetNameSafe(Anchor), ZipLength, ZipSpeed, ZipLength / ZipSpeed,
-		bRedirecting ? *FString::Printf(TEXT("mid-air redirect over %.2f s"), RedirectBlendSeconds)
-			: (bHopping ? *FString::Printf(TEXT("hop %.0f cm in %.2f s"), ZipLaunchHeight, ZipHopSeconds) : TEXT("no hop")),
-		ZipEnd.Z - ZipLaunch.Z, *GetNameSafe(Supports.Num() > 0 ? Supports[0] : nullptr),
+	UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s, %.0f cm from %.0f cm/s up to %.0f, %s, line %+.0f cm, ignoring %s%s and %d start support(s)"),
+		*GetNameSafe(Character), *GetNameSafe(Anchor), Movement->GetZipLength(), Movement->GetZipLineSpeed(), Movement->ZipSpeed,
+		Movement->IsZipRedirecting() ? *FString::Printf(TEXT("mid-air redirect over %.2f s"), Movement->RedirectBlendSeconds)
+			: (Movement->IsZipHopping() ? *FString::Printf(TEXT("hop %.0f cm in %.2f s"), ZipLaunchHeight, Movement->ZipHopSeconds)
+				: TEXT("no hop")),
+		Line.End.Z - Line.Launch.Z, *GetNameSafe(Supports.Num() > 0 ? Supports[0] : nullptr),
 		Supports.Num() > 1 ? *FString::Printf(TEXT(" and %d more"), Supports.Num() - 1) : TEXT(""), StartSupports.Num());
 	return true;
 }
 
-void UGrappleComponent::AdvanceZip(float DeltaSeconds)
+EHawkeyeZipHitResponse UGrappleComponent::HandleZipHit(const FHitResult& Hit, bool bSwinging, bool bArriving)
 {
-	ACharacter* Character = GetCharacter();
-	if (!bZipping || !Character)
-	{
-		return;
-	}
-
-	if (bHopping)
-	{
-		// Up to the launch point, easing out, through whatever she stood on or beside.
-		HopElapsed += DeltaSeconds;
-		const float Alpha = FMath::Clamp(HopElapsed / ZipHopSeconds, 0.f, 1.f);
-		Character->SetActorLocation(FMath::Lerp(ZipStart, ZipLaunch, FMath::Sin(Alpha * HALF_PI)), false, nullptr,
-			ETeleportType::None);
-		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
-		{
-			Movement->Velocity = FVector::ZeroVector;
-		}
-		bHopping = Alpha < 1.f;
-		if (!bHopping && ZipLoop)
-		{
-			ZipLoop->SetFloatParameter(SpeedParameter, ComputeZipSoundSpeed());
-		}
-		return;
-	}
-
-	// Head for the landing point from wherever she is. On a straight line that is the line itself;
-	// after a chain the direction swings from the old line onto the new over RedirectBlendSeconds.
-	const FVector Current = Character->GetActorLocation();
-	const FVector ToEnd = ZipEnd - Current;
-	const float Remaining = ToEnd.Size();
-	const float Step = ZipSpeed * DeltaSeconds;
-	FVector Direction = Remaining > KINDA_SMALL_NUMBER ? ToEnd / Remaining : ZipDirection;
-	const FVector StraightDirection = Direction;
-	const bool bSwinging = bRedirecting;
-	if (bRedirecting)
-	{
-		RedirectElapsed += DeltaSeconds;
-		const float Alpha = FMath::Clamp(RedirectElapsed / RedirectBlendSeconds, 0.f, 1.f);
-		const FVector Blended = RedirectFromDirection * (1.f - Alpha) + Direction * Alpha;
-		Direction = Blended.IsNearlyZero() ? Direction : Blended.GetSafeNormal();
-		bRedirecting = Alpha < 1.f;
-		const FVector Flat = Direction.GetSafeNormal2D();
-		if (!Flat.IsNearlyZero())
-		{
-			Character->SetActorRotation(FRotator(0.f, Flat.Rotation().Yaw, 0.f));
-		}
-	}
-	const bool bArrives = Remaining <= Step;
-	const FVector Target = bArrives ? ZipEnd : Current + Direction * Step;
-	ZipDirection = Direction;
-	ZipTravelled = FMath::Clamp(ZipLength - FVector::Dist(Target, ZipEnd), ZipTravelled, ZipLength);
-	if (bArrives)
-	{
-		ZipTravelled = ZipLength;
-	}
-
-	FHitResult Hit;
-	Character->SetActorLocation(Target, /*bSweep=*/true, &Hit);
-	if (Hit.bBlockingHit && bSwinging && !bArrives)
+	const ACharacter* Character = GetCharacter();
+	AActor* HitActor = Hit.GetActor();
+	if (bSwinging && !bArriving)
 	{
 		// The swing from the old line onto the new one bulges off the line TryFire swept clear, and on
-		// a chain past a roof edge that bulge can clip the parapet. Finish the swing at once and go on
-		// along the line itself; only a hit on that line drops her.
+		// a chain past a roof edge that bulge can clip the parapet. Only a hit on the line itself drops her.
 		UE_LOG(LogHawkeye, Log, TEXT("%s: chain swing to %s clipped %s; straightening onto the line"),
-			*GetNameSafe(Character), *GetNameSafe(ZipAnchor.Get()), *GetNameSafe(Hit.GetActor()));
-		bRedirecting = false;
-		Character->SetActorLocation(Current, /*bSweep=*/false);
-		Direction = StraightDirection;
-		ZipDirection = Direction;
-		const FVector Straight = Current + Direction * Step;
-		ZipTravelled = FMath::Clamp(ZipLength - FVector::Dist(Straight, ZipEnd), ZipTravelled, ZipLength);
-		Hit = FHitResult();
-		Character->SetActorLocation(Straight, /*bSweep=*/true, &Hit);
+			*GetNameSafe(Character), *GetNameSafe(ZipAnchor.Get()), *GetNameSafe(HitActor));
+		return EHawkeyeZipHitResponse::Straighten;
 	}
-	if (Hit.bBlockingHit && !bArrives && ZipStartSupports.Contains(Hit.GetActor()) && !bStartSupportsIgnored)
+	UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+	if (!bArriving && Capsule && HitActor && !bStartSupportsIgnored && ZipStartSupports.Contains(HitActor))
 	{
 		// The roof she left counts again once she is GetStartReleaseDistance() from where the zip began,
 		// but after a chain swing she can still be over its parapet there. TryFire cleared the line
 		// with that roof ignored up to the same distance along the line itself, so keep ignoring it.
-		if (UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
-		{
-			UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s grazed %s, the roof it started from; ignoring it for the rest of the zip"),
-				*GetNameSafe(Character), *GetNameSafe(ZipAnchor.Get()), *GetNameSafe(Hit.GetActor()));
-			Capsule->IgnoreActorWhenMoving(Hit.GetActor(), true);
-			ZipIgnoredSupports.AddUnique(Hit.GetActor());
-			const FVector Retry = Target;
-			Hit = FHitResult();
-			Character->SetActorLocation(Retry, /*bSweep=*/true, &Hit);
-		}
+		UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s grazed %s, the roof it started from; ignoring it for the rest of the zip"),
+			*GetNameSafe(Character), *GetNameSafe(ZipAnchor.Get()), *GetNameSafe(HitActor));
+		Capsule->IgnoreActorWhenMoving(HitActor, true);
+		ZipIgnoredSupports.AddUnique(HitActor);
+		return EHawkeyeZipHitResponse::Retry;
 	}
-	if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
-	{
-		// The zip moves the capsule itself; any velocity left in the movement component would add to it.
-		Movement->Velocity = FVector::ZeroVector;
-	}
-	if (Hit.bBlockingHit)
-	{
-		UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s blocked by %s at %s (%.0f%% along); dropping"),
-			*GetNameSafe(Character), *GetNameSafe(ZipAnchor.Get()), *GetNameSafe(Hit.GetActor()),
-			*Hit.Location.ToCompactString(), ZipProgress * 100.f);
-		ReelBackArrow(ZipAnchor.Get(), TEXT("the zip was blocked"));
-		CancelZip();
-		return;
-	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s blocked by %s at %s (%.0f%% along); dropping"),
+		*GetNameSafe(Character), *GetNameSafe(ZipAnchor.Get()), *GetNameSafe(HitActor),
+		*Hit.Location.ToCompactString(), GetZipProgress() * 100.f);
+	return EHawkeyeZipHitResponse::Stop;
+}
 
-	if (bStartSupportsIgnored && FVector::Dist(Character->GetActorLocation(), ZipStart) > GetStartReleaseDistance())
+void UGrappleComponent::HandleZipStep()
+{
+	const ACharacter* Character = GetCharacter();
+	if (bStartSupportsIgnored && Character && FVector::Dist(Character->GetActorLocation(), ZipStart) > GetStartReleaseDistance())
 	{
 		ReleaseStartSupports();
 	}
-	ZipProgress = ZipLength > 0.f ? ZipTravelled / ZipLength : 1.f;
-	if (ZipTravelled >= ZipLength)
-	{
-		FinishZip();
-	}
 }
 
-void UGrappleComponent::EndZipMovement()
+void UGrappleComponent::HandleZipEnded(EHawkeyeZipEnd Reason)
 {
 	ACharacter* Character = GetCharacter();
-	if (!Character)
-	{
-		return;
-	}
+	AGrappleAnchor* Anchor = ZipAnchor.Get();
 	SetSupportsIgnored(false);
 	ZipIgnoredSupports.Reset();
 	ZipStartSupports.Reset();
 	bStartSupportsIgnored = false;
-	bHopping = false;
-	bRedirecting = false;
-	ZipDirection = FVector::ZeroVector;
-	if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
-	{
-		Movement->GravityScale = PreZipGravityScale;
-		Movement->Velocity = FVector::ZeroVector;
-	}
-}
-
-void UGrappleComponent::FinishZip()
-{
-	ACharacter* Character = GetCharacter();
-	AGrappleAnchor* Anchor = ZipAnchor.Get();
-	bZipping = false;
-	ZipProgress = 0.f;
-	EndZipMovement();
 	ZipAnchor.Reset();
 	UHawkeyeAudioSubsystem::StopLoop(ZipLoop, TEXT("grapple zip"));
 	UHawkeyeVfxSubsystem::Kill(ZipLine);
-	if (Character)
-	{
-		UHawkeyeAudioSubsystem::PlayAt(this, LandSound, Character->GetActorLocation(), TEXT("grapple land"));
-	}
+	const FString Where = Character ? Character->GetActorLocation().ToCompactString() : TEXT("?");
+	const float Speed = Character ? Character->GetVelocity().Size() : 0.f;
 
-	if (Character && Character->GetCharacterMovement())
+	if (Reason == EHawkeyeZipEnd::Arrived)
 	{
-		Character->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		if (Character)
+		{
+			UHawkeyeAudioSubsystem::PlayAt(this, LandSound, Character->GetActorLocation(), TEXT("grapple land"));
+		}
+		if (AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Character))
+		{
+			Hawkeye->NotifyGrappleLanded();
+		}
+		UE_LOG(LogHawkeye, Log, TEXT("%s: grapple landed at %s on %s, moving on at %.0f cm/s"), *GetNameSafe(Character), *Where,
+			*GetNameSafe(Anchor), Speed);
+		OnGrappleLanded.Broadcast(Anchor);
+		return;
 	}
-	if (AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Character))
+	if (Reason == EHawkeyeZipEnd::Blocked)
 	{
-		Hawkeye->NotifyGrappleLanded();
+		ReelBackArrow(Anchor, TEXT("the zip was blocked"));
 	}
-	UE_LOG(LogHawkeye, Log, TEXT("%s: grapple landed at %s on %s"), *GetNameSafe(Character),
-		Character ? *Character->GetActorLocation().ToCompactString() : TEXT("?"), *GetNameSafe(Anchor));
-	OnGrappleLanded.Broadcast(Anchor);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s %s at %s; falling at %.0f cm/s"), *GetNameSafe(Character), *GetNameSafe(Anchor),
+		Reason == EHawkeyeZipEnd::Blocked ? TEXT("blocked") : Reason == EHawkeyeZipEnd::Released ? TEXT("let go")
+		: TEXT("interrupted by a movement mode change"), *Where, Speed);
+	OnGrappleCancelled.Broadcast(Anchor);
 }
 
-void UGrappleComponent::CancelZip()
+void UGrappleComponent::ReleaseZip(bool bJump)
 {
-	if (!bZipping)
+	UHawkeyeMovementComponent* Movement = GetMovement();
+	if (!Movement || !Movement->IsZipping())
 	{
 		return;
 	}
-
-	AGrappleAnchor* Anchor = ZipAnchor.Get();
-	ACharacter* Character = GetCharacter();
-	UE_LOG(LogHawkeye, Log, TEXT("%s: let go of the zip to %s at %.0f%% (%s); falling"), *GetNameSafe(Character),
-		*GetNameSafe(Anchor), ZipProgress * 100.f, Character ? *Character->GetActorLocation().ToCompactString() : TEXT("?"));
-	bZipping = false;
-	ZipProgress = 0.f;
-	EndZipMovement();
-	ZipAnchor.Reset();
-	UHawkeyeAudioSubsystem::StopLoop(ZipLoop, TEXT("grapple zip"));
-	UHawkeyeVfxSubsystem::Kill(ZipLine);
-
-	if (Character && Character->GetCharacterMovement())
-	{
-		Character->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
-	}
-	OnGrappleCancelled.Broadcast(Anchor);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: let go of the zip to %s at %.0f%% with %s"), *GetNameSafe(GetOwner()),
+		*GetNameSafe(ZipAnchor.Get()), Movement->GetZipProgress() * 100.f, bJump ? TEXT("a jump") : TEXT("a crouch"));
+	Movement->ReleaseZip(bJump);
 }

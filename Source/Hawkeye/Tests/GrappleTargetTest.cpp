@@ -61,9 +61,10 @@ namespace HawkeyeGrappleTargetTest
 
 	static void RunZip(UGrappleComponent* Grapple, float MaxSeconds)
 	{
-		for (float T = 0.f; Grapple->IsZipping() && T < MaxSeconds; T += 0.05f)
+		AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(Grapple->GetOwner());
+		for (float T = 0.f; Kate && Grapple->IsZipping() && T < MaxSeconds; T += 0.05f)
 		{
-			Grapple->AdvanceZip(0.05f);
+			Kate->TestTickMovement(0.05f);
 		}
 	}
 
@@ -260,8 +261,10 @@ bool FHawkeyeGrappleArrowsCome::RunTest(const FString& Parameters)
 			Arrow->Advance(5.f);
 		}
 		TestEqual(TEXT("It is in the first anchor"), First->GetStuckArrowCountFor(Kate), 1);
-		Grapple->AdvanceZip(0.15f);
-		Grapple->AdvanceZip(0.6f * Grapple->GetZipLength() / Grapple->ZipSpeed);
+		for (int32 Step = 0; Step < 600 && Grapple->IsZipping() && Grapple->GetZipProgress() < 0.6f; ++Step)
+		{
+			Kate->TestTickMovement(1.f / 120.f);
+		}
 		const FVector Here = Kate->GetActorLocation();
 		Grapple->UpdateTarget(Here, (Second->GetMarkerLocation() - Here).GetSafeNormal());
 		TestEqual(TEXT("The chain target is ready"), Grapple->GetTargetState(), EGrappleTargetState::Ready);

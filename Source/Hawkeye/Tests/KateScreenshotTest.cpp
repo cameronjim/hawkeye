@@ -890,7 +890,7 @@ bool FHawkeyeKateWaitZip::Update()
 	if (Grapple->IsZipping() && Run.ZipStartTime < 0.0)
 	{
 		// The first frame seen zipping has already moved one step; back the start out of it.
-		Run.ZipStartTime = Now - Grapple->GetZipProgress() * Grapple->GetZipLength() / Grapple->ZipSpeed;
+		Run.ZipStartTime = Now - World->GetDeltaSeconds();
 		Run.ZipLength = Grapple->GetZipLength();
 		Run.ZipStartLocation = Kate->GetActorLocation();
 	}

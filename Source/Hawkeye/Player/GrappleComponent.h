@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Player/HawkeyeMovementTypes.h"
 #include "GrappleComponent.generated.h"
 
 class ACharacter;
@@ -14,6 +15,7 @@ class UAudioComponent;
 class UNiagaraComponent;
 class UNiagaraSystem;
 class USoundBase;
+class UHawkeyeMovementComponent;
 class UInventoryComponent;
 
 /** What a grapple press would do at the marked anchor right now; the HUD draws the marker from it. */
@@ -41,18 +43,18 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGrappleCancelledSignature, AGrapp
  * TryFire shoots a grapple arrow (the quiver slot whose arrow has OnHitEffect Grapple; it has no count,
  * so nothing is spent) through the bow at that anchor, whatever quiver slot is active (Q, or a release
  * with the grapple slot nocked); when it arrives the character
- * zips along a straight line to the anchor's landing point at ZipSpeed, in Flying mode with
- * gravity and movement input off (the camera still turns). From the ground the line starts at a
- * launch point ZipLaunchHeight above where she stood, reached by a ZipHopSeconds hop, so a level
- * or downward line clears her own parapet. Firing again mid-zip is allowed once
- * ZipProgress reaches ChainMinProgress; the chain arrow travels at ChainArrowSpeed (0: it is there
- * at once) so the zip is redirected to the new anchor in the air, the direction of travel turning
- * onto the new line over RedirectBlendSeconds rather than snapping. A zip blocked by
+ * zips along a straight line to the anchor's landing point, with movement input off (the camera
+ * still turns). The zip's movement is UHawkeyeMovementComponent's (speed, the hop, the chain's turn,
+ * the velocity she leaves with); this component decides the line and what may block it. From the
+ * ground the line starts at a launch point ZipLaunchHeight above where she stood, reached by a hop,
+ * so a level or downward line clears her own parapet. Firing again mid-zip is allowed once the
+ * progress reaches ChainMinProgress; the chain arrow travels at ChainArrowSpeed (0: it is there
+ * at once) so the zip is redirected to the new anchor in the air. A zip blocked by
  * anything but the anchor's own building (the one under its landing point, and any static actor
  * within SupportRadius of the anchor) or, until she is ZipStartIgnoreRadius clear of the start,
  * the geometry round where she stood (her own roof and parapet; after a mid-air chain, also the
  * building the old line was landing on), stops and drops the character.
- * Jump or crouch mid-zip lets go (CancelZip). Arrows stay in the
+ * Jump or crouch mid-zip lets go (ReleaseZip). Arrows stay in the
  * anchor until the character is within RecoverRadius of it, and are tidied away then (there is no count to add them to).
  *
  * Anchors are bucketed into a GridCellSize grid the first time they are needed, so the query
@@ -81,12 +83,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Grapple")
 	bool StartZip(AGrappleAnchor* Anchor);
 
-	/** Moves the zip DeltaSeconds on. Tick calls this; a test with no ticking calls it directly. */
-	void AdvanceZip(float DeltaSeconds);
-
-	/** Stops the zip where it is and lets the character fall. */
+	/**
+	 * Lets go of the zip (jump or crouch): she falls with the zip's velocity, a jump adding the movement
+	 * component's ReleaseJumpBoost. The arrow stays in the anchor.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Grapple")
-	void CancelZip();
+	void ReleaseZip(bool bJump);
 
 	/** Ready, ArrowInFlight or TooEarlyToChain for the target; None without one. TryFire fires only when Ready. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
@@ -160,16 +162,17 @@ public:
 	/** Arrow arrived at Anchor: start (or redirect) the zip. Called by AGrappleArrowProjectile. */
 	void HandleArrowArrived(AGrappleArrowProjectile* Arrow, AGrappleAnchor* Anchor);
 
+	/** The owner's movement component is carrying her along a zip. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	bool IsZipping() const { return bZipping; }
+	bool IsZipping() const;
 
 	/** 0 at the start of the line, 1 at the landing point. 0 while not zipping. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	float GetZipProgress() const { return ZipProgress; }
+	float GetZipProgress() const;
 
 	/** False only while a zip is running and it is still too early to chain off it. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	bool CanChain() const { return !bZipping || ZipProgress >= ChainMinProgress; }
+	bool CanChain() const { return !IsZipping() || GetZipProgress() >= ChainMinProgress; }
 
 	UFUNCTION(BlueprintPure, Category = "Grapple")
 	AGrappleAnchor* GetZipAnchor() const { return ZipAnchor.Get(); }
@@ -183,7 +186,7 @@ public:
 
 	/** Length of the current zip's line, cm. 0 while not zipping. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	float GetZipLength() const { return ZipLength; }
+	float GetZipLength() const;
 
 	/** Where the character's capsule centre ends a zip to Anchor. */
 	FVector ComputeZipEnd(const AGrappleAnchor* Anchor) const;
@@ -203,11 +206,11 @@ public:
 
 	/** In the hop before the straight line. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	bool IsHopping() const { return bZipping && bHopping; }
+	bool IsHopping() const;
 
 	/** Where the current zip's straight line starts. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	FVector GetZipLaunch() const { return ZipLaunch; }
+	FVector GetZipLaunch() const;
 
 	/** Where the character stood (or hung in the air) when the current zip started. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
@@ -215,15 +218,15 @@ public:
 
 	/** The geometry round the start is still being ignored. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	bool IsIgnoringStartSupports() const { return bZipping && bStartSupportsIgnored; }
+	bool IsIgnoringStartSupports() const { return IsZipping() && bStartSupportsIgnored; }
 
 	/** A chain is still turning the direction of travel onto the new line. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	bool IsRedirecting() const { return bZipping && bRedirecting; }
+	bool IsRedirecting() const;
 
-	/** Unit direction the zip moved in on its last step; zero before the first. */
+	/** Unit direction the zip moved in on its last step; zero while not zipping. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	FVector GetZipDirection() const { return ZipDirection; }
+	FVector GetZipDirection() const;
 
 	/** Mid-air redirects (chains that took before landing) this session. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
@@ -250,10 +253,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0", ClampMax = "90.0"))
 	float ConeDegrees = 30.f;
 
-	/** Zip speed along the line, cm/s. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "1.0"))
-	float ZipSpeed = 1800.f;
-
 	/** How far along a zip a second arrow may be fired to chain, 0..1. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float ChainMinProgress = 0.4f;
@@ -264,10 +263,6 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
 	float ChainArrowSpeed = 0.f;
-
-	/** A chain turns the direction of travel from the old line onto the new one over this long, s. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float RedirectBlendSeconds = 0.1f;
 
 	/**
 	 * The target must have a clear zip line (IsZipClear), so a marked anchor never drops her into a
@@ -317,10 +312,6 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
 	float ZipLaunchHeight = 120.f;
-
-	/** The hop up to the launch point before the straight line, s. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple", meta = (ClampMin = "0.0"))
-	float ZipHopSeconds = 0.15f;
 
 	/**
 	 * Static geometry within this of where she stood (her own roof, parapet and fire escape) does
@@ -399,7 +390,7 @@ protected:
 	/** Puts the zip line's ends on her hand and the anchor (spawning it on the first call of a zip). */
 	void UpdateZipLine();
 
-	/** 0..1 for the zip loop: low on the hop up to the line, full along it at ZipSpeed. */
+	/** 0..1 for the zip loop: low on the hop up to the line, full along it (scaled by the movement's ZipSpeed). */
 	float ComputeZipSoundSpeed() const;
 
 	/** True when Anchor passes range (from From) and cone; OutAngleDegrees is its angle from ViewForward. */
@@ -414,11 +405,20 @@ protected:
 
 	FIntPoint CellOf(const FVector& Location) const;
 
-	/** Arrived: Walking, landing dip, OnGrappleLanded. */
-	void FinishZip();
+	/**
+	 * The movement component's sweep hit something. A chain's swing off the line straightens onto it, a graze of
+	 * the roof she left (counting again, but still under her) is ignored from then on, anything else blocks.
+	 */
+	EHawkeyeZipHitResponse HandleZipHit(const FHitResult& Hit, bool bSwinging, bool bArriving);
 
-	/** Puts gravity and the building collision back. Shared by landing and cancelling. */
-	void EndZipMovement();
+	/** After each sub-step: her own roof counts again once she is GetStartReleaseDistance() from the start. */
+	void HandleZipStep();
+
+	/** The zip is over: the building collision back, the hum and the line off, then landed or cancelled. */
+	void HandleZipEnded(EHawkeyeZipEnd Reason);
+
+	/** The owner's movement component when it can zip, else null. */
+	UHawkeyeMovementComponent* GetMovement() const;
 
 	/**
 	 * The building the anchor stands on, found under its landing point, plus any static actor
@@ -472,26 +472,9 @@ protected:
 	/** Buckets every anchor in the world by cell. Const so the lazy build can run from a query. */
 	void BuildGrid() const;
 
-	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Grapple")
-	bool bZipping = false;
-
-	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Grapple")
-	float ZipProgress = 0.f;
-
 	FVector ZipStart = FVector::ZeroVector;
-	FVector ZipLaunch = FVector::ZeroVector;
-	FVector ZipEnd = FVector::ZeroVector;
-	bool bHopping = false;
 	bool bStartSupportsIgnored = false;
-	bool bRedirecting = false;
-	float RedirectElapsed = 0.f;
-	FVector RedirectFromDirection = FVector::ZeroVector;
-	FVector ZipDirection = FVector::ZeroVector;
 	int32 RedirectCount = 0;
-	float HopElapsed = 0.f;
-	float ZipLength = 0.f;
-	float ZipTravelled = 0.f;
-	float PreZipGravityScale = 1.f;
 	float RefreshAccumulator = 0.f;
 	int32 UseCount = 0;
 };

@@ -281,7 +281,7 @@ bool FHawkeyePartnerSwitchRefused::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Mid-zip the switch is refused"), Pair.PC->GetSwitchRefusal().Contains(TEXT("mid-zip")));
 	TestFalse(TEXT("and does nothing"), Pair.PC->SwitchCharacter());
 	TestTrue(TEXT("still Kate"), Pair.PC->GetPawn() == Pair.Kate);
-	Grapple->CancelZip();
+	Grapple->ReleaseZip(/*bJump=*/false);
 
 	// A thug with his back to her, a metre in front.
 	AHawkeyeTestSolidTakedownTarget* Thug = Cast<AHawkeyeTestSolidTakedownTarget>(TestWorld.SpawnActor(

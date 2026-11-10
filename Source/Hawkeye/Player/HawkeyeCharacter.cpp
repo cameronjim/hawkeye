@@ -1918,7 +1918,7 @@ void AHawkeyeCharacter::PressCrouch()
 	if (IsZipping())
 	{
 		UE_LOG(LogHawkeye, Log, TEXT("%s: crouch cancels the zip"), *GetNameSafe(this));
-		GrappleComponent->CancelZip();
+		GrappleComponent->ReleaseZip(/*bJump=*/false);
 		return;
 	}
 	// Moving toward a roof or landing edge, it goes over to the hang.
@@ -3137,7 +3137,7 @@ void AHawkeyeCharacter::Jump()
 	{
 		// The jump key lets go of the line; the catch rule still applies on the way down.
 		UE_LOG(LogHawkeye, Log, TEXT("%s: jump cancels the zip"), *GetNameSafe(this));
-		GrappleComponent->CancelZip();
+		GrappleComponent->ReleaseZip(/*bJump=*/true);
 		return;
 	}
 	if (ParkourComponent)

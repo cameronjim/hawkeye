@@ -236,6 +236,15 @@ void AHawkeyeAimTestCharacter::TestSetMoveInput(float Magnitude, float HeldSecon
 	UpdateMaxWalkSpeed();
 }
 
+void AHawkeyeAimTestCharacter::TestTickMovement(float DeltaSeconds)
+{
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->bRunPhysicsWithNoController = true;
+		Movement->TickComponent(DeltaSeconds, LEVELTICK_All, nullptr);
+	}
+}
+
 float AHawkeyeAimTestCharacter::MaxWalkSpeed() const
 {
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();

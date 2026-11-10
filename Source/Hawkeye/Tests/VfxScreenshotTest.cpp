@@ -519,7 +519,7 @@ bool FHawkeyeVfxShot::Update()
 	case EShot::GrappleDone:
 		if (UGrappleComponent* Grapple = Kate->GetGrappleComponent(); Grapple && Grapple->IsZipping())
 		{
-			Grapple->CancelZip();
+			Grapple->ReleaseZip(/*bJump=*/false);
 		}
 		PlaceKate(Kate, PC, -6.f);
 		break;

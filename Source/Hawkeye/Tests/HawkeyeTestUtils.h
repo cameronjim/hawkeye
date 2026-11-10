@@ -297,6 +297,9 @@ public:
 	/** Stands in for Landed() after a fall of FallHeight. */
 	void TestApplyLanding(float FallHeight) { ApplyLanding(FallHeight); }
 
+	/** Stands in for one tick of the movement component (a zip's PhysZip included), with no controller. */
+	void TestTickMovement(float DeltaSeconds);
+
 	/** Stands in for the footstep tracker calling a step. */
 	void TestPlayFootstep() { PlayFootstep(); }
 

@@ -291,7 +291,7 @@ bool FHawkeyeVfxKateEvents::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Which asks for the zip line once"), Requests(TestWorld, UHawkeyeVfxSubsystem::ZipLineEvent), 1);
 	for (float Elapsed = 0.f; Grapple->IsZipping() && Elapsed < 5.f; Elapsed += 0.05f)
 	{
-		Grapple->AdvanceZip(0.05f);
+		Kate->TestTickMovement(0.05f);
 	}
 	TestFalse(TEXT("She lands"), Grapple->IsZipping());
 	TestNull(TEXT("With no line left behind"), Grapple->GetZipLineComponent());
