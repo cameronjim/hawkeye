@@ -291,7 +291,10 @@ def building_mesh(ring_local, height_cm, parapet):
 
 
 def write_static_mesh(mesh, name, spec_hash):
-    """Create or overwrite /Game/City/.../<name> from ``mesh``. Returns the StaticMesh."""
+    """Create or overwrite /Game/City/.../<name> from ``mesh``.
+
+    Returns ``(static_mesh, "created" | "updated")``, or ``(None, "failed")`` on failure.
+    """
     full = c.asset_path(MESH_DIR, name)
     existing = c.load_or_none(full)
     if existing is None:
@@ -305,7 +308,7 @@ def write_static_mesh(mesh, name, spec_hash):
             mesh, full, options))
         if static_mesh is None:
             c.log("FAILED", full, "create_new_static_mesh_asset_from_mesh returned None")
-            return None
+            return None, "failed"
         action = "created"
     else:
         static_mesh = existing
@@ -580,10 +583,9 @@ def build_pieces(pieces, existing):
                 if mesh is None:
                     c.log("skipped", piece.label, "empty geometry")
                     continue
-                result = write_static_mesh(mesh, piece.mesh_name, piece.spec_hash)
-                if result is None:
+                static_mesh, action = write_static_mesh(mesh, piece.mesh_name, piece.spec_hash)
+                if static_mesh is None:
                     continue
-                static_mesh, action = result
                 mesh_changes += 1
                 c.log(action, c.asset_path(MESH_DIR, piece.mesh_name))
             else:
@@ -1353,10 +1355,10 @@ def ensure_chapter_end_meshes():
         if asset is not None and current == spec:
             out[name] = asset
             continue
-        result = write_static_mesh(build(), name, spec)
-        if result is not None:
-            out[name] = result[0]
-            c.log(result[1], c.asset_path(MESH_DIR, name))
+        static_mesh, action = write_static_mesh(build(), name, spec)
+        if static_mesh is not None:
+            out[name] = static_mesh
+            c.log(action, c.asset_path(MESH_DIR, name))
     return out
 
 
@@ -3054,13 +3056,13 @@ def ensure_clutter_meshes():
             out[name] = asset
             continue
         try:
-            result = write_static_mesh(build(), name, spec)
+            static_mesh, action = write_static_mesh(build(), name, spec)
         except Exception as exc:  # noqa: BLE001
             c.log_error("clutter mesh " + name, exc)
-            result = None
-        if result is not None:
-            out[name] = result[0]
-            c.log(result[1], c.asset_path(MESH_DIR, name))
+            static_mesh, action = None, "failed"
+        if static_mesh is not None:
+            out[name] = static_mesh
+            c.log(action, c.asset_path(MESH_DIR, name))
     c.log("exists", "clutter meshes", "{0} of {1} present".format(len(out), len(CLUTTER_MESHES)))
     return out
 
