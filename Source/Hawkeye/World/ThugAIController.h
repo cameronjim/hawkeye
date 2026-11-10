@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "AIController.h"
+#include "Combat/CombatTokenRules.h"
 #include "Perception/AIPerceptionTypes.h"
 #include "World/ThugCharacter.h"
 #include "World/ThugTypes.h"
@@ -32,11 +33,13 @@ enum class EStimulusKind : uint8
  *
  * Patrol      Calm: PatrolPoints, waiting PatrolWaitSeconds at each
  * Investigate Suspicious: walk to the last stimulus, wait InvestigateSeconds, back to Calm
- * Attack      Alerted, by weapon. Fists and Bat rush in at RushSpeed; inside MeleeEngageRange (250)
- *             they wind up a swing, close to MeleeCloseDistance, swing again after
- *             MeleeCooldownSeconds, and back off after MeleeSwingsBeforeBackOff swings. The gunner
- *             fires 3-shot bursts after a 0.8 s telegraph and ducks into cover after a burst or when
- *             aimed at. The archer draws for 1.2 s and looses with lead at the chest.
+ * Attack      Alerted, by weapon. Every attack waits for a token from UCombatTokenSubsystem (a melee or
+ *             a ranged budget on his target). Fists and Bat rush in at RushSpeed and, without one, hold a
+ *             place on a ring MeleeWaitRingDistance round her; with one, inside MeleeEngageRange (250)
+ *             they wind up a swing, close to MeleeCloseDistance, and back off after
+ *             MeleeSwingsBeforeBackOff swings. The gunner fires 3-shot bursts after a 0.8 s telegraph
+ *             and ducks into cover after a burst or when aimed at. The archer draws for 1.2 s and looses
+ *             with lead at the chest.
  * Cover       the gunner at a cover point (EQS_CoverPoints, or a C++ ring of candidates): hides,
  *             peeks for a burst, and relocates every RelocateSeconds.
  * Reposition  the gunner backing off to RetreatToDistance when she is inside RetreatTriggerDistance;
@@ -230,6 +233,18 @@ public:
 	/** The longest a back-off lasts before he comes again, arrived or not. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
 	float MeleeBackOffMaxSeconds = 1.5f;
+
+	/** Without an attack token he waits on a ring this far from her, centre to centre, cm. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
+	float MeleeWaitRingDistance = 300.f;
+
+	/** Places on the waiting ring are at least this far apart round her, degrees. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0", ClampMax = "90.0"))
+	float MeleeRingSeparationDegrees = 40.f;
+
+	/** Granted a token, he gives it back if his swing has not started in this long (she ran), seconds. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
+	float MeleeStepInMaxSeconds = 1.5f;
 
 	/** True while he is stepping back after a pair of swings. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Melee")
@@ -662,7 +677,25 @@ protected:
 	/** The Alerted step while the target is down: drop the burst and the draw, circle at StandOffDistance. */
 	void TickStandOff(float DeltaSeconds, const FVector& ToTarget);
 
-	/** Counts a finished swing, starts the cooldown, and steps back after enough of them. */
+	/**
+	 * Walks to the spot SlotYaw round the target at Radius (re-pathing at most every RingRepathSeconds) and
+	 * faces her: the stand-off's orbit and a melee thug waiting for a token.
+	 */
+	void CircleTarget(float DeltaSeconds, const FVector& ToTarget, float Radius, float SlotYaw, const TCHAR* GoalName);
+
+	/** Asks for (or renews) a Kind token on the target (gameplay-semantics.md, "Attack tokens"). */
+	FHawkeyeTokenGrant RequestAttackToken(EHawkeyeAttackKind Kind, bool bReady);
+
+	/** Gives back his token, if he holds one, and leaves the queue. */
+	void ReleaseAttackToken();
+
+	/** Without a token: to his place on the ring round her (spread from the others waiting), facing her. */
+	void WaitOnRing(float DeltaSeconds, const FVector& ToTarget);
+
+	/** Starts the next swing of his set, its wind-up no shorter than Token's minimum. */
+	void StartSwing(const FHawkeyeTokenGrant& Token, float Distance);
+
+	/** Gives back his token, counts a finished swing, starts the cooldown, and steps back after enough of them. */
 	void FinishSwing(const FVector& ToTarget);
 
 	/** RushSpeed while Alerted with a melee weapon, the pawn's own walking speed otherwise. */
@@ -728,10 +761,15 @@ private:
 	float MeleeCooldownRemaining = 0.f;
 	float BackOffElapsed = 0.f;
 
-	/** Stand-off state: circling a downed target, where round her, and when to pick the next spot. */
+	/** Stand-off state: circling a downed target, and where round her. */
 	bool bStandingOff = false;
 	float StandOffAngle = 0.f;
-	float StandOffRepathRemaining = 0.f;
+
+	/** Until the next move toward a spot on a ring round her (the stand-off, waiting for a token), seconds. */
+	float RingRepathRemaining = 0.f;
+
+	/** Seconds since he was granted a melee token without his swing starting. */
+	float StepInElapsed = 0.f;
 
 	/** The pawn's own MaxWalkSpeed, read at possession; the rush speed is laid over it. */
 	float BaseWalkSpeed = 300.f;

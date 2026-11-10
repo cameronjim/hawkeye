@@ -183,6 +183,8 @@ bool FHawkeyeGunnerBurstTelegraph::RunTest(const FString& Parameters)
 	{
 		Clock += 0.25f;
 		Pistol->SetTestTimeSeconds(Clock);
+		// The world's clock too: a burst's attack token comes back with a gap timed on it.
+		TestWorld.AdvanceClock(0.25f);
 		Brain->Think(0.25f);
 	};
 	Step();
@@ -370,7 +372,9 @@ bool FHawkeyeArcherTelegraph::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Glint out"), Archer->IsTelegraphGlintOn());
 	TestEqual(TEXT("No arrow left the bow"), Brain->GetArrowsLoosed(), 0);
 
-	// Left alone, the second draws for the full 1.2 s and looses.
+	// Left alone, the second draws for the full 1.2 s and looses: once the gap after the first's broken draw has
+	// passed, since the two take turns on her ranged token.
+	TestWorld.AdvanceClock(1.f);
 	UBowComponent* SecondBow = Second->GetBowComponent();
 	SecondBow->SetTestTimeSeconds(0.0);
 	Alert(SecondBrain, Kate);

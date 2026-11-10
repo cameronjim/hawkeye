@@ -44,6 +44,12 @@ struct HAWKEYE_API FHawkeyeTestWorld
 	/** Spawns an actor of ActorClass at Location facing Forward's yaw. */
 	AActor* SpawnActor(TSubclassOf<AActor> ActorClass, const FVector& Location, const FRotator& Rotation) const;
 
+	/**
+	 * Runs the world's clock on by Seconds without ticking anything in it. Tests step thinks and swings by hand,
+	 * but rules timed on the world's clock (the attack tokens' gap) need it to move.
+	 */
+	void AdvanceClock(float Seconds) const;
+
 private:
 	/**
 	 * A world built by hand is not a standalone game world, so AActor::GetFunctionCallspace can

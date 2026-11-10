@@ -175,23 +175,29 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 	}
 	Parapet->SetExtent(FVector(20.f, 400.f, 400.f));
 	ArmArcher(Archer);
-	// The test world's clock does not run, so the 2 s between shots is taken out: only the hold and the
-	// loose window gate his draws here.
+	// The test world's clock only runs when the test moves it, so the 2 s between shots is taken out: only the
+	// hold and the loose window gate his draws here. The world's clock follows the bow's, since the attack
+	// token he takes for each draw comes back with a gap timed on it.
 	Brain->ArcherShotCooldownSeconds = 0.f;
 	UBowComponent* Bow = Archer->GetBowComponent();
-	Bow->SetTestTimeSeconds(0.0);
+	auto SetClock = [&TestWorld, Bow](double Seconds)
+	{
+		Bow->SetTestTimeSeconds(Seconds);
+		TestWorld.AdvanceClock(FMath::Max(0.f, static_cast<float>(Seconds - TestWorld.Get()->GetTimeSeconds())));
+	};
+	SetClock(0.0);
 	Brain->SetTarget(Kate);
 	Brain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, Brain->GunshotLoudnessThreshold);
 	Brain->Think(0.25f);
 	TestTrue(TEXT("With a line he draws"), Bow->IsDrawing());
 
 	// She drops behind the parapet 0.6 s into his draw.
-	Bow->SetTestTimeSeconds(0.6);
+	SetClock(0.6);
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, 0.f));
 	Brain->Think(0.25f);
 	TestTrue(TEXT("He holds the draw instead of letting it down"), Brain->IsHoldingDraw() && Bow->IsDrawing());
 	TestTrue(TEXT("The glint stays on: the hold still telegraphs"), Archer->IsTelegraphGlintOn());
-	Bow->SetTestTimeSeconds(1.6);
+	SetClock(1.6);
 	Brain->TickArcherHold(1.f);
 	TestTrue(TEXT("Still holding 1 s later, now at full draw"), Brain->IsHoldingDraw());
 	TestEqual(TEXT("Nothing loosed at a wall"), Brain->GetArrowsLoosed(), 0);
@@ -209,7 +215,7 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The loose window opens"), Brain->IsInLooseWindow());
 
 	// In the loose window he cannot draw, even with a line and no cooldown.
-	Bow->SetTestTimeSeconds(10.0);
+	SetClock(10.0);
 	Brain->Think(0.25f);
 	TestFalse(TEXT("No draw in the loose window"), Bow->IsDrawing());
 	Brain->TickArcherHold(0.55f);
@@ -223,11 +229,11 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 
 	// Nobody comes back: he relaxes after 2.5 s.
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, 0.f));
-	Bow->SetTestTimeSeconds(10.5);
+	SetClock(10.5);
 	Brain->Think(0.25f);
 	if (TestTrue(TEXT("Holding again behind the parapet"), Brain->IsHoldingDraw()))
 	{
-		Bow->SetTestTimeSeconds(13.0);
+		SetClock(13.0);
 		Brain->TickArcherHold(2.45f);
 		TestTrue(TEXT("Held at 2.45 s"), Brain->IsHoldingDraw());
 		Brain->TickArcherHold(0.1f);
@@ -237,11 +243,11 @@ bool FHawkeyeArcherHoldsLostLine::RunTest(const FString& Parameters)
 
 	// A hit still breaks a draw, held or not.
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, -5000.f));
-	Bow->SetTestTimeSeconds(20.0);
+	SetClock(20.0);
 	Brain->Think(0.25f);
 	TestTrue(TEXT("A fresh draw"), Bow->IsDrawing());
 	Parapet->SetActorLocation(FVector(1000.f, 0.f, 0.f));
-	Bow->SetTestTimeSeconds(20.5);
+	SetClock(20.5);
 	Brain->Think(0.25f);
 	TestTrue(TEXT("A fresh hold"), Brain->IsHoldingDraw());
 	Archer->GetHealthComponent()->ApplyDamage(5.f, Kate);

@@ -5,6 +5,7 @@
 #include "Combat/ArrowEffects/ArrowEffectsSubsystem.h"
 #include "Combat/BowComponent.h"
 #include "Combat/BowDefinition.h"
+#include "Combat/CombatTokenSubsystem.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
 #include "Combat/WeaponComponent.h"
@@ -46,6 +47,13 @@ namespace HawkeyeThugBrain
 	static constexpr float CoverMaxStep = 150.f;
 	/** A patrol point with this tag is one he turns to face (its yaw) while he waits there. */
 	static const FName PatrolFacingTag(TEXT("PatrolFacing"));
+	/** A thug walking to his spot on a ring round her picks it again at most this often, seconds. */
+	static constexpr float RingRepathSeconds = 0.5f;
+	/**
+	 * Within this of the ring's distance he is on it and ready for a token, cm: path following stops short of a
+	 * goal by its acceptance radius plus his own, and a thug who counted only at the exact ring would wait forever.
+	 */
+	static constexpr float RingReadySlack = 150.f;
 }
 
 AThugAIController::AThugAIController()
@@ -294,6 +302,7 @@ void AThugAIController::SetThinkingEnabled(bool bEnabled)
 		StopMovement();
 		CancelBurst(TEXT("thinking off"));
 		CancelArcherDraw(TEXT("thinking off"));
+		ReleaseAttackToken();
 		if (World)
 		{
 			World->GetTimerManager().ClearTimer(ThinkTimerHandle);
@@ -351,6 +360,7 @@ void AThugAIController::OnUnPossess()
 	{
 		StateTreeComponent->StopLogic(TEXT("Unpossessed"));
 	}
+	ReleaseAttackToken();
 
 	if (ThugPerception)
 	{
@@ -369,6 +379,7 @@ void AThugAIController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(ArcherHoldTimerHandle);
 		World->GetTimerManager().ClearTimer(TrackTimerHandle);
 	}
+	ReleaseAttackToken();
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -422,6 +433,7 @@ void AThugAIController::SetState(EThugAlertState NewState)
 
 	bBackingOff = false;
 	SwingsSinceBackOff = 0;
+	ReleaseAttackToken();
 
 	CancelBurst(TEXT("alert state changed"));
 	GunnerPhase = EGunnerPhase::Open;
@@ -890,6 +902,11 @@ void AThugAIController::EnterMode(EThugMode NewMode)
 	{
 		CancelArcherDraw(TEXT("left the attack"));
 	}
+	// Staggered, knocked down, held, dead, or off to cover or a zip: his turn is over.
+	if (NewMode != EThugMode::Attack)
+	{
+		ReleaseAttackToken();
+	}
 }
 
 void AThugAIController::RunMode(EThugMode Mode, float DeltaSeconds)
@@ -1134,6 +1151,7 @@ void AThugAIController::TickAlerted(float DeltaSeconds)
 	// Alerted by a noise he has not yet put a body to: stay alerted, but nothing to shoot at.
 	if (!IsValid(TargetActor))
 	{
+		ReleaseAttackToken();
 		return;
 	}
 
@@ -1144,6 +1162,7 @@ void AThugAIController::TickAlerted(float DeltaSeconds)
 		StopMovement();
 		CancelBurst(TEXT("blinded"));
 		CancelArcherDraw(TEXT("blinded"));
+		ReleaseAttackToken();
 		return;
 	}
 
@@ -1187,6 +1206,7 @@ void AThugAIController::CancelBurst(const TCHAR* Why)
 	{
 		UE_LOG(LogHawkeye, Log, TEXT("%s: burst broken (%s) after %d shot(s)."), *GetNameSafe(Thug), Why,
 			Burst.GetShotsFired());
+		ReleaseAttackToken();
 	}
 	Burst.Cancel();
 	bDeflectNextShot = false;
@@ -1219,6 +1239,10 @@ void AThugAIController::TickGunner(float DeltaSeconds, const FVector& ToTarget)
 		return;
 	}
 	BurstPauseRemaining = FMath::Max(0.f, BurstPauseRemaining - DeltaSeconds);
+	if (Burst.IsActive())
+	{
+		RequestAttackToken(EHawkeyeAttackKind::Ranged, /*bReady=*/true);
+	}
 
 	if (ToTarget.Size2D() > EngageRange && GunnerPhase != EGunnerPhase::Peeking)
 	{
@@ -1264,11 +1288,17 @@ void AThugAIController::TickGunner(float DeltaSeconds, const FVector& ToTarget)
 		{
 			return;
 		}
-		Burst.Start();
+		// His turn on her ranged budget (gameplay-semantics.md, "Attack tokens"); without it he holds his aim.
+		const FHawkeyeTokenGrant Token = RequestAttackToken(EHawkeyeAttackKind::Ranged, /*bReady=*/true);
+		if (!Token.bGranted)
+		{
+			return;
+		}
+		Burst.Start(Token.MinTelegraphSeconds);
 		Thug->SetWeaponRaised(true, Chest);
 		Thug->SetTelegraphGlint(true);
 		UE_LOG(LogHawkeye, Log, TEXT("%s: raises his pistol at %s from %.0f cm: %.1f s telegraph, then %d shots."),
-			*Thug->GetName(), *GetNameSafe(TargetActor), ToTarget.Size(), Burst.TelegraphSeconds, Burst.ShotsPerBurst);
+			*Thug->GetName(), *GetNameSafe(TargetActor), ToTarget.Size(), Burst.GetTelegraphSeconds(), Burst.ShotsPerBurst);
 		return;
 	}
 
@@ -1289,6 +1319,7 @@ void AThugAIController::TickGunner(float DeltaSeconds, const FVector& ToTarget)
 	}
 
 	// The burst is over.
+	ReleaseAttackToken();
 	Thug->SetWeaponRaised(false, Chest);
 	BurstPauseRemaining = BurstPauseSeconds;
 	const bool bWasPeeking = GunnerPhase == EGunnerPhase::Peeking;
@@ -1610,6 +1641,7 @@ void AThugAIController::CancelArcherDraw(const TCHAR* Why)
 	if (Bow->IsDrawing())
 	{
 		Bow->CancelDraw();
+		ReleaseAttackToken();
 		UE_LOG(LogHawkeye, Log, TEXT("%s: draw broken (%s)."), *Thug->GetName(), Why);
 		// A broken draw still costs him the cooldown before the next.
 		LastArrowSeconds = GetNowSeconds();
@@ -1626,6 +1658,10 @@ void AThugAIController::TickArcher(float DeltaSeconds, const FVector& ToTarget)
 	if (!Bow || !BowDef)
 	{
 		return;
+	}
+	if (Bow->IsDrawing())
+	{
+		RequestAttackToken(EHawkeyeAttackKind::Ranged, /*bReady=*/true);
 	}
 	// Holding a draw on where she went: the hold timer watches for her, nothing else moves him.
 	if (ArcherHold.IsHolding())
@@ -1690,15 +1726,24 @@ void AThugAIController::TickArcher(float DeltaSeconds, const FVector& ToTarget)
 		{
 			return;
 		}
-		// The difficulty sets how long the draw takes; the bow's own numbers stay as they are.
-		const float DrawSeconds = UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ArcherDrawSeconds);
-		Bow->DrawRate = ComputeArcherDrawRate(BowDef->FullDrawSeconds, DrawSeconds);
-		if (Bow->StartDraw())
+		const FHawkeyeTokenGrant Token = RequestAttackToken(EHawkeyeAttackKind::Ranged, /*bReady=*/true);
+		if (!Token.bGranted)
 		{
-			Thug->SetTelegraphGlint(true);
-			UE_LOG(LogHawkeye, Log, TEXT("%s: the bowstring creaks: drawing on %s at %.0f cm (%.1f s)."), *Thug->GetName(),
-				*GetNameSafe(TargetActor), ToTarget.Size(), DrawSeconds);
+			return;
 		}
+		// The difficulty sets how long the draw takes (from off her screen, at least the token's minimum); the
+		// bow's own numbers stay as they are.
+		const float DrawSeconds = FMath::Max(UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ArcherDrawSeconds),
+			Token.MinTelegraphSeconds);
+		Bow->DrawRate = ComputeArcherDrawRate(BowDef->FullDrawSeconds, DrawSeconds);
+		if (!Bow->StartDraw())
+		{
+			ReleaseAttackToken();
+			return;
+		}
+		Thug->SetTelegraphGlint(true);
+		UE_LOG(LogHawkeye, Log, TEXT("%s: the bowstring creaks: drawing on %s at %.0f cm (%.1f s)."), *Thug->GetName(),
+			*GetNameSafe(TargetActor), ToTarget.Size(), DrawSeconds);
 		return;
 	}
 	if (!bLine)
@@ -1752,7 +1797,9 @@ void AThugAIController::LooseArcherDraw(const FVector& AimPoint, const TCHAR* Wh
 	FRotator AimRotation = (AimPoint - Thug->GetPawnViewLocation()).Rotation();
 	AimRotation.Roll = 0.f;
 	SetControlRotation(AimRotation);
-	if (!Bow->ReleaseDraw())
+	const bool bLoosed = Bow->ReleaseDraw();
+	ReleaseAttackToken();
+	if (!bLoosed)
 	{
 		return;
 	}
@@ -1949,14 +1996,28 @@ void AThugAIController::TickMeleeRush(float DeltaSeconds, const FVector& ToTarge
 		return;
 	}
 
+	// Only the thug holding her melee token swings (gameplay-semantics.md, "Attack tokens"); the rest hold their
+	// places on the ring round her. Off the ring or in his cooldown he is not ready, so never granted.
 	const float Distance = ToTarget.Size2D();
-	if (!bSwinging && MeleeCooldownRemaining <= 0.f && Distance <= MeleeEngageRange)
+	const bool bReady = !bSwinging && MeleeCooldownRemaining <= 0.f
+		&& Distance <= MeleeWaitRingDistance + HawkeyeThugBrain::RingReadySlack;
+	const FHawkeyeTokenGrant Token = RequestAttackToken(EHawkeyeAttackKind::Melee, bReady);
+	if (!Token.bGranted && !bSwinging)
 	{
-		const FHawkeyeMeleeAttack Attack = ScaleAttackForDifficulty(Thug->GetMeleeAttack(SwingsStarted));
-		UE_LOG(LogHawkeye, Log, TEXT("%s: telegraphs a %s swing at %s from %.0f cm."), *Thug->GetName(),
-			*Attack.Name.ToString(), *GetNameSafe(TargetActor), Distance);
-		bWasSwinging = Melee->StartAttack(Attack);
-		SwingsStarted += bWasSwinging ? 1 : 0;
+		WaitOnRing(DeltaSeconds, ToTarget);
+		return;
+	}
+	if (!bSwinging && Distance <= MeleeEngageRange)
+	{
+		StartSwing(Token, Distance);
+	}
+	else if (!bSwinging && (StepInElapsed += DeltaSeconds) >= MeleeStepInMaxSeconds)
+	{
+		UE_LOG(LogHawkeye, Log, TEXT("%s: %s stayed out of reach %.1f s after his turn came; he gives it back."),
+			*Thug->GetName(), *GetNameSafe(TargetActor), MeleeStepInMaxSeconds);
+		StepInElapsed = 0.f;
+		ReleaseAttackToken();
+		return;
 	}
 
 	// Keep closing through the wind-up; stop and square up once he is in reach.
@@ -1967,6 +2028,47 @@ void AThugAIController::TickMeleeRush(float DeltaSeconds, const FVector& ToTarge
 	}
 	StopMovement();
 	FaceTarget(Thug, ToTarget);
+}
+
+void AThugAIController::WaitOnRing(float DeltaSeconds, const FVector& ToTarget)
+{
+	StepInElapsed = 0.f;
+	const UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(this);
+	const float Slot = Tokens ? Tokens->GetRingSlotYaw(GetPawn(), TargetActor, MeleeRingSeparationDegrees)
+		: (-ToTarget).Rotation().Yaw;
+	CircleTarget(DeltaSeconds, ToTarget, MeleeWaitRingDistance, Slot, TEXT("his place on the ring"));
+}
+
+void AThugAIController::StartSwing(const FHawkeyeTokenGrant& Token, float Distance)
+{
+	AThugCharacter* Thug = GetThug();
+	UMeleeComponent* Melee = Thug ? Thug->GetMeleeComponent() : nullptr;
+	if (!Melee)
+	{
+		return;
+	}
+	// Granted from off her screen, the wind-up is never shorter than the warning it has to give.
+	FHawkeyeMeleeAttack Attack = ScaleAttackForDifficulty(Thug->GetMeleeAttack(SwingsStarted));
+	Attack.WindupSeconds = FMath::Max(Attack.WindupSeconds, Token.MinTelegraphSeconds);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: telegraphs a %s swing at %s from %.0f cm (%.1f s wind-up)."), *Thug->GetName(),
+		*Attack.Name.ToString(), *GetNameSafe(TargetActor), Distance, Attack.WindupSeconds);
+	bWasSwinging = Melee->StartAttack(Attack);
+	SwingsStarted += bWasSwinging ? 1 : 0;
+	StepInElapsed = 0.f;
+}
+
+FHawkeyeTokenGrant AThugAIController::RequestAttackToken(EHawkeyeAttackKind Kind, bool bReady)
+{
+	UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(this);
+	return Tokens ? Tokens->RequestToken(GetPawn(), TargetActor, Kind, bReady) : FHawkeyeTokenGrant();
+}
+
+void AThugAIController::ReleaseAttackToken()
+{
+	if (UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(this))
+	{
+		Tokens->ReleaseToken(GetPawn());
+	}
 }
 
 bool AThugAIController::IsTargetDown(const AActor* Target)
@@ -1986,11 +2088,12 @@ void AThugAIController::TickStandOff(float DeltaSeconds, const FVector& ToTarget
 	if (!bStandingOff)
 	{
 		bStandingOff = true;
-		StandOffRepathRemaining = 0.f;
+		RingRepathRemaining = 0.f;
 		// Round her from the side he is already on, so he steps back rather than across her.
 		StandOffAngle = (-ToTarget).Rotation().Yaw;
 		CancelBurst(TEXT("target down"));
 		CancelArcherDraw(TEXT("target down"));
+		ReleaseAttackToken();
 		UE_LOG(LogHawkeye, Log, TEXT("%s: %s is down; backing off to circle at %.0f cm."), *Thug->GetName(),
 			*GetNameSafe(TargetActor), StandOffDistance);
 	}
@@ -2001,21 +2104,36 @@ void AThugAIController::TickStandOff(float DeltaSeconds, const FVector& ToTarget
 	{
 		return;
 	}
-	FaceTarget(Thug, ToTarget);
 	StandOffAngle = FMath::UnwindDegrees(StandOffAngle + StandOffOrbitDegreesPerSecond * DeltaSeconds);
-	StandOffRepathRemaining -= DeltaSeconds;
-	if (StandOffRepathRemaining > 0.f)
+	CircleTarget(DeltaSeconds, ToTarget, StandOffDistance, StandOffAngle, TEXT("the circle round her"));
+}
+
+void AThugAIController::CircleTarget(float DeltaSeconds, const FVector& ToTarget, float Radius, float SlotYaw,
+	const TCHAR* GoalName)
+{
+	APawn* Me = GetPawn();
+	if (!Me || !IsValid(TargetActor))
 	{
 		return;
 	}
-	StandOffRepathRemaining = 1.f;
-	const FVector Spot = TargetActor->GetActorLocation() + FRotator(0.f, StandOffAngle, 0.f).Vector() * StandOffDistance;
+	if (GetMoveStatus() != EPathFollowingStatus::Moving)
+	{
+		FaceTarget(Me, ToTarget);
+	}
+	RingRepathRemaining -= DeltaSeconds;
+	const FVector Spot = TargetActor->GetActorLocation() + FRotator(0.f, SlotYaw, 0.f).Vector() * Radius;
+	if (RingRepathRemaining > 0.f || FVector::Dist2D(Me->GetActorLocation(), Spot) <= HawkeyeThugBrain::ArriveDistance)
+	{
+		return;
+	}
+	RingRepathRemaining = HawkeyeThugBrain::RingRepathSeconds;
 	// Round her against a wall or a parapet some of the ring is inside it: the nearest floor within 3 m.
-	RequestMoveToLocation(Spot, 60.f, WideNavSnap, TEXT("the circle round her"));
+	RequestMoveToLocation(Spot, 30.f, WideNavSnap, GoalName);
 }
 
 void AThugAIController::FinishSwing(const FVector& ToTarget)
 {
+	ReleaseAttackToken();
 	MeleeCooldownRemaining = MeleeCooldownSeconds;
 	++SwingsSinceBackOff;
 	if (SwingsSinceBackOff < MeleeSwingsBeforeBackOff)
@@ -2127,6 +2245,7 @@ void AThugAIController::SetHeld(bool bInHeld)
 		StopMovement();
 		CancelBurst(TEXT("held by putty"));
 		CancelArcherDraw(TEXT("held by putty"));
+		ReleaseAttackToken();
 	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: %s."), *GetName(),
 		bHeld ? TEXT("held by putty, AI paused") : TEXT("putty released, AI resumes"));

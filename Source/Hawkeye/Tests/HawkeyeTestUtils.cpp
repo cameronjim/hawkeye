@@ -66,6 +66,19 @@ AActor* FHawkeyeTestWorld::SpawnActor(TSubclassOf<AActor> ActorClass, const FVec
 	return World->SpawnActor<AActor>(ActorClass, Location, Rotation, SpawnParams);
 }
 
+void FHawkeyeTestWorld::AdvanceClock(float Seconds) const
+{
+	if (!World)
+	{
+		return;
+	}
+	// Moved by hand: a world tick, even a time-only one, runs every tick dispatch, and the network prediction
+	// plugin's crashes in a world built this way.
+	World->TimeSeconds += Seconds;
+	World->UnpausedTimeSeconds += Seconds;
+	World->RealTimeSeconds += Seconds;
+}
+
 void UHawkeyeTestListener::HandleHealthChanged(UHealthComponent* /*HealthComponent*/, float NewHealth, float Delta, AActor* DamageInstigator)
 {
 	++HealthChangedCount;
