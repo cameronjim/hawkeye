@@ -66,6 +66,8 @@ public class Hawkeye : ModuleRules
 		{
 			PrivateDependencyModuleNames.AddRange(new string[] { "StateTreeEditorModule", "PropertyBindingUtils", "UnrealEd",
 				"AnimGraph", "AnimGraphRuntime", "BlueprintGraph", "NiagaraEditor", "NiagaraCore", "AnimationBlueprintLibrary" });
+			// UHawkeyeRetargetGraphBuilder authors a body look's AnimBlueprint: Retarget Pose From Mesh, the IK Rig plugin's node.
+			PrivateDependencyModuleNames.AddRange(new string[] { "IKRig", "IKRigDeveloper" });
 		}
 	}
 }
