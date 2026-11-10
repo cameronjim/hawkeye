@@ -1,6 +1,7 @@
 #include "Algo/Reverse.h"
 #include "Misc/AutomationTest.h"
 #include "Player/GrappleComponent.h"
+#include "Traversal/GrappleAudit.h"
 #include "Traversal/GrappleReachQuery.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -394,6 +395,64 @@ bool FHawkeyeGrappleReachRoofsFromStreetTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Far roof"), LexToString(Reach[2]), LexToString(EGrappleRoofReach::NoStreetInRange));
 		TestEqual(TEXT("Seen roof"), LexToString(Reach[3]), LexToString(EGrappleRoofReach::Reached));
 		TestEqual(TEXT("Street-facing but blocked"), LexToString(Reach[4]), LexToString(EGrappleRoofReach::Unreached));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleReachAuditReportTest, "Hawkeye.Grapple.Reach.AuditReportAndGate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeGrappleReachAuditReportTest::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeGrappleReachQueryTest;
+	// Two roofs across a gap from each other on one street; the second's only anchor has its zip blocked from everywhere.
+	FGrappleReachScene Scene;
+	Scene.Roofs.Add(Square(TEXT("seen"), FVector2D(500.0, 1000.0), 1000.0, 12.f));
+	Scene.Roofs.Add(Square(TEXT("hidden"), FVector2D(2500.0, 1000.0), 1000.0, 12.f));
+	Scene.RoofByOsm.Add(TEXT("seen"), 0);
+	Scene.RoofByOsm.Add(TEXT("hidden"), 1);
+	Scene.Anchors.Add(Anchor(FVector(1000.f, 1000.f, 1220.f), 0));
+	Scene.Anchors.Add(Anchor(FVector(3000.f, 1000.f, 1220.f), 1));
+	FGrappleReachStreet Street;
+	Street.Points = { FVector2D(0.0, 0.0), FVector2D(4000.0, 0.0) };
+	Scene.Streets.Add(Street);
+	Scene.Bounds = FBox2D(FVector2D(-10000.0, -10000.0), FVector2D(10000.0, 10000.0));
+
+	FGrappleAuditInputs Inputs;
+	Inputs.Scene = &Scene;
+	Inputs.Profile.Lens = Eye();
+	Inputs.Oracle = Oracle({}, { TEXT("Anchor_1") });
+	Inputs.SidewalkFloor = [](const FVector2D& Point, FVector& OutFloor)
+	{
+		OutFloor = FVector(Point.X, Point.Y, 15.f);
+		return FGrappleReachQuery::EStand::Stand;
+	};
+	Inputs.RoofTop = [&Scene](const FVector2D& Point, int32 Roof, FVector& OutTop)
+	{
+		OutTop = FVector(Point.X, Point.Y, Scene.Roofs[Roof].HeightM * 100.f);
+		return FGrappleReachQuery::IsInsideRing(Point, Scene.Roofs[Roof].Ring);
+	};
+	const FGrappleAuditReport Report = FGrappleAudit::Run(Inputs);
+
+	TestEqual(TEXT("Both roofs are anchored rows"), Report.Roofs.Num(), 2);
+	TestEqual(TEXT("One street-facing roof is unreached"), Report.StreetFacingUnreached.Num(), 1);
+	if (Report.Roofs.Num() == 2 && Report.StreetFacingUnreached.Num() == 1)
+	{
+		TestEqual(TEXT("It is the blocked one"), Report.Roofs[Report.StreetFacingUnreached[0]].OsmId, FString(TEXT("hidden")));
+		TestTrue(TEXT("The first is reached from the street"), Report.Roofs[0].FromStreet > 0);
+		TestEqual(TEXT("and from its neighbour's roof"), Report.Roofs[0].NeighboursReaching, 1);
+		TestTrue(TEXT("The reason is the zip"), Report.Roofs[1].Why.Contains(TEXT("zip blocked by FireEscapeLanding")));
+	}
+	TestEqual(TEXT("Allowed roofs pass the gate"), Report.FindGateFailures({ TEXT("hidden") }).Num(), 0);
+	TestEqual(TEXT("Others fail it"), Report.FindGateFailures({}).Num(), 1);
+
+	const FString Json = Report.ToJson();
+	for (const TCHAR* Key : { TEXT("\"summary\""), TEXT("\"objectives\""), TEXT("\"picker_misses\""), TEXT("\"roofs_no_street\""),
+			 TEXT("\"roofs_no_street_with_spot_in_range\""), TEXT("\"roofs_no_street_at_2_5_m\""), TEXT("\"roofs_no_roof\""),
+			 TEXT("\"neighbour_pairs_missing\""), TEXT("\"anchors_never_reachable\""), TEXT("\"anchors_never_picked\""),
+			 TEXT("\"street_facing_unreached\""), TEXT("\"roofs\"") })
+	{
+		TestTrue(FString::Printf(TEXT("The report has %s"), Key), Json.Contains(Key));
 	}
 	return true;
 }
