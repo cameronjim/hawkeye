@@ -19,7 +19,10 @@
     3f. create_boss               DA_Boss_CH04_Tomas (Act 1's boss and the roof he is fought on, planned from the
                                   same records), BP_Boss_Tomas and the arena's greybox meshes (after the chase,
                                   whose roofs it leaves alone, and the weapon data's confetti arrow)
-    4. create_mission_data        DA_CH01_NightShift and DA_CH04_SocialClub (after the chase and the boss they name)
+    3g. create_site               DA_Site_CH02_ToyDrive (chapter 2's toy drive on Avenue B, planned from the records),
+                                  BP_Thug_Reindeer, BP_Pickup_ToySack and the site kit (after the boss kit it reuses)
+    4. create_mission_data        DA_CH01_NightShift, DA_CH02_ReindeerGames and DA_CH04_SocialClub (after the chase,
+                                  the site and the boss they name)
     4b. create_partner            BP_Clint, ST_Partner, BP_PartnerController, DT_Dialogue (after the
                                   weapon data, for DA_Bow_Clint)
     4c. create_enemies            ST_Thug, EQS_CoverPoints (wired into BP_Thug) and BP_Archer (after
@@ -83,6 +86,7 @@ STEPS = [
     ("weapon data", "create_weapon_data"),
     ("chase", "create_chase"),
     ("boss", "create_boss"),
+    ("site", "create_site"),
     ("mission data", "create_mission_data"),
     ("partner", "create_partner"),
     ("enemies", "create_enemies"),
@@ -109,6 +113,7 @@ _OSM_RECORDS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 STEP_REQUIRES = {
     "create_chase": _OSM_RECORDS,
     "create_boss": _OSM_RECORDS,
+    "create_site": _OSM_RECORDS,
     "create_challenges": _OSM_RECORDS,
     "generate_city": _OSM_RECORDS,
 }
