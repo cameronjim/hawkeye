@@ -51,7 +51,7 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   restored after.
 - Crouch keeps (2026-09-29, from the interior stealth lap). A crouch ends only on the player's input (a toggle
   press, or the release when crouch is held), a slide's start, a dodge, a parkour move, hang or zip (entering the
-  flying or the zip mode; she comes out of it standing, the movement component no longer crouches her again after), a
+  traversal or the zip mode, or the sample's traversal in Flying; she comes out of it standing, the movement component no longer crouches her again after), a
   takedown or finisher (allowed; today both leave her crouched), the downed state (and the revive from it), or a
   real fall: one of at least 0.3 s that has dropped at least 30 cm from its top (`CrouchKeepFallSeconds`,
   `CrouchKeepFallHeight`). Stairs, landings,
@@ -68,8 +68,8 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   On a ledge and in a parkour move the line reads the traversal instead of the gait: "hang",
   "hang shimmy", or the move with how long it has run ("corner 0.21 s", "leap", "hop", "climb",
   "vault", "mantle", "ledge grab", "drop to hang", "traversal" for the sample's), at the speed the
-  capsule really moves (smoothed; a hang is placed by hand, so its velocity reads 0) and, hanging,
-  how far along the ledge (`Hawkeye.Movement.DebugLineReadsTheHang`).
+  capsule really moves (smoothed over a tenth of a second) and, hanging, how far along the ledge
+  (`Hawkeye.Movement.DebugLineReadsTheHang`). A zip reads "zip" and its speed, not the gait.
 
 ## HUD (third person)
 - No crosshair. A 4 px reticle dot appears only while aiming and flashes white for 0.1 s
@@ -144,6 +144,39 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   never throws the character off a roof. Durations: vault 0.5 s, mantle 0.8 s, jump to
   hang 0.35 s, catch 0.15 s, climb 1.0 s; input is locked only that long, except that the
   sample's montages hold input until they blend out.
+- Traversal movement (revised 2026-11-10; the moves and hangs were `MOVE_Flying` with the capsule placed by
+  hand every tick, velocity zero, so every move ended at a standstill). Our moves and hangs are a custom
+  movement mode on `UHawkeyeMovementComponent` (`MOVE_Custom`, `EHawkeyeCustomMovement::Traversal`); the
+  sample's own traversal still runs in Flying. `UParkourComponent` keeps the rules (the probe, the move, the
+  roof-edge guard, the hang, shimmy and corners, the log, the buffered press) and hands the movement one
+  `FHawkeyeTraversalMove`: a path (capsule centre and yaw at even steps over the move's time) or, for a
+  clip-driven move, the clip's root motion; what the sweep may pass through; and how it ends. The capsule is
+  swept every sub-step and `Velocity` is what it really moved over the time. Only the move's own obstacle is
+  passed through (the block a vault or mantle climbs over, the ledge a climb goes over, the lip of a drop
+  to hang and the floor she leaves, the wall a hang is on and the one a corner, leap or hop goes to), and
+  only until the move ends; anything else stops her and she slides along it, the move still ending on time.
+  A path move is where its path says at that time, so it ends in the same place at 30 and 120 Hz. A hang
+  is the same mode holding still (velocity zero); a shimmy moves the held point and the velocity reads the
+  shimmy's speed.
+- Momentum out of a move (2026-11-10). A vault leaves in Walking (Falling with no floor under the landing)
+  moving along the vault at her speed along it when it started, at least 300 cm/s (`VaultExitMinSpeed`) and
+  at most 750 (`VaultExitMaxSpeed`, above the 700 sprint so a sprint keeps its speed); a vault takes 0.5 s, or
+  less when that speed would cover its ground sooner, never under 0.35 s (`VaultMinSeconds`). A mantle and a
+  climb leave in Walking moving 150 cm/s (`StepOnSpeed`) the way she faced the wall, so a stick held on runs
+  straight on. The same exit speed is given when the sample's traversal ends, if she is slower: a sprint
+  into the sample's vault leaves at her sprint. Letting go of a hang falls from still 15 cm off the wall,
+  the hop back with nothing behind pushes off at 250 out and 150 up, the roof-edge guard's leap leaves at
+  its 450 cm/s (or her speed before the press), as below.
+- Traversal clips (2026-11-10; our own mantle used to stretch the root motion of one 1 m clip over every height
+  from 40 to 200 cm). Vault, mantle and climb play the sample's traversal montages (`AM_`), loaded when play
+  begins, and their root motion moves the capsule, warped by the engine's Motion Warping to the probe: the
+  hands (the clip's `attach` bone) onto `FrontLedge` (the top front edge, facing the wall), the body over
+  `BackLedge` (the back edge) and down onto `BackFloor` (the landing). Each clip is played from its start
+  to its end time at the rate that fits the move's time. The mantle takes its clip by the top's height:
+  the 1 m mantle up to 150 cm (`MantleClips`), the 2.5 m climb above. The climb from a hang plays the 2.5 m
+  climb from where its hands reach the edge. Grab, catch, drop to hang, corner, leap, hop and the guard's
+  leap follow a path, the clip only posing the body. A character with no AnimBP, motion warping or clip
+  (the headless tests) follows the plain path for every move.
 - The jump key (revised 2026-09-28 after "spamming jump doesn't help me get over the mini walls").
   It probes a fan of 7 rays from -35 to +35 degrees around the stick direction (the facing when
   the stick is centred), middle ray first, each up to 180 cm from the capsule, and takes tops from
@@ -333,8 +366,8 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   or RB, every time; see the next bullet). Fire spawns a straight, gravity-free
   arrow at 6000 cm/s; on arrival the character zips along a straight line to the anchor's
   landing point in the zip movement mode ("Zip movement" below), input locked except the
-  camera, and lands with no fall damage. Chaining is allowed once past 70% of the line, when
-  the marker returns. A zip is cancelled by static geometry on the path except within
+  camera, and lands with no fall damage. Chaining is allowed once past 40% of the line (see
+  "Chaining"), when the marker returns. A zip is cancelled by static geometry on the path except within
   150 cm of the anchor (corner anchors share walls with neighbours). Grapple arrows are
   unlimited (revised 2026-09-29, "grapples should be infinite - it is definitely part of
   traversal"): a shot costs nothing and is never refused for want of one; the arrow stays in
