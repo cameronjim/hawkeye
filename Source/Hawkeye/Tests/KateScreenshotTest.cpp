@@ -30,6 +30,7 @@
 #include "Misc/App.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
+#include "Mission/MissionDefinition.h"
 #include "Mission/MissionObjective.h"
 #include "Mission/MissionSubsystem.h"
 #include "Mission/ObjectiveTriggerVolume.h"
@@ -2605,7 +2606,13 @@ namespace HawkeyeKateShots
 		Marker,
 		Offscreen,
 		Complete,
+		/** Back to the chapter the objective shots stood in for. */
+		Restore,
 	};
+
+	/** The chapter running before the objective shots, and the stand-in they run. */
+	static TWeakObjectPtr<UMissionDefinition> ChapterBeforeShots;
+	static TWeakObjectPtr<UMissionDefinition> ShotsMission;
 
 	static AObjectiveTriggerVolume* FindObjectiveVolume(UWorld* World, FName ObjectiveId)
 	{
@@ -2645,6 +2652,47 @@ bool FHawkeyeKateObjectiveShot::Update()
 	APlayerController* PC = nullptr;
 	AHawkeyeCharacter* Kate = FindKate(PC);
 	UWorld* World = FindWorld();
+	// The objective HUD is shot on the retired Rooftops chapter's volumes, which stay in the district as furniture:
+	// Night Shift's objectives are the chase's and have no volumes. A mission of the two volumes' ids, the
+	// chapter's own quiver, runs for these shots; Restore puts the chapter back.
+	UMissionSubsystem* Missions = UMissionSubsystem::Get(World);
+	if (Missions && !Missions->HasObjective(TEXT("reach_roof")) && static_cast<EObjectiveShot>(Shot) == EObjectiveShot::Marker)
+	{
+		ChapterBeforeShots = Missions->GetCurrentMission();
+		UMissionDefinition* Shots = NewObject<UMissionDefinition>(GetTransientPackage(), TEXT("ObjectiveHudShots"));
+		Shots->MissionName = FText::FromString(TEXT("[Objective HUD shots]"));
+		if (ChapterBeforeShots.IsValid())
+		{
+			Shots->StartingBow = ChapterBeforeShots->StartingBow;
+			Shots->StartingArrows = ChapterBeforeShots->StartingArrows;
+			Shots->bPartnerPresent = ChapterBeforeShots->bPartnerPresent;
+		}
+		for (const TCHAR* Id : { TEXT("reach_roof"), TEXT("cross_block") })
+		{
+			UMissionObjective* Objective = NewObject<UMissionObjective>(Shots);
+			Objective->ObjectiveId = Id;
+			Objective->Title = FText::FromString(FString::Printf(TEXT("[%s]"), Id));
+			Shots->Objectives.Add(Objective);
+		}
+		Shots->AddToRoot();
+		ShotsMission = Shots;
+		Missions->AbortMission();
+		Missions->StartMission(Shots);
+	}
+	if (static_cast<EObjectiveShot>(Shot) == EObjectiveShot::Restore)
+	{
+		if (Missions && ChapterBeforeShots.IsValid())
+		{
+			Missions->AbortMission();
+			Missions->StartMission(ChapterBeforeShots.Get());
+		}
+		if (UMissionDefinition* Shots = ShotsMission.Get())
+		{
+			Shots->RemoveFromRoot();
+		}
+		ShotsMission = nullptr;
+		return true;
+	}
 	const AObjectiveTriggerVolume* Roof = World ? FindObjectiveVolume(World, TEXT("reach_roof")) : nullptr;
 	if (!Kate || !Roof)
 	{
@@ -2869,6 +2917,7 @@ bool FHawkeyeScreenshotKate::RunTest(const FString& Parameters)
 		static_cast<uint8>(EObjective::Complete)));
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateTakeShot(this, TEXT("objective_complete.png")));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateObjectiveShot(this, static_cast<uint8>(EObjective::Restore)));
 
 	// The debug line goes into the shots so gait and fall height can be read off them.
 	ADD_LATENT_AUTOMATION_COMMAND(FExecStringLatentCommand(TEXT("hawkeye.DebugMovement 1")));

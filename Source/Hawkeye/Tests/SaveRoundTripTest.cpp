@@ -139,7 +139,7 @@ namespace HawkeyeSaveRoundTrip
 }
 
 /**
- * The save contract end to end, in the standalone game: complete reach_roof, loose three arrows,
+ * The save contract end to end, in the standalone game: complete chase_thief (Night Shift's first objective), loose three arrows,
  * take 20 damage, kill a thug, stand by the safehouse, save; then load through the subsystem (a
  * full SPUD load: the map reloads and is restored) and check the objective, the quiver, the
  * health, the dead thug and Kate's position (within 50 cm). Uses its own slot.
@@ -163,7 +163,7 @@ bool FHawkeyeSaveRoundTrip::RunTest(const FString& Parameters)
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(6.f));
 
-	// Set up: our own slot, the partner still, Kate by the safehouse, reach_roof done (which autosaves).
+	// Set up: our own slot, the partner still, Kate by the safehouse, chase_thief done (which autosaves).
 	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
 	{
 		UWorld* World = FindWorld();
@@ -179,7 +179,7 @@ bool FHawkeyeSaveRoundTrip::RunTest(const FString& Parameters)
 		IFileManager::Get().Delete(*USpudSubsystem::GetSaveGameFilePath(Slot), false, true, true);
 		HawkeyeFreezePartner(World);
 		State->SavesBefore = Save->GetSaveCount();
-		TestTrue(TEXT("reach_roof completes"), Missions->CompleteObjective(TEXT("reach_roof")));
+		TestTrue(TEXT("chase_thief completes"), Missions->CompleteObjective(TEXT("chase_thief")));
 		TestEqual(TEXT("Completing an objective autosaved"), Save->GetSaveCount(), State->SavesBefore + 1);
 		State->ArrowsBefore = Kate->GetInventoryComponent()->GetArrowCount(1);
 		Kate->GetInventoryComponent()->SelectArrowSlot(1);
@@ -278,8 +278,8 @@ bool FHawkeyeSaveRoundTrip::RunTest(const FString& Parameters)
 			AddError(TEXT("No player or mission after the load."));
 			return true;
 		}
-		const UMissionObjective* ReachRoof = Missions->GetTracker()->FindObjective(TEXT("reach_roof"));
-		TestTrue(TEXT("reach_roof is still complete"), ReachRoof && ReachRoof->IsCompleted());
+		const UMissionObjective* ReachRoof = Missions->GetTracker()->FindObjective(TEXT("chase_thief"));
+		TestTrue(TEXT("chase_thief is still complete"), ReachRoof && ReachRoof->IsCompleted());
 		TestEqual(TEXT("The same objectives are complete"), Missions->GetTracker()->GetCompletedObjectiveIds(), State->Completed);
 		TestEqual(TEXT("The quiver came back slot for slot"), ReadArrowCounts(Kate->GetInventoryComponent()), State->ArrowCounts);
 		TestEqual(TEXT("Health came back"), Kate->GetHealthComponent()->GetCurrentHealth(), State->Health, 0.01f);

@@ -7,11 +7,12 @@
 class FAutomationTestBase;
 
 /**
- * Queues the narrative pass onto the end of the Kate screenshot pass (Saved/Screenshots/Kate/):
- * phone_open, chapter_title, dialogue_subtitle, chapter_end_closeup, then the rest of chapter 1's
- * end played for real (end card, the placeholder flashback, its playable scene) with
- * scene_placeholder inside the room, and the way back to the district's return point with the
- * chapter-complete toast (chapter_complete). Last: it completes the chapter and travels twice.
+ * Queues the narrative pass onto the end of the Kate screenshot pass (Saved/Screenshots/Kate/), on Chapter 1
+ * "Night Shift": chapter_title, dialogue_subtitle (its opening line), then its end played for real once its three
+ * objectives are completed (the catch is the campaign lap's): chapter_end_card with Kate's last line, back to
+ * roaming with the toast (chapter_complete), and phone_open once its seven texts have arrived. Night Shift has no
+ * close-up, flashback or scene; the chapter-end interactable and the scene system are tested headless
+ * (Hawkeye.MissionFlow.*, Hawkeye.Narrative.*). Last: it completes the chapter.
  * See NarrativeScreenshotTest.cpp.
  */
 void HawkeyeAddNarrativeShots(FAutomationTestBase* Test);

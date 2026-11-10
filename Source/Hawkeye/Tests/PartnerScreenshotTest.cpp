@@ -13,6 +13,8 @@
 #include "HawkeyePlayerController.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
+#include "HawkeyeGameMode.h"
+#include "Mission/MissionSubsystem.h"
 #include "Partner/HawkeyePartnerController.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Tests/AutomationCommon.h"
@@ -168,6 +170,16 @@ bool FHawkeyePartnerShot::Update()
 	using namespace HawkeyePartnerShots;
 	UWorld* World = FindWorld();
 	AHawkeyePlayerController* PC = World ? Cast<AHawkeyePlayerController>(World->GetFirstPlayerController()) : nullptr;
+	if (static_cast<EShot>(Shot) == EShot::Follow && World && PC)
+	{
+		// Act 1's chapter benches Clint and refuses the switch (DA_CH01_NightShift); the partner's own shots bring
+		// him on stage for themselves, and Cleanup puts the chapter's cast back.
+		for (TActorIterator<AHawkeyePartnerController> It(World); It; ++It)
+		{
+			It->SetBenched(false);
+		}
+		PC->bAllowSwitchingOverride = true;
+	}
 	AHawkeyeCharacter* Lead = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
 	AHawkeyePartnerController* Brain = World ? FindPartner(World) : nullptr;
 	AHawkeyeCharacter* Partner = Brain ? Brain->GetPartner() : nullptr;
@@ -272,6 +284,11 @@ bool FHawkeyePartnerShot::Update()
 		HawkeyeFreezePartner(World);
 		Lead->GetHealthComponent()->SetInvulnerable(false);
 		Partner->GetHealthComponent()->SetInvulnerable(false);
+		PC->bAllowSwitchingOverride = false;
+		if (const UMissionSubsystem* Missions = UMissionSubsystem::Get(World))
+		{
+			AHawkeyeGameMode::ApplyChapterCast(World, Missions->GetCurrentMission());
+		}
 		break;
 	}
 	return true;

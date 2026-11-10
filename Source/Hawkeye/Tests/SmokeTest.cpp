@@ -38,9 +38,8 @@ namespace HawkeyeSmoke
 {
 	static const TCHAR* MapPath = TEXT("/Game/Maps/L_District_EastVillage");
 
-	/** DA_CH01_Rooftops: reach_roof, cross_block, clear_roof, find_arrow. */
-	static const TCHAR* ExpectedObjectives[] = {
-		TEXT("reach_roof"), TEXT("cross_block"), TEXT("clear_roof"), TEXT("find_arrow") };
+	/** DA_CH01_NightShift (Act 1's opening chase): chase_thief, cross_gap, catch_thief. */
+	static const TCHAR* ExpectedObjectives[] = { TEXT("chase_thief"), TEXT("cross_gap"), TEXT("catch_thief") };
 
 	/** Two patrolling the street, the heavy on his own patrol, the RoofPair on the cross_block roof. */
 	static constexpr int32 ExpectedThugs = 5;
@@ -83,7 +82,10 @@ bool FHawkeyeAssertEastVillagePlayable::Update()
 		Test->TestNotNull(TEXT("The game mode started a mission"), Mission);
 		if (Mission)
 		{
-			Test->TestEqual(TEXT("The mission is Rooftops"), Mission->MissionName.ToString(), FString(TEXT("Rooftops")));
+			Test->TestEqual(TEXT("The mission is Night Shift"), Mission->MissionName.ToString(), FString(TEXT("Night Shift")));
+			Test->TestFalse(TEXT("Night Shift names its chase"), Mission->Chase.IsNull());
+			Test->TestFalse(TEXT("Act 1 has no partner on screen"), Mission->bPartnerPresent);
+			Test->TestFalse(TEXT("...and no switching"), Mission->bAllowSwitching);
 
 			const TArray<UMissionObjective*> Objectives = Missions->GetActiveObjectives();
 			TArray<FString> Ids;
@@ -96,7 +98,7 @@ bool FHawkeyeAssertEastVillagePlayable::Update()
 			{
 				Expected.Add(Id);
 			}
-			Test->TestEqual(TEXT("Rooftops has its four objectives, in order"),
+			Test->TestEqual(TEXT("Night Shift has its three objectives, in order"),
 				FString::Join(Ids, TEXT(",")), FString::Join(Expected, TEXT(",")));
 			Test->TestNotNull(TEXT("And a current objective to show on the HUD"), Missions->GetCurrentObjective());
 		}
