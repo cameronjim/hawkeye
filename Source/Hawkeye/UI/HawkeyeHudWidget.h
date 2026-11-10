@@ -264,6 +264,23 @@ public:
 	/** The subtitle's bottom edge: MinBottom, or Gap over HintTop when that is higher. */
 	static float ComputeSubtitleBottom(float HintTop, float MinBottom, float Gap);
 
+	/**
+	 * The width a subtitle wraps at, px: a fixed share of the HUD's width between SubtitleWrapMin and SubtitleWrapMax.
+	 * Fixed, never the box's own size (auto-wrap inside a box that sizes to its text collapsed to a word a line).
+	 */
+	static float ComputeSubtitleWrapWidth(float HudWidth);
+
+	/**
+	 * The prompt line's top padding (it is centred under the reticle, pushed down by this): DefaultPadding, or less
+	 * (it moves up) when the subtitle's top, SubtitleTop px up from the HUD's bottom, would come within Gap of the
+	 * prompt's bottom. PromptHeight is the prompt's own. Never above the top quarter of the HUD.
+	 */
+	static float ComputePromptTopPadding(float HudHeight, float PromptHeight, float SubtitleTop, float DefaultPadding, float Gap);
+
+	/** Where LayOutBottomStack put the prompt (its top padding) and the subtitle's wrap width. */
+	float GetPromptTopPadding() const { return PromptTopPadding; }
+	float GetSubtitleWrapWidth() const { return SubtitleWrapWidth; }
+
 	/** The subtitle's lowest bottom edge, px (where it sits at HUD scale 1). */
 	UPROPERTY(EditDefaultsOnly, Category = "HUD|Partner")
 	float SubtitleMinBottom = 150.f;
@@ -689,6 +706,10 @@ protected:
 
 	UPROPERTY(Transient)
 	float SubtitleBottom = -1.f;
+
+	/** The prompt's top padding and the subtitle's wrap width as last laid out. */
+	float PromptTopPadding = 120.f;
+	float SubtitleWrapWidth = 0.f;
 
 	UPROPERTY(Transient)
 	float SubtitleBackgroundOpacity = 0.f;

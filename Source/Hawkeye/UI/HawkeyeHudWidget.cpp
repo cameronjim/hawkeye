@@ -1007,8 +1007,10 @@ void UHawkeyeHudWidget::BuildPartnerWidgets(UOverlay* Root)
 	SubtitleText->SetShadowOffset(FVector2D(1.f, 1.f));
 	SubtitleText->SetShadowColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.8f));
 	SubtitleText->SetJustification(ETextJustify::Center);
-	SubtitleText->SetAutoWrapText(true);
-	SubtitleText->SetWrapTextAt(1000.f);
+	// A fixed wrap width (LayOutBottomStack keeps it to the HUD's width): auto-wrap in a box that sizes to its own text
+	// wrapped a line a word at a time.
+	SubtitleText->SetAutoWrapText(false);
+	SubtitleText->SetWrapTextAt(ComputeSubtitleWrapWidth(1280.f));
 	SubtitleBox->SetContent(SubtitleText);
 
 	PartnerTagCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("PartnerTagCanvas"));
@@ -1108,6 +1110,34 @@ float UHawkeyeHudWidget::ComputeSubtitleBottom(float HintTop, float MinBottom, f
 	return FMath::RoundToFloat(FMath::Max(MinBottom, HintTop + Gap));
 }
 
+namespace HawkeyeHudLayout
+{
+	/** The subtitle wraps at this share of the HUD's width, between these, px. */
+	static constexpr float SubtitleWrapShare = 0.55f;
+	static constexpr float SubtitleWrapMin = 360.f;
+	static constexpr float SubtitleWrapMax = 900.f;
+	/** The prompt's place under the reticle, and the clear space it keeps over a subtitle, px. */
+	static constexpr float PromptDefaultPadding = 120.f;
+	static constexpr float PromptGapOverSubtitle = 12.f;
+}
+
+float UHawkeyeHudWidget::ComputeSubtitleWrapWidth(float HudWidth)
+{
+	return FMath::RoundToFloat(FMath::Clamp(HudWidth * HawkeyeHudLayout::SubtitleWrapShare, HawkeyeHudLayout::SubtitleWrapMin,
+		HawkeyeHudLayout::SubtitleWrapMax));
+}
+
+float UHawkeyeHudWidget::ComputePromptTopPadding(float HudHeight, float PromptHeight, float SubtitleTop, float DefaultPadding, float Gap)
+{
+	if (HudHeight <= 0.f || SubtitleTop <= 0.f)
+	{
+		return DefaultPadding;
+	}
+	// Centred with top padding P, the prompt's bottom is (H + P) / 2 + h / 2 from the top; the subtitle's top is H - S.
+	const float Fits = HudHeight - 2.f * SubtitleTop - PromptHeight - 2.f * Gap;
+	return FMath::RoundToFloat(FMath::Max(FMath::Min(DefaultPadding, Fits), -HudHeight * 0.5f));
+}
+
 void UHawkeyeHudWidget::LayOutBottomStack()
 {
 	UOverlaySlot* BoxSlot = SubtitleBox ? Cast<UOverlaySlot>(SubtitleBox->Slot) : nullptr;
@@ -1120,6 +1150,29 @@ void UHawkeyeHudWidget::LayOutBottomStack()
 	{
 		SubtitleBottom = Bottom;
 		BoxSlot->SetPadding(FMargin(0.f, 0.f, 0.f, Bottom));
+	}
+	const FVector2D Hud = GetCachedGeometry().GetLocalSize();
+	if (SubtitleText && Hud.X > 1.f)
+	{
+		const float Wrap = ComputeSubtitleWrapWidth(Hud.X);
+		if (!FMath::IsNearlyEqual(Wrap, SubtitleWrapWidth))
+		{
+			SubtitleWrapWidth = Wrap;
+			SubtitleText->SetWrapTextAt(Wrap);
+		}
+	}
+	// The prompt keeps clear of a subtitle tall enough to reach it.
+	UOverlaySlot* PromptSlot = PromptText ? Cast<UOverlaySlot>(PromptText->Slot) : nullptr;
+	if (PromptSlot && Hud.Y > 1.f)
+	{
+		const float SubtitleTop = IsSubtitleVisible() && SubtitleBox ? Bottom + SubtitleBox->GetDesiredSize().Y : 0.f;
+		const float PromptPad = ComputePromptTopPadding(Hud.Y, PromptText->GetDesiredSize().Y, SubtitleTop,
+			HawkeyeHudLayout::PromptDefaultPadding, HawkeyeHudLayout::PromptGapOverSubtitle);
+		if (!FMath::IsNearlyEqual(PromptPad, PromptTopPadding))
+		{
+			PromptTopPadding = PromptPad;
+			PromptSlot->SetPadding(FMargin(0.f, PromptPad, 0.f, 0.f));
+		}
 	}
 }
 

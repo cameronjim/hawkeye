@@ -116,4 +116,29 @@ bool FHawkeyeHudHintAndSubtitleStack::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The subtitle wraps at a fixed width (a share of the HUD's, between 360 and 900 px), never at its box's own size, which
+ * wrapped a line a word at a time; and the pickup prompt moves up out of a tall subtitle's way, never into the top of the
+ * screen (gameplay-semantics.md, "HUD").
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeHudSubtitleWrapAndPrompt, "Hawkeye.Hud.SubtitleWrapAndPromptClear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeHudSubtitleWrapAndPrompt::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("1280 wide: wraps at 704"), UHawkeyeHudWidget::ComputeSubtitleWrapWidth(1280.f), 704.f);
+	TestEqual(TEXT("1920 wide: at most 900"), UHawkeyeHudWidget::ComputeSubtitleWrapWidth(1920.f), 900.f);
+	TestEqual(TEXT("A narrow window: never under 360"), UHawkeyeHudWidget::ComputeSubtitleWrapWidth(400.f), 360.f);
+	TestEqual(TEXT("No size yet: 360, not a word a line"), UHawkeyeHudWidget::ComputeSubtitleWrapWidth(0.f), 360.f);
+
+	// 720 tall, the prompt 30 px under the reticle with 120 of padding: its bottom at (720 + 120) / 2 + 15 = 435.
+	TestEqual(TEXT("No subtitle: the prompt stays"), UHawkeyeHudWidget::ComputePromptTopPadding(720.f, 30.f, 0.f, 120.f, 12.f), 120.f);
+	TestEqual(TEXT("A two-line subtitle (top 230 up): clear, it stays"), UHawkeyeHudWidget::ComputePromptTopPadding(720.f, 30.f, 230.f, 120.f, 12.f), 120.f);
+	const float Up = UHawkeyeHudWidget::ComputePromptTopPadding(720.f, 30.f, 320.f, 120.f, 12.f);
+	TestTrue(TEXT("A tall subtitle (top 320 up): the prompt moves up"), Up < 120.f);
+	TestTrue(TEXT("...its bottom 12 px over the subtitle's top"), FMath::IsNearlyEqual((720.f + Up) * 0.5f + 15.f, 720.f - 320.f - 12.f, 1.f));
+	TestEqual(TEXT("Never past the top quarter"), UHawkeyeHudWidget::ComputePromptTopPadding(720.f, 30.f, 700.f, 120.f, 12.f), -360.f);
+	return true;
+}
+
 #endif
