@@ -1636,6 +1636,14 @@ hit her at once from off screen.
   a runner (380 cm/s) who leaves when Kate is within 20 m, a thug is alerted, or 40 s
   pass, and drops the loot when downed; picking up the loot ends it. Ambush: four thugs
   alerted from the start. Rooftop: two thugs and an archer.
+- Leash (2026-11-10, after `Hawkeye.Lap.CrimeRooftop` failed once in two batches: the archer's zip, which takes any
+  anchor 15 to 25 m from her, put him on another roof, and the lap walked off the edge after him or stood aiming at
+  him until it timed out). A crime with a `LeashRadius` (`UCrimeDefinition`, cm; the rooftop's is 25 m) leashes its
+  roster to the spot (`AThugAIController::SetLeash`): a relocation never lands more than that from the spot, and on a
+  roof spot only on that roof (the building a trace down from the spot hits). With no anchor inside the leash he
+  stays and steps back on his roof. `Hawkeye.Archer.LeashKeepsHimOnHisRoof`; the lap asserts no crime thug stood off
+  the crime's roof (5 runs in a row green, 9.4 to 13.5 s, 0 or 1 hit; the archer relocated to an anchor on his own
+  roof in four).
 - Stopping a crime gives +5 standard arrows (never grapple arrows, which have no count), a toast,
   and a per-type count in the save.
   Crime thugs despawn 60 s after success once the player is 40 m away, 20 s after failure.
