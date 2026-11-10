@@ -783,11 +783,14 @@ def check_narrative():
     else:
         names, cols = messages
         say("  DT_Messages: {0} rows, triggers {1} on {2}".format(len(names), cols.get("Trigger"), cols.get("TriggerObjectiveId")))
-        if len(names) != 7:
-            fail("DT_Messages has {0} rows, expected Chapter 1's 7".format(len(names)))
-        known = {"chase_thief", "cross_gap", "catch_thief"}
+        import create_mission_data as md  # noqa: PLC0415 - the chapters' objectives
+        import create_narrative as cn  # noqa: PLC0415 - the rows it writes
+        wanted = len(cn.MESSAGES) + len(cn.CH02_MESSAGES)
+        if len(names) != wanted:
+            fail("DT_Messages has {0} rows, expected chapters 1 and 2's {1}".format(len(names), wanted))
+        known = {o[0] for o in md.CH01_OBJECTIVES + md.CH02_OBJECTIVES} | {"None"}
         if not all(o in known for o in cols.get("TriggerObjectiveId", [])):
-            fail("DT_Messages names an objective CH01 does not have")
+            fail("DT_Messages names an objective chapters 1 and 2 do not have")
     sequences = _table_rows("/Game/Data/DT_DialogueSequences")
     dialogue = _table_rows("/Game/Data/DT_Dialogue")
     if sequences is None or dialogue is None:
@@ -796,13 +799,16 @@ def check_narrative():
         names, cols = sequences
         say("  DT_DialogueSequences: {0} rows, lines {1}".format(len(names), cols.get("Line")))
         lines = dialogue[0]
-        if len(names) != 10 or not all(seq.startswith("seq_ch01_") for seq in cols.get("Sequence", [])):
-            fail("DT_DialogueSequences is not Chapter 1's ten steps")
+        import create_narrative as cn  # noqa: PLC0415
+        import create_partner as cp  # noqa: PLC0415
+        if len(names) != len(cn.SEQUENCE_STEPS) or not all(seq.startswith(("seq_ch01_", "seq_ch04_")) for seq in cols.get("Sequence", [])):
+            fail("DT_DialogueSequences is not chapters 1 and 4's {0} steps".format(len(cn.SEQUENCE_STEPS)))
         if not all(line in lines for line in cols.get("Line", [])):
             fail("DT_DialogueSequences names a line DT_Dialogue does not have")
         say("  DT_Dialogue: {0} rows".format(len(lines)))
-        if len(lines) != 58:
-            fail("DT_Dialogue has {0} rows, expected 48 banter lines and Chapter 1's 10".format(len(lines)))
+        wanted = len(cp.dialogue_rows())
+        if len(lines) != wanted:
+            fail("DT_Dialogue has {0} rows, expected the banter and chapters 1, 2 and 4's lines, {1}".format(len(lines), wanted))
 
     flashback = c.load_or_none("/Game/Flashbacks/Definitions/DA_FB00_Placeholder")
     if flashback is None:
