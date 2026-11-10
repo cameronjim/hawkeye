@@ -181,7 +181,8 @@ def arrow_values(name, projectile_classes):
 # fly like a standard arrow; what they do on landing is the AArrowEffect their OnHitEffect names.
 # name: (display name, short name, slot, damage, cap, recoverable, EArrowHitEffect member)
 TRICK_ARROWS = {
-    "DA_Arrow_Putty": ("Putty arrow", "Putty", 3, 10.0, 4, False, "PUTTY"),
+    # The story's "sticky foam" (docs/chapters/ACT1.md): the putty arrow, renamed on screen only; chapter 2 unlocks it.
+    "DA_Arrow_Putty": ("Sticky foam arrow", "Foam", 3, 10.0, 4, False, "PUTTY"),
     "DA_Arrow_Bola": ("Bola arrow", "Bola", 4, 10.0, 4, True, "BOLA"),
     "DA_Arrow_Smoke": ("Smoke arrow", "Smoke", 5, 0.0, 3, False, "SMOKE"),
     "DA_Arrow_EMP": ("EMP arrow", "EMP", 6, 0.0, 3, False, "EMP"),
