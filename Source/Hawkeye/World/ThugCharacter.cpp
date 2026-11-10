@@ -744,6 +744,8 @@ void AThugCharacter::Parried(AActor* By, float Seconds)
 	{
 		MeleeComponent->CancelAttack();
 	}
+	// A boss shrugs a parry off quickly.
+	Seconds = MaxParryStaggerSeconds > 0.f ? FMath::Min(Seconds, MaxParryStaggerSeconds) : Seconds;
 	StaggerFor(By, Seconds);
 	ParryStaggerRemaining = FMath::Max(Seconds, 0.f);
 	StartHitLean(By);
@@ -760,15 +762,26 @@ void AThugCharacter::OpenFinisherWindow(float Seconds)
 	FinisherWindowRemaining = FMath::Max(FinisherWindowRemaining, Seconds);
 }
 
+void AThugCharacter::GrantFinisherWindow(float Seconds)
+{
+	if (bLimp || !HealthComponent || !HealthComponent->IsAlive())
+	{
+		return;
+	}
+	GrantedFinisherRemaining = FMath::Max(GrantedFinisherRemaining, Seconds);
+}
+
 bool AThugCharacter::IsFinisherOpen() const
 {
-	return bKnockedDown || IsParryStaggered() || FinisherWindowRemaining > 0.f;
+	return UBossRules::IsFinisherOpen(bKnockedDown, IsParryStaggered(), FinisherWindowRemaining, GrantedFinisherRemaining,
+		bFinisherNeedsGrantedWindow);
 }
 
 void AThugCharacter::UpdateFinisherOpening(float DeltaSeconds)
 {
 	const float Step = FMath::Max(DeltaSeconds, 0.f);
 	FinisherWindowRemaining = FMath::Max(0.f, FinisherWindowRemaining - Step);
+	GrantedFinisherRemaining = FMath::Max(0.f, GrantedFinisherRemaining - Step);
 	ParryStaggerRemaining = FMath::Max(0.f, ParryStaggerRemaining - Step);
 }
 

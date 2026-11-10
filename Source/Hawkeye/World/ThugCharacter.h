@@ -204,6 +204,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
 	bool bResistsKnockdown = false;
 
+	/**
+	 * A finisher takes him only inside a window GrantFinisherWindow opened (a boss's winded window): a parry, a
+	 * knockdown or a combo ender opens nothing (UBossRules::IsFinisherOpen). Off, a thug: any of them does.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	bool bFinisherNeedsGrantedWindow = false;
+
+	/** A parry staggers him at most this long, s (a boss: brief). 0: as long as the parry says (her 1.5 s). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat", meta = (ClampMin = "0.0"))
+	float MaxParryStaggerSeconds = 0.f;
+
 	/** The heavy's shield bash: 30 damage after a 0.8 s telegraph, knocks her back 250 cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
 	FHawkeyeMeleeAttack ShieldBashAttack;
@@ -431,7 +442,8 @@ public:
 
 	/**
 	 * True when a finisher can take him: knocked down, staggered by a parry, or inside a combo ender's
-	 * window. An ordinary hit's 0.5 s stagger does not count.
+	 * window, or a granted window; with bFinisherNeedsGrantedWindow only the granted window counts
+	 * (UBossRules::IsFinisherOpen). An ordinary hit's 0.5 s stagger does not count.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	bool IsFinisherOpen() const;
@@ -440,9 +452,19 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	float GetFinisherWindowRemaining() const { return FinisherWindowRemaining; }
 
-	/** Shuts a window OpenFinisherWindow opened (a boss's winded window after the finisher that used it). */
+	/** Shuts the windows OpenFinisherWindow and GrantFinisherWindow opened (a boss's winded window after the finisher that used it). */
 	UFUNCTION(BlueprintCallable, Category = "Thug")
-	void CloseFinisherWindow() { FinisherWindowRemaining = 0.f; }
+	void CloseFinisherWindow() { FinisherWindowRemaining = 0.f; GrantedFinisherRemaining = 0.f; }
+
+	/**
+	 * A window only the fight grants (a boss's winded window): the one a bFinisherNeedsGrantedWindow thug can be finished
+	 * in. Any thug is open in it.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Thug")
+	void GrantFinisherWindow(float Seconds);
+
+	UFUNCTION(BlueprintPure, Category = "Thug")
+	float GetGrantedFinisherRemaining() const { return GrantedFinisherRemaining; }
 
 	/** Staggered by a parry and not yet recovered from it. */
 	UFUNCTION(BlueprintPure, Category = "Thug")
@@ -862,6 +884,7 @@ private:
 
 	/** Seconds left of a combo ender's finisher window, and of the last parry's stagger. */
 	float FinisherWindowRemaining = 0.f;
+	float GrantedFinisherRemaining = 0.f;
 	float ParryStaggerRemaining = 0.f;
 
 	/** The lean from the last hit, and where that hit came from. */
