@@ -289,25 +289,37 @@ Rules: "Chases". Built for Act 1's "Night Shift".
 ### Boss (`Source/Hawkeye/Boss`)
 Rules: "Bosses". Built for Act 1's "The Social Club".
 - `UBossDefinition` (primary data asset, `DA_Boss_CH04_Tomas`): the boss's body class (a thug Blueprint,
-  `BP_Boss_Tomas`), health, scale, move set (`FBossMoveSet`: the combo, the winded window, finisher share, stagger
-  threshold), his phases (`FBossPhaseDefinition`: the `FBossPhase` rule plus objective, fights or watches, crew,
-  hazard, start and end lines, barks, arrow grants), the arena (`FBossArena`: the roof's outline, the fight's
+  `BP_Boss_Tomas`), health, scale, move set (`FBossMoveSet`: the combo, each swing parryable or unblockable, the
+  winded window, finisher share and whether only the window opens it, his parry stagger, stagger threshold), his
+  phases (`FBossPhaseDefinition`: the `FBossPhase` rule plus objective, fights or watches, crew, hazard, start and end
+  lines, barks, arrow grants, and the solve: his guard's fraction, the arrow effects that break it, whether the hazard
+  catches him, the transition beat `FBossBeat`), the defeat beat, the decisive finisher's camera
+  (`FBossFinisherCamera`), the light that rides on him, the arena (`FBossArena`: the roof's outline, the fight's
   centre, the street stand and its anchor, his spot, the hazard's lane and mesh, props and lights) and the hazard's
   tuning. Written by `Tools/Editor/create_boss.py`, the arena planned from the district by `_arena.py`. A chapter
   names it on `UMissionDefinition::Boss`; a second boss is another asset.
 - `UBossRules` and `FBossComboClock`: the pure rules (phase walk, damageable, winded bonus, finisher share,
-  checkpoint from objectives and its health, the hazard's clock and its hits, barks, intro, on the roof). Tests:
-  `Hawkeye.Boss.*`, `Hawkeye.BossPhase.*`, `Hawkeye.Campaign.*`.
+  checkpoint from objectives and its health, the hazard's clock and its hits, barks, intro, on the roof; since the
+  second pass the finisher's opening, the guard and what breaks it, the decisive finisher, the beat's camera and
+  clock, lines not yet heard, the putty pin, the props the hazard pushes, a forced winded). Tests: `Hawkeye.Boss.*`
+  (`BossTest.cpp`, `BossSolveTest.cpp`), `Hawkeye.BossPhase.*`, `Hawkeye.Campaign.*`.
 - `UBossFightSubsystem` (world, ticking): on the chapter's start dresses the roof and stands the boss and the first
   crew there (thugs spawned from data with their thinking off, `bSkipSave`; the boss gets his combo, finisher share,
   knockdown resistance and a `UBossPhaseComponent` added at spawn, so he needs no class of his own), completes the
   meet objective when Kate's feet are on the roof, plays the pre-fight sequence, runs the phases (crews alerted, the
   boss fighting through `ST_Thug` with his combo or watching, the winded window from his swing count, barks from
   what it sees, the hazard loose, arrows granted), completes each phase's objective as the next opens and the last
-  after the after sequence, and restarts at the save's checkpoint on a load (`OnCampaignLoaded`).
+  after the after sequence, and restarts at the save's checkpoint on a load (`OnCampaignLoaded`). Every tick of a
+  phase it sets his guard (`UHealthComponent::IncomingDamageScale`), looks at new trick-arrow effects (a guard break,
+  a hazard pin) and asks the hazard whether it reaches him. Beats spawn an `ACameraActor` and blend the player's view
+  to it (`SetViewTargetWithBlend`), hold Kate (`AHawkeyeCharacter::SetScriptedLock`) and everyone else, and wait for
+  her finisher to end first; a decisive finisher on him swaps her `UFinisherComponent`'s slow motion and push-in for
+  the definition's until it ends. What the fight has said is mirrored into the campaign (`BossHeard`) by
+  `UHawkeyeSaveSubsystem::CaptureCampaign` and kept in the save subsystem's memory across a reload.
   `AHawkeyePlayerController` calls `BeginChapter` with the chapter's opening (Kate to the street stand).
 - `ABossArenaHazard`: the arena's moving hazard (the inflatable Santa): tethered, then telegraph, sweep and rest on
-  the rules' clock, a lit strip and a red light for the telegraph, hits Kate only in its lane while it sweeps.
+  the rules' clock, a lit strip and a red light for the telegraph, hits Kate only in its lane while it sweeps; held by
+  a beat, pinned by putty, pushing the props it was given along its lane, and answering `Reaches` for the boss.
 - Campaign order (`Mission/CampaignOrder`, `UHawkeyeCampaignOrder`): the chain of `UMissionDefinition::NextChapter`
   from the district's starting chapter; the safehouse's chapter select lists it and starts an open chapter with
   `AHawkeyeGameMode::StartChapter`, which `-HawkeyeChapter=` and `hawkeye.StartChapter` use too.
