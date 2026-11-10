@@ -163,9 +163,19 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Movement")
 	float GetMovementNoiseLoudness() const;
 
-	/** True while a takedown or a finisher is playing; movement, strikes, dodges and firing are ignored. */
+	/**
+	 * True while a takedown or a finisher is playing, or a scripted beat holds her (SetScriptedLock); movement,
+	 * strikes, dodges and firing are ignored.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")
 	bool IsLockedOutByTakedown() const;
+
+	/** A scripted beat (a boss's phase change) holds her: no strikes, dodges, draws or finishers until it lets go. */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Character")
+	void SetScriptedLock(bool bLocked) { bScriptedLock = bLocked; }
+
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")
+	bool IsScriptedLocked() const { return bScriptedLock; }
 
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Melee")
 	bool IsPerformingFinisher() const;
@@ -1909,6 +1919,8 @@ protected:
 	/** Set while waiting for the partner's revive. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Hawkeye|Health")
 	bool bDowned = false;
+	/** SetScriptedLock: a beat holds her input. */
+	bool bScriptedLock = false;
 
 	/** The down's clock and whether anyone is coming; see IsReviveExpected. */
 	float DownedSeconds = 0.f;

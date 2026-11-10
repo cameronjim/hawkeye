@@ -2894,14 +2894,16 @@ void AHawkeyeCharacter::CheckPerfectDodge()
 	for (TActorIterator<AThugCharacter> It(World); It; ++It)
 	{
 		const EHawkeyeParryKind Kind = UHawkeyeMeleeRules::ClassifyParry(*It);
-		const bool bMelee = Kind == EHawkeyeParryKind::Swing || Kind == EHawkeyeParryKind::Bash;
+		// An unblockable swing is the one a dodge is for: it counts as much as a parryable one.
+		const bool bMelee = Kind == EHawkeyeParryKind::Swing || Kind == EHawkeyeParryKind::Bash || UHawkeyeMeleeRules::IsUnblockableWindup(*It);
 		if (bMelee && FVector::Dist2D(It->GetActorLocation(), GetActorLocation()) <= PerfectDodgeRange)
 		{
 			++PerfectDodgeCount;
 			ApplyTimeWarp(PerfectDodgeSeconds, PerfectDodgeDilation);
 			// TODO(stage3): refill 10% focus here once the focus meter exists.
 			UE_LOG(LogHawkeye, Log, TEXT("%s: perfect dodge through %s's %s (%d so far)."), *GetNameSafe(this), *It->GetName(),
-				Kind == EHawkeyeParryKind::Bash ? TEXT("bash") : TEXT("swing"), PerfectDodgeCount);
+				Kind == EHawkeyeParryKind::Bash ? TEXT("bash") : (Kind == EHawkeyeParryKind::None ? TEXT("unblockable") : TEXT("swing")),
+				PerfectDodgeCount);
 			return;
 		}
 	}
@@ -3693,7 +3695,7 @@ FString AHawkeyeCharacter::GetMovementDebugText() const
 
 bool AHawkeyeCharacter::IsLockedOutByTakedown() const
 {
-	return (TakedownComponent && TakedownComponent->IsPerformingTakedown()) || IsPerformingFinisher();
+	return bScriptedLock || (TakedownComponent && TakedownComponent->IsPerformingTakedown()) || IsPerformingFinisher();
 }
 
 void AHawkeyeCharacter::Input_FirePressed(const FInputActionValue& /*Value*/)
