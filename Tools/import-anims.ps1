@@ -1,8 +1,8 @@
 # Turns the downloaded combat clips into game animations: runs Tools\Editor\import_combat_anims.py
 # in a headless editor (FBX import or package copy, IK rigs, IK retargeters, batch retarget,
 # AM_ montages, the bow's aim offset blend spaces), then Tools\Editor\create_combat_anims.py to fill
-# the DA_AnimSet_ data assets and Tools\Editor\create_bow_ik.py to wire the aim offsets into the bow
-# hands post-process graphs.
+# the DA_AnimSet_ data assets, Tools\Editor\create_bow_ik.py to wire the aim offsets into the bow
+# hands post-process graphs and Tools\Editor\create_kate_look.py to draw Kate as Sparrow (once the copy is in).
 # What to download and where: Tools\Data\Anims\README.md.
 #
 # Idempotent: existing assets are kept unless -Force. Missing clips are reported, not fatal.
@@ -73,6 +73,8 @@ try {
         $result = Invoke-EditorPython "create_combat_anims.py" "HawkeyeAnimSets.log"
         if ($result -ne 0) { exit $result }
         $result = Invoke-EditorPython "create_bow_ik.py" "HawkeyeBowIK.log"
+        if ($result -ne 0) { exit $result }
+        $result = Invoke-EditorPython "create_kate_look.py" "HawkeyeKateLook.log"
         if ($result -ne 0) { exit $result }
     }
 } finally {

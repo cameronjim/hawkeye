@@ -80,6 +80,8 @@ Content/Input/IA_Walk.uasset
 # Free Epic packs added from Fab; read by Tools/Editor/import_combat_anims.py, never committed
 Content/ParagonSparrow/
 Content/Paragon*/
+# Kate's look, built from Sparrow by Tools/Editor/create_kate_look.py (BP_Kate only holds soft references)
+Content/Characters/Kate/Look/
 
 # Combat clips: downloads, their imports and copies, and the retargeted results. Mixamo's and
 # Epic's clips are not republished here; Tools/import-anims.ps1 rebuilds all of it (claude-docs/animation.md).
