@@ -4,6 +4,7 @@
 #include "Combat/HealthComponent.h"
 #include "EngineUtils.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Player/InventoryComponent.h"
 #include "World/ThugCharacter.h"
 #include "HawkeyePlayerController.h"
 #include "Camera/CameraComponent.h"
@@ -110,7 +111,23 @@ bool AChapterEndInteractable::CanInteract_Implementation(AActor* Interactor) con
 			return false;
 		}
 	}
+	if (RequiredKeycards.Num() > 0)
+	{
+		const UInventoryComponent* Inventory = Pawn->FindComponentByClass<UInventoryComponent>();
+		for (const FName Keycard : RequiredKeycards)
+		{
+			if (!Inventory || !Inventory->HasKeycard(Keycard))
+			{
+				return false;
+			}
+		}
+	}
 	return !bRequireCurrentObjective || Tracker->GetCurrentObjective() == Objective;
+}
+
+void AChapterEndInteractable::SetPropMesh(UStaticMesh* Mesh)
+{
+	Prop->SetStaticMesh(Mesh);
 }
 
 FText AChapterEndInteractable::GetInteractPrompt_Implementation() const

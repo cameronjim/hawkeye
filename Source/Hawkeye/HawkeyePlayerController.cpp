@@ -1,4 +1,5 @@
 #include "HawkeyePlayerController.h"
+#include "Mission/ChapterSiteSubsystem.h"
 
 #include "Blueprint/UserWidget.h"
 #include "Hawkeye.h"
@@ -1901,6 +1902,11 @@ void AHawkeyePlayerController::BeginChapterOpening(UMissionDefinition* Mission)
 	if (UBossFightSubsystem* BossFight = UBossFightSubsystem::Get(this))
 	{
 		BossFight->BeginChapter(Mission);
+	}
+	// A chapter with a site on the district may open somewhere of its own (its PlayerStart).
+	if (UChapterSiteSubsystem* Site = UChapterSiteSubsystem::Get(this))
+	{
+		Site->BeginChapter(Mission);
 	}
 }
 

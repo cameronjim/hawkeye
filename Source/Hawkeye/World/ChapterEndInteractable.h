@@ -7,6 +7,7 @@
 
 class UBoxComponent;
 class UCameraComponent;
+class UStaticMesh;
 class UStaticMeshComponent;
 
 /**
@@ -39,6 +40,16 @@ public:
 	/** The prompt the HUD shows. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chapter end")
 	FText Prompt;
+
+	/**
+	 * Keycards the examiner must carry (UInventoryComponent's ring) for this to be offered: the stolen toy sacks at the
+	 * drive table, picked up as keycard pickups. Empty asks for nothing.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chapter end")
+	TArray<FName> RequiredKeycards;
+
+	/** The examined prop's mesh (a spawner sets it; a placed one sets Prop in its defaults). */
+	void SetPropMesh(UStaticMesh* Mesh);
 
 	/** How long the close-up lasts, blend in included, before the view blends back. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chapter end|Camera", meta = (ClampMin = "0.1"))
