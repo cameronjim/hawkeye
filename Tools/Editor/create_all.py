@@ -21,8 +21,12 @@
                                   whose roofs it leaves alone, and the weapon data's confetti arrow)
     3g. create_site               DA_Site_CH02_ToyDrive (chapter 2's toy drive on Avenue B, planned from the records),
                                   BP_Thug_Reindeer, BP_Pickup_ToySack and the site kit (after the boss kit it reuses)
-    4. create_mission_data        DA_CH01_NightShift, DA_CH02_ReindeerGames and DA_CH04_SocialClub (after the chase,
-                                  the site and the boss they name)
+    3h. create_grotto             DA_Site_CH03_Grotto, DA_Site_CH03_GrottoInside, DA_Boss_CH03_Santa (chapter 3's grotto,
+                                  planned from the records and Tools/Interiors/Grotto.json), BP_Thug_Elf, BP_Boss_Santa
+                                  and the grotto kit (after the site it keeps clear of); run again after the interiors
+                                  so its assets can name L_Int_Grotto
+    4. create_mission_data        DA_CH01_NightShift to DA_CH04_SocialClub (after the chase, the sites and the bosses
+                                  they name)
     4b. create_partner            BP_Clint, ST_Partner, BP_PartnerController, DT_Dialogue (after the
                                   weapon data, for DA_Bow_Clint)
     4c. create_enemies            ST_Thug, EQS_CoverPoints (wired into BP_Thug) and BP_Archer (after
@@ -53,6 +57,7 @@
     5e. generate_interior         every chapter interior, L_Int_<Name>, from its layout in Tools/Interiors/
                                   (BP_GameMode_Interior, the M_Int* materials); before the city, whose
                                   City_InteriorEntrance_ doors point at them
+    5f. create_grotto             again: the grotto's sites and boss name L_Int_Grotto once it exists
     6. generate_city              L_District_EastVillage from OpenStreetMap, after everything
                                   else and only when Tools/Data/osm/east_village.buildings.json
                                   exists (Tools/fetch-osm.ps1 writes it)
@@ -87,6 +92,7 @@ STEPS = [
     ("chase", "create_chase"),
     ("boss", "create_boss"),
     ("site", "create_site"),
+    ("grotto", "create_grotto"),
     ("mission data", "create_mission_data"),
     ("partner", "create_partner"),
     ("enemies", "create_enemies"),
@@ -100,6 +106,7 @@ STEPS = [
     ("challenges", "create_challenges"),
     ("crimes", "create_crimes"),
     ("interiors", "generate_interior"),
+    ("grotto maps", "create_grotto"),
     ("city", "generate_city"),
 ]
 

@@ -1,0 +1,59 @@
+{
+  "name": "Grotto",
+  "display_name": "[Santa's Grotto]",
+  "district": "/Game/Maps/L_District_EastVillage",
+  "doorstep": "City_InteriorReturn_Grotto",
+  "rooms": [
+    {"id": "grotto", "label": "Grotto", "floor": 0, "rect": [0, 0, 1400, 1000], "surface": "carpet", "paint": "Cream",
+     "light": "pendant", "tone": "warm"},
+    {"id": "stockroom", "label": "Stockroom", "floor": 0, "rect": [1400, 0, 2000, 1000], "surface": "concrete",
+     "paint": "Stone", "light": "fluorescent", "tone": "cool"},
+    {"id": "corridor", "label": "Corridor", "floor": 0, "rect": [0, 1000, 2000, 1300], "surface": "concrete",
+     "paint": "Slate", "light": "fluorescent", "tone": "cool"},
+    {"id": "workshop", "label": "Workshop", "floor": 0, "rect": [700, 1300, 1700, 2000], "surface": "wood",
+     "paint": "Plum", "light": "fluorescent", "tone": "cool"}
+  ],
+  "doors": [
+    {"id": "grotto_stock", "rooms": ["grotto", "stockroom"], "floor": 0, "at": 250, "width": 200, "leaf": "none"},
+    {"id": "grotto_corridor", "rooms": ["grotto", "corridor"], "floor": 0, "at": 300, "width": 200, "leaf": "none"},
+    {"id": "workshop", "rooms": ["corridor", "workshop"], "floor": 0, "at": 1200, "leaf": "steel", "locked": true,
+     "opens_on": "open_vault"}
+  ],
+  "exits": [
+    {"id": "front", "room": "grotto", "side": "N", "floor": 0, "at": 700, "entrance": true, "name": "[Leave]"},
+    {"id": "roof", "room": "workshop", "side": "S", "floor": 0, "at": 1500, "return": "City_InteriorRoof_Grotto",
+     "name": "[Roof stairs]"}
+  ],
+  "windows": [
+    {"room": "grotto", "side": "N", "floor": 0, "at": 250},
+    {"room": "grotto", "side": "N", "floor": 0, "at": 1150},
+    {"room": "stockroom", "side": "N", "floor": 0, "at": 1750}
+  ],
+  "props": [
+    {"room": "grotto", "tag": "counter", "at": [1150, 150], "yaw": 90},
+    {"room": "grotto", "tag": "bench", "at": [150, 120]},
+    {"room": "grotto", "tag": "plant", "at": [50, 50]},
+    {"room": "grotto", "tag": "plant", "at": [1350, 950]},
+    {"room": "stockroom", "tag": "shelves", "at": [570, 120], "yaw": 180},
+    {"room": "stockroom", "tag": "shelves", "at": [570, 420], "yaw": 180},
+    {"room": "stockroom", "tag": "crates", "at": [120, 880]},
+    {"room": "stockroom", "tag": "crates", "at": [480, 880]},
+    {"room": "corridor", "tag": "pallet", "at": [1850, 150]},
+    {"room": "workshop", "tag": "shelves", "at": [300, 670], "yaw": -90},
+    {"room": "workshop", "tag": "shelves", "at": [550, 670], "yaw": -90}
+  ],
+  "enemies": [
+    {"id": "hall", "type": "FISTS", "room": "grotto", "wait": 3.0, "alert_group": "grotto",
+     "blueprint": "/Game/Blueprints/AI/BP_Thug_Elf",
+     "patrol": [["grotto", 250, 520], ["grotto", 1000, 520]]},
+    {"id": "talk_a", "type": "FISTS", "room": "stockroom", "at": [200, 650], "facing": 0, "alert_group": "grotto",
+     "blueprint": "/Game/Blueprints/AI/BP_Thug_Elf"},
+    {"id": "talk_b", "type": "FISTS", "room": "stockroom", "at": [360, 650], "facing": 180, "alert_group": "grotto",
+     "blueprint": "/Game/Blueprints/AI/BP_Thug_Elf"},
+    {"id": "guard", "type": "BAT", "room": "corridor", "at": [1150, 150], "facing": 180, "alert_group": "grotto",
+     "blueprint": "/Game/Blueprints/AI/BP_Thug_Elf"}
+  ],
+  "exit_signs": [
+    {"room": "workshop", "side": "S", "floor": 0, "at": 1250}
+  ]
+}
