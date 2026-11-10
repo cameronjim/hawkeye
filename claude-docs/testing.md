@@ -204,7 +204,10 @@ Level layout, materials, lighting, animation feel, sound mix, slideshow imagery,
 pacing. These get the human checklist and the playtest rounds. Don't write brittle
 screenshot tests.
 
-## CI (later, optional)
-No CI yet. If a remote and a second machine ever exist: a scheduled job that pulls,
-builds `HawkeyeEditor`, runs `Tools\run-tests.ps1`, and posts the result. The engine is
-too big for a hosted runner, so it'd be a self-hosted box.
+## CI
+`.github/workflows/ci.yml` runs on push and pull request to main, with no Unreal install
+(the engine is too big for a hosted runner, so the C++ build and automation tests stay local
+via `Toolsun-tests.ps1`). Jobs: `python-tests` (unittest discovery over
+`Tools/Editor/test_*.py`), `osm-determinism` (re-parse the committed Overpass data, fail if
+the parsed JSON changes), `lint-python` (ruff, rules in `ruff.toml`), and `format-cpp`
+(clang-format on C++ files changed under `Source/` only). Checkouts skip LFS.
