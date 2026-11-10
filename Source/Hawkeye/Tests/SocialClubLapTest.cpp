@@ -57,16 +57,23 @@
  * The district loads on chapter 1; the lap starts DA_CH04_SocialClub (AHawkeyeGameMode::StartChapter, what chapter
  * select does) and its opening (UBossFightSubsystem::BeginChapter puts Kate on the arena's street stand). She grapples
  * to the roof's parapet anchor (aimed at it, the key pressed only on the anchor it targets), waits out the pre-fight
- * lines, then fights as a player who has learnt the melee: parries a wind-up she can see, finishes anyone open to it
- * (Tomas when he is winded), steps out of a swing about to land, strikes otherwise, never wastes a blow on Tomas while
- * he watches, gets out of the Santa's lane when it lights up, and looses one confetti arrow at Tomas. In Tomas's own
- * phase, once he is under 85%, the campaign is saved and loaded (its own slot) and the fight must come back at his
- * phase's checkpoint: full health, no crew, fighting, Kate where she was. Then on to the end: the after lines and
- * the end card.
+ * lines, then fights as a player who has learnt the boss: parries a jab she can see (a brief stagger, never a
+ * finisher on him), dodges his unblockable haymaker, finishes anyone open to it (Tomas only in his winded window),
+ * chips at his guard otherwise, never wastes a blow on Tomas while he watches, waits out the phase beats, in the
+ * Santa phase stands across its lane from him while it telegraphs (the lure) and gets out of it when it sweeps, and
+ * breaks his guard with a confetti arrow. In Tomas's own phase, once he is under 85%, the campaign is saved and loaded
+ * (its own slot) and the fight must come back at his phase's checkpoint: full health, no crew, fighting, no beat,
+ * Kate where she was and free, no once-a-fight line said again. Then on to the end: the defeat beat, the after lines
+ * and the end card.
  *
- * Writes Saved/Automation/social_club_lap.json (times per phase, hits, the hazard's hits, winded windows, finishers,
- * parries, the barks and lines spoken, the round trip) and Saved/Screenshots/SocialClub/social_*.png (the street
- * stand, the roof at the intro, each phase, Tomas down, the end card).
+ * Asserted (Normal): crew, Tomas and the Santa take 90 to 150 s of fighting (the reload's own seconds left out), Tomas
+ * is winded 3 times or more, his guard is broken by an arrow at least once, she dodges at least one unblockable, and no
+ * finisher on Tomas starts outside his winded window (a parry-finisher on a boss cannot happen).
+ *
+ * Writes Saved/Automation/social_club_lap.json (times per phase, hits, the hazard's hits, winded windows, guard
+ * breaks, unblockables dodged, finishers, parries, beats, the barks and lines spoken, the round trip) and
+ * Saved/Screenshots/SocialClub/social_*.png (the street stand, the roof at the intro, each phase, each beat's camera,
+ * an unblockable's telegraph, the finisher's slow camera, Tomas down, the end card).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapSocialClub, "Hawkeye.Lap.SocialClub",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
@@ -235,6 +242,15 @@ private:
 	void FightStep(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate, double Now);
 	bool AvoidHazard(APlayerController* PC, AHawkeyeCharacter* Kate);
 	bool UpdateDraw(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate, double Now);
+	/** The Santa telegraphing, Tomas up and not winded: stand just across its lane from him so he walks into it. */
+	bool LureIntoLane(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate);
+	/** Tomas's haymaker about to land: dodge it. */
+	bool DodgeUnblockable(AHawkeyeCharacter* Kate, double Now);
+	/** The fight's counters so far: this world's plus those carried over the reload. */
+	int32 Winded(const UBossFightSubsystem* Fight) const;
+	int32 GuardBreaks(const UBossFightSubsystem* Fight) const;
+	int32 UnblockableDodges(const UBossFightSubsystem* Fight) const;
+	int32 OutsideWindow(const UBossFightSubsystem* Fight) const;
 	void BeginRoundTrip(UWorld* World, AHawkeyeCharacter* Kate, double Now);
 	void CheckRoundTrip(UWorld* World, AHawkeyeCharacter* Kate);
 	void Shot(const TCHAR* Name);
@@ -277,6 +293,23 @@ private:
 	// The confetti arrow.
 	bool bDrawing = false;
 	bool bConfettiLoosed = false;
+	int32 ConfettiLoosed = 0;
+	int32 ConfettiBefore = 0;
+	double NextConfettiAt = 0.0;
+
+	// Counters from the world before the reload, and the once-a-fight barks it had spoken.
+	int32 CarriedWinded = 0;
+	int32 CarriedGuardBreaks = 0;
+	int32 CarriedUnblockableDodges = 0;
+	int32 CarriedOutsideWindow = 0;
+	int32 CarriedBeats = 0;
+	TArray<FString> BarksBeforeReload;
+	double ReloadSeconds = 0.0;
+	int32 BossFinishers = 0;
+	int32 Lures = 0;
+	int32 LastLureSweep = -1;
+	int32 LastBeatsPlayed = 0;
+	bool bWasInBeat = false;
 	double DrawStart = 0.0;
 	double SlotResetAt = -1.0;
 
@@ -298,6 +331,9 @@ private:
 	bool bShotSanta = false;
 	bool bShotDown = false;
 	bool bShotEnd = false;
+	bool bShotUnblockable = false;
+	bool bShotFinisherCam = false;
+	TSet<FString> BeatShots;
 };
 
 void FHawkeyeSocialClubLap::Move(APlayerController* PC, const FVector2D& Value)
@@ -471,6 +507,11 @@ bool FHawkeyeSocialClubLap::UpdateDraw(UWorld* World, APlayerController* PC, AHa
 		if (SlotResetAt > 0.0 && Now >= SlotResetAt)
 		{
 			SlotResetAt = -1.0;
+			// Loosed only if one left the quiver (a hit while drawing breaks the draw).
+			const bool bFired = Kate->GetInventoryComponent()->GetArrowCount(SlotConfetti) < ConfettiBefore;
+			bConfettiLoosed |= bFired;
+			ConfettiLoosed += bFired ? 1 : 0;
+			Timeline.Add(FString::Printf(TEXT("%.1f confetti arrow %s"), Now - LapStart, bFired ? TEXT("loosed at Tomas") : TEXT("draw broken")));
 			if (UBowComponent* Bow = Kate->GetBowComponent())
 			{
 				Bow->ClearAimOverride();
@@ -490,15 +531,113 @@ bool FHawkeyeSocialClubLap::UpdateDraw(UWorld* World, APlayerController* PC, AHa
 			Bow->SetAimOverride(Chest);
 		}
 	}
-	if (Now - DrawStart >= 0.85 || IsDown(Tomas))
+	if (Now - DrawStart >= 0.6 || IsDown(Tomas) || Kate->IsStaggered())
 	{
 		Hold(PC, FirePath, false);
 		bDrawing = false;
-		bConfettiLoosed = !IsDown(Tomas);
+		NextConfettiAt = Now + 1.5;
 		Marks.Add(TEXT("confetti"), Now - LapStart);
-		Timeline.Add(FString::Printf(TEXT("%.1f confetti arrow loosed at Tomas"), Now - LapStart));
 		SlotResetAt = Now + 0.3;
 		NextActionAt = Now + 0.2;
+	}
+	return true;
+}
+
+int32 FHawkeyeSocialClubLap::Winded(const UBossFightSubsystem* Fight) const
+{
+	return CarriedWinded + (Fight ? Fight->GetWindedCount() : 0);
+}
+
+int32 FHawkeyeSocialClubLap::GuardBreaks(const UBossFightSubsystem* Fight) const
+{
+	return CarriedGuardBreaks + (Fight ? Fight->GetGuardBreakCount() : 0);
+}
+
+int32 FHawkeyeSocialClubLap::UnblockableDodges(const UBossFightSubsystem* Fight) const
+{
+	return CarriedUnblockableDodges + (Fight ? Fight->GetUnblockableDodges() : 0);
+}
+
+int32 FHawkeyeSocialClubLap::OutsideWindow(const UBossFightSubsystem* Fight) const
+{
+	return CarriedOutsideWindow + (Fight ? Fight->GetBossFinishersOutsideWindow() : 0);
+}
+
+bool FHawkeyeSocialClubLap::DodgeUnblockable(AHawkeyeCharacter* Kate, double Now)
+{
+	const UBossFightSubsystem* Fight = UBossFightSubsystem::Get(Kate);
+	AThugCharacter* Tomas = Fight ? Fight->GetBoss() : nullptr;
+	const UMeleeComponent* Melee = Tomas ? Tomas->GetMeleeComponent() : nullptr;
+	if (!Melee || !UHawkeyeMeleeRules::IsUnblockableWindup(Tomas) || Kate->GetDodgeCooldownRemaining() > 0.f || Kate->IsDodging()
+		|| FVector::Dist2D(Tomas->GetActorLocation(), Kate->GetActorLocation()) > 320.f)
+	{
+		return false;
+	}
+	if (!bShotUnblockable && Melee->GetCurrentAttack().WindupSeconds - Melee->GetPhaseRemaining() > 0.35f)
+	{
+		bShotUnblockable = true;
+		Shot(TEXT("social_unblockable.png"));
+	}
+	if (Melee->GetPhaseRemaining() > 0.4f)
+	{
+		// Wait for it: a dodge too early is over before the blow lands.
+		return bMeleeHeld || Kate->IsMeleeAttacking() || FVector::Dist2D(Tomas->GetActorLocation(), Kate->GetActorLocation()) < 260.f;
+	}
+	const FVector Away = (Kate->GetActorLocation() - Tomas->GetActorLocation()).GetSafeNormal2D();
+	if (Kate->TryDodge((Away * 0.6f + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
+	{
+		++Dodges;
+		NextActionAt = Now + 0.35;
+		Timeline.Add(FString::Printf(TEXT("%.1f dodged Tomas's %s"), Now - LapStart, *Melee->GetCurrentAttack().Name.ToString()));
+	}
+	return true;
+}
+
+bool FHawkeyeSocialClubLap::LureIntoLane(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate)
+{
+	const UBossFightSubsystem* Fight = UBossFightSubsystem::Get(World);
+	const ABossArenaHazard* Hazard = Fight ? Fight->GetHazard() : nullptr;
+	const AThugCharacter* Tomas = Fight ? Fight->GetBoss() : nullptr;
+	if (!Hazard || !Hazard->IsLoose() || Hazard->IsPinned() || !Tomas || HawkeyeSocialLap::IsDown(Tomas) || Fight->IsWinded()
+		|| Hazard->GetState().Phase != EBossHazardPhase::Telegraph)
+	{
+		return false;
+	}
+	const FVector Lane = (Hazard->GetLaneEnd() - Hazard->GetLaneStart()).GetSafeNormal2D();
+	const FVector Across = FVector::CrossProduct(FVector::UpVector, Lane);
+	const FVector Mid = (Hazard->GetLaneStart() + Hazard->GetLaneEnd()) * 0.5f;
+	const float HisSide = FVector::DotProduct(Tomas->GetActorLocation() - Mid, Across);
+	const float MySide = FVector::DotProduct(Kate->GetActorLocation() - Mid, Across);
+	const float Edge = Hazard->GetTuning().HalfWidth;
+	// He has to be close enough to come after her, and not already standing where she would go.
+	if (FMath::Abs(HisSide) > Edge + 900.f || FVector::Dist2D(Tomas->GetActorLocation(), Kate->GetActorLocation()) > 900.f)
+	{
+		return false;
+	}
+	const float Side = HisSide >= 0.f ? -1.f : 1.f;
+	const float Along = FMath::Clamp(FVector::DotProduct(Tomas->GetActorLocation() - Hazard->GetLaneStart(), Lane), 150.f,
+		FVector::Dist2D(Hazard->GetLaneStart(), Hazard->GetLaneEnd()) - 150.f);
+	const FVector Spot = Hazard->GetLaneStart() + Lane * Along + Across * Side * (Edge + 110.f);
+	if (MySide * Side >= Edge + 70.f && FVector::Dist2D(Kate->GetActorLocation(), Spot) < 120.f)
+	{
+		// In place: face him and let him come.
+		Move(PC, FVector2D::ZeroVector);
+		Sprint(PC, false);
+		HawkeyeSocialLap::AimAt(PC, Kate, Tomas->GetActorLocation());
+		return true;
+	}
+	if (bMeleeHeld)
+	{
+		HawkeyeSocialLap::Hold(PC, HawkeyeSocialLap::MeleePath, false);
+		bMeleeHeld = false;
+	}
+	Sprint(PC, true);
+	Move(PC, HawkeyeSocialLap::MoveTowards((Spot - Kate->GetActorLocation()).GetSafeNormal2D(), PC->GetControlRotation().Yaw));
+	// One lure a telegraph.
+	if (Hazard->GetState().Sweeps != LastLureSweep)
+	{
+		LastLureSweep = Hazard->GetState().Sweeps;
+		++Lures;
 	}
 	return true;
 }
@@ -540,9 +679,18 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 	{
 		return;
 	}
+	if (Phase.bHazardActive && LureIntoLane(World, PC, Kate))
+	{
+		return;
+	}
 	if (AvoidHazard(PC, Kate))
 	{
 		++HazardDodges;
+		return;
+	}
+	if (Phase.bBossFights && DodgeUnblockable(Kate, Now))
+	{
+		Move(PC, FVector2D::ZeroVector);
 		return;
 	}
 	AThugCharacter* Target = nullptr;
@@ -585,6 +733,10 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 		Move(PC, FVector2D::ZeroVector);
 		Tap(PC, TakedownPath);
 		++Finishers;
+		if (Kate->GetFinisherComponent()->FindTarget() == Tomas)
+		{
+			++BossFinishers;
+		}
 		NextActionAt = Now + 0.4;
 		Timeline.Add(FString::Printf(TEXT("%.1f finisher on %s"), Now - LapStart, *GetNameSafe(Kate->GetFinisherComponent()->FindTarget())));
 		return;
@@ -610,10 +762,11 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 	}
 	// One confetti arrow at Tomas from a few metres, once the Santa phase has given them.
 	UInventoryComponent* Inventory = Kate->GetInventoryComponent();
-	const bool bWantsConfetti = Phase.bHazardActive && !bConfettiLoosed && Tomas && !IsDown(Tomas)
-		&& Inventory->GetArrowCount(SlotConfetti) > 0 && !Fight->IsWinded();
+	const bool bWantsConfetti = Phase.bHazardActive && GuardBreaks(Fight) == 0 && Now >= NextConfettiAt && Tomas && !IsDown(Tomas)
+		&& Inventory->GetArrowCount(SlotConfetti) > 0 && Fight->IsGuarding();
 	const float TomasDistance = Tomas ? FVector::Dist2D(Tomas->GetActorLocation(), Kate->GetActorLocation()) : BIG_NUMBER;
-	if (bWantsConfetti && TomasDistance < 450.f)
+	const UMeleeComponent* TomasMelee = Tomas ? Tomas->GetMeleeComponent() : nullptr;
+	if (bWantsConfetti && TomasDistance < 280.f)
 	{
 		// Room for a draw first: a few steps back from him, along the lane's side she is on.
 		const FVector Away = (Kate->GetActorLocation() - Tomas->GetActorLocation()).GetSafeNormal2D();
@@ -621,12 +774,13 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 		Move(PC, MoveTowards(Away, PC->GetControlRotation().Yaw));
 		return;
 	}
-	if (bWantsConfetti && TomasDistance <= 1500.f)
+	if (bWantsConfetti && TomasDistance <= 1500.f && !(TomasMelee && TomasMelee->IsAttacking()))
 	{
 		Target = Tomas;
 		Move(PC, FVector2D::ZeroVector);
 		Sprint(PC, false);
 		Inventory->SelectArrowSlot(SlotConfetti);
+		ConfettiBefore = Inventory->GetArrowCount(SlotConfetti);
 		DrawStart = Now;
 		bDrawing = true;
 		Hold(PC, FirePath, true);
@@ -668,6 +822,12 @@ void FHawkeyeSocialClubLap::BeginRoundTrip(UWorld* World, AHawkeyeCharacter* Kat
 	SavedHealth = Kate->GetHealthComponent()->GetCurrentHealth();
 	SavedBossHealth = Fight->GetBoss()->GetHealthComponent()->GetCurrentHealth();
 	SavedObjectives = UMissionSubsystem::Get(World)->GetTracker()->GetCompletedObjectiveIds();
+	CarriedWinded += Fight->GetWindedCount();
+	CarriedGuardBreaks += Fight->GetGuardBreakCount();
+	CarriedUnblockableDodges += Fight->GetUnblockableDodges();
+	CarriedOutsideWindow += Fight->GetBossFinishersOutsideWindow();
+	CarriedBeats += Fight->GetBeatsPlayed();
+	BarksBeforeReload = Fight->GetBarksSpoken();
 	if (!Save->SaveCampaign(TEXT("social club lap mid-fight")) || !Save->LoadCampaign())
 	{
 		Fail(TEXT("the mid-fight save or load did not start"));
@@ -694,6 +854,10 @@ void FHawkeyeSocialClubLap::CheckRoundTrip(UWorld* World, AHawkeyeCharacter* Kat
 	Test->TestTrue(FString::Printf(TEXT("Round trip: Kate where she was saved (%.0f cm off)"), Offset), Offset <= 60.f);
 	Test->TestEqual(TEXT("Round trip: Kate's health came back"), Kate->GetHealthComponent()->GetCurrentHealth(), SavedHealth, 0.5f);
 	Test->TestEqual(TEXT("Round trip: the same objectives are complete"), Objectives, SavedObjectives);
+	Test->TestFalse(TEXT("Round trip: the checkpoint plays no beat"), Fight && (Fight->IsInBeat() || Fight->IsBeatPending()));
+	Test->TestFalse(TEXT("Round trip: Kate is free"), Kate->IsScriptedLocked());
+	Test->TestFalse(TEXT("Round trip: his phase's start line is not said again"),
+		Fight && Fight->GetLinesSpoken().Contains(FName(TEXT("ch04_p2_start"))));
 	RoundTrip = FString::Printf(TEXT("saved with Tomas at %.0f, loaded in %.1f s: phase %d, Tomas %.0f of %.0f, %d crew, Kate %.0f cm off, health %.0f -> %.0f"),
 		SavedBossHealth, FPlatformTime::Seconds() - ReloadStartedAt, Fight ? Fight->GetPhaseIndex() : -1, Health ? Health->GetCurrentHealth() : 0.f,
 		Health ? Health->GetMaxHealth() : 0.f, Fight ? Fight->GetCrew().Num() : -1, Offset, SavedHealth, Kate->GetHealthComponent()->GetCurrentHealth());
@@ -753,6 +917,7 @@ bool FHawkeyeSocialClubLap::Update()
 		// The world clock starts again with the new world; keep the lap's clock running on.
 		LapStart = Now - (FPlatformTime::Seconds() - WallStart);
 		LastHealth = Kate->GetHealthComponent()->GetCurrentHealth();
+		ReloadSeconds = FPlatformTime::Seconds() - ReloadStartedAt;
 		CheckRoundTrip(World, Kate);
 		Enter(EStep::Fight, Now);
 		NextActionAt = Now + 0.5;
@@ -916,6 +1081,33 @@ bool FHawkeyeSocialClubLap::Update()
 			Enter(EStep::Defeated, Now);
 			return false;
 		}
+		if (Fight->IsInBeat() || Fight->IsBeatPending())
+		{
+			if (!bWasInBeat)
+			{
+				ReleaseInputs(PC);
+				Timeline.Add(FString::Printf(TEXT("%.1f a beat starts (phase %d)"), T, Fight->GetPhaseIndex()));
+			}
+			bWasInBeat = true;
+			const FString Name = FString::Printf(TEXT("social_beat_phase%d.png"), Fight->GetPhaseIndex());
+			if (Fight->IsInBeat() && Fight->GetBeatElapsed() > 0.6f && !BeatShots.Contains(Name) && HawkeyeShots::GetOutstanding(Test) == 0)
+			{
+				BeatShots.Add(Name);
+				Shot(*Name);
+			}
+			return false;
+		}
+		if (bWasInBeat)
+		{
+			bWasInBeat = false;
+			Timeline.Add(FString::Printf(TEXT("%.1f the beat is over"), T));
+			NextActionAt = Now + 0.2;
+		}
+		if (!bShotFinisherCam && Kate->GetFinisherComponent() && Kate->GetFinisherComponent()->IsSlowing() && Fight->GetDecisiveFinishers() > 0)
+		{
+			bShotFinisherCam = true;
+			Shot(TEXT("social_finisher_cam.png"));
+		}
 		const int32 PhaseIndex = Fight->GetPhaseIndex();
 		const double InPhase = T - Marks.FindRef(FString::Printf(TEXT("phase_%d"), PhaseIndex));
 		if (PhaseIndex == 0 && !bShotCrew && InPhase > 4.0)
@@ -948,6 +1140,15 @@ bool FHawkeyeSocialClubLap::Update()
 	}
 	case EStep::Defeated:
 		Move(PC, FVector2D::ZeroVector);
+		if (Fight->IsInBeat() && Fight->GetBeatElapsed() > 0.6f && !BeatShots.Contains(TEXT("social_beat_down.png")) && HawkeyeShots::GetOutstanding(Test) == 0)
+		{
+			BeatShots.Add(TEXT("social_beat_down.png"));
+			Shot(TEXT("social_beat_down.png"));
+		}
+		if (Fight->IsInBeat() || Fight->IsBeatPending())
+		{
+			return false;
+		}
 		if (!bShotDown && Now - StepSince > 1.5)
 		{
 			bShotDown = true;
@@ -1004,8 +1205,32 @@ void FHawkeyeSocialClubLap::Report(UWorld* World)
 	const bool bComplete = Missions && Missions->IsMissionComplete();
 	Test->TestTrue(TEXT("The lap completes the chapter"), bComplete);
 	Test->TestTrue(TEXT("The round trip happened and was checked"), bRoundTripChecked);
-	Test->TestTrue(TEXT("Tomas went winded at least once"), Fight && Fight->GetWindedCount() > 0);
+	const double FightSeconds = Marks.Contains(TEXT("tomas_down")) && Marks.Contains(TEXT("fight"))
+		? Marks.FindRef(TEXT("tomas_down")) - Marks.FindRef(TEXT("fight")) - ReloadSeconds : -1.0;
+	TArray<FString> Repeated;
+	if (Fight)
+	{
+		for (const FString& Bark : Fight->GetBarksSpoken())
+		{
+			if (BarksBeforeReload.Contains(Bark))
+			{
+				Repeated.Add(Bark);
+			}
+		}
+	}
+	const bool bNormal = World && DifficultyName(World) == TEXT("Normal");
+	Test->TestTrue(TEXT("Tomas went winded at least 3 times"), Winded(Fight) >= 3);
 	Test->TestTrue(TEXT("The confetti arrow was loosed"), bConfettiLoosed);
+	Test->TestTrue(TEXT("His guard was broken by an arrow at least once"), GuardBreaks(Fight) >= 1);
+	Test->TestTrue(TEXT("Kate dodged at least one unblockable"), UnblockableDodges(Fight) >= 1);
+	Test->TestEqual(TEXT("No finisher on Tomas outside his winded window (no parry-finisher on a boss)"), OutsideWindow(Fight), 0);
+	Test->TestTrue(FString::Printf(TEXT("No once-a-fight bark said again after the load (%s)"), *FString::Join(Repeated, TEXT(", "))),
+		Repeated.Num() == 0);
+	Test->TestTrue(TEXT("The phase beats and the defeat beat played"), CarriedBeats + (Fight ? Fight->GetBeatsPlayed() : 0) >= 3);
+	if (bNormal)
+	{
+		Test->TestTrue(FString::Printf(TEXT("The fight takes 90 to 150 s on Normal (%.1f)"), FightSeconds), FightSeconds >= 90.0 && FightSeconds <= 150.0);
+	}
 	FString Json = TEXT("{\n");
 	Json += FString::Printf(TEXT("  \"completed\": %s,\n"), bComplete ? TEXT("true") : TEXT("false"));
 	Json += FString::Printf(TEXT("  \"wall_seconds\": %.1f,\n"), FPlatformTime::Seconds() - WallStart);
@@ -1021,7 +1246,14 @@ void FHawkeyeSocialClubLap::Report(UWorld* World)
 		DamageTaken, HazardHits, HazardDodges);
 	Json += FString::Printf(TEXT("  \"strikes\": %d,\n  \"parries\": %d,\n  \"finishers\": %d,\n  \"dodges\": %d,\n  \"deaths\": %d,\n"), Strikes, Parries,
 		Finishers, Dodges, Deaths);
-	Json += FString::Printf(TEXT("  \"winded\": %d,\n  \"confetti\": %s,\n"), Fight ? Fight->GetWindedCount() : 0, bConfettiLoosed ? TEXT("true") : TEXT("false"));
+	Json += FString::Printf(TEXT("  \"winded\": %d,\n  \"confetti\": %s,\n  \"confetti_loosed\": %d,\n"), Winded(Fight),
+		bConfettiLoosed ? TEXT("true") : TEXT("false"), ConfettiLoosed);
+	Json += FString::Printf(TEXT("  \"fight_seconds\": %.1f,\n  \"reload_seconds\": %.1f,\n  \"guard_breaks\": %d,\n  \"unblockable_dodges\": %d,\n"),
+		FightSeconds, ReloadSeconds, GuardBreaks(Fight), UnblockableDodges(Fight));
+	Json += FString::Printf(TEXT("  \"boss_finishers\": %d,\n  \"finishers_outside_window\": %d,\n  \"hazard_boss_hits\": %d,\n  \"lures\": %d,\n"),
+		BossFinishers, OutsideWindow(Fight), Fight ? Fight->GetHazardBossHits() : 0, Lures);
+	Json += FString::Printf(TEXT("  \"beats\": %d,\n  \"beats_skipped\": %d,\n  \"repeated_barks\": %d,\n"),
+		CarriedBeats + (Fight ? Fight->GetBeatsPlayed() : 0), Fight ? Fight->GetBeatsSkipped() : 0, Repeated.Num());
 	Json += FString::Printf(TEXT("  \"round_trip\": \"%s\",\n"), *Escape(RoundTrip));
 	TArray<FString> Quoted;
 	if (Fight)
@@ -1051,9 +1283,10 @@ void FHawkeyeSocialClubLap::Report(UWorld* World)
 	}
 	Json += TEXT("  \"failures\": [") + FString::Join(Quoted, TEXT(", ")) + TEXT("]\n}\n");
 	WriteText(TEXT("social_club_lap.json"), Json);
-	Test->AddInfo(FString::Printf(TEXT("Social club lap: %s in %.1f s wall; hits %d (%.0f), hazard hits %d, strikes %d, parries %d, finishers %d, winded %d, deaths %d."),
-		bComplete ? TEXT("completed") : TEXT("NOT completed"), FPlatformTime::Seconds() - WallStart, HitsTaken, DamageTaken, HazardHits, Strikes,
-		Parries, Finishers, Fight ? Fight->GetWindedCount() : 0, Deaths));
+	Test->AddInfo(FString::Printf(TEXT("Social club lap: %s in %.1f s wall, %.1f s of fighting; hits %d (%.0f), hazard hits %d, strikes %d, parries %d, finishers %d (%d on Tomas, %d outside his window), winded %d, guard breaks %d, unblockables dodged %d, Santa on Tomas %d, deaths %d."),
+		bComplete ? TEXT("completed") : TEXT("NOT completed"), FPlatformTime::Seconds() - WallStart, FightSeconds, HitsTaken, DamageTaken, HazardHits,
+		Strikes, Parries, Finishers, BossFinishers, OutsideWindow(Fight), Winded(Fight), GuardBreaks(Fight), UnblockableDodges(Fight),
+		Fight ? Fight->GetHazardBossHits() : 0, Deaths));
 	for (const FString& Line : Timeline)
 	{
 		Test->AddInfo(TEXT("  ") + Line);
