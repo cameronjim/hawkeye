@@ -1,0 +1,93 @@
+# Hosted CI: only the checks that need no Unreal Engine install.
+#
+# The engine (UE 5.8, tens of GB) is far too large for a hosted runner, so the C++ build and
+# the automation tests are NOT run here. They run locally via Tools\run-tests.ps1.
+# Content is Git LFS-tracked; none of these jobs need it, so checkouts use lfs: false.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11" # matches the engine's embedded Python
+      # The test files put their own folder on sys.path and need no `unreal` module, so
+      # discovery picks up every Tools/Editor/test_*.py (test_geo.py, test_interior.py, ...).
+      - name: unit tests
+        run: python -B -m unittest discover -s Tools/Editor -p "test_*.py" -v
+
+  osm-determinism:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Re-parse the committed raw Overpass download (no network) and require the committed
+      # parsed records to come out byte-identical.
+      - name: re-parse osm data
+        run: python -B Tools/Editor/parse_osm.py Tools/Data/osm/east_village.json
+      - name: committed records unchanged
+        run: git diff --exit-code -- Tools/Data/osm
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install ruff
+      # Rules and exclusions live in ruff.toml.
+      - run: ruff check Tools
+
+  format-cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 0
+      - name: clang-format changed C++ files
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # The codebase as a whole is not formatted, so only files changed in this push or
+          # PR are checked.
+          if [ "$EVENT" = "pull_request" ]; then
+            base="$PR_BASE"
+          else
+            base="$PUSH_BEFORE"
+          fi
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="HEAD~1"
+          fi
+          git diff --name-only --diff-filter=ACMR "$base" HEAD -- 'Source/**/*.cpp' 'Source/**/*.h' > changed.txt || true
+          if [ ! -s changed.txt ]; then
+            echo "no C++ files changed under Source/; nothing to check"
+            exit 0
+          fi
+          cat changed.txt
+          pip install clang-format
+          xargs -a changed.txt clang-format --dry-run --Werror
