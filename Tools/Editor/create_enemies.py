@@ -2,7 +2,8 @@
 
     /Game/Blueprints/AI/Thug/ST_Thug          the thugs' StateTree, built headless by
                                               UHawkeyeThugTreeBuilder (C++, StateTree editor API):
-                                              a state per EThugMode in priority order
+                                              six top-level states by priority, the fight by weapon
+                                              under Attack (claude-docs/architecture.md, "Thugs")
     /Game/Blueprints/AI/EQS_CoverPoints       the gunner's cover search: an EnvQuery built through its
                                               options in C++ (donut of candidates, a blocked trace from
                                               the target, nearest first); no EQS editor graph
@@ -41,7 +42,7 @@ TREE_NAME = "ST_Thug"
 QUERY_NAME = "EQS_CoverPoints"
 ARCHER_NAME = "BP_Archer"
 BUILD_TAG = "HawkeyeBuild"
-TREE_BUILD = "thug-tree-1"          # bump when UHawkeyeThugTreeBuilder's tree changes
+TREE_BUILD = "thug-tree-2"          # bump when UHawkeyeThugTreeBuilder's tree changes
 QUERY_BUILD = "cover-query-1"       # bump when FillCoverQuery changes
 
 M_ARCHER_SUIT = ARCHER_MATERIAL_PATH + "/M_ArcherSuit"
@@ -79,7 +80,7 @@ def ensure_state_tree():
         return None
     existing = c.load_or_none(full)
     if existing is not None and unreal.EditorAssetLibrary.get_metadata_tag(existing, BUILD_TAG) == TREE_BUILD:
-        c.log("exists", full, "{0} states".format(builder.count_thug_states(existing)))
+        c.log("exists", full, builder.describe_thug_state_tree(existing))
         return existing
     c.ensure_directory(TREE_PATH)
     tree = builder.build_thug_state_tree(full)
@@ -89,7 +90,7 @@ def ensure_state_tree():
     unreal.EditorAssetLibrary.set_metadata_tag(tree, BUILD_TAG, TREE_BUILD)
     c.save(tree)
     c.log("updated" if existing is not None else "created", full,
-          "{0} states, schema StateTree AI Component".format(builder.count_thug_states(tree)))
+          "schema StateTree AI Component: " + builder.describe_thug_state_tree(tree))
     return tree
 
 
