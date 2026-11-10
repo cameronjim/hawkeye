@@ -48,6 +48,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chapter end")
 	TArray<FName> RequiredKeycards;
 
+	/** Offered only once this objective is complete (an examine that waits for the chapter's end). None: no wait. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chapter end")
+	FName RequiredObjective;
+
 	/** The examined prop's mesh (a spawner sets it; a placed one sets Prop in its defaults). */
 	void SetPropMesh(UStaticMesh* Mesh);
 

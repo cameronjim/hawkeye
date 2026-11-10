@@ -49,6 +49,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	FName CompletesObjectiveId;
 
+	/**
+	 * The door unlocks and opens by itself when this objective completes (or is already complete when it starts, or a
+	 * load says so): the grotto's workshop door, opened by the keypad's examine. It answers no interaction while it
+	 * waits. None: an ordinary door.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
+	FName OpensOnObjective;
+
+	/** Opens it if OpensOnObjective is complete. True when that opened it. */
+	bool CheckOpensOnObjective();
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Door")
 	EDoorMotion Motion = EDoorMotion::Slide;
 
@@ -166,7 +177,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
+
+	UFUNCTION()
+	void HandleObjectiveUpdated(class UMissionObjective* Objective, int32 ObjectiveIndex);
+
+	UFUNCTION()
+	void HandleCampaignLoaded(bool bSuccess);
 
 	/** Puts the leaf at OpenAlpha along its closed -> open path. */
 	void ApplyOpenAlpha();

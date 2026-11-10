@@ -102,6 +102,14 @@ bool AChapterEndInteractable::CanInteract_Implementation(AActor* Interactor) con
 	{
 		return false;
 	}
+	if (!RequiredObjective.IsNone())
+	{
+		const UMissionObjective* Before = Tracker->FindObjective(RequiredObjective);
+		if (!Before || !Before->IsCompleted())
+		{
+			return false;
+		}
+	}
 	// Not with a thug alerted: the end sequence and the return from its scene would put her back in front of
 	// whoever is still shooting (the ArcherPair guards CH01's arrow). Clint's fight clock does not hold it.
 	for (TActorIterator<AThugCharacter> It(GetWorld()); It; ++It)

@@ -4,7 +4,10 @@
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Mission/MissionObjective.h"
 #include "Mission/MissionSubsystem.h"
+#include "Mission/MissionTracker.h"
+#include "Save/HawkeyeSaveSubsystem.h"
 #include "Navigation/NavLinkProxy.h"
 #include "NavAreas/NavArea_Default.h"
 #include "NavAreas/NavArea_Null.h"
@@ -73,6 +76,57 @@ void ADoorActor::BeginPlay()
 		InteractZone->OnComponentBeginOverlap.AddDynamic(this, &ADoorActor::HandleZoneBeginOverlap);
 	}
 	UpdateNavLink();
+	if (!OpensOnObjective.IsNone())
+	{
+		if (UMissionSubsystem* Missions = UMissionSubsystem::Get(this))
+		{
+			Missions->OnObjectiveUpdated.AddUniqueDynamic(this, &ADoorActor::HandleObjectiveUpdated);
+		}
+		if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this))
+		{
+			Save->OnCampaignLoaded.AddUniqueDynamic(this, &ADoorActor::HandleCampaignLoaded);
+		}
+		CheckOpensOnObjective();
+	}
+}
+
+void ADoorActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this))
+	{
+		Save->OnCampaignLoaded.RemoveDynamic(this, &ADoorActor::HandleCampaignLoaded);
+	}
+	Super::EndPlay(EndPlayReason);
+}
+
+bool ADoorActor::CheckOpensOnObjective()
+{
+	const UMissionSubsystem* Missions = UMissionSubsystem::Get(this);
+	const UMissionTracker* Tracker = Missions ? Missions->GetTracker() : nullptr;
+	const UMissionObjective* Objective = Tracker && !OpensOnObjective.IsNone() ? Tracker->FindObjective(OpensOnObjective) : nullptr;
+	if (!Objective || !Objective->IsCompleted() || bOpen)
+	{
+		return false;
+	}
+	bLocked = false;
+	UE_LOG(LogHawkeye, Log, TEXT("%s: %s is done; opening."), *GetName(), *OpensOnObjective.ToString());
+	return OpenNow(nullptr);
+}
+
+void ADoorActor::HandleObjectiveUpdated(UMissionObjective* Objective, int32 /*ObjectiveIndex*/)
+{
+	if (Objective && Objective->ObjectiveId == OpensOnObjective)
+	{
+		CheckOpensOnObjective();
+	}
+}
+
+void ADoorActor::HandleCampaignLoaded(bool bSuccess)
+{
+	if (bSuccess)
+	{
+		CheckOpensOnObjective();
+	}
 }
 
 void ADoorActor::UpdateNavLink()
@@ -119,7 +173,12 @@ void ADoorActor::HandleZoneBeginOverlap(UPrimitiveComponent* /*OverlappedCompone
 
 bool ADoorActor::CanInteract_Implementation(AActor* Interactor)  const
 {
-	// A locked door still answers, so the player is told what it wants; an open one is done.
+	// A locked door still answers, so the player is told what it wants; an open one is done. One an objective opens
+	// answers nothing while it waits (the thing that opens it is elsewhere: the workshop's keypad).
+	if (bLocked && !OpensOnObjective.IsNone())
+	{
+		return false;
+	}
 	return !bOpen && Cast<AHawkeyeCharacter>(Interactor) != nullptr;
 }
 
