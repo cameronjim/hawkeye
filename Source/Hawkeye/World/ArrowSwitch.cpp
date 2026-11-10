@@ -8,6 +8,7 @@
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Pawn.h"
 #include "Mission/ChapterEventSubsystem.h"
+#include "NavigationSystem.h"
 #include "UObject/ConstructorHelpers.h"
 
 AArrowSwitch::AArrowSwitch()
@@ -71,9 +72,19 @@ bool AArrowSwitch::HandleArrowHit(AActor* Projectile, AActor* Shooter)
 		Lamp->SetVisibility(false);
 	}
 	// The buzz: a noise at the box, heard (or not) as any noise is. Kate made it, as she makes her footsteps.
+	// Heard from the floor in front of the box (on the navmesh, so the hearing's path round walls starts somewhere).
+	FVector NoiseAt = GetActorLocation() + GetActorForwardVector() * 80.f;
+	if (const UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
+	{
+		FNavLocation OnNav;
+		if (Nav->ProjectPointToNavigation(NoiseAt, OnNav, FVector(150.f, 150.f, 300.f)))
+		{
+			NoiseAt = OnNav.Location + FVector(0.f, 0.f, 50.f);
+		}
+	}
 	if (APawn* By = Cast<APawn>(Shooter); By && NoiseLoudness > 0.f)
 	{
-		By->MakeNoise(NoiseLoudness, By, GetActorLocation());
+		By->MakeNoise(NoiseLoudness, By, NoiseAt);
 	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: switch %s tripped by %s (noise %.1f)."), *GetName(), *SwitchId.ToString(), *GetNameSafe(Projectile),
 		NoiseLoudness);
