@@ -17,9 +17,9 @@ flashback and the small playable scene it ends in (claude-docs/gameplay-semantic
                                                     PlayableScene = L_Scene_Placeholder, back to
                                                     City_SceneReturn_FB00 (generate_city.py places it)
 
-Chapter 1's lines (CH01_LINES, the DT_Dialogue rows create_partner.py writes), its sequences and its phone texts
-come from docs/chapters/ACT1-script.md and are every one flagged a draft (bDraft) so they can be found and
-replaced. Lucky the dog is talked to and never appears. No chapter plays the placeholder flashback or its scene
+Chapter 1's lines (CH01_LINES, the DT_Dialogue rows create_partner.py writes), its sequences and its phone texts,
+and chapter 4's lines (CH04_LINES: the pre-fight and after sequences and the boss fight's phase lines) come from
+docs/chapters/ACT1-script.md and are every one flagged a draft (bDraft) so they can be found and replaced. Lucky the dog is talked to and never appears. No chapter plays the placeholder flashback or its scene
 now (Night Shift has no flashback); they stay for the chapters that will.
 
 The tables and the flashback carry a build tag and are rewritten only when their rows change; the map is saved
@@ -67,6 +67,45 @@ CH01_LINES = [
     ("seq_ch01_caught_01", "Kate", "And that's the night shift.", 3.0),
 ]
 
+# Chapter 4's lines (ACT1-script.md, "Chapter 4: The Social Club", all drafts), the same shape as CH01_LINES. The
+# pre-fight and after lines are the two sequences below; the phase lines are spoken by name by the boss fight
+# (DA_Boss_CH04_Tomas, create_boss.py: each phase's start, end and barks).
+CH04_LINES = [
+    ("seq_ch04_prefight_01", "Tomas", "Kate Bishop. Thank you for coming. Honestly.", 3.5),
+    ("seq_ch04_prefight_02", "Kate", "You've been following me for three weeks.", 3.0),
+    ("seq_ch04_prefight_03", "Tomas", "Four. I'm bad at it. Look, I have to do this. I promised the guys.", 4.5),
+    ("seq_ch04_prefight_04", "Kate", "You promised them you'd fight me.", 2.5),
+    ("seq_ch04_prefight_05", "Tomas", "I'd feel bad if I didn't at least try.", 3.0),
+    ("seq_ch04_prefight_06", "Kate", "No, I get it.", 2.0),
+    ("seq_ch04_prefight_07", "Tomas", "You're very understanding. Okay. Music, please.", 3.5),
+    ("ch04_p1_start", "Tomas", "Nice and easy, everybody. Stretch first.", 3.0),
+    ("ch04_p1_candy", "Kate", "Is that load-bearing?", 2.0),
+    ("ch04_p1_parry", "Tomas", "Oh, that's clean. Did you see that? That's clean.", 3.0),
+    ("ch04_p1_down", "Tomas", "It's fine, Enrique, walk it off.", 2.5),
+    ("ch04_p1_end", "Tomas", "Okay. Okay. My turn, I guess.", 2.5),
+    ("ch04_p2_start", "Tomas", "Just so you know, the knees are not what they were.", 3.0),
+    ("ch04_p2_hit", "Tomas", "Sorry! Sorry. You okay?", 2.0),
+    ("ch04_p2_dodge", "Tomas", "Good feet. You do yoga?", 2.0),
+    ("ch04_p2_winded", "Tomas", "One second. One second. The stairs up here, bro.", 3.0),
+    ("ch04_p2_finisher", "Kate", "Take your time.", 1.5),
+    ("ch04_p2_end", "Tomas", "I'm good. I'm good. Is the Santa supposed to do that?", 3.0),
+    ("ch04_p3_loose_01", "Kate", "Nobody tied down the Santa?", 2.0),
+    ("ch04_p3_loose_02", "Tomas", "That was Ivan's job.", 2.0),
+    ("ch04_p3_confetti", "Kate", "Confetti arrow. It's tactical.", 2.5),
+    ("ch04_p3_confetti_used", "Tomas", "Oh, that's nice. That's festive.", 2.5),
+    ("ch04_p3_down", "Tomas", "Ha. Okay. That's it. Good try, me.", 3.0),
+    ("seq_ch04_after_01", "Tomas", "You're still coming to the Christmas dinner? At the club?", 3.5),
+    ("seq_ch04_after_02", "Kate", "You just tried to beat me up.", 2.5),
+    ("seq_ch04_after_03", "Tomas", "My aunt's making the cabbage rolls.", 2.5),
+    ("seq_ch04_after_04", "Kate", "...Yeah, I'm coming.", 2.0),
+    ("seq_ch04_after_05", "Tomas",
+     "Hey. One thing. Somebody's been asking around. About the old crew. About the Sloan money.", 5.0),
+    ("seq_ch04_after_06", "Kate", "Who?", 1.5),
+    ("seq_ch04_after_07", "Tomas", "Don't know. I'd stay out of it, if I was you. Okay, bye!", 3.5),
+    ("seq_ch04_after_08", "Kate", "He waved. He's waving from a police car.", 3.0),
+    ("seq_ch04_after_09", "Kate", "Sloan money. That's Mom's. ...Not tonight. Look at that, Lucky. Whole city, lit up.", 5.5),
+]
+
 # DT_DialogueSequences: (row, sequence, order, DT_Dialogue line, gap seconds). The opening speaks a second
 # into the run, under the title card; the rest are moments of the chase (DA_Chase_CH01_NightShift names them).
 SEQUENCE_STEPS = [
@@ -80,6 +119,11 @@ SEQUENCE_STEPS = [
     ("seq_ch01_cornered_01", "seq_ch01_cornered", 1, "seq_ch01_cornered_01", 0.2),
     ("seq_ch01_cornered_02", "seq_ch01_cornered", 2, "seq_ch01_cornered_02", 0.4),
     ("seq_ch01_caught_01", "seq_ch01_caught", 1, "seq_ch01_caught_01", 0.4),
+] + [
+    # Chapter 4: the pre-fight talk on the roof when she arrives, and the after once Tomas is down (his line from
+    # the cruiser, then Kate over the city, a beat apart).
+    (row, row[:-3], int(row[-2:]), row, 1.2 if row == "seq_ch04_after_05" or row == "seq_ch04_after_09" else 0.4)
+    for row, _speaker, _text, _seconds in CH04_LINES if row.startswith("seq_ch04_")
 ]
 
 # DT_Messages: (row, sender, thread, text, trigger, objective or event, delay seconds, arrives read). After the
