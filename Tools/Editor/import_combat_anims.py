@@ -745,7 +745,13 @@ def report_pose(clip, seq, target_name):
 
 
 def source_folder(source):
-    path = os.environ.get(source.get("path_env", ""), "") or source["path"]
+    envs = source.get("path_env", [])
+    if isinstance(envs, str):
+        envs = [envs]
+    path = next((os.environ[n] for n in envs if os.environ.get(n)), "") or source["path"]
+    # {NAME} in a manifest path is an environment variable; the launcher scripts export HAWKEYE_UE_ROOT and
+    # HAWKEYE_GASP_CONTENT from Tools\hawkeye.env.ps1, and the path as written is the fallback.
+    path = re.sub(r"\{(\w+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), path)
     if not os.path.isabs(path):
         path = os.path.join(REPO, path.replace("/", os.sep))
     return path

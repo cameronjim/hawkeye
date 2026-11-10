@@ -28,6 +28,10 @@ $Engine = Resolve-HawkeyeEngine -Explicit $Engine
 
 $ErrorActionPreference = "Stop"
 
+# The importer reads its source folders from these (path_env and {HAWKEYE_UE_ROOT} in Tools\Data\Anims\manifest.json).
+$env:HAWKEYE_UE_ROOT = $Engine
+$env:HAWKEYE_GASP_CONTENT = Join-Path (Resolve-HawkeyeGaspRoot) "Content"
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $Project = Join-Path $ProjectRoot "Hawkeye.uproject"

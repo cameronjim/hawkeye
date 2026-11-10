@@ -120,7 +120,7 @@
       "name": "ParagonSparrow",
       "kind": "uasset_project",
       "path": "C:/Users/camer/code/GASP/Content",
-      "path_env": "HAWKEYE_SPARROW_CONTENT",
+      "path_env": ["HAWKEYE_SPARROW_CONTENT", "HAWKEYE_GASP_CONTENT"],
       "skeletal_mesh": "/Game/ParagonSparrow/Characters/Heroes/Sparrow/Meshes/Sparrow",
       "chains": "ue4",
       "about": "Epic's free Paragon: Sparrow pack from Fab, added to a project whose Content folder is path (it lives in the Game Animation Sample's). The clips, the skeleton and the mesh (with its materials, about 730 MB) are copied to the same /Game/ParagonSparrow paths here, git-ignored."
@@ -190,13 +190,14 @@
         "name": "SelfTestUE5",
         "kind": "uasset_project",
         "path": "C:/Users/camer/code/GASP/Content",
+        "path_env": "HAWKEYE_GASP_CONTENT",
         "skeletal_mesh": "/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny_Simple",
         "chains": "uefn"
       },
       {
         "name": "SelfTestFbx",
         "kind": "mixamo_fbx",
-        "path": "C:/Program Files/Epic Games/UE_5.8/Engine/Content/FbxEditorAutomation",
+        "path": "{HAWKEYE_UE_ROOT}/Engine/Content/FbxEditorAutomation",
         "chains": "fbxtest",
         "mesh_file": "AnimatedCharacter.fbx"
       }
