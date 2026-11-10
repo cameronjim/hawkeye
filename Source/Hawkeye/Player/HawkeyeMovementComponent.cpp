@@ -2,8 +2,6 @@
 
 #include "Player/HawkeyeMovementComponent.h"
 
-#include "Components/PrimitiveComponent.h"
-
 namespace HawkeyeZip
 {
 	static constexpr uint8 ZipMode = static_cast<uint8>(EHawkeyeCustomMovement::Zip);
