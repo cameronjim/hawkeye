@@ -51,7 +51,7 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   restored after.
 - Crouch keeps (2026-09-29, from the interior stealth lap). A crouch ends only on the player's input (a toggle
   press, or the release when crouch is held), a slide's start, a dodge, a parkour move, hang or zip (entering the
-  flying mode; she comes out of it standing, the movement component no longer crouches her again after), a
+  flying or the zip mode; she comes out of it standing, the movement component no longer crouches her again after), a
   takedown or finisher (allowed; today both leave her crouched), the downed state (and the revive from it), or a
   real fall: one of at least 0.3 s that has dropped at least 30 cm from its top (`CrouchKeepFallSeconds`,
   `CrouchKeepFallHeight`). Stairs, landings,
@@ -302,6 +302,19 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   line over 0.1 s. After a mid-air chain the old anchor's building counts as a start
   support until she is clear of it. The scripted lap shows a true mid-air redirect with
   zero touch-downs inside the chain.
+- Zip movement (revised 2026-11-09; the zip was a constant 1800 cm/s placement that stopped her
+  dead on arrival and dropped her straight down on a let-go). The zip is a custom movement mode on
+  `UHawkeyeMovementComponent` (`MOVE_Custom`, `EHawkeyeCustomMovement::Zip`): the capsule is swept
+  every sub-step and `Velocity` is what it really moved over the time. Entry keeps her momentum:
+  speed along the line starts at her velocity along it, clamped to 600 cm/s (`ZipMinStartSpeed`) and
+  1800 (`ZipSpeed`), taken when the zip starts (from the ground the 0.15 s hop comes first, and
+  reports its own velocity), and rises at 6000 cm/s² (`ZipAcceleration`) to 1800. A chain keeps the
+  speed; only the direction turns. Arriving, she is on the landing point, Walking (Falling when there
+  is no floor under it), moving along the line's horizontal direction at the lower of her speed and
+  600 cm/s (`ArrivalCarrySpeed`). Letting go (jump or crouch) falls with the zip's velocity times 1.0
+  (`ReleaseVelocityScale`); jump adds 350 cm/s up (`ReleaseJumpBoost`), crouch nothing; either is a
+  controlled drop. Blocked, she falls with zero velocity: a wall is not a launch. Speed is integrated
+  exactly per sub-step, so a zip covers the same distance in the same time at 30 and 120 Hz.
 - Landing above 400 cm while moving is a roll: 0.5 s, 200 cm along the stick, capsule at
   half-height 50, camera pitched down 8 degrees and back, input locked 0.35 s, a single
   forward tumble of the body. Landing while still is a 0.4 s stumble from 0 back to run
@@ -318,9 +331,9 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   and the viewport's shape; 30 degrees up is off a 16:9 screen), and in line of sight from the
   camera; see "Grapple picker" for which one is marked (a green diamond with the key under it, Q
   or RB, every time; see the next bullet). Fire spawns a straight, gravity-free
-  arrow at 6000 cm/s; on arrival the character zips in Flying mode along a straight line
-  to the anchor's landing point at 1800 cm/s, input locked except the camera, and lands
-  in Walking with no fall damage. Chaining is allowed once past 70% of the line, when
+  arrow at 6000 cm/s; on arrival the character zips along a straight line to the anchor's
+  landing point in the zip movement mode ("Zip movement" below), input locked except the
+  camera, and lands with no fall damage. Chaining is allowed once past 70% of the line, when
   the marker returns. A zip is cancelled by static geometry on the path except within
   150 cm of the anchor (corner anchors share walls with neighbours). Grapple arrows are
   unlimited (revised 2026-09-29, "grapples should be infinite - it is definitely part of

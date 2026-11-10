@@ -169,6 +169,17 @@ UMissionSubsystem (world subsystem)
   and a muzzle light. Enhanced Input action properties and all viewmodel assets are
   assigned in `BP_HawkeyeCharacter`. Movement tuning lives on the Blueprint's
   CharacterMovement component, not in C++.
+- `UHawkeyeMovementComponent` (`Player/HawkeyeMovementComponent`): the character's
+  CharacterMovementComponent (`AHawkeyeCharacter` swaps it in with `SetDefaultSubobjectClass`, so
+  BP_Kate and BP_Clint keep their tuned values). It adds custom movement modes
+  (`EHawkeyeCustomMovement`); `PhysCustom` runs the zip (`PhysZip`): hop, line, speed and
+  acceleration, the chain's turn, the swept move, a truthful `Velocity`, and the velocity she leaves
+  with (arrival carry, let-go, blocked). `UGrappleComponent` keeps the rules: targeting, arrows, which
+  actors the capsule ignores as start and anchor supports, audio and effects, the delegates. It
+  starts a zip with an `FHawkeyeZipLine`, lets go with `ReleaseZip`, reads progress, direction and
+  speed back, and answers the movement component's three callbacks: a hit (drop, retry, or
+  straighten a chain's swing), each sub-step (release the start supports), and the end (arrived,
+  blocked, released, interrupted). Parkour moves and hangs still use `MOVE_Flying`.
 - `AHawkeyePlayerController`: the glue for UI. Creates `HudWidgetClass` on BeginPlay,
   subscribes to the mission subsystem, owns `FlashbackWidgetClass`, hides the HUD during a
   flashback, opens the next level when it finishes. Stage 3 adds end cards, subtitles,
