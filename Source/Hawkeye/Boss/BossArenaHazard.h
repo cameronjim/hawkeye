@@ -53,6 +53,30 @@ public:
 	/** Whom it can hurt: this pawn when set (tests), else the first player's. */
 	TWeakObjectPtr<APawn> TargetOverride;
 
+	/** Holds its clock where it is (a scripted beat): nothing moves, nothing is hit, the lane goes dark. */
+	void SetHeld(bool bInHeld) { bHeld = bInHeld; }
+	bool IsHeld() const { return bHeld; }
+
+	/** Pinned for PinFor seconds (a putty arrow): its clock stops as SetHeld's does, then runs on from where it was. */
+	void Pin(float PinFor);
+	bool IsPinned() const { return PinRemaining > 0.f; }
+	float GetPinRemaining() const { return PinRemaining; }
+	int32 GetPinCount() const { return PinCount; }
+
+	/** A prop it shoves along the lane when its sweep reaches it (FBossArenaProp::bHazardPushes), Radius its half size. */
+	void AddPushable(AActor* Prop, float Radius);
+	/** Times it has shoved a prop on. */
+	int32 GetPushCount() const { return PushCount; }
+
+	/**
+	 * Its sweep reaches Pawn now: it sweeps (not held, not pinned), Pawn's feet are in the lane by UBossRules::HazardHits
+	 * and within the height Kate's hit uses. For a victim other than Kate (the boss), with that victim's own cooldown.
+	 */
+	bool Reaches(const APawn* Pawn, float SecondsSinceLastHit) const;
+
+	/** +1 while the sweep goes start to end (and resting there), -1 coming back. */
+	float GetSweepDirection() const { return State.Sweeps % 2 == 0 ? 1.f : -1.f; }
+
 	virtual void Tick(float DeltaSeconds) override;
 
 protected:
@@ -76,6 +100,20 @@ private:
 	APawn* FindTarget() const;
 	void PlaceBody(float DeltaSeconds);
 	void CheckHit(APawn* Target);
+	void PushProps();
+	/** Pawn's feet from the body: across the lane, along it, and up. */
+	void Offsets(const APawn* Pawn, float& OutAcross, float& OutAlong, float& OutUp) const;
+
+	struct FPushable
+	{
+		TWeakObjectPtr<AActor> Actor;
+		float Radius = 30.f;
+	};
+	TArray<FPushable> Pushables;
+	bool bHeld = false;
+	float PinRemaining = 0.f;
+	int32 PinCount = 0;
+	int32 PushCount = 0;
 
 	FVector Start = FVector::ZeroVector;
 	FVector End = FVector::ZeroVector;

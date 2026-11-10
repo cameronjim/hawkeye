@@ -56,7 +56,8 @@ ABossArenaHazard::ABossArenaHazard()
 	WarningLight->SetupAttachment(Body);
 	WarningLight->SetIntensityUnits(ELightUnits::Lumens);
 	WarningLight->SetIntensity(0.f);
-	WarningLight->SetLightColor(FLinearColor(1.f, 0.12f, 0.08f));
+	// Pure red: any green in it reads orange on the white snow once it blooms.
+	WarningLight->SetLightColor(FLinearColor(1.f, 0.02f, 0.01f));
 	WarningLight->SetAttenuationRadius(900.f);
 	WarningLight->SetCastShadows(false);
 	WarningLight->SetRelativeLocation(FVector(0.f, 0.f, 250.f));
@@ -138,11 +139,100 @@ void ABossArenaHazard::Tick(float DeltaSeconds)
 	AdvanceHazard(DeltaSeconds);
 }
 
+void ABossArenaHazard::Pin(float PinFor)
+{
+	if (!bLoose || PinFor <= 0.f)
+	{
+		return;
+	}
+	PinRemaining = FMath::Max(PinRemaining, PinFor);
+	++PinCount;
+	UE_LOG(LogHawkeye, Log, TEXT("%s: pinned for %.1f s at %s (%s)."), *GetName(), PinFor, *GetBodyLocation().ToCompactString(),
+		*UEnum::GetValueAsString(State.Phase));
+}
+
+void ABossArenaHazard::AddPushable(AActor* Prop, float Radius)
+{
+	if (Prop)
+	{
+		Pushables.Add({ Prop, FMath::Max(Radius, 1.f) });
+	}
+}
+
+void ABossArenaHazard::Offsets(const APawn* Pawn, float& OutAcross, float& OutAlong, float& OutUp) const
+{
+	const FVector Body3 = GetBodyLocation();
+	const FVector LaneDir = (End - Start).GetSafeNormal2D();
+	const FVector Across = FVector::CrossProduct(FVector::UpVector, LaneDir);
+	const ACharacter* Character = Cast<ACharacter>(Pawn);
+	const float HalfHeight = Character && Character->GetCapsuleComponent() ? Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.f;
+	const FVector To = Pawn->GetActorLocation() - FVector(0.f, 0.f, HalfHeight) - Body3;
+	OutAcross = FVector::DotProduct(To, Across);
+	OutAlong = FVector::DotProduct(To, LaneDir);
+	OutUp = To.Z;
+}
+
+bool ABossArenaHazard::Reaches(const APawn* Pawn, float SecondsSinceLastHit) const
+{
+	if (!Pawn || !bLoose || bHeld || PinRemaining > 0.f)
+	{
+		return false;
+	}
+	float Across = 0.f;
+	float Along = 0.f;
+	float Up = 0.f;
+	Offsets(Pawn, Across, Along, Up);
+	return Up >= -150.f && Up <= 350.f && UBossRules::HazardHits(State.Phase, Across, Along, SecondsSinceLastHit, Tuning);
+}
+
+void ABossArenaHazard::PushProps()
+{
+	if (State.Phase != EBossHazardPhase::Sweep || Pushables.Num() == 0)
+	{
+		return;
+	}
+	const FVector LaneDir = (End - Start).GetSafeNormal2D();
+	const FVector Across = FVector::CrossProduct(FVector::UpVector, LaneDir);
+	const float LaneLength = FVector::Dist2D(Start, End);
+	const float BodyAlong = State.Along * LaneLength;
+	for (const FPushable& Entry : Pushables)
+	{
+		AActor* Prop = Entry.Actor.Get();
+		if (!Prop)
+		{
+			continue;
+		}
+		const FVector At = Prop->GetActorLocation();
+		const float PropAlong = FVector::DotProduct(At - Start, LaneDir);
+		const float PropAcross = FVector::DotProduct(At - Start, Across);
+		const float NewAlong = UBossRules::PushedAlong(PropAlong, PropAcross, Entry.Radius, BodyAlong, GetSweepDirection(), LaneLength, Tuning);
+		if (!FMath::IsNearlyEqual(NewAlong, PropAlong, 0.5f))
+		{
+			// Shoved on ahead of the body, tumbling a little the way it goes.
+			Prop->SetActorLocationAndRotation(At + LaneDir * (NewAlong - PropAlong),
+				Prop->GetActorRotation() + FRotator(0.f, 9.f * GetSweepDirection(), 0.f));
+			++PushCount;
+		}
+	}
+}
+
 void ABossArenaHazard::AdvanceHazard(float DeltaSeconds)
 {
 	const float Step = FMath::Max(DeltaSeconds, 0.f);
 	WobbleTime += Step;
 	SinceLastHit += Step;
+	const bool bWasPinned = PinRemaining > 0.f;
+	PinRemaining = FMath::Max(0.f, PinRemaining - Step);
+	if (bWasPinned && PinRemaining <= 0.f)
+	{
+		UE_LOG(LogHawkeye, Log, TEXT("%s: the pin lets go."), *GetName());
+	}
+	if (bLoose && (bHeld || bWasPinned))
+	{
+		// Held or pinned: the clock stands still, nothing is hit; the body still sways where it is.
+		PlaceBody(Step);
+		return;
+	}
 	if (bLoose)
 	{
 		const EBossHazardPhase Before = State.Phase;
@@ -160,6 +250,7 @@ void ABossArenaHazard::AdvanceHazard(float DeltaSeconds)
 	PlaceBody(Step);
 	if (bLoose)
 	{
+		PushProps();
 		CheckHit(FindTarget());
 	}
 }
@@ -169,7 +260,8 @@ void ABossArenaHazard::PlaceBody(float /*DeltaSeconds*/)
 	const FVector Along = (End - Start).GetSafeNormal2D();
 	const float Yaw = Along.IsNearlyZero() ? GetActorRotation().Yaw : Along.Rotation().Yaw;
 	float Roll = 0.f;
-	if (!bLoose)
+	const bool bStill = bHeld || PinRemaining > 0.f;
+	if (!bLoose || bStill)
 	{
 		Roll = HawkeyeBossHazard::SwayDegrees * FMath::Sin(WobbleTime * 1.3f);
 	}
@@ -183,8 +275,8 @@ void ABossArenaHazard::PlaceBody(float /*DeltaSeconds*/)
 		Roll = (State.Sweeps % 2 == 0 ? 1.f : -1.f) * 8.f;
 	}
 	SetActorLocationAndRotation(GetBodyLocation(), FRotator(0.f, Yaw, Roll));
-	const bool bWarn = bLoose && State.Phase == EBossHazardPhase::Telegraph;
-	Lane->SetVisibility(bWarn || (bLoose && State.Phase == EBossHazardPhase::Sweep));
+	const bool bWarn = bLoose && !bStill && State.Phase == EBossHazardPhase::Telegraph;
+	Lane->SetVisibility(bWarn || (bLoose && !bStill && State.Phase == EBossHazardPhase::Sweep));
 	WarningLight->SetIntensity(bWarn ? HawkeyeBossHazard::WarningLumens * (0.5f + 0.5f * FMath::Abs(FMath::Sin(WobbleTime * 8.f))) : 0.f);
 }
 
