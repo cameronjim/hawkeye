@@ -59,6 +59,17 @@ jobs:
       # Rules and exclusions live in ruff.toml.
       - run: ruff check Tools
 
+  tools-env:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      # The path resolver's precedence, against fake engine folders. No engine needed.
+      - name: path resolver self-test
+        shell: powershell
+        run: .\Tools\test-env.ps1
+
   format-cpp:
     runs-on: ubuntu-latest
     # Advisory until the existing files have had a formatting pass: a touched file fails on
