@@ -1,4 +1,5 @@
 #include "Phone/PhoneSubsystem.h"
+#include "Dialogue/DialogueSubsystem.h"
 
 #include "Hawkeye.h"
 #include "HawkeyePlayerController.h"
@@ -180,6 +181,16 @@ void UPhoneSubsystem::AnnounceArrival(FName Id)
 		if (UHawkeyeObjectiveWidget* Toasts = Hud ? Hud->GetObjectiveMarker() : nullptr)
 		{
 			Toasts->PushToast(Row->Sender, UPhoneInbox::FirstLine(Row->Text), EHawkeyeUISound::Toast);
+		}
+	}
+	if (!Row->CallSequence.IsNone())
+	{
+		// A call: the voices play as a sequence (it waits out a fight like any walk-and-talk).
+		if (UDialogueSubsystem* Dialogue = UDialogueSubsystem::Get(this))
+		{
+			const bool bQueued = Dialogue->PlaySequence(Row->CallSequence);
+			UE_LOG(LogHawkeye, Log, TEXT("Phone: %s is a call; sequence %s %s."), *Id.ToString(), *Row->CallSequence.ToString(),
+				bQueued ? TEXT("queued") : TEXT("not queued (unknown or already played)"));
 		}
 	}
 	OnMessageArrived.Broadcast(Id);

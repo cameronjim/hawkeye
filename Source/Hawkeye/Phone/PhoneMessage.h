@@ -68,6 +68,13 @@ struct HAWKEYE_API FHawkeyePhoneMessage : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
 	bool bRead = false;
 
+	/**
+	 * A call, not a text: when it arrives this DT_DialogueSequences sequence plays (the voices on the line, as subtitles;
+	 * nobody on screen), and the message stays in the thread as the call's record. None: a text.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
+	FName CallSequence;
+
 	/** The text is a draft (docs/chapters/ACT1-script.md) waiting for the owner's edit, so it can be found and replaced. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Phone")
 	bool bDraft = false;
