@@ -17,6 +17,16 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Chapter 4 is The Social Club.** Tomas's fight runs on a boss framework where a boss is
+  data (`UBossDefinition`), so the next boss is new assets. Three phases on a roof picked
+  from the district data: his four guys while he watches, then Tomas (three-swing combo,
+  then winded for 3 s), then the inflatable Santa sweeps the roof under 40% health and
+  Kate gets confetti arrows. Reach it from the safehouse chapter select or
+  `hawkeye.StartChapter DA_CH04_SocialClub`. 534 tests pass; the scripted lap wins in
+  about 110 s. Rough: too easy (every jab parries into a finisher), Tomas is near black at
+  night, stock bat and shield instead of candy canes, the Santa passes through props and
+  never hits Tomas. A second pass for set-piece transitions, required-arrow solves and
+  finisher cameras is next.
 - **Chapter 1 is Night Shift.** The rooftop chase after the bike thief replaces the old
   Rooftops chapter and its purple-arrow ending. The thief runs a 152 m route planned from
   the district data and rubber-bands to stay in sight; fall 45 m behind for 6 s and you
