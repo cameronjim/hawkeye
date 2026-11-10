@@ -47,6 +47,33 @@ struct HAWKEYE_API FBossPhaseDefinition
 	/** Arrows added to Kate's quiver as the phase starts (the chapter's unlock), with their line on first use. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Phase")
 	TArray<FHawkeyeArrowGrant> ArrowGrants;
+
+	/**
+	 * His guard while he fights and is not winded: every hit on him lands at this fraction (chipping is slow, not zero).
+	 * 1: no guard. Winded, hits land at the move set's WindedDamageScale instead.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Solve", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float GuardDamageFraction = 1.f;
+
+	/**
+	 * Trick arrows whose effect, landing within GuardBreakRadius of him while he guards, breaks the guard: he goes
+	 * winded at once (the toolkit solve; chapter 4: the confetti arrow, a Smoke effect).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Solve")
+	TArray<EArrowHitEffect> GuardBreakEffects;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Solve", meta = (ClampMin = "0.0"))
+	float GuardBreakRadius = 300.f;
+
+	/** The arena's hazard hurts him too: its sweep catching him knocks him out of its lane winded (the lure solve). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Solve")
+	bool bHazardWindsBoss = false;
+
+	/** The beat played as the fight enters this phase (none for the first, or Seconds 0). A checkpoint skips it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat")
+	FBossBeat TransitionBeat;
+
+	bool HasGuard() const { return GuardDamageFraction < 1.f; }
 };
 
 /**
@@ -107,6 +134,27 @@ public:
 	/** The longest the after lines hold the chapter's end back, s. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Flow", meta = (ClampMin = "0.0"))
 	float AfterMaxSeconds = 60.f;
+
+	/** The beat played on the blow that puts him down, before the after sequence. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Beat")
+	FBossBeat DefeatBeat;
+
+	/** The finisher that ends a phase or the fight. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Beat")
+	FBossFinisherCamera FinisherCamera;
+
+	/**
+	 * A light that rides on him so he reads at night (his colours are dark): its colour and lumens, over his shoulder
+	 * toward where Kate stands. 0 lumens: none.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Look")
+	FLinearColor RimLightColor = FLinearColor(0.85f, 0.9f, 1.f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Look", meta = (ClampMin = "0.0"))
+	float RimLightLumens = 0.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss|Look", meta = (ClampMin = "0.0"))
+	float RimLightRadius = 400.f;
 
 	/** His lines are drafts (docs/chapters/ACT1-script.md) waiting for the owner's edit. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Boss")

@@ -131,6 +131,74 @@ struct HAWKEYE_API FBossMoveSet
 	/** Walking speed while he fights, cm/s (the thug's RushSpeed). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Moves", meta = (ClampMin = "0.0"))
 	float RushSpeed = 380.f;
+
+	/**
+	 * A finisher takes him only in his winded window (AThugCharacter::bFinisherNeedsGrantedWindow): a parry, a combo
+	 * ender or a knockdown opens nothing. The punish is the window, not the parry.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Moves")
+	bool bFinisherOnlyWhenWinded = true;
+
+	/** A parry staggers him this long at most, s (a thug: her 1.5). 0: no limit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Moves", meta = (ClampMin = "0.0"))
+	float ParryStaggerSeconds = 0.6f;
+};
+
+/**
+ * A short scripted beat (a phase change, the final blow): her input held, nobody hurt, the camera cut to an angle on
+ * him and her, a line, then control back. Seconds 0: no beat.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FBossBeat
+{
+	GENERATED_BODY()
+
+	/** How long it holds, s (1.5 to 3). 0: none. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat", meta = (ClampMin = "0.0", ClampMax = "6.0"))
+	float Seconds = 0.f;
+
+	/**
+	 * Where the camera stands, in the frame of the line from Kate to the boss (UBossRules::BeatCamera): X along it from
+	 * the middle of the two (negative: behind her), Y to its right, Z up, cm.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat")
+	FVector CameraOffset = FVector(-250.f, 320.f, 140.f);
+
+	/** What it looks at: 0 Kate, 1 the boss, between them in between. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float LookAtBoss = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat", meta = (ClampMin = "20.0", ClampMax = "120.0"))
+	float FieldOfView = 60.f;
+
+	/** The blend to the angle and back, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat", meta = (ClampMin = "0.0"))
+	float BlendSeconds = 0.3f;
+
+	/** DT_Dialogue rows spoken as it starts (the transition line). Never spoken twice in a campaign's run of the fight. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Beat")
+	TArray<FName> Lines;
+
+	bool IsSet() const { return Seconds > 0.f; }
+};
+
+/** The finisher that ends a phase or the fight: slower, closer. Reuses UFinisherComponent's slow motion and push-in. */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FBossFinisherCamera
+{
+	GENERATED_BODY()
+
+	/** Time dilation while it slows (a thug's finisher: 0.5). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Finisher", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float TimeDilation = 0.25f;
+
+	/** How long it stays slow, real seconds (a thug's: 0.4). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Finisher", meta = (ClampMin = "0.0"))
+	float SlowSeconds = 0.8f;
+
+	/** How far the camera pushes in, cm (a thug's: 40). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Finisher", meta = (ClampMin = "0.0"))
+	float PushDistance = 110.f;
 };
 
 /** The arena hazard's clock and its bite. */
@@ -174,6 +242,14 @@ struct HAWKEYE_API FBossHazardTuning
 	/** A hit shoves her this hard out of the lane, cm/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Hazard", meta = (ClampMin = "0.0"))
 	float KnockbackSpeed = 700.f;
+
+	/** A putty arrow on its body or its tether pins it this long: its clock stops, no sweep, no hit, s. 0: never. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Hazard", meta = (ClampMin = "0.0"))
+	float PinSeconds = 4.f;
+
+	/** The putty pins it landing within this of its body or of the lane's start (the tether), cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Hazard", meta = (ClampMin = "0.0"))
+	float PinRadius = 250.f;
 };
 
 /** Where the hazard is in its cycle. */
@@ -224,6 +300,10 @@ struct HAWKEYE_API FBossArenaProp
 	/** Blocks Kate and the thugs. Off for things overhead (the string lights). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Arena")
 	bool bBlocks = true;
+
+	/** The hazard shoves it along its lane when its sweep reaches it (a present in the Santa's way), never through it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Arena")
+	bool bHazardPushes = false;
 };
 
 /** A small coloured light (a bulb of the string lights, the speaker's glow). */

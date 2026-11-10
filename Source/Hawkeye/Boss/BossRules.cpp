@@ -29,6 +29,18 @@ bool FBossComboClock::Step(float DeltaSeconds, int32 SwingsStarted, bool bAttack
 	return true;
 }
 
+bool FBossComboClock::ForceWinded(int32 SwingsStarted, float Seconds)
+{
+	if (WindedRemaining > 0.f || Seconds <= 0.f)
+	{
+		return false;
+	}
+	WindedRemaining = Seconds;
+	ComboStart = SwingsStarted;
+	++WindedCount;
+	return true;
+}
+
 int32 UBossRules::ResolvePhase(const TArray<FBossPhase>& Phases, int32 Current, float HealthFraction, bool bCrewDown, bool bDead)
 {
 	if (bDead || !Phases.IsValidIndex(Current))
@@ -187,6 +199,116 @@ bool UBossRules::CanBark(bool bOnce, int32 TimesSpoken, float SecondsSinceLast, 
 bool UBossRules::IsIntroOver(float IntroSeconds, bool bDialogueBusy, bool bSomeoneHit, float IntroMaxSeconds)
 {
 	return bSomeoneHit || IntroSeconds >= IntroMaxSeconds || (IntroSeconds >= IntroMinSeconds && !bDialogueBusy);
+}
+
+bool UBossRules::IsFinisherOpen(bool bKnockedDown, bool bParryStaggered, float ComboEnderWindow, float GrantedWindow, bool bNeedsGrantedWindow)
+{
+	if (GrantedWindow > 0.f)
+	{
+		return true;
+	}
+	return !bNeedsGrantedWindow && (bKnockedDown || bParryStaggered || ComboEnderWindow > 0.f);
+}
+
+bool UBossRules::IsGuarding(float GuardDamageFraction, bool bFighting, bool bWinded)
+{
+	return GuardDamageFraction < 1.f && bFighting && !bWinded;
+}
+
+float UBossRules::BossDamageScale(bool bInBeat, bool bGuarding, float GuardDamageFraction)
+{
+	if (bInBeat)
+	{
+		return 0.f;
+	}
+	return bGuarding ? FMath::Clamp(GuardDamageFraction, 0.f, 1.f) : 1.f;
+}
+
+bool UBossRules::BreaksGuard(EArrowHitEffect Effect, float Distance, const TArray<EArrowHitEffect>& Sources, float Radius, bool bGuarding)
+{
+	return bGuarding && Effect != EArrowHitEffect::None && Sources.Contains(Effect) && Distance <= Radius;
+}
+
+bool UBossRules::IsDecisiveFinisher(float CurrentHealth, float MaxHealth, float FinisherFraction, float DamageScale, float NextThreshold)
+{
+	if (CurrentHealth <= 0.f || MaxHealth <= 0.f)
+	{
+		return false;
+	}
+	const float Blow = FMath::Min(FinisherDamage(CurrentHealth, MaxHealth, FinisherFraction) * FMath::Max(DamageScale, 1.f), CurrentHealth);
+	if (Blow >= CurrentHealth - KINDA_SMALL_NUMBER)
+	{
+		return true;
+	}
+	return NextThreshold >= 0.f && (CurrentHealth - Blow) / MaxHealth < NextThreshold;
+}
+
+void UBossRules::BeatCamera(const FVector& Kate, const FVector& Boss, const FBossBeat& Beat, FVector& OutLocation, FRotator& OutRotation)
+{
+	FVector Forward = (Boss - Kate).GetSafeNormal2D();
+	if (Forward.IsNearlyZero())
+	{
+		Forward = FVector::ForwardVector;
+	}
+	const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward);
+	const FVector Middle = (Kate + Boss) * 0.5f;
+	OutLocation = Middle + Forward * Beat.CameraOffset.X + Right * Beat.CameraOffset.Y + FVector::UpVector * Beat.CameraOffset.Z;
+	const FVector Chest(0.f, 0.f, 40.f);
+	const FVector Look = FMath::Lerp(Kate, Boss, FMath::Clamp(Beat.LookAtBoss, 0.f, 1.f)) + Chest;
+	// Both of them in the shot: back along the view until each is inside BeatFrameFraction of half the field of view.
+	const float Limit = FMath::DegreesToRadians(FMath::Clamp(Beat.FieldOfView, 20.f, 120.f) * 0.5f * BeatFrameFraction);
+	for (float Pushed = 0.f; Pushed <= BeatMaxPushBack; Pushed += 25.f)
+	{
+		const FVector View = (Look - OutLocation).GetSafeNormal();
+		const float Worst = FMath::Max(FMath::Acos(FVector::DotProduct(View, (Kate + Chest - OutLocation).GetSafeNormal())),
+			FMath::Acos(FVector::DotProduct(View, (Boss + Chest - OutLocation).GetSafeNormal())));
+		if (Worst <= Limit)
+		{
+			break;
+		}
+		OutLocation -= View * 25.f;
+	}
+	OutRotation = (Look - OutLocation).Rotation();
+	OutRotation.Roll = 0.f;
+}
+
+bool UBossRules::IsBeatOver(float Elapsed, float Seconds, bool bSkipPressed)
+{
+	return Elapsed >= Seconds || (bSkipPressed && Elapsed >= BeatMinSkipSeconds);
+}
+
+TArray<FName> UBossRules::UnheardLines(const TArray<FName>& Lines, const TArray<FName>& Heard)
+{
+	TArray<FName> Out;
+	for (const FName Line : Lines)
+	{
+		if (!Line.IsNone() && !Heard.Contains(Line) && !Out.Contains(Line))
+		{
+			Out.Add(Line);
+		}
+	}
+	return Out;
+}
+
+bool UBossRules::PinsHazard(EArrowHitEffect Effect, float DistanceToBody, float DistanceToTether, const FBossHazardTuning& Tuning)
+{
+	return Effect == EArrowHitEffect::Putty && Tuning.PinSeconds > 0.f
+		&& FMath::Min(DistanceToBody, DistanceToTether) <= Tuning.PinRadius;
+}
+
+float UBossRules::PushedAlong(float PropAlong, float PropAcross, float PropRadius, float BodyAlong, float Direction, float LaneLength,
+	const FBossHazardTuning& Tuning)
+{
+	const float Dir = Direction >= 0.f ? 1.f : -1.f;
+	const float Ahead = (PropAlong - BodyAlong) * Dir;
+	if (FMath::Abs(PropAcross) >= Tuning.HalfWidth + FMath::Max(PropRadius, 0.f) || Ahead < -0.5f * Tuning.HalfLength
+		|| Ahead >= Tuning.HalfLength)
+	{
+		return PropAlong;
+	}
+	// Off the ends by a body's reach at most: where the body comes to rest it has passed the prop, so the sweep back
+	// leaves it there instead of dragging it home.
+	return FMath::Clamp(BodyAlong + Dir * Tuning.HalfLength, -Tuning.HalfLength, FMath::Max(LaneLength, 0.f) + Tuning.HalfLength);
 }
 
 bool UBossRules::IsOnRoof(const TArray<FVector2D>& Outline, float RoofZ, const FVector& Feet)
