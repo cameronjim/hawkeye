@@ -1,6 +1,7 @@
 #include "Combat/BossPhaseComponent.h"
 
 #include "Hawkeye.h"
+#include "Boss/BossRules.h"
 #include "Combat/HealthComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -51,6 +52,9 @@ void UBossPhaseComponent::Bind(UHealthComponent* InHealthComponent)
 		return;
 	}
 
+	// Bound again to the same health (BeginPlay, then the caller): the phase's own invulnerability is not scripted.
+	const bool bScripted = InHealthComponent->IsInvulnerable()
+		&& !(InHealthComponent == HealthComponent && (bPhaseHoldsInvulnerability || bTransitioning));
 	if (HealthComponent)
 	{
 		HealthComponent->OnHealthChanged.RemoveDynamic(this, &UBossPhaseComponent::HandleHealthChanged);
@@ -63,6 +67,56 @@ void UBossPhaseComponent::Bind(UHealthComponent* InHealthComponent)
 
 	// Phase 0 is active from the start and is not a transition, so nothing is broadcast here.
 	CurrentPhaseIndex = Phases.Num() > 0 ? 0 : INDEX_NONE;
+	bCrewDown = false;
+	bTransitioning = false;
+	bPhaseHoldsInvulnerability = false;
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
+	{
+		ApplyPhaseInvulnerability(Phases[CurrentPhaseIndex], bScripted);
+	}
+}
+
+void UBossPhaseComponent::ApplyPhaseInvulnerability(const FBossPhase& Phase, bool bScripted)
+{
+	if (!HealthComponent)
+	{
+		return;
+	}
+	HealthComponent->SetInvulnerable(bScripted || Phase.bBossInvulnerable);
+	bPhaseHoldsInvulnerability = Phase.bBossInvulnerable && !bScripted;
+}
+
+void UBossPhaseComponent::NotifyCrewDown()
+{
+	if (!HealthComponent || HealthComponent->IsDead() || bCrewDown)
+	{
+		return;
+	}
+	bCrewDown = true;
+	const int32 Target = UBossRules::ResolvePhase(Phases, CurrentPhaseIndex, HealthComponent->GetHealthPercent(), true, false);
+	if (Target != CurrentPhaseIndex)
+	{
+		EnterPhase(Target);
+	}
+}
+
+void UBossPhaseComponent::RestorePhase(int32 PhaseIndex)
+{
+	if (!Phases.IsValidIndex(PhaseIndex))
+	{
+		return;
+	}
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TransitionTimerHandle);
+	}
+	const bool bScripted = HealthComponent && HealthComponent->IsInvulnerable() && !bPhaseHoldsInvulnerability && !bTransitioning;
+	bTransitioning = false;
+	bCrewDown = false;
+	CurrentPhaseIndex = PhaseIndex;
+	ApplyPhaseInvulnerability(Phases[PhaseIndex], bScripted);
+	UE_LOG(LogHawkeye, Log, TEXT("Boss %s restored to phase %d ('%s')."), *GetNameSafe(GetOwner()), PhaseIndex,
+		*Phases[PhaseIndex].PhaseName.ToString());
 }
 
 void UBossPhaseComponent::SortPhases()
@@ -91,14 +145,10 @@ void UBossPhaseComponent::HandleHealthChanged(UHealthComponent* /*InHealthCompon
 		return;
 	}
 
-	const float HealthPercent = HealthComponent->GetHealthPercent();
-
-	// Skip ahead through every threshold a single big hit crossed, then broadcast once.
-	int32 TargetPhase = CurrentPhaseIndex;
-	while (Phases.IsValidIndex(TargetPhase + 1) && HealthPercent < Phases[TargetPhase + 1].HealthThresholdPercent)
-	{
-		++TargetPhase;
-	}
+	// Skip ahead through every threshold a single big hit crossed (never past a phase its crew opens), then
+	// broadcast once.
+	const int32 TargetPhase = UBossRules::ResolvePhase(Phases, CurrentPhaseIndex, HealthComponent->GetHealthPercent(), bCrewDown,
+		HealthComponent->IsDead());
 
 	if (TargetPhase != CurrentPhaseIndex)
 	{
@@ -115,6 +165,7 @@ void UBossPhaseComponent::EnterPhase(int32 PhaseIndex)
 
 	const int32 OldPhaseIndex = CurrentPhaseIndex;
 	CurrentPhaseIndex = PhaseIndex;
+	bCrewDown = false;
 
 	const FBossPhase& Phase = Phases[PhaseIndex];
 
@@ -136,8 +187,9 @@ void UBossPhaseComponent::BeginTransition(const FBossPhase& Phase)
 	// scripted reasons must stay that way when the transition ends.
 	if (!bTransitioning)
 	{
-		bInvulnerableBeforeTransition = HealthComponent ? HealthComponent->IsInvulnerable() : false;
+		bInvulnerableBeforeTransition = HealthComponent && HealthComponent->IsInvulnerable() && !bPhaseHoldsInvulnerability;
 	}
+	bPhaseHoldsInvulnerability = false;
 
 	bTransitioning = true;
 
@@ -166,7 +218,12 @@ void UBossPhaseComponent::FinishTransition()
 {
 	bTransitioning = false;
 
-	if (HealthComponent)
+	// Back to whatever scripted state it had, plus the new phase's own (a crew phase's boss stays out of it).
+	if (Phases.IsValidIndex(CurrentPhaseIndex))
+	{
+		ApplyPhaseInvulnerability(Phases[CurrentPhaseIndex], bInvulnerableBeforeTransition);
+	}
+	else if (HealthComponent)
 	{
 		HealthComponent->SetInvulnerable(bInvulnerableBeforeTransition);
 	}

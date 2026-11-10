@@ -6,19 +6,43 @@
 
 class UHealthComponent;
 
-/** One stage of a boss fight. Authoring order does not matter; BeginPlay sorts by threshold. */
+/** How a phase after the first is entered (claude-docs/gameplay-semantics.md, "Bosses"). */
+UENUM(BlueprintType)
+enum class EBossPhaseEntry : uint8
+{
+	/** Health drops strictly below the phase's HealthThresholdPercent. */
+	HealthBelow,
+	/** The phase before it had a crew and every one of them is down (UBossPhaseComponent::NotifyCrewDown). */
+	CrewDown
+};
+
+/**
+ * One stage of a boss fight. Bind() stable-sorts by threshold, so two phases with the same threshold (a crew phase and
+ * the one its crew going down opens) keep their authored order.
+ */
 USTRUCT(BlueprintType)
 struct HAWKEYE_API FBossPhase
 {
 	GENERATED_BODY()
 
-	/** Designer-facing name ("Warden_Gunplay", "Warden_Melee"). */
+	/** Designer-facing name ("Crew", "Tomas", "Santa"). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Phase")
 	FName PhaseName;
 
 	/** Phase begins once health drops strictly below this fraction of MaxHealth (1.0 = full health). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Phase", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HealthThresholdPercent = 1.f;
+
+	/** What opens this phase. Phase 0 is open from the start whatever this says. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Phase")
+	EBossPhaseEntry Entry = EBossPhaseEntry::HealthBelow;
+
+	/**
+	 * The boss takes no damage for the whole phase (he stands back while his crew fights). Not the transition's
+	 * invulnerability, and not a scripted one: a transition out of this phase drops it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Phase")
+	bool bBossInvulnerable = false;
 
 	/** Ignore damage while transitioning into this phase (scripted animation, teleport, etc.). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Phase")
@@ -29,8 +53,8 @@ struct HAWKEYE_API FBossPhase
 	float TransitionSeconds = 2.f;
 
 	/**
-	 * Behaviour selector read by the AI. Set the same name as a blackboard value and branch on it in
-	 * the behaviour tree (e.g. "Gun" -> ranged sub-tree, "Melee" -> chainsaw sub-tree).
+	 * Behaviour selector, for the log and for whatever drives the boss: UBossFightSubsystem reads the phase's
+	 * definition (watching or fighting, crew, hazard), and a boss with a tree of its own may branch on this.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Phase")
 	FName BehaviorTag;
@@ -95,6 +119,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Boss")
 	void EnterPhase(int32 PhaseIndex);
 
+	/**
+	 * The current phase's crew is all down: opens the next phase when its Entry is CrewDown (one OnPhaseChanged),
+	 * and does nothing otherwise or when the boss is dead.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Boss")
+	void NotifyCrewDown();
+
+	/**
+	 * A checkpoint: makes PhaseIndex current without a broadcast or a transition (a load restarts the fight at a
+	 * phase's start), with the phase's own invulnerability.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Boss")
+	void RestorePhase(int32 PhaseIndex);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -119,8 +157,17 @@ protected:
 private:
 	bool bTransitioning = false;
 
-	/** Invulnerability state captured when a transition starts, restored when it ends. */
+	/** Scripted invulnerability captured when a transition starts (not the phase's own), restored when it ends. */
 	bool bInvulnerableBeforeTransition = false;
+
+	/** The current phase's bBossInvulnerable is what holds the health component invulnerable. */
+	bool bPhaseHoldsInvulnerability = false;
+
+	/** NotifyCrewDown was called for the current phase. */
+	bool bCrewDown = false;
+
+	/** Sets the health component to Phase's own invulnerability on top of Scripted. */
+	void ApplyPhaseInvulnerability(const FBossPhase& Phase, bool bScripted);
 
 	FTimerHandle TransitionTimerHandle;
 };
