@@ -260,12 +260,24 @@ bool FHawkeyeTrickShot::Update()
 				It->SetThinkingEnabled(false);
 			}
 			Kate->GetHealthComponent()->SetInvulnerable(true);
-			Test->AddInfo(FString::Printf(TEXT("Quiver: putty %d, bola %d, smoke %d, EMP %d, explosive %d."),
+			// Act 1 unlocks its trick arrows chapter by chapter and chapter 1 (the district's start) grants none: the
+			// pass hands Kate its own loadout of every trick arrow it shoots.
+			for (const TPair<const TCHAR*, int32>& Grant : { TPair<const TCHAR*, int32>(TEXT("DA_Arrow_Putty"), 2),
+					TPair<const TCHAR*, int32>(TEXT("DA_Arrow_Bola"), 2), TPair<const TCHAR*, int32>(TEXT("DA_Arrow_Smoke"), 1),
+					TPair<const TCHAR*, int32>(TEXT("DA_Arrow_EMP"), 1), TPair<const TCHAR*, int32>(TEXT("DA_Arrow_Explosive"), 1) })
+			{
+				const FString Path = FString::Printf(TEXT("/Game/Blueprints/Weapons/%s.%s"), Grant.Key, Grant.Key);
+				if (UArrowDefinition* Definition = LoadObject<UArrowDefinition>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet))
+				{
+					Inventory->AddArrows(Definition, FMath::Max(0, Grant.Value - Inventory->GetArrowCount(Definition->Slot)));
+				}
+			}
+			Test->AddInfo(FString::Printf(TEXT("Quiver (the pass's own loadout): putty %d, bola %d, smoke %d, EMP %d, explosive %d."),
 				Inventory->GetArrowCount(3), Inventory->GetArrowCount(4), Inventory->GetArrowCount(5),
 				Inventory->GetArrowCount(6), Inventory->GetArrowCount(7)));
 			if (Inventory->GetArrowCount(3) != 2 || Inventory->GetArrowCount(6) != 1)
 			{
-				Test->AddWarning(TEXT("Kate does not carry CH01's trick arrows; DA_CH01_Rooftops should grant them."));
+				Test->AddWarning(TEXT("The trick arrow pass could not hand Kate its loadout (DA_Arrow_Putty or DA_Arrow_EMP missing?)."));
 			}
 			break;
 
