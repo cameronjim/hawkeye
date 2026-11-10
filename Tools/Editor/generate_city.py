@@ -90,8 +90,6 @@ actors whose record disappeared are deleted.
 or Tools\\generate-city.ps1.
 """
 
-import io
-import json
 import math
 import os
 import sys
@@ -105,15 +103,18 @@ import _materials as m  # noqa: E402
 from _geomutil import (  # noqa: E402,F401 - re-exported for gen.X callers
     closest_point_on_polyline, _segments_cross, ring_distance, oriented_rect, _segment_distance,
     _edge_clearance, _segment_params, _edge_distance, _point_quad_distance, stable_hash, _near_segment)
+from _district import (  # noqa: E402,F401 - re-exported for gen.X callers
+    DISTRICT, GENERATOR_VERSION, PARAPET_HEIGHT, PARAPET_THICK, PARAPET_MIN_HEIGHT_M, PARAPET_MITER_LIMIT,
+    ROAD_TOP, SIDEWALK_TOP, PARK_TOP, SLAB_THICK, GROUND_THICK, SIDEWALK_WIDTH, data_dir, data_paths,
+    data_available, load_json, District, PAINTED_BUILDINGS, STONE_BUILDINGS, TENEMENT_STYLES, facade_style,
+    ground_ring_cm, road_paths, LAMP_SPACING, LAMP_MIN_GAP, LAMP_KERB_INSET, LAMP_POLE_HEIGHT,
+    LAMP_POLE_DIAMETER, LAMP_ARM, LAMP_SHADOW_DISTANCE, lamp_spots, FIRE_ESCAPE_MIN_HEIGHT_M,
+    FIRE_ESCAPE_MAX_HEIGHT_M)
 
-DISTRICT = "east_village"
 MAP_PATH = "/Game/Maps/L_District_EastVillage"
 MESH_DIR = "/Game/City/EastVillage/Meshes"
 KIT_MATERIALS = "/Game/Kit/Materials"
 PLAYER_PATH = "/Game/Blueprints/Player"
-
-# Bump when the mesh recipe changes, so every mesh regenerates once.
-GENERATOR_VERSION = 1
 
 LABEL_PREFIX = "City_"
 BUILDING_PREFIX = "City_Bldg_"
@@ -124,67 +125,14 @@ GROUND_LABEL = "City_Ground"
 MESH_PREFIX = "SM_City_"
 HASH_TAG = "CityHash"
 
-PARAPET_HEIGHT = 90.0      # cm
-PARAPET_THICK = 30.0       # cm
-PARAPET_MIN_HEIGHT_M = 6.0  # no parapets on sheds and garages
-PARAPET_MITER_LIMIT = 4.0  # times the thickness; a sharper concave corner's inner edge is squared off
 # Bump when the building mesh recipe changes, so only the buildings rebuild (2: the parapet is one
 # mitred ring flush with the facades, not a box per edge running 15 cm past each corner).
 BUILDING_RECIPE = 2
 
-ROAD_TOP = 2.0             # cm above the ground
-SIDEWALK_TOP = 15.0
-PARK_TOP = 5.0
-SLAB_THICK = 20.0          # every flat surface is a slab this thick, so kerbs have faces
-GROUND_THICK = 50.0
-SIDEWALK_WIDTH = 400.0
-
 NAV_Z_MIN = -500.0
 NAV_Z_MAX = 7500.0
 
-# --------------------------------------------------------------------------------------
-# data
-# --------------------------------------------------------------------------------------
-
-
-def data_dir():
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Data", "osm")
-
-
-def data_paths():
-    base = os.path.join(data_dir(), DISTRICT)
-    return base + ".buildings.json", base + ".streets.json"
-
-
-def data_available():
-    return all(os.path.exists(p) for p in data_paths())
-
-
-def load_json(path):
-    with io.open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-class District(object):
-    """The parsed records, projected into Unreal centimetres about the district origin."""
-
-    def __init__(self):
-        buildings_path, streets_path = data_paths()
-        b = load_json(buildings_path)
-        s = load_json(streets_path)
-        self.meta = b["_meta"]
-        self.lat0 = self.meta["origin"]["lat"]
-        self.lon0 = self.meta["origin"]["lon"]
-        self.buildings = b["buildings"]
-        self.roads = s["roads"]
-        self.parks = s["parks"]
-
-    def cm(self, latlon):
-        return geo.latlon_to_unreal_cm(latlon[0], latlon[1], self.lat0, self.lon0)
-
-    def ring_cm(self, ring):
-        return [self.cm(p) for p in ring]
-
+# The data (District, data_paths, road_paths, ...) and the shared dimensions are in _district.
 
 # --------------------------------------------------------------------------------------
 # small Geometry Script wrappers (Python returns out-params as tuples)
@@ -395,32 +343,6 @@ class Piece(object):
         self.tags = list(tags)
 
 
-PAINTED_BUILDINGS = ("garage", "garages", "shed", "roof", "warehouse", "parking", "service")
-STONE_BUILDINGS = ("church", "civic", "school", "synagogue", "religious", "public", "university")
-# Tenements (10 to 30 m) pick a brick or brownstone by a stable hash of their id, in these shares.
-TENEMENT_STYLES = (("BrickRed", 0.32), ("BrickBrown", 0.26), ("BrickPurple", 0.2), ("Brownstone", 0.22))
-
-
-def facade_style(rec):
-    """MI_Facade_<style> for a building record: painted grey for sheds and garages (and anything
-    under 6 m), stone for churches, civic buildings and anything over 30 m, brownstone from 6 to
-    10 m, and a brick or brownstone by hash for the 10 to 30 m tenements."""
-    kind = (rec.get("tags") or {}).get("building", "")
-    h = rec["height_m"]
-    if kind in PAINTED_BUILDINGS or h < PARAPET_MIN_HEIGHT_M:
-        return "Painted"
-    if kind in STONE_BUILDINGS or h > FIRE_ESCAPE_MAX_HEIGHT_M:
-        return "Stone"
-    if h < FIRE_ESCAPE_MIN_HEIGHT_M:
-        return "Brownstone"
-    pick = stable_hash(rec["id"], "facade")
-    for style, share in TENEMENT_STYLES:
-        if pick < share:
-            return style
-        pick -= share
-    return TENEMENT_STYLES[-1][0]
-
-
 def building_pieces(district, facades):
     """``facades`` maps a facade style to its MI_Facade_ instance."""
     pieces = []
@@ -453,20 +375,6 @@ def building_pieces(district, facades):
     if skipped_holes:
         c.log("skipped", "courtyard holes", "{0} building(s) had inner rings; extruded solid".format(skipped_holes))
     return pieces
-
-
-def ground_ring_cm(district):
-    return district.ring_cm(district.meta["ground_corners_latlon"])
-
-
-def road_paths(district):
-    """[(record, [path_cm, ...])] for every road record."""
-    out = []
-    for rec in district.roads:
-        paths = [district.ring_cm(piece) for piece in rec["pieces"] if len(piece) >= 2]
-        if paths:
-            out.append((rec, paths))
-    return out
 
 
 def polys_for_paths(paths, half_width):
@@ -2030,76 +1938,19 @@ def ensure_archers(district, existing):
 # street lamps
 # --------------------------------------------------------------------------------------
 
+# The lamps' layout (LAMP_SPACING, LAMP_ARM, LAMP_POLE_HEIGHT, ...) and lamp_spots are in _district.
 LAMP_PREFIX = "City_Lamp_"          # the light; what verify counts
 LAMP_POLE_PREFIX = "City_LampPole_"
 LAMP_HEAD_PREFIX = "City_LampHead_"
-LAMP_SPACING = 3000.0               # cm along each road, both sidewalks
-LAMP_MIN_GAP = 800.0                # no two lamps closer than this (corners where roads meet)
-LAMP_KERB_INSET = 60.0              # cm from the kerb into the sidewalk
-LAMP_POLE_HEIGHT = 700.0
-LAMP_POLE_DIAMETER = 14.0
-LAMP_ARM = 90.0                     # cm the head reaches out over the road
 LAMP_LUMENS = 1100.0
 LAMP_RADIUS = 1800.0
 LAMP_OUTER_CONE = 70.0              # degrees from straight down; the pool edge
 LAMP_INNER_CONE = 35.0
 LAMP_COLOR = (1.0, 0.75, 0.45)      # warm sodium
 LAMP_EMISSIVE = 2.0                 # before m.EMISSIVE_INTENSITY_FACTOR; higher clips the head to white
-LAMP_SHADOW_DISTANCE = 3500.0       # lamps this close to the park cast shadows; the rest don't
 MI_STREET_LAMP = m.MATERIALS_PATH + "/MI_StreetLamp"
 CYLINDER = "/Engine/BasicShapes/Cylinder"
 CUBE = "/Engine/BasicShapes/Cube"
-
-
-def lamp_spots(district):
-    """[(x, y, yaw toward the road, casts shadows)] in a stable order."""
-    roads = sorted(road_paths(district), key=lambda rp: rp[0]["id"])
-    carriageway = [(p, q, rec["width_m"] * 50.0) for rec, paths in roads
-                   for path in paths for p, q in zip(path, path[1:])]
-    rings = []
-    for rec in district.buildings:
-        ring = district.ring_cm(rec["outer"])
-        if len(ring) >= 3:
-            rings.append((geo.bounds(ring), ring))
-    ground = ground_ring_cm(district)
-    parks = [district.ring_cm(p["outer"]) for p in district.parks]
-
-    def in_carriageway(pt):
-        return any(closest_point_on_polyline(pt, [p, q])[0] < half + 30.0 for p, q, half in carriageway)
-
-    def in_building(pt):
-        for (x0, y0, x1, y1), ring in rings:
-            if x0 - 50 <= pt[0] <= x1 + 50 and y0 - 50 <= pt[1] <= y1 + 50 and ring_distance(pt, ring) < 50.0:
-                return True
-        return False
-
-    spots = []
-    for rec, paths in roads:
-        offset = rec["width_m"] * 50.0 + LAMP_KERB_INSET
-        for path in paths:
-            s_next = LAMP_SPACING * 0.5
-            walked = 0.0
-            for (ax, ay), (bx, by) in zip(path, path[1:]):
-                L = math.hypot(bx - ax, by - ay)
-                if L < 1.0:
-                    continue
-                ux, uy = (bx - ax) / L, (by - ay) / L
-                nx, ny = -uy, ux
-                while s_next <= walked + L:
-                    t = s_next - walked
-                    px, py = ax + ux * t, ay + uy * t
-                    for side in (1.0, -1.0):
-                        pt = (px + nx * offset * side, py + ny * offset * side)
-                        if not geo.point_in_polygon(pt, ground) or in_carriageway(pt) or in_building(pt):
-                            continue
-                        if any(math.hypot(pt[0] - s[0], pt[1] - s[1]) < LAMP_MIN_GAP for s in spots):
-                            continue
-                        yaw = math.degrees(math.atan2(-ny * side, -nx * side))
-                        shadows = any(ring_distance(pt, park) <= LAMP_SHADOW_DISTANCE for park in parks)
-                        spots.append((pt[0], pt[1], yaw, shadows))
-                    s_next += LAMP_SPACING
-                walked += L
-    return spots
 
 
 def ensure_lamp_materials():
@@ -3273,8 +3124,7 @@ LEDGE_SPLINE = "Ledge_1"
 # --------------------------------------------------------------------------------------
 
 FIRE_ESCAPE_PREFIX = "City_FireEscape_"
-FIRE_ESCAPE_MIN_HEIGHT_M = 10.0
-FIRE_ESCAPE_MAX_HEIGHT_M = 30.0
+# FIRE_ESCAPE_MIN_HEIGHT_M and FIRE_ESCAPE_MAX_HEIGHT_M are in _district (facade_style uses them too).
 FIRE_ESCAPE_FLOOR = 330.0          # cm between landings; the lowest is at the second floor
 FIRE_ESCAPE_ROOF_CLEARANCE = 180.0  # cm; the top landing's slab is at least this far under the roof
 FIRE_ESCAPE_SLAB = (240.0, 90.0, 8.0)
