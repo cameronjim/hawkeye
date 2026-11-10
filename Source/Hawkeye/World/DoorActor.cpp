@@ -137,6 +137,12 @@ void ADoorActor::UpdateNavLink()
 	{
 		DoorMesh->SetCanEverAffectNavigation(!IsPassable());
 		UNavigationSystemV1::UpdateComponentInNavOctree(*DoorMesh);
+		// And the tiles round the doorway are rebuilt now: a leaf leaving the octree did not always dirty them, and a door
+		// opened by an objective left no path through it (the grotto's workshop).
+		if (UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()); Nav && HasActorBegunPlay())
+		{
+			Nav->AddDirtyArea(GetComponentsBoundingBox(true).ExpandBy(150.f), ENavigationDirtyFlag::All, TEXT("door passability"));
+		}
 	}
 	if (!NavLink)
 	{
