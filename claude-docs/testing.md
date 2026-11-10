@@ -160,6 +160,21 @@ crew, fighting, Kate where she was with her health, the same objectives. Then to
 trip, the timeline) and `Saved/Screenshots/SocialClub/social_*.png` (street, intro, crew, tomas or tomas_winded,
 santa, down, endcard).
 
+Since 2026-11-10 it also stands Kate 60 cm outside the Santa's lane across from Tomas while it telegraphs (the lure) and
+asserts the sweep catches him at least once.
+
+## 2e. The reindeer games lap (chapter 2 from its start)
+
+`Hawkeye.Lap.ReindeerGames` (standalone `-game`, `-Difficulty=Normal`, about 100 s, its own process): the lap starts
+`DA_CH02_ReindeerGames` the way chapter select does and its opening (Kate on the district's PlayerStart), runs the navmesh
+to Avenue B, examines the courier on the way (the optional, unmarked objective: no toast, `saw_courier` raised), arrives
+(the crew wakes, 3 foam arrive), fights (parry, finish, dodge, strike, the gunner shot, one foam arrow), and with one sack
+carried saves and loads (its own slot, `HawkeyeReindeerGamesLap`) and checks the objectives, the flag, the fired events
+(no line repeated), the foam, the carried sack, no crew and the sacks left. Then the other sacks, the table, the end card,
+the "Visiting hours" slides, the texts on the phone, and chapter 4 started after it (no site actor left, Tomas waiting,
+2 foam). Writes `Saved/Automation/reindeer_games_lap.json` and `Saved/Screenshots/ReindeerGames/reindeer_*.png` (site,
+courier, crew, foam, sack, return, endcard, slides, phone).
+
 ## 3. Playtest checklist (human)
 
 Before any commit that touches player feel, AI, or a level, play through this in

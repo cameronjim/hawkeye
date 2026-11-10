@@ -20,8 +20,8 @@ is left of the old design is small and named here so nobody builds on it:
 | `AHawkeyeGameMode::RestartMission` | Reloads the level. Death and the pause menu's restart use `ReloadLastCheckpoint`, which loads the last save. |
 | `gameplay-semantics.md` sections marked LEGACY or `Choices` | Punisher text, kept until the chapters that replace it are written. |
 
-Still planned: World Partition (the district is one map with it off) and chapters 2 and 3 of Act 1 (chapter 4,
-the boss, is built and follows chapter 1 in the campaign's order until they exist).
+Still planned: World Partition (the district is one map with it off) and chapter 3 of Act 1 (chapters 1, 2 and 4 are
+built; the campaign's order runs 1, 2, 4 until it exists).
 
 ## The systems
 
@@ -76,6 +76,17 @@ Rules: `gameplay-semantics.md`, "Mission", "Objective markers and compass".
   when every thug with a tag is dead. `AChapterEndInteractable` (World) completes one when
   Kate examines it. Doors, pickups and scripted beats do the same call from Blueprint. An
   actor whose objective the running chapter does not have does nothing.
+- Objectives may be optional and unmarked (`bUnmarked`: never on the HUD, no toast) and may raise a campaign flag
+  (`CampaignFlag`, into `UHawkeyeCampaignState::CampaignFlags` before the objective's autosave, for later chapters).
+- Chapter events (`ChapterEvents.h`, `UChapterEventSubsystem`, world): `UMissionDefinition::Events` speak lines and grant
+  arrows the first time something happens in a run of the chapter (a parry, an arrow loosed, an objective completed or
+  started). The character and the bow report through `UChapterEventSubsystem::NotifyEvent`; the objectives it hears
+  itself. What fired is mirrored into the save. Rules: "Chapter events".
+- Chapter sites (`UChapterSiteDefinition`, `UChapterSiteSubsystem`, world): a chapter's set piece on the district as data
+  (props, lights, objective volumes, a crew and its group objective, keycard pickups, examines), spawned when the
+  chapter starts, cleared when another does, matched to the save on a load, and the opening's start point. Built for
+  chapter 2's toy drive (`DA_Site_CH02_ToyDrive`, `Tools/Editor/create_site.py`, planned by `_site.py`). Rules: "Chapter
+  sites".
 - `UMissionFlowController`: the order of the end-of-mission beats (close-up, end card,
   flashback, playable scene, then next level, return to roaming, or the final card), with
   no UMG, world or travel in it, so tests drive `Begin` and `Advance`. The player
@@ -191,7 +202,8 @@ Rules: `gameplay-semantics.md`, "Flashback".
 ### Thugs (`Source/Hawkeye/World/Thug*`)
 The controller senses and acts; the StateTree `ST_Thug` decides. Nothing in C++ picks what a thug does next.
 Rules: "Melee and thugs", "Thug variety and squad alert", "Guard AI states", "Interiors: enemies and the AI indoors".
-- `AThugCharacter`: the body. `EThugWeapon` (Fists, Bat, Shield, Pistol, Bow), `EThugAlertState` with
+- `AThugCharacter`: the body (a crew's look: the tracksuit's colours by material, and `Headwear`, a static mesh on the
+  head bone fitted upright in his own frame: chapter 2's antlers). `EThugWeapon` (Fists, Bat, Shield, Pistol, Bow), `EThugAlertState` with
   `OnAlertStateChanged`, health, stagger and knockdown, the telegraph glint, `ITakedownable`,
   `bRefusesTakedown` (a chase's thief before the corner).
 - `AThugAIController`, the senses: perception (sight 1500 / lose 1800 / half angle 35, hearing 1200 through
@@ -459,7 +471,7 @@ in `WBP_*`; behaviour in the C++ parent.
 ### Tools (`Tools/`)
 Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
 - `Tools/Editor/create_all.py` runs the `create_*.py` and `import_*.py` scripts in dependency order
-  (input, audio, vfx, GASP import, blueprints, world blueprints, weapon data, chase, boss, missions, partner,
+  (input, audio, vfx, GASP import, blueprints, world blueprints, weapon data, chase, boss, site, missions, partner,
   enemies, narrative, crimes, challenges, combat clips, bow IK, Kate's look). Each is idempotent: it
   checks before creating and prints one line per asset. `verify_*.py` are read-only checks.
 - `generate_city.py`: the district from OSM records (`parse_osm.py` makes them; `Tools/fetch-osm.ps1`
@@ -468,9 +480,10 @@ Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
   geometry), `_district` (the records, shared dimensions, street layout, facade style, lamps),
   `_reach` (the grapple's reach model and anchor placement), `_ledges` (one slab per roof edge),
   `_fire_escapes`. `_chase.py` plans the chase from the same records with the same reach model; `_arena.py` picks
-  and lays out the boss's roof the same way (`create_boss.py`).
+  and lays out the boss's roof the same way (`create_boss.py`); `_site.py` picks chapter 2's spot on Avenue B and lays out
+  its toy drive and the courier (`create_site.py`).
   Python tests: `test_geo.py`, `test_city_geometry.py`, `test_city_golden.py`, `test_interior.py`,
-  `test_parse_osm.py`, `test_arena.py`. `verify_city.py` checks the generated map against the records.
+  `test_parse_osm.py`, `test_arena.py`, `test_site.py`. `verify_city.py` checks the generated map against the records.
 - Interiors: `generate_interior.py` and `_interior.py` from `Tools/Interiors/*.json`.
 
 ## Boundaries
