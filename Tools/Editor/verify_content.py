@@ -742,8 +742,8 @@ def check_data_assets():
             fail("DA_CH01_NightShift objectives are {0}, expected {1}".format(ids, wanted_ids))
         if "DA_Chase_CH01_NightShift" not in str(prop(chapter, "chase")):
             fail("DA_CH01_NightShift.Chase is not DA_Chase_CH01_NightShift")
-        wanted = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6), ("DA_Arrow_Putty", 2), ("DA_Arrow_Bola", 2),
-                  ("DA_Arrow_Smoke", 1), ("DA_Arrow_EMP", 1)]
+        # Act 1's unlock order: the plain arrow and the grapple; chapter 2 adds the foam, chapter 4 the confetti.
+        wanted = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6)]
         if len(grants) != len(wanted) or any(
                 name not in arrow or count != want for (arrow, count), (name, want) in zip(grants, wanted)):
             fail("DA_CH01_NightShift.starting_arrows is {0}, expected {1}".format(grants, wanted))

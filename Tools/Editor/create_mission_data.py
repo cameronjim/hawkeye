@@ -17,14 +17,20 @@ docs/chapters/ACT1-script.md and are flagged as drafts (bDraftText, UMissionObje
 edit. No flashback: the purple-arrow ending, its slides and the grey room are gone from the chapter. The old
 DA_CH01_Rooftops is deleted (a save that names it starts a new game, the save rule for a stale chapter).
 
-It grants DA_Bow_Kate with 30 standard, 6 grapple, 2 putty, 2 bola, 1 smoke and 1 EMP arrow at the start, for
-now (create_weapon_data.py makes those, and runs first; the crime laps use the bola).
+It grants DA_Bow_Kate with 30 standard arrows and the grapple (create_weapon_data.py makes those, and runs first):
+Act 1 unlocks its trick arrows chapter by chapter (the crime laps hand themselves their bolas).
 
-DA_CH04_SocialClub follows it in the campaign's order (DA_CH01_NightShift.NextChapter; chapters 2 and 3 do not
-exist yet): chapter select opens it once Night Shift is complete. Its four objectives (meet_tomas, beat_crew,
-beat_tomas, survive_santa) are completed by the boss fight; its title, objective titles and end card line are drafts.
-No partner, no chase, back to roaming at the end. It grants the bow with 30 standard, 6 grapple, 2 putty and 2 bola;
-the fight's last phase adds 3 confetti arrows (slot 5, which is why no smoke is granted).
+DA_CH02_ReindeerGames follows it (DA_CH01_NightShift.NextChapter): the toy drive on Avenue B, its site
+DA_Site_CH02_ToyDrive (create_site.py, which runs first) completing reach_drive (the arrival volume), stop_crew (the
+reindeer crew down) and return_toys (the three sacks to the table); examine_courier is optional and unmarked and raises
+the campaign flag saw_courier. Its events (CH02_EVENTS) speak its lines and grant the sticky foam (3 putty arrows) on
+arrival. Its flashback is the "Visiting hours" slides (DA_FB02_VisitingHours, create_narrative.py, made here first).
+
+DA_CH04_SocialClub follows that (DA_CH02_ReindeerGames.NextChapter; chapter 3 does not exist yet): chapter select opens
+it once Reindeer Games is complete. Its four objectives (meet_tomas, beat_crew, beat_tomas, survive_santa) are completed
+by the boss fight; its title, objective titles and end card line are drafts. No partner, no chase, back to roaming at
+the end. It grants the bow with 30 standard, the grapple and 2 foam (chapter 2's unlock, so chapter select can open it
+cold); the fight's last phase adds 3 confetti arrows (slot 5).
 
 Property names come from Source/Hawkeye/Mission/MissionDefinition.h and
 Source/Hawkeye/Mission/MissionObjective.h.
@@ -107,7 +113,58 @@ CH01_OBJECTIVES = [
     ("cross_gap", "Get across. Use the grapple", ""),
     ("catch_thief", "Catch him", ""),
 ]
-DRAFT_OBJECTIVES = {"chase_thief", "cross_gap", "catch_thief", "meet_tomas", "beat_crew", "beat_tomas", "survive_santa"}
+DRAFT_OBJECTIVES = {"chase_thief", "cross_gap", "catch_thief", "meet_tomas", "beat_crew", "beat_tomas", "survive_santa",
+                    "reach_drive", "stop_crew", "return_toys", "examine_courier"}
+# Optional objectives never block their chapter; unmarked ones never show on the HUD (UMissionObjective).
+OPTIONAL_OBJECTIVES = {"examine_courier"}
+UNMARKED_OBJECTIVES = {"examine_courier"}
+# The campaign flag an objective raises when it completes, for later acts (UHawkeyeCampaignState::CampaignFlags).
+OBJECTIVE_FLAGS = {"examine_courier": "saw_courier"}
+
+# --------------------------------------------------------------------------------------
+# chapter 2: Reindeer Games
+# --------------------------------------------------------------------------------------
+
+CH02_NAME = "DA_CH02_ReindeerGames"
+SITE = "/Game/Missions/Sites/DA_Site_CH02_ToyDrive"
+FLASHBACK_CH02 = "/Game/Flashbacks/Definitions/DA_FB02_VisitingHours"
+CH02_FIELDS = [
+    ("mission_name", "Reindeer Games"),
+    ("mission_number", 2),
+    ("end_card_line", "Hawkeye. Just the one word. Merry Christmas."),
+    ("show_objective_text", True),
+    ("allow_switching", False),
+    ("partner_present", False),
+    ("opening_title", "Reindeer Games"),
+    ("opening_subtitle", "Somebody is robbing a toy drive."),
+    ("return_to_roaming_at_end", True),
+    ("chapter_complete_toast", "[Chapter complete]"),
+    ("draft_text", True),
+]
+# From ACT1-script.md, every one a draft. The site completes them: the arrival volume, the crew going down, the table.
+CH02_OBJECTIVES = [
+    ("reach_drive", "Get to the toy drive", ""),
+    ("stop_crew", "Stop the reindeer crew", ""),
+    ("return_toys", "Bring the toys back", ""),
+    ("examine_courier", "Look at what the police are standing around", ""),
+]
+# Act 1's arrows: chapter 1 the plain arrow and the grapple, chapter 2 the sticky foam (the putty arrow, granted by
+# the arrival event below), chapter 4 the confetti (its boss's last phase). A chapter's grant holds the earlier unlocks.
+CH02_ARROWS = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6)]
+FOAM = ("DA_Arrow_Putty", 3)
+# The chapter's events (UMissionDefinition::Events): (event, DT_Dialogue lines, arrows). Lines are create_narrative's
+# CH02_LINES. Arriving at the drive: her lines, the crew's bark and her reply, then the foam unlocked.
+CH02_EVENTS = [
+    ("objective_completed:reach_drive", ["ch02_arrive", "ch02_masks", "ch02_bark", "ch02_bark_reply"], []),
+    ("objective_completed:reach_drive", ["ch02_foam_unlocked"], [FOAM]),
+    ("parry", ["ch02_parry"], []),
+    ("arrow_loosed:DA_Arrow_Putty", ["ch02_foam_used"], []),
+    ("objective_completed:stop_crew", ["ch02_won"], []),
+    ("objective_completed:return_toys", ["ch02_toys_returned"], []),
+    ("objective_completed:examine_courier", ["ch02_courier"], []),
+]
+# The returned toys say "Pick up the sacks" until she has them: the table asks for all three (create_site.py).
+CH02_HINTS = {"return_toys": "Pick up the three sacks, then take them to the table"}
 
 # --------------------------------------------------------------------------------------
 # chapter 4: The Social Club
@@ -137,10 +194,11 @@ CH04_OBJECTIVES = [
     ("survive_santa", "Don't get flattened by Santa", ""),
 ]
 CH04_BOW = "DA_Bow_Kate"
-CH04_ARROWS = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6), ("DA_Arrow_Putty", 2), ("DA_Arrow_Bola", 2)]
+# Chapter 2's foam carried in (chapter select can open it straight away); the confetti comes in its last phase.
+CH04_ARROWS = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6), ("DA_Arrow_Putty", 2)]
 
-# The HUD's second line under an objective's title (UMissionObjective::Hint), by id. None in this chapter.
-OBJECTIVE_HINTS = {}
+# The HUD's second line under an objective's title (UMissionObjective::Hint), by id.
+OBJECTIVE_HINTS = dict(CH02_HINTS)
 
 
 def _hint_value(obj):
@@ -154,8 +212,7 @@ def _hint_value(obj):
 # here for testing (claude-docs/gameplay-semantics.md, "trick arrows"); explosive is left out, so
 # slot 7 starts empty.
 CH01_BOW = "DA_Bow_Kate"
-CH01_ARROWS = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6), ("DA_Arrow_Putty", 2), ("DA_Arrow_Bola", 2),
-               ("DA_Arrow_Smoke", 1), ("DA_Arrow_EMP", 1)]
+CH01_ARROWS = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6)]
 
 
 def _object_path(value):
@@ -226,7 +283,11 @@ def _objectives_match(asset, wanted):
             return False
         if _hint_value(obj) != OBJECTIVE_HINTS.get(oid, ""):
             return False
-        if bool(obj.get_editor_property("optional")):
+        if bool(obj.get_editor_property("optional")) != (oid in OPTIONAL_OBJECTIVES):
+            return False
+        if bool(obj.get_editor_property("unmarked")) != (oid in UNMARKED_OBJECTIVES):
+            return False
+        if str(obj.get_editor_property("campaign_flag")) != OBJECTIVE_FLAGS.get(oid, "None"):
             return False
         if bool(obj.get_editor_property("draft")) != (oid in DRAFT_OBJECTIVES):
             return False
@@ -238,7 +299,9 @@ def _build_objectives(asset, objective_cls, wanted):
     for oid, title, description in wanted:
         objective = unreal.new_object(objective_cls, outer=asset)
         c.set_first_prop(objective, OBJECTIVE_ID_PROPS, oid, "MissionObjective " + oid)
-        c.set_props(objective, [("title", title), ("description", description), ("optional", False),
+        c.set_props(objective, [("title", title), ("description", description), ("optional", oid in OPTIONAL_OBJECTIVES),
+                                ("unmarked", oid in UNMARKED_OBJECTIVES),
+                                ("campaign_flag", unreal.Name(OBJECTIVE_FLAGS.get(oid, "None"))),
                                 ("draft", oid in DRAFT_OBJECTIVES)], "MissionObjective " + oid)
         if OBJECTIVE_HINTS.get(oid):
             c.set_props(objective, [("hint", OBJECTIVE_HINTS[oid])], "MissionObjective " + oid)
@@ -298,15 +361,56 @@ def _set_reference(asset, name, prop, path, missing):
     return [prop] if c.set_props(asset, [(prop, wanted)], name) else []
 
 
-def _apply_references(asset, name, chase, boss, next_chapter):
-    """Chase, Boss, NextChapter and no flashback. Returns the names of what changed."""
+def _apply_references(asset, name, chase, boss, next_chapter, site=None, flashback=None):
+    """Chase, Boss, NextChapter, Site and the flashback (none unless given). Returns the names of what changed."""
     changed = _set_reference(asset, name, "chase", chase, "run create_chase first")
     changed += _set_reference(asset, name, "boss", boss, "run create_boss first")
     changed += _set_reference(asset, name, "next_chapter", next_chapter, "the next chapter is not made yet")
-    if _object_path(asset.get_editor_property("flashback_to_play")):
+    changed += _set_reference(asset, name, "site", site, "run create_site first")
+    if flashback:
+        changed += _set_reference(asset, name, "flashback_to_play", flashback, "run create_narrative first")
+    elif _object_path(asset.get_editor_property("flashback_to_play")):
         if c.set_props(asset, [("flashback_to_play", None)], name):
             changed.append("no flashback")
     return changed
+
+
+def _events_key(events):
+    """The chapter's events as plain data, to compare with what the asset holds."""
+    return [(str(e[0]), [str(x) for x in e[1]], [(a, n) for a, n in e[2]]) for e in events]
+
+
+def _asset_events_key(asset):
+    out = []
+    for entry in list(asset.get_editor_property("events") or []):
+        grants = [(_object_path(g.get_editor_property("arrow")).split("/")[-1], int(g.get_editor_property("count")))
+                  for g in list(entry.get_editor_property("arrows") or [])]
+        out.append((str(entry.get_editor_property("event")), [str(x) for x in entry.get_editor_property("lines")], grants))
+    return out
+
+
+def _apply_events(asset, name, events):
+    """UMissionDefinition::Events from [(event, lines, [(arrow, count)])]. Returns [\"events\"] when it changed."""
+    if _asset_events_key(asset) == _events_key(events):
+        return []
+    entries = []
+    for event, lines, arrows in events:
+        entry = unreal.HawkeyeChapterEvent()
+        entry.set_editor_property("event", unreal.Name(event))
+        entry.set_editor_property("lines", [unreal.Name(line) for line in lines])
+        grants = []
+        for arrow, count in arrows:
+            definition = c.load_or_none(c.asset_path(WEAPON_PATH, arrow))
+            if definition is None:
+                c.log("skipped", name + " events", "run create_weapon_data first")
+                return []
+            grant = unreal.HawkeyeArrowGrant()
+            grant.set_editor_property("arrow", definition)
+            grant.set_editor_property("count", count)
+            grants.append(grant)
+        entry.set_editor_property("arrows", grants)
+        entries.append(entry)
+    return ["events"] if c.set_props(asset, [("events", entries)], name) else []
 
 
 def remove_retired():
@@ -328,10 +432,11 @@ def remove_retired():
         c.log("deleted", full, "replaced by " + CH01_NAME)
 
 
-def _chapter(name, fields, objectives, quiver, chase, boss, next_chapter):
+def _chapter(name, fields, objectives, quiver, chase, boss, next_chapter, site=None, flashback=None, events=()):
     asset = ensure_mission(name, fields, objectives, quiver=quiver)
     if asset is not None:
-        changed = _apply_references(asset, name, chase, boss, next_chapter)
+        changed = _apply_references(asset, name, chase, boss, next_chapter, site, flashback)
+        changed += _apply_events(asset, name, list(events))
         if changed:
             c.save(asset)
             c.log("updated", c.asset_path(MISSION_PATH, name), ", ".join(changed))
@@ -343,10 +448,19 @@ def create_chapter_four():
     return _chapter(CH04_NAME, CH04_FIELDS, CH04_OBJECTIVES, (CH04_BOW, CH04_ARROWS), None, BOSS, None)
 
 
+def create_chapter_two():
+    """DA_CH02_ReindeerGames: the toy drive (its site), the foam, the slides; then The Social Club (no chapter 3 yet)."""
+    import create_narrative  # noqa: PLC0415
+    # The slides are create_narrative's (its lines); made here first so the chapter can name them on one run.
+    flashback = FLASHBACK_CH02 if create_narrative.ensure_visiting_hours() is not None else None
+    return _chapter(CH02_NAME, CH02_FIELDS, CH02_OBJECTIVES, (CH01_BOW, CH02_ARROWS), None, None,
+                    c.asset_path(MISSION_PATH, CH04_NAME), site=SITE, flashback=flashback, events=CH02_EVENTS)
+
+
 def create_chapter_one():
-    """DA_CH01_NightShift, then The Social Club in the campaign's order."""
+    """DA_CH01_NightShift, then Reindeer Games in the campaign's order."""
     return _chapter(CH01_NAME, CH01_FIELDS, CH01_OBJECTIVES, (CH01_BOW, CH01_ARROWS), CHASE, None,
-                    c.asset_path(MISSION_PATH, CH04_NAME))
+                    c.asset_path(MISSION_PATH, CH02_NAME))
 
 
 def create_scene_mission():
@@ -358,6 +472,7 @@ def run():
     c.ensure_directory(MISSION_PATH)
     create_scene_mission()
     create_chapter_four()
+    create_chapter_two()
     chapter = create_chapter_one()
     remove_retired()
     return chapter

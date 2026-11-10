@@ -15,7 +15,7 @@
     /Game/Data/DT_Dialogue                           FHawkeyeDialogueLine rows: six lines each for Kate and
                                                      Clint in idle_roam, after_fight, objective_near and
                                                      low_health, plus the Scripted lines the dialogue
-                                                     sequences name (Chapters 1 and 4's, create_narrative.CH01_LINES and CH04_LINES)
+                                                     sequences name (Chapters 1, 2 and 4's, create_narrative.CH01_LINES, CH02_LINES, CH04_LINES)
 
 Then: CharacterName on BP_Kate and BP_Clint, and on BP_HawkeyePlayerController the switch and mark
 actions and the banter component's DialogueTable.
@@ -154,10 +154,10 @@ LINES = {
 
 def scripted_lines():
     """Scripted lines (Situation Scripted: banter never picks them), played by name or from DT_DialogueSequences:
-    Chapters 1 and 4's, kept with their sequences in create_narrative.py, every one a draft.
+    Chapters 1, 2 and 4's, kept with their sequences in create_narrative.py, every one a draft.
     [(row, speaker, text, seconds)]."""
     import create_narrative  # noqa: PLC0415 - the chapter's words live with its sequences
-    return create_narrative.CH01_LINES + create_narrative.CH04_LINES
+    return create_narrative.CH01_LINES + create_narrative.CH02_LINES + create_narrative.CH04_LINES
 
 
 def dialogue_rows():

@@ -106,6 +106,35 @@ CH04_LINES = [
     ("seq_ch04_after_09", "Kate", "Sloan money. That's Mom's. ...Not tonight. Look at that, Lucky. Whole city, lit up.", 5.5),
 ]
 
+# Chapter 2's lines (ACT1-script.md, "Chapter 2: Reindeer Games", all drafts), the same shape. They are spoken by the
+# chapter's events (DA_CH02_ReindeerGames.Events, create_mission_data.CH02_EVENTS): arriving, the first parry, the
+# foam unlocked and first loosed, the fight won, the toys back, the courier.
+CH02_LINES = [
+    ("ch02_arrive", "Kate", "Who robs a toy drive? Who wakes up and picks that?", 3.5),
+    ("ch02_masks", "Kate", "Oh, they committed to the masks. Okay. Respect for the masks.", 3.5),
+    ("ch02_bark", "Reindeer", "It's the sidekick!", 2.0),
+    ("ch02_bark_reply", "Kate", "I will end you specifically.", 2.5),
+    ("ch02_parry", "Kate", "Ha! Did you see— nobody saw. Lucky saw.", 3.0),
+    ("ch02_foam_unlocked", "Kate", "Sticky foam. For cleanup. And for people.", 3.0),
+    ("ch02_foam_used", "Kate", "Stay.", 1.5),
+    ("ch02_won", "Kate", "Dasher's down. Dancer's down. That one I think was just a guy.", 4.0),
+    ("ch02_toys_returned", "Volunteer", "You're her. You're Hawkeye's—", 2.5),
+    ("ch02_courier", "Kate", "One wound. Small. That's not a knife. ...Not my problem tonight.", 4.5),
+]
+CH02_ID = "DA_CH02_ReindeerGames"
+
+# Chapter 2's slides, "Visiting hours" (ACT1-script.md): (caption, tint). Solid colours until there are images.
+FB02_NAME = "DA_FB02_VisitingHours"
+FB02_TITLE = "Visiting hours"
+FB02_SLIDES = [
+    ("Visiting hours are Tuesdays. Kate goes on Tuesdays.", (0.05, 0.06, 0.09)),
+    ("Eleanor asks if she's eating. Kate asks if she's sleeping. Neither of them answers.", (0.09, 0.07, 0.06)),
+    ("Forty minutes. Kate checks the clock eleven times.", (0.06, 0.05, 0.08)),
+    ("On the train home she can't work out if she's angry or if she misses her. Both, probably.", (0.03, 0.05, 0.08)),
+]
+FB02_HOLD = 4.5
+FB02_CROSSFADE = 1.0
+
 # DT_DialogueSequences: (row, sequence, order, DT_Dialogue line, gap seconds). The opening speaks a second
 # into the run, under the title card; the rest are moments of the chase (DA_Chase_CH01_NightShift names them).
 SEQUENCE_STEPS = [
@@ -137,6 +166,18 @@ MESSAGES = [
      "catch_thief", 26.0, False),
     ("msg_ch01_06", "Kate", "Landlord (Mr. Pruitt)", "Mr. Pruitt! Funny story", "ObjectiveCompleted", "catch_thief", 29.0, True),
     ("msg_ch01_07", "Landlord (Mr. Pruitt)", "", "It is never a funny story.", "ObjectiveCompleted", "catch_thief", 32.0, False),
+]
+# Chapter 2 (its rows carry CH02_ID): the call comes in as the chapter opens; after the toys are back, the job
+# rejection, then Kate asking Clint (in his thread, arriving read: she sent it) and his two answers.
+CH02_MESSAGES = [
+    ("msg_ch02_01", "Grills", "", "Kate. Toy drive on Avenue B. Guys in reindeer masks. I'm not joking.", "ChapterStart", "None",
+     2.0, False),
+    ("msg_ch02_02", "Unknown", "",
+     "Thank you for your interest in the position. We have decided to move forward with other candidates.",
+     "ObjectiveCompleted", "return_toys", 8.0, False),
+    ("msg_ch02_03", "Kate", "Clint", "Do you put \"vigilante\" on a résumé", "ObjectiveCompleted", "return_toys", 12.0, True),
+    ("msg_ch02_04", "Clint", "", "no", "ObjectiveCompleted", "return_toys", 15.0, False),
+    ("msg_ch02_05", "Clint", "", "laura says put \"project management\"", "ObjectiveCompleted", "return_toys", 19.0, False),
 ]
 
 # DA_FB00_Placeholder's slides: (caption, tint). Solid colours until there are images.
@@ -203,13 +244,14 @@ def ensure_table(name, struct_name, rows):
 
 def message_rows():
     rows = []
-    for name, sender, thread, text, trigger, key, delay, read in MESSAGES:
-        rows.append({
-            "Name": name, "Sender": sender, "Thread": thread, "Text": text, "Trigger": trigger,
-            "TriggerObjectiveId": key if trigger != "Event" else "None",
-            "TriggerEvent": key if trigger == "Event" else "None",
-            "ChapterId": CH01_ID, "DelaySeconds": delay, "bRead": read, "bDraft": True,
-        })
+    for chapter, messages in ((CH01_ID, MESSAGES), (CH02_ID, CH02_MESSAGES)):
+        for name, sender, thread, text, trigger, key, delay, read in messages:
+            rows.append({
+                "Name": name, "Sender": sender, "Thread": thread, "Text": text, "Trigger": trigger,
+                "TriggerObjectiveId": key if trigger != "Event" else "None",
+                "TriggerEvent": key if trigger == "Event" else "None",
+                "ChapterId": chapter, "DelaySeconds": delay, "bRead": read, "bDraft": True,
+            })
     return rows
 
 
@@ -486,11 +528,44 @@ def ensure_flashback(scene_world):
     return asset
 
 
+def ensure_visiting_hours():
+    """DA_FB02_VisitingHours: chapter 2's slides after the toys go back (no playable scene). Idempotent."""
+    full = c.asset_path(FLASHBACK_PATH, FB02_NAME)
+    cls = c.find_class("FlashbackDefinition", "/Script/Hawkeye.FlashbackDefinition")
+    if cls is None:
+        c.log("FAILED", full, "UFlashbackDefinition not exposed; build the module")
+        return None
+    c.ensure_directory(FLASHBACK_PATH)
+    factory = c.new_factory("DataAssetFactory")
+    c.set_props(factory, [("data_asset_class", cls)], "DataAssetFactory")
+    asset, created = c.create_asset(FB02_NAME, FLASHBACK_PATH, cls, factory, quiet=True)
+    if asset is None:
+        return None
+    build = "fb-" + _hash([FB02_TITLE, FB02_SLIDES, FB02_HOLD, FB02_CROSSFADE])
+    if not created and unreal.EditorAssetLibrary.get_metadata_tag(asset, BUILD_TAG) == build:
+        c.log("exists", full, "{0} slides".format(len(FB02_SLIDES)))
+        return asset
+    slides = []
+    for caption, rgb in FB02_SLIDES:
+        slide = unreal.FlashbackSlide()
+        slide.set_editor_property("caption", caption)
+        slide.set_editor_property("hold_seconds", FB02_HOLD)
+        slide.set_editor_property("crossfade_seconds", FB02_CROSSFADE)
+        slide.set_editor_property("tint", unreal.LinearColor(rgb[0], rgb[1], rgb[2], 1.0))
+        slides.append(slide)
+    c.set_props(asset, [("title", FB02_TITLE), ("slides", slides), ("skippable", True)], FB02_NAME)
+    unreal.EditorAssetLibrary.set_metadata_tag(asset, BUILD_TAG, build)
+    c.save(asset)
+    c.log("created" if created else "updated", full, "{0} slides".format(len(FB02_SLIDES)))
+    return asset
+
+
 def run():
     c.ensure_directory(DATA_PATH)
     c.ensure_directory(FLASHBACK_PATH)
     ensure_table("DT_Messages", "HawkeyePhoneMessage", message_rows())
     ensure_table("DT_DialogueSequences", "HawkeyeDialogueSequenceRow", sequence_rows())
+    ensure_visiting_hours()
     scene = ensure_scene_map()
     return ensure_flashback(scene)
 
