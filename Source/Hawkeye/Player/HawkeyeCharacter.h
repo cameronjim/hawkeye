@@ -27,6 +27,7 @@ class UInputMappingContext;
 class UHealthComponent;
 class UInteractionComponent;
 class UGrappleComponent;
+class UHawkeyeMovementComponent;
 class UInventoryComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
@@ -62,7 +63,12 @@ class HAWKEYE_API AHawkeyeCharacter : public ACharacter, public ISpudObject, pub
 	GENERATED_BODY()
 
 public:
-	AHawkeyeCharacter();
+	/** Swaps in UHawkeyeMovementComponent, so the Blueprints' tuned CharacterMovement values carry over. */
+	AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer);
+
+	/** The character's movement: the engine's modes plus Hawkeye's custom ones (the zip). */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Movement")
+	UHawkeyeMovementComponent* GetHawkeyeMovement() const;
 
 	/** The boom the camera hangs off. Rotates with the control rotation. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")

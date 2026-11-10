@@ -37,6 +37,7 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "Player/GrappleComponent.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
 #include "Player/LocomotionAnim.h"
 #include "Player/ParkourComponent.h"
@@ -102,7 +103,8 @@ namespace HawkeyeGasp
 	}
 }
 
-AHawkeyeCharacter::AHawkeyeCharacter()
+AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UHawkeyeMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	// Ticks to blend the aim FOV and swap the body's idle/walk sequence.
 	PrimaryActorTick.bCanEverTick = true;
@@ -1039,6 +1041,11 @@ void AHawkeyeCharacter::Input_Grapple(const FInputActionValue& /*Value*/)
 	{
 		GrappleComponent->TryFire();
 	}
+}
+
+UHawkeyeMovementComponent* AHawkeyeCharacter::GetHawkeyeMovement() const
+{
+	return Cast<UHawkeyeMovementComponent>(GetCharacterMovement());
 }
 
 bool AHawkeyeCharacter::IsZipping() const
@@ -3180,7 +3187,8 @@ void AHawkeyeCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, ui
 		EndSlide();
 		if (IsCrouchWanted() && !bDowned && !IsRolling())
 		{
-			EndCrouch(Movement->MovementMode == MOVE_Flying ? TEXT("a parkour move, hang or zip") : TEXT("a custom movement mode"));
+			EndCrouch(Movement->MovementMode == MOVE_Flying ? TEXT("a parkour move or hang")
+				: IsZipping() ? TEXT("a zip") : TEXT("a custom movement mode"));
 		}
 	}
 	if (Movement && Movement->IsFalling())
@@ -3189,13 +3197,15 @@ void AHawkeyeCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, ui
 		FallApexZ = GetActorLocation().Z;
 		FallSeconds = 0.f;
 		EndSlide();
-		// Not rising: stepped off an edge, let go of a hang, or let go of a zip.
-		bControlledDrop = Movement->Velocity.Z <= 0.f
-			&& (PrevMovementMode == MOVE_Walking || PrevMovementMode == MOVE_NavWalking || PrevMovementMode == MOVE_Flying);
+		// Not rising: stepped off an edge or let go of a hang. Any way off a zip counts, a jump's let-go
+		// included, since the line is what she lets go of.
+		const bool bFromZip = PrevMovementMode == MOVE_Custom && PreviousCustomMode == static_cast<uint8>(EHawkeyeCustomMovement::Zip);
+		bControlledDrop = bFromZip || (Movement->Velocity.Z <= 0.f
+			&& (PrevMovementMode == MOVE_Walking || PrevMovementMode == MOVE_NavWalking || PrevMovementMode == MOVE_Flying));
 		if (bControlledDrop)
 		{
 			UE_LOG(LogHawkeye, Log, TEXT("%s: controlled drop from %s at feet %.0f"), *GetNameSafe(this),
-				PrevMovementMode == MOVE_Flying ? TEXT("a hang or a zip") : TEXT("an edge"),
+				bFromZip ? TEXT("a zip") : PrevMovementMode == MOVE_Flying ? TEXT("a hang") : TEXT("an edge"),
 				GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 		}
 	}

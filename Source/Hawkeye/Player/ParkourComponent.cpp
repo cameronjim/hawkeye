@@ -947,7 +947,8 @@ void UParkourComponent::TickRoofEdgeGuard(float DeltaSeconds)
 	if (bGuardFlight)
 	{
 		GuardFlightElapsed += DeltaSeconds;
-		if (!Movement || IsBusy() || Movement->MovementMode == MOVE_Flying)
+		// Flying is a move or a hang, a custom mode is a zip: either way the held jump is over.
+		if (!Movement || IsBusy() || Movement->MovementMode == MOVE_Flying || Movement->MovementMode == MOVE_Custom)
 		{
 			bGuardFlight = false;
 		}
@@ -1026,7 +1027,7 @@ void UParkourComponent::TickJumpAssist(float DeltaSeconds)
 		CancelLateCatch(TEXT("a move or a hang started"));
 		return;
 	}
-	if (!Movement || Movement->MovementMode == MOVE_Flying)
+	if (!Movement || Movement->MovementMode == MOVE_Flying || Movement->MovementMode == MOVE_Custom)
 	{
 		CancelLateCatch(TEXT("a zip, or no movement"));
 		return;

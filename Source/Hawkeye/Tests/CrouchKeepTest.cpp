@@ -285,7 +285,7 @@ bool FHawkeyeCrouchKeep::RunTest(const FString& Parameters)
 			if (Now - S->PhaseAt > 0.2)
 			{
 				TestFalse(TEXT("A parkour move ends the crouch"), Kate->IsCrouchWanted() || Kate->bIsCrouched);
-				TestEqual(TEXT("And says so"), Kate->GetLastCrouchEndReason(), FString(TEXT("a parkour move, hang or zip")));
+				TestEqual(TEXT("And says so"), Kate->GetLastCrouchEndReason(), FString(TEXT("a parkour move or hang")));
 				Movement->SetMovementMode(MOVE_Walking);
 				Next(EPhase::Walking);
 			}
