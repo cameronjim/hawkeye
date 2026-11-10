@@ -2,6 +2,9 @@
 
     /Game/Missions/DA_CH01_NightShift             UMissionDefinition: Act 1's first chapter, "Night Shift"
                                                   (docs/chapters/ACT1.md, CH01.md)
+    /Game/Missions/DA_CH04_SocialClub             UMissionDefinition: Act 1's boss chapter, "The Social Club"
+                                                  (docs/chapters/ACT1.md); its Boss is DA_Boss_CH04_Tomas
+                                                  (create_boss.py, which runs first)
     /Game/Missions/DA_Scene_Placeholder           UMissionDefinition for L_Scene_Placeholder, the
                                                   playable scene the placeholder flashback ends in (no
                                                   chapter plays it now; the scene system stays for later)
@@ -16,6 +19,12 @@ DA_CH01_Rooftops is deleted (a save that names it starts a new game, the save ru
 
 It grants DA_Bow_Kate with 30 standard, 6 grapple, 2 putty, 2 bola, 1 smoke and 1 EMP arrow at the start, for
 now (create_weapon_data.py makes those, and runs first; the crime laps use the bola).
+
+DA_CH04_SocialClub follows it in the campaign's order (DA_CH01_NightShift.NextChapter; chapters 2 and 3 do not
+exist yet): chapter select opens it once Night Shift is complete. Its four objectives (meet_tomas, beat_crew,
+beat_tomas, survive_santa) are completed by the boss fight; its title, objective titles and end card line are drafts.
+No partner, no chase, back to roaming at the end. It grants the bow with 30 standard, 6 grapple, 2 putty and 2 bola;
+the fight's last phase adds 3 confetti arrows (slot 5, which is why no smoke is granted).
 
 Property names come from Source/Hawkeye/Mission/MissionDefinition.h and
 Source/Hawkeye/Mission/MissionObjective.h.
@@ -98,7 +107,37 @@ CH01_OBJECTIVES = [
     ("cross_gap", "Get across. Use the grapple", ""),
     ("catch_thief", "Catch him", ""),
 ]
-DRAFT_OBJECTIVES = {"chase_thief", "cross_gap", "catch_thief"}
+DRAFT_OBJECTIVES = {"chase_thief", "cross_gap", "catch_thief", "meet_tomas", "beat_crew", "beat_tomas", "survive_santa"}
+
+# --------------------------------------------------------------------------------------
+# chapter 4: The Social Club
+# --------------------------------------------------------------------------------------
+
+CH04_NAME = "DA_CH04_SocialClub"
+BOSS = "/Game/Missions/Bosses/DA_Boss_CH04_Tomas"
+CH04_FIELDS = [
+    ("mission_name", "The Social Club"),
+    ("mission_number", 4),
+    ("end_card_line", "Sloan money. That's Mom's. ...Not tonight."),
+    ("show_objective_text", True),
+    ("allow_switching", False),
+    ("partner_present", False),
+    ("opening_title", "The Social Club"),
+    ("opening_subtitle", "Tomas would like a word. Then a fight."),
+    # No chapter 5 yet: after the end card, back to the district.
+    ("return_to_roaming_at_end", True),
+    ("chapter_complete_toast", "[Chapter complete]"),
+    ("draft_text", True),
+]
+# From ACT1-script.md, every one a draft; the boss fight completes each (gameplay-semantics.md, "Bosses").
+CH04_OBJECTIVES = [
+    ("meet_tomas", "Go to the social club roof", ""),
+    ("beat_crew", "Deal with Tomas's guys", ""),
+    ("beat_tomas", "Deal with Tomas", ""),
+    ("survive_santa", "Don't get flattened by Santa", ""),
+]
+CH04_BOW = "DA_Bow_Kate"
+CH04_ARROWS = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6), ("DA_Arrow_Putty", 2), ("DA_Arrow_Bola", 2)]
 
 # The HUD's second line under an objective's title (UMissionObjective::Hint), by id. None in this chapter.
 OBJECTIVE_HINTS = {}
@@ -149,12 +188,12 @@ def _quiver_matches(asset, bow, arrows):
     return True
 
 
-def _apply_quiver(asset):
-    """StartingBow and StartingArrows from CH01_BOW / CH01_ARROWS. Returns True when it changed."""
-    bow = c.load_or_none(c.asset_path(WEAPON_PATH, CH01_BOW))
-    arrows = [(c.load_or_none(c.asset_path(WEAPON_PATH, name)), count) for name, count in CH01_ARROWS]
+def _apply_quiver(asset, name, bow_name, arrow_names):
+    """StartingBow and StartingArrows from a bow name and [(arrow name, count)]. Returns True when it changed."""
+    bow = c.load_or_none(c.asset_path(WEAPON_PATH, bow_name))
+    arrows = [(c.load_or_none(c.asset_path(WEAPON_PATH, arrow)), count) for arrow, count in arrow_names]
     if bow is None or any(arrow is None for arrow, _count in arrows):
-        c.log("skipped", CH01_NAME + " quiver", "run create_weapon_data first")
+        c.log("skipped", name + " quiver", "run create_weapon_data first")
         return False
     if _quiver_matches(asset, bow, arrows):
         return False
@@ -164,7 +203,7 @@ def _apply_quiver(asset):
         grant.set_editor_property("arrow", arrow)
         grant.set_editor_property("count", count)
         grants.append(grant)
-    return bool(c.set_props(asset, [("starting_bow", bow), ("starting_arrows", grants)], CH01_NAME))
+    return bool(c.set_props(asset, [("starting_bow", bow), ("starting_arrows", grants)], name))
 
 
 def _text_value(value):
@@ -207,7 +246,7 @@ def _build_objectives(asset, objective_cls, wanted):
     return objectives
 
 
-def ensure_mission(name, fields, objectives, with_quiver):
+def ensure_mission(name, fields, objectives, quiver=None):
     """A mission data asset. Creates it, or corrects whichever fields differ."""
     full = c.asset_path(MISSION_PATH, name)
     cls = c.find_class("MissionDefinition", "/Script/Hawkeye.MissionDefinition")
@@ -236,7 +275,7 @@ def ensure_mission(name, fields, objectives, with_quiver):
         if c.set_props(asset, [("objectives", _build_objectives(asset, objective_cls, objectives))], name):
             changed.append("objectives")
 
-    if with_quiver and _apply_quiver(asset):
+    if quiver is not None and _apply_quiver(asset, name, quiver[0], quiver[1]):
         changed.append("starting quiver")
 
     if created or changed:
@@ -248,15 +287,22 @@ def ensure_mission(name, fields, objectives, with_quiver):
     return asset
 
 
-def _apply_references(asset, name):
-    """Chase = DA_Chase_CH01_NightShift and no flashback. Returns the names of what changed."""
-    changed = []
-    chase = c.load_or_none(CHASE)
-    if chase is None:
-        c.log("skipped", name + ".Chase", "run create_chase first")
-    elif _object_path(asset.get_editor_property("chase")) != _object_path(chase):
-        if c.set_props(asset, [("chase", chase)], name):
-            changed.append("chase")
+def _set_reference(asset, name, prop, path, missing):
+    """prop = the asset at path (None for an empty path). Returns [prop] when it changed."""
+    wanted = c.load_or_none(path) if path else None
+    if path and wanted is None:
+        c.log("skipped", "{0}.{1}".format(name, prop), missing)
+        return []
+    if _object_path(asset.get_editor_property(prop)) == _object_path(wanted):
+        return []
+    return [prop] if c.set_props(asset, [(prop, wanted)], name) else []
+
+
+def _apply_references(asset, name, chase, boss, next_chapter):
+    """Chase, Boss, NextChapter and no flashback. Returns the names of what changed."""
+    changed = _set_reference(asset, name, "chase", chase, "run create_chase first")
+    changed += _set_reference(asset, name, "boss", boss, "run create_boss first")
+    changed += _set_reference(asset, name, "next_chapter", next_chapter, "the next chapter is not made yet")
     if _object_path(asset.get_editor_property("flashback_to_play")):
         if c.set_props(asset, [("flashback_to_play", None)], name):
             changed.append("no flashback")
@@ -282,25 +328,36 @@ def remove_retired():
         c.log("deleted", full, "replaced by " + CH01_NAME)
 
 
-def create_chapter_one():
-    """DA_CH01_NightShift."""
-    asset = ensure_mission(CH01_NAME, CH01_FIELDS, CH01_OBJECTIVES, with_quiver=True)
+def _chapter(name, fields, objectives, quiver, chase, boss, next_chapter):
+    asset = ensure_mission(name, fields, objectives, quiver=quiver)
     if asset is not None:
-        changed = _apply_references(asset, CH01_NAME)
+        changed = _apply_references(asset, name, chase, boss, next_chapter)
         if changed:
             c.save(asset)
-            c.log("updated", c.asset_path(MISSION_PATH, CH01_NAME), ", ".join(changed))
+            c.log("updated", c.asset_path(MISSION_PATH, name), ", ".join(changed))
     return asset
+
+
+def create_chapter_four():
+    """DA_CH04_SocialClub: the boss chapter, no chase, no next chapter yet."""
+    return _chapter(CH04_NAME, CH04_FIELDS, CH04_OBJECTIVES, (CH04_BOW, CH04_ARROWS), None, BOSS, None)
+
+
+def create_chapter_one():
+    """DA_CH01_NightShift, then The Social Club in the campaign's order."""
+    return _chapter(CH01_NAME, CH01_FIELDS, CH01_OBJECTIVES, (CH01_BOW, CH01_ARROWS), CHASE, None,
+                    c.asset_path(MISSION_PATH, CH04_NAME))
 
 
 def create_scene_mission():
     """DA_Scene_Placeholder: no bow, one objective."""
-    return ensure_mission(SCENE_NAME, SCENE_FIELDS, SCENE_OBJECTIVES, with_quiver=False)
+    return ensure_mission(SCENE_NAME, SCENE_FIELDS, SCENE_OBJECTIVES)
 
 
 def run():
     c.ensure_directory(MISSION_PATH)
     create_scene_mission()
+    create_chapter_four()
     chapter = create_chapter_one()
     remove_retired()
     return chapter
