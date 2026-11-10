@@ -111,11 +111,8 @@ ACityLedgeSpawner* FGrappleReachWorld::FindSpawner(const UWorld* World)
 	{
 		return nullptr;
 	}
-	for (TActorIterator<ACityLedgeSpawner> It(const_cast<UWorld*>(World)); It; ++It)
-	{
-		return *It;
-	}
-	return nullptr;
+	TActorIterator<ACityLedgeSpawner> It(const_cast<UWorld*>(World));
+	return It ? *It : nullptr;
 }
 
 FString FGrappleReachWorld::OsmOf(const AActor* Actor)
