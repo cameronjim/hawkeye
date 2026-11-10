@@ -182,5 +182,5 @@ public:
 	static constexpr float BeatMinSkipSeconds = 0.4f;
 	/** A beat's camera keeps both of them inside this fraction of half its field of view, backing off up to BeatMaxPushBack cm. */
 	static constexpr float BeatFrameFraction = 0.75f;
-	static constexpr float BeatMaxPushBack = 1200.f;
+	static constexpr float BeatMaxPushBack = 3000.f;
 };
