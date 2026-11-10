@@ -11,9 +11,21 @@ standalone laps, and screenshots read by eye.
 3. **A mantle at two heights.** Waist-high and head-high. The body should fit the wall,
    not stretch.
 
+4. **Night Shift.** New game from the menu. Chase the bike thief over the roofs, take the
+   grapple at the gap (it snaps, she lands in the dumpster), climb out, corner him.
+
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Chapter 1 is Night Shift.** The rooftop chase after the bike thief replaces the old
+  Rooftops chapter and its purple-arrow ending. The thief runs a 152 m route planned from
+  the district data and rubber-bands to stay in sight; fall 45 m behind for 6 s and you
+  restart from the checkpoint. The grapple at the gap snaps and drops her in the dumpster
+  of wrapping paper. Clint is benched for Act 1. 525 tests pass; the scripted chase takes
+  23.7 s. Rough: the thief's first leap is 19 m, he wears the tracksuit thug body, lines
+  land late (one about 7 s after its vault), the opening roof is too dark, the "corner" is
+  open pavement, and there is no Lucky yet. **Feel check:** is the chase a chase, or do
+  you just follow him?
 - **Movement component.** `UHawkeyeMovementComponent` runs the grapple zip and every
   parkour move as custom movement modes with real velocity. Zip entry keeps her speed and
   accelerates; arrival carries 600 cm/s; a jump release keeps the zip's velocity plus a
