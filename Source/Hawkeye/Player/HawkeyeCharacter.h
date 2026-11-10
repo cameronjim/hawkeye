@@ -10,6 +10,7 @@
 #include "Combat/StrikePose.h"
 #include "GameFramework/Character.h"
 #include "ISpudObject.h"
+#include "Player/BodyLook.h"
 #include "Player/HawkeyeMovementTypes.h"
 #include "Player/HawkeyeSprintToggle.h"
 #include "Settings/HawkeyeSettings.h"
@@ -483,6 +484,35 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Animation")
 	bool IsBodyDrivenByAnimBlueprint() const;
 
+	// --- Body look ------------------------------------------------------------------------------
+
+	/**
+	 * What she looks like over the driver mesh (see GetBodyMesh). Empty: the driver is what is drawn. BP_Kate's
+	 * is Paragon's Sparrow, written by Tools/Editor/create_kate_look.py; a clone without it keeps the mannequin.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Body")
+	FHawkeyeBodyLook BodyLook;
+
+	/**
+	 * The mesh people see. GetMesh() is the driver: it runs the AnimBP, the montages, the bow and hang IK,
+	 * root motion, the notifies and the collision, and owns the sockets gameplay measures from (and the
+	 * bow attaches to). With a BodyLook in place the driver is hidden and this is the look's mesh, posed
+	 * from the driver every frame; without one it is GetMesh(). Read this for anything that is about how
+	 * she looks: materials, hiding her from a close camera, arrows stuck in her.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Body")
+	USkeletalMeshComponent* GetBodyMesh() const;
+
+	/** True when a BodyLook mesh is drawn over a hidden driver. */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Body")
+	bool HasBodyLook() const { return LookMesh != nullptr; }
+
+	/**
+	 * Puts BodyLook on (once; PostInitializeComponents calls it). Returns the look's mesh, or null when
+	 * there is none or its content is not on disk (the driver then stays visible). Public for tests.
+	 */
+	USkeletalMeshComponent* ApplyBodyLook();
+
 	/**
 	 * Writes the current gait, crouch and aim into the sample's CharacterInputState:
 	 * WantsToSprint (sprint gait), WantsToWalk (walk gait, or aiming), WantsToStrafe and
@@ -893,6 +923,10 @@ public:
 	int32 GetFootstepCount() const { return FootstepCount; }
 
 protected:
+	//~ Begin AActor interface
+	virtual void PostInitializeComponents() override;
+	//~ End AActor interface
+
 	//~ Begin APawn interface
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -1672,6 +1706,10 @@ protected:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
 	float CameraHideBodyDistance = 100.f;
+
+	/** The look's mesh while BodyLook is on; null otherwise. */
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> LookMesh;
 
 	// --- Look -----------------------------------------------------------------------------------
 

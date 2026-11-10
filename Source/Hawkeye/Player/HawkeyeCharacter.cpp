@@ -234,6 +234,28 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	}
 }
 
+void AHawkeyeCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	// Before BeginPlay, so the bow and everything else that starts then finds her final body.
+	ApplyBodyLook();
+}
+
+USkeletalMeshComponent* AHawkeyeCharacter::ApplyBodyLook()
+{
+	if (LookMesh || !BodyLook.IsSet() || !GetMesh())
+	{
+		return LookMesh;
+	}
+	LookMesh = HawkeyeBodyLook::Apply(*GetMesh(), BodyLook);
+	return LookMesh;
+}
+
+USkeletalMeshComponent* AHawkeyeCharacter::GetBodyMesh() const
+{
+	return LookMesh ? LookMesh.Get() : GetMesh();
+}
+
 void AHawkeyeCharacter::BeginPlay()
 {
 	Super::BeginPlay();
@@ -1843,7 +1865,7 @@ void AHawkeyeCharacter::Tick(float DeltaSeconds)
 
 void AHawkeyeCharacter::UpdateBodyVisibilityForCamera()
 {
-	USkeletalMeshComponent* Body = GetMesh();
+	USkeletalMeshComponent* Body = GetBodyMesh();
 	if (!Body || !CameraBoom || !FollowCamera)
 	{
 		return;

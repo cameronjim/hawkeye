@@ -1313,6 +1313,19 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   player-controlled; a hit on the partner that gets through anyway sticks and does nothing (no
   damage, no stagger, no trick effect). Bola and putty only ever act on thugs. The explosive's blast
   hurts the shooter's partner at half its falloff damage; the shooter still takes her own in full.
+- On a character with a body look (Kate as Sparrow, below) the shapes are the look mesh's physics asset and
+  the arrow attaches to its bone, so it sits in the body people see; the damage bone is read the same way.
+
+## Kate's body look (built 2026-11-10; setup in claude-docs/animation.md, "Kate's visible mesh")
+- `GetMesh()` is the driver: it runs the AnimBP, every montage, the bow and hang IK, root motion and notifies,
+  owns the collision and the sockets gameplay measures from, and carries the bow. With a `BodyLook` set and its
+  content on disk, the driver is hidden (it still ticks and refreshes its bones unseen) and a child mesh is drawn,
+  posed from it each frame; it has no collision. `GetBodyMesh()` returns what is drawn: the look, else the driver.
+- Read the body mesh for how she looks (hiding her from a close camera, arrows stuck in her); read the driver
+  for everything else. One shadow: the hidden driver casts none.
+- The look's hands are the driver's hands (place and turn), so the bow, the string hand and a hang's grip land in
+  them; the rest of her keeps the look's own proportions.
+- A look whose mesh or AnimBP is not on disk is not applied: one Display line, and the driver is drawn as before.
 
 ## Bow aim assist (built 2026-09-28, from playtest note "aim assist for the bows")
 - One setting, Aim assist: Off / Normal / Strong (default Normal), a choice row under Controls in
