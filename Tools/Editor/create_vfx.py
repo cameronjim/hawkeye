@@ -641,6 +641,17 @@ EFFECTS = {
          .em("FixedBounds", "(Min=(X=-3500,Y=-3500,Z=-2000),Max=(X=3500,Y=3500,Z=2000),IsValid=True)")
          .material("M_Vfx_Snow").no_shadow()),
     ],
+    # Kate landing in the dumpster of wrapping paper (Act 1, Night Shift's botched grapple, 2026-11-10): scraps of
+    # red, gold and green thrown up out of the bin, tumbling back down slowly. Blended (M_Vfx_Putty), not added,
+    # so the colours read against the night instead of clipping to white.
+    "NS_PaperBurst": [
+        burst_sprites("Red", "M_Vfx_Putty", 46, (1.6, 2.4), (0.8, 0.05, 0.06, 1.0), (16, 28), 50, (420, 760),
+                      gravity=(0, 0, -520), drag=2.2, fade=((0.0, 1.0), (0.8, 1.0), (1.0, 0.0))),
+        burst_sprites("Gold", "M_Vfx_Putty", 36, (1.6, 2.4), (1.0, 0.72, 0.12, 1.0), (14, 24), 50, (420, 760),
+                      gravity=(0, 0, -520), drag=2.2, fade=((0.0, 1.0), (0.8, 1.0), (1.0, 0.0))),
+        burst_sprites("Green", "M_Vfx_Putty", 36, (1.6, 2.4), (0.08, 0.55, 0.18, 1.0), (16, 28), 50, (420, 760),
+                      gravity=(0, 0, -520), drag=2.2, fade=((0.0, 1.0), (0.8, 1.0), (1.0, 0.0))),
+    ],
     # A chimney's wisp: a thin, slow, pale stream that leans with the wind.
     "NS_ChimneyWisp": [
         smoke_stream("Wisp", 5, (4.0, 6.0), (0.4, 0.4, 0.43, 0.45), (40, 70), 12, (40, 80), 10, (18, 6, 14),

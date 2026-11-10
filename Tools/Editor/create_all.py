@@ -13,7 +13,10 @@
                                   M_Emissive and its instances)
     3c. create_world_blueprints   WBP_Hud, BP_Thug, BP_GrappleAnchor, BP_TraversableBlock
     3d. create_weapon_data        DA_Weapon_Hands, the bows and arrows
-    4. create_mission_data        DA_CH01_Rooftops
+    3e. create_chase              DA_Chase_CH01_NightShift (Act 1's opening chase, planned from the same
+                                  OpenStreetMap records as the city; skipped until they exist), the dumpster,
+                                  vent and bulkhead meshes (after the world blueprints' BP_Thug and NS_PaperBurst)
+    4. create_mission_data        DA_CH01_NightShift (after the chase it names)
     4b. create_partner            BP_Clint, ST_Partner, BP_PartnerController, DT_Dialogue (after the
                                   weapon data, for DA_Bow_Clint)
     4c. create_enemies            ST_Thug, EQS_CoverPoints (wired into BP_Thug) and BP_Archer (after
@@ -75,6 +78,7 @@ STEPS = [
     ("materials", "_materials"),
     ("world blueprints", "create_world_blueprints"),
     ("weapon data", "create_weapon_data"),
+    ("chase", "create_chase"),
     ("mission data", "create_mission_data"),
     ("partner", "create_partner"),
     ("enemies", "create_enemies"),
@@ -99,6 +103,7 @@ SKIP_STEPS = set(
 _OSM_RECORDS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "Data", "osm", "east_village.buildings.json")
 STEP_REQUIRES = {
+    "create_chase": _OSM_RECORDS,
     "create_challenges": _OSM_RECORDS,
     "generate_city": _OSM_RECORDS,
 }
