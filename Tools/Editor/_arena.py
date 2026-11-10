@@ -45,7 +45,14 @@ BOSS_BACK_MAX = 500.0
 CREW_RING = 330.0               # cm from the centre
 CREW_ANGLES = (45.0, -45.0, 115.0, -115.0)   # degrees off the line from the centre to her landing
 LANE_INSET = 130.0              # cm in from the circle the Santa's lane ends
-SANTA_HALF_WIDTH = 170.0        # the lane's half width (FBossHazardTuning.HalfWidth)
+# The Santa's lane is sized from the boss's reach, so the lure works: with Kate just outside the lane (her capsule
+# clear of it, KATE_RADIUS + LANE_SLACK), Tomas closing to his swing distance and lunging into it still stands inside
+# (gameplay-semantics.md, "Bosses"; the lane was 170 and he stood on its edge, caught in one lap run of four).
+BOSS_CLOSE = 120.0              # cm, AThugAIController::MeleeCloseDistance: where he stops to let a swing land
+BOSS_LUNGE = 60.0               # cm, his longest lunge (the haymaker's, create_boss.COMBO)
+KATE_RADIUS = 35.0              # cm, her capsule
+LANE_SLACK = 25.0
+SANTA_HALF_WIDTH = BOSS_CLOSE + BOSS_LUNGE + KATE_RADIUS + LANE_SLACK   # 240: the lane's half width (FBossHazardTuning.HalfWidth)
 POLE_INSET = 70.0               # cm in from the circle the string-light poles stand
 POLE_HEIGHT = 300.0
 BULBS_PER_SPAN = 3

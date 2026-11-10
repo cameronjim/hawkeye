@@ -72,7 +72,7 @@ MOVES = {"winded_after_swings": 3, "winded_seconds": 3.0, "winded_damage_scale":
          "stagger_threshold": 40.0, "swing_cooldown_seconds": 0.6, "rush_speed": 380.0, "finisher_only_when_winded": True,
          "parry_stagger_seconds": 0.6}
 HAZARD = {"first_delay_seconds": 2.0, "telegraph_seconds": 1.5, "sweep_seconds": 2.5, "rest_seconds": 3.5, "damage": 20.0,
-          "hit_cooldown_seconds": 2.0, "half_width": 170.0, "half_length": 160.0, "knockback_speed": 700.0,
+          "hit_cooldown_seconds": 2.0, "half_width": _arena.SANTA_HALF_WIDTH, "half_length": 160.0, "knockback_speed": 700.0,
           "pin_seconds": 4.0, "pin_radius": 250.0}
 # Each phase's solve (gameplay-semantics.md, "Bosses"): his guard (hits land at this fraction outside his winded window),
 # what breaks it (trick arrow effects), whether the Santa's sweep catches him too, and the beat into the phase:
