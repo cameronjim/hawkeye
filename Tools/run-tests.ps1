@@ -1,17 +1,21 @@
 # Runs Hawkeye automation tests headless and exits non-zero on any failure.
-# Usage: .\Tools\run-tests.ps1 [-Filter Hawkeye.Health] [-Engine "C:\Program Files\Epic Games\UE_5.8"]
+# Usage: .\Tools\run-tests.ps1 [-Filter Hawkeye.Health] [-Engine "<ue root>"]
 #        [-LogFile <path>] [-Report <dir>]   (so two runs on this machine don't write over each other's)
 param(
     [string]$Filter = "Hawkeye",
-    [string]$Engine = "C:\Program Files\Epic Games\UE_5.8",
+    [string]$Engine = "",
     [string]$LogFile = "",
     [string]$Report = ""
 )
 
+# Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
+. (Join-Path $PSScriptRoot "hawkeye.env.ps1")
+$Engine = Resolve-HawkeyeEngine -Explicit $Engine
+
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Proj = Join-Path $Root "Hawkeye.uproject"
 if (-not $Report) { $Report = Join-Path $Root "Saved\Automation" }
-$Cmd = Join-Path $Engine "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+$Cmd = Get-HawkeyeEditorCmd -EngineRoot $Engine
 
 if (-not (Test-Path $Cmd)) { Write-Error "UnrealEditor-Cmd.exe not found at $Cmd"; exit 2 }
 if (Test-Path $Report) { Remove-Item -Recurse -Force $Report }

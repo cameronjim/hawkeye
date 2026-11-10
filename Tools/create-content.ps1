@@ -10,10 +10,14 @@
 
 [CmdletBinding()]
 param(
-    [string]$Engine = "C:\Program Files\Epic Games\UE_5.8",
+    [string]$Engine = "",
     [string]$Project = "",
     [switch]$Bright
 )
+
+# Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
+. (Join-Path $PSScriptRoot "hawkeye.env.ps1")
+$Engine = Resolve-HawkeyeEngine -Explicit $Engine
 
 $ErrorActionPreference = "Stop"
 
@@ -22,7 +26,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Resolve-Path (Join-Path $ScriptDir "..")
 if (-not $Project) { $Project = Join-Path $ProjectRoot "Hawkeye.uproject" }
 $Project = (Resolve-Path $Project).Path
-$EditorCmd = Join-Path $Engine "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+$EditorCmd = Get-HawkeyeEditorCmd -EngineRoot $Engine
 $Script = Join-Path $ProjectRoot "Tools\Editor\create_all.py"
 $LogDir = Join-Path $ProjectRoot "Saved\Logs"
 $LogFile = Join-Path $LogDir "HawkeyeContent.log"
@@ -34,6 +38,11 @@ if (Test-Path $LogFile)          { Remove-Item $LogFile -Force }
 
 Write-Host "Running $Script through $EditorCmd ..."
 if ($Bright) { Write-Host "Bright preset requested (HAWKEYE_BRIGHT=1)." -ForegroundColor Yellow }
+
+# The editor-side importer (Tools\Editor\import_gasp.py) reads these from its environment.
+$GaspRoot = Resolve-HawkeyeGaspRoot
+$env:HAWKEYE_GASP_ROOT = $GaspRoot
+$env:HAWKEYE_GASP_CONTENT = Join-Path $GaspRoot "Content"
 
 if ($Bright) { $env:HAWKEYE_BRIGHT = "1" }
 try {

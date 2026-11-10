@@ -6,8 +6,12 @@
 param(
     [string]$Map = "",
     [switch]$Game,
-    [string]$Engine = "C:\Program Files\Epic Games\UE_5.8"
+    [string]$Engine = ""
 )
+
+# Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
+. (Join-Path $PSScriptRoot "hawkeye.env.ps1")
+$Engine = Resolve-HawkeyeEngine -Explicit $Engine
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Proj = Join-Path $Root "Hawkeye.uproject"

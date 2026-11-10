@@ -15,19 +15,23 @@
 
 [CmdletBinding()]
 param(
-    [string]$Engine = "C:\Program Files\Epic Games\UE_5.8",
+    [string]$Engine = "",
     [string]$Only = "",
     [switch]$Force,
     [switch]$SelfTest,
     [switch]$Keep
 )
 
+# Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
+. (Join-Path $PSScriptRoot "hawkeye.env.ps1")
+$Engine = Resolve-HawkeyeEngine -Explicit $Engine
+
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $Project = Join-Path $ProjectRoot "Hawkeye.uproject"
-$EditorCmd = Join-Path $Engine "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+$EditorCmd = Get-HawkeyeEditorCmd -EngineRoot $Engine
 $LogDir = Join-Path $ProjectRoot "Saved\Logs"
 
 if (-not (Test-Path $EditorCmd)) { throw "Headless editor not found: $EditorCmd" }

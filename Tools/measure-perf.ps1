@@ -23,13 +23,17 @@ param(
     [string]$Tag = "perf",
     # Extra command-line switches for a diagnostic run (e.g. "-dpcvars=r.SkyLight.RealTimeReflectionCapture=0").
     [string]$Extra = "",
-    [string]$Engine = "C:\Program Files\Epic Games\UE_5.8"
+    [string]$Engine = ""
 )
+
+# Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
+. (Join-Path $PSScriptRoot "hawkeye.env.ps1")
+$Engine = Resolve-HawkeyeEngine -Explicit $Engine
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Proj = Join-Path $Root "Hawkeye.uproject"
-$Cmd = Join-Path $Engine "Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+$Cmd = Get-HawkeyeEditorCmd -EngineRoot $Engine
 $Out = Join-Path $Root "Saved\Perf"
 New-Item -ItemType Directory -Force $Out | Out-Null
 $Log = Join-Path $Out "$Tag.log"
