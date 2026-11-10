@@ -35,6 +35,9 @@ Free roam sits between chapters, with crimes and challenges as now.
 
 ## The Tomas fight
 
+Built 2026-11-10 as chapter 4 on the boss framework (`CH04.md`; rules in `claude-docs/gameplay-semantics.md`,
+"Bosses"). It follows chapter 1 in the campaign's order until chapters 2 and 3 exist.
+
 Three phases on the boss phase system. A formality, and funny.
 
 1. **His guys.** Four to six thugs with oversized holiday props (candy-cane bat, a
@@ -58,9 +61,9 @@ Three phases on the boss phase system. A formality, and funny.
 |------|------|
 | Lucky as a follower in a sweater | Medium. No dog mesh or animation on disk; placeholder until an asset is chosen |
 | Boomerang arrow (returns along its path, can hit on the way back, Kate included) | Small |
-| Confetti arrow (a burst that blinds briefly; she insists it is tactical) | Small |
+| Confetti arrow (a burst that blinds briefly; she insists it is tactical) | Small. Built 2026-11-10 as data on the smoke arrow (`DA_Arrow_Confetti`) |
 | Sticky foam (the putty arrow renamed; also sticks to walls as a foothold, *proposal*) | Small |
 | Holiday prop weapons and reindeer masks for thugs | Small, script-built |
-| Social club rooftop arena: string lights, speaker, inflatable Santa | Medium, script-built on a real roof |
+| Social club rooftop arena: string lights, speaker, inflatable Santa | Medium, script-built on a real roof. Built 2026-11-10 (`CH04.md`) |
 | December dressing: lights on fire escapes, wreaths, trees for sale, lit windows | Medium, in `generate_city.py` |
 | The scripted dumpster landing | Small |
