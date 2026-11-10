@@ -5,7 +5,7 @@ by UE 4.19 to 4.27 and use the older summary layout (no SoftObjectPaths block, 2
 VER_UE4_NON_OUTER_PACKAGE_IMPORT). This module reads both, so a copy takes only what a package really
 loads instead of every /Game/ string in it. Pure Python; runs without the engine:
 
-    python Tools\\Editor\\_packages.py C:\\Users\\camer\\code\\GASP\\Content /Game/ParagonSparrow/Characters/Heroes/Sparrow/Animations/RMB_Fire
+    python Tools\\Editor\\_packages.py <gasp root>\\Content/Game/ParagonSparrow/Characters/Heroes/Sparrow/Animations/RMB_Fire
 """
 
 import collections
