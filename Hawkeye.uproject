@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "",
-	"Description": "Hawkeye - mission-based first-person shooter.",
+	"Description": "Hawkeye - third-person action in a real-data slice of winter Manhattan (fan project).",
 	"Modules": [
 		{
 			"Name": "Hawkeye",
