@@ -617,8 +617,9 @@ bool FHawkeyeSocialClubLap::LureIntoLane(UWorld* World, APlayerController* PC, A
 	const float Side = HisSide >= 0.f ? -1.f : 1.f;
 	const float Along = FMath::Clamp(FVector::DotProduct(Tomas->GetActorLocation() - Hazard->GetLaneStart(), Lane), 150.f,
 		FVector::Dist2D(Hazard->GetLaneStart(), Hazard->GetLaneEnd()) - 150.f);
-	const FVector Spot = Hazard->GetLaneStart() + Lane * Along + Across * Side * (Edge + 110.f);
-	if (MySide * Side >= Edge + 70.f && FVector::Dist2D(Kate->GetActorLocation(), Spot) < 120.f)
+	// Just outside the lit strip, as a player would stand: her capsule (35) clear of its edge with 25 to spare.
+	const FVector Spot = Hazard->GetLaneStart() + Lane * Along + Across * Side * (Edge + 60.f);
+	if (MySide * Side >= Edge + 35.f && FVector::Dist2D(Kate->GetActorLocation(), Spot) < 80.f)
 	{
 		// In place: face him and let him come.
 		Move(PC, FVector2D::ZeroVector);
@@ -1223,6 +1224,7 @@ void FHawkeyeSocialClubLap::Report(UWorld* World)
 	Test->TestTrue(TEXT("The confetti arrow was loosed"), bConfettiLoosed);
 	Test->TestTrue(TEXT("His guard was broken by an arrow at least once"), GuardBreaks(Fight) >= 1);
 	Test->TestTrue(TEXT("Kate dodged at least one unblockable"), UnblockableDodges(Fight) >= 1);
+	Test->TestTrue(FString::Printf(TEXT("The Santa's sweep caught Tomas at least once (the lure; %d lures)"), Lures), Fight && Fight->GetHazardBossHits() >= 1);
 	Test->TestEqual(TEXT("No finisher on Tomas outside his winded window (no parry-finisher on a boss)"), OutsideWindow(Fight), 0);
 	Test->TestTrue(FString::Printf(TEXT("No once-a-fight bark said again after the load (%s)"), *FString::Join(Repeated, TEXT(", "))),
 		Repeated.Num() == 0);
