@@ -12,7 +12,8 @@ What gets tested: every rule in `gameplay-semantics.md`. Concretely:
 | System | Tests |
 |--------|-------|
 | Health | clamp, invulnerable ignores damage, OnDeath fires once, heal after death is a no-op, Revive works, negative damage ignored |
-| BossPhase | thresholds advance in order, overkill skips to correct phase with one broadcast, transition invulnerability set and restored, N phases produce N-1 transitions |
+| BossPhase | thresholds advance in order, overkill skips to correct phase with one broadcast, transition invulnerability set and restored, N phases produce N-1 transitions, a crew opens its phase, restore to a checkpoint |
+| Boss | phase walk and crew entry, winded window and its damage, finisher share, hazard cycle and hits, checkpoint from objectives, barks, a three-phase fight to the chapter's end in a test world, the checkpoint restart (`Hawkeye.Boss.*`); campaign order (`Hawkeye.Campaign.*`) |
 | Weapon | fire decrements magazine, fire at 0 ammo does nothing, fire rate blocks rapid fire, reload math with partial reserve, reload with full mag is no-op, OnAmmoChanged counts |
 | Mission | completion when all non-optional done, optional never completes mission, duplicate CompleteObjective fires nothing, unknown id logs warning, OnMissionComplete once, OnFlashbackRequested fires only with a definition, current objective picks first incomplete non-optional |
 | Flashback | null/empty definition finishes immediately, total duration equals sum of holds and fades, skip finishes whole thing, skip ignored in first 0.5 s, pause state restored |
@@ -145,6 +146,19 @@ further than `RestoreMaxLead` ahead and running. `campaign_fall_behind.json`, `c
 opening and its chase, the notices and the crime schedule; `hawkeye.Hints 2` turns the hints on. Run each in a
 process of its own: the campaign state lives in the game instance, so a second lap in one process starts with the
 first one's (its title card already seen).
+
+## 2d. The social club lap (chapter 4 from its start)
+
+`Hawkeye.Lap.SocialClub` (standalone `-game`, `-Difficulty=Normal`, about 2 minutes, its own process): the district
+loads on chapter 1, the lap starts `DA_CH04_SocialClub` the way chapter select does and runs its opening (Kate on the
+street stand), grapples the roof's parapet anchor, waits out the pre-fight lines and fights (parry a seen wind-up,
+finish anyone open, dodge a swing about to land, strike otherwise, never hit Tomas while he watches, leave the
+Santa's lane when it lights, one confetti arrow at Tomas). In Tomas's phase, under 85% of his health, it saves and
+loads (its own slot, `HawkeyeSocialClubLap`) and checks the fight came back at his phase's checkpoint: full health, no
+crew, fighting, Kate where she was with her health, the same objectives. Then to the end card. Writes
+`Saved/Automation/social_club_lap.json` (marks per phase, hits, the Santa's hits, finishers, winded windows, the round
+trip, the timeline) and `Saved/Screenshots/SocialClub/social_*.png` (street, intro, crew, tomas or tomas_winded,
+santa, down, endcard).
 
 ## 3. Playtest checklist (human)
 
