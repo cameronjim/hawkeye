@@ -25,6 +25,13 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   second. `hawkeye.DebugTokens 1` shows who holds and who waits. Every scripted fight is
   still won; the loud interior lap takes 39.9 s, up from 32.4. **Feel check:** fight four
   thugs and say whether the turn-taking reads as fair or as thugs standing around.
+- **Thug StateTree.** `ST_Thug` is now the only thing that decides what a thug does.
+  The duplicate C++ mode chooser is deleted; the fight's steps (HoldRing, Swing, BackOff,
+  TakeCover, Peek, Burst, Draw) are tree states you can read in the StateTree editor.
+  `hawkeye.DebugThugs 1` draws each thug's active state over his head. 508 tests pass and
+  every scripted fight is won in the same time as before. One flake to watch: the rooftop
+  crew crime failed once in a batch (Kate fell off the roof) and passed twice after; not
+  yet known whether it predates tonight. The partner AI still uses the old pattern.
 - **Generator split.** `generate_city.py` went from 5,356 to 4,143 lines; the reach model,
   fire escapes, ledges, district data and geometry helpers are plain-Python modules with
   unit tests and golden hashes. Regenerating the city in the editor rebuilt nothing.
