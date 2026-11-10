@@ -73,25 +73,25 @@ try {
     Assert-Equal "env beats local, registry, launcher, default" $eEnv (Resolve-Fake -Local $localJson -Reg $regKey -Launcher $dat)
 
     $env:HAWKEYE_UE_ROOT = $eBad
-    Assert-Equal "invalid env falls through to local.json" $eLocal (Resolve-Fake -Local $localJson -Reg $regKey -Launcher $dat)
+    Assert-Throws "invalid env fails loudly, no fall-through" @("HAWKEYE_UE_ROOT", "e-missing", "no Unreal Engine") { Resolve-Fake -Local $localJson -Reg $regKey -Launcher $dat }
 
-    Remove-Item Env:\HAWKEYE_UE_ROOT
+    Remove-Item Env:\HAWKEYE_UE_ROOT -ErrorAction SilentlyContinue
     Assert-Equal "local.json beats registry" $eLocal (Resolve-Fake -Local $localJson -Reg $regKey -Launcher $dat)
     Assert-Equal "registry beats launcher" $eReg (Resolve-Fake -Reg $regKey -Launcher $dat)
     Assert-Equal "launcher beats default and skips other versions" $eLauncher (Resolve-Fake -Launcher $dat)
     Assert-Equal "default last" $eDefault (Resolve-Fake)
 
     ConvertTo-Json @{ engineRoot = $eBad } | Set-Content -LiteralPath $localJson
-    Assert-Equal "invalid local.json engineRoot falls through" $eReg (Resolve-Fake -Local $localJson -Reg $regKey -Launcher $dat)
+    Assert-Throws "invalid local.json engineRoot fails loudly, no fall-through" @("engineRoot", "local.json", "e-missing") { Resolve-Fake -Local $localJson -Reg $regKey -Launcher $dat }
 
     Set-Content -LiteralPath $localJson -Value "{ not json"
     Assert-Throws "malformed local.json names the file" @("local.json", "parse") { Resolve-Fake -Local $localJson }
 
-    $env:HAWKEYE_UE_ROOT = $eBad
+    Remove-Item Env:\HAWKEYE_UE_ROOT -ErrorAction SilentlyContinue
     Assert-Throws "nothing valid lists every source tried" @("HAWKEYE_UE_ROOT", "local.json", "registry", "launcher", "default path", "e-missing") {
         Resolve-HawkeyeEngine -LocalJsonPath $noLocal -RegistryKey $noReg -LauncherInstalledPath $noDat -DefaultRoot $eBad
     }
-    Remove-Item Env:\HAWKEYE_UE_ROOT
+    Remove-Item Env:\HAWKEYE_UE_ROOT -ErrorAction SilentlyContinue
 
     Assert-Equal "Build.bat path" (Join-Path $eEnv "Engine\Build\BatchFiles\Build.bat") (Get-HawkeyeBuildBat -EngineRoot $eEnv)
     Assert-Equal "UnrealEditor-Cmd.exe path" (Join-Path $eEnv "Engine\Binaries\Win64\UnrealEditor-Cmd.exe") (Get-HawkeyeEditorCmd -EngineRoot $eEnv)

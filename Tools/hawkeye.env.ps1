@@ -63,11 +63,27 @@ function Resolve-HawkeyeEngine {
     $candidates = @()
 
     $envRoot = $env:HAWKEYE_UE_ROOT
-    if ($envRoot) { $candidates += , @("env HAWKEYE_UE_ROOT", $envRoot) }
+    # A path the user set on purpose (env var, local.json) must be right: it fails loudly instead of
+    # quietly falling through to some other install.
+    if ($envRoot) {
+        if (-not (Test-HawkeyeEngineRoot -Root $envRoot)) {
+            throw ("HAWKEYE_UE_ROOT is set to '$envRoot', but there is no Unreal Engine $($script:HawkeyeEngineVersion) there" +
+                   " (needs Engine\Build\BatchFiles\Build.bat and Engine\Binaries\Win64\UnrealEditor-Cmd.exe)." +
+                   [Environment]::NewLine + "Fix: correct HAWKEYE_UE_ROOT, or clear it to use Tools\local.json, the registry or the launcher.")
+        }
+        return $envRoot
+    }
     else { $tried.Add("env HAWKEYE_UE_ROOT: not set") }
 
     $cfg = Read-HawkeyeLocalConfig -Path $LocalJsonPath
-    if ($cfg -and $cfg.engineRoot) { $candidates += , @("engineRoot in $LocalJsonPath", [string]$cfg.engineRoot) }
+    if ($cfg -and $cfg.engineRoot) {
+        if (-not (Test-HawkeyeEngineRoot -Root ([string]$cfg.engineRoot))) {
+            throw ("engineRoot in $LocalJsonPath is '$($cfg.engineRoot)', but there is no Unreal Engine $($script:HawkeyeEngineVersion) there" +
+                   " (needs Engine\Build\BatchFiles\Build.bat and Engine\Binaries\Win64\UnrealEditor-Cmd.exe)." +
+                   [Environment]::NewLine + "Fix: correct engineRoot in that file, or delete the key to use the registry or the launcher.")
+        }
+        return [string]$cfg.engineRoot
+    }
     elseif ($cfg) { $tried.Add("local.json ${LocalJsonPath}: no engineRoot key") }
     else { $tried.Add("local.json ${LocalJsonPath}: file not found") }
 
