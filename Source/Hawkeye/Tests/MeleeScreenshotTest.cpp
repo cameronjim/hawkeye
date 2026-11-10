@@ -7,6 +7,7 @@
 #include "Combat/BowIKAnimInstance.h"
 #include "Combat/CombatAnimSet.h"
 #include "Combat/CombatReadability.h"
+#include "Combat/CombatTokenSubsystem.h"
 #include "Combat/FinisherComponent.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
@@ -70,6 +71,10 @@
  *                     purple ring at his feet, his health bar drawn whiter (the marker not on him fails it)
  *   hit_spark.png     the same swing, time stopped in the tick the light lands: NS_MeleeSpark on his capsule
  *                     toward her at chest height, under his hit flash (no spark within 2 s fails it)
+ *   token_ring.png    from above and behind her, four alerted fists thugs who came at her from 7 m 5 s before:
+ *                     one holding her melee token (stepping in or swinging), the others waiting on the ring 300 cm
+ *                     out, spread round her and facing her; the report gives each one's distance, bearing, facing
+ *                     and speed (gameplay-semantics.md, "Attack tokens")
  *   knockdown_dust.png her own camera, 0.2 s (world time) after the thud of a bat thug her heavy knocked down
  *                     (1.5 s after he goes over): NS_KnockdownDust off the ground under his pelvis (no knockdown
  *                     or no puff fails it); the report then says when his pelvis really reached the ground
@@ -115,6 +120,7 @@ namespace HawkeyeMeleeShots
 		SparkResume,
 		KnockSetup,
 		KnockHeavy,
+		TokenRingSetup,
 		Crawl,
 		Uncrawl,
 		Cleanup,
@@ -123,6 +129,8 @@ namespace HawkeyeMeleeShots
 	static TWeakObjectPtr<AThugCharacter> Foe;
 	/** The fight camera shots' second thug (Foe is the first). */
 	static TWeakObjectPtr<AThugCharacter> SecondFoe;
+	/** token_ring.png's four, thinking. */
+	static TArray<TWeakObjectPtr<AThugCharacter>> RingFoes;
 	static TArray<TWeakObjectPtr<AThugCharacter>> Spawned;
 	static TWeakObjectPtr<ACameraActor> ShotCamera;
 	static TWeakObjectPtr<APointLight> FillLight;
@@ -776,6 +784,44 @@ bool FHawkeyeMeleeShot::Update()
 		SetCrawl(World, false);
 		break;
 
+	case EShot::TokenRingSetup:
+	{
+		for (TWeakObjectPtr<AThugCharacter>* Old : { &Foe, &SecondFoe })
+		{
+			if (AThugCharacter* Made = Old->Get())
+			{
+				Made->Destroy();
+			}
+			*Old = nullptr;
+		}
+		Stand(Kate, StreetFeet, Along.Rotation().Yaw);
+		RingFoes.Reset();
+		for (const float Yaw : { -35.f, 35.f, 145.f, -145.f })
+		{
+			const FVector Out = FRotator(0.f, Along.Rotation().Yaw + Yaw, 0.f).Vector() * 700.f;
+			FVector At;
+			if (!Ground(World, StreetFeet + Out, StreetFeet.Z + 200.f, { Kate }, At))
+			{
+				At = StreetFeet + Out;
+			}
+			AThugCharacter* Made = SpawnFoe(World, At, (StreetFeet - At).Rotation().Yaw, EThugWeapon::Fists);
+			AThugAIController* Brain = Made ? Cast<AThugAIController>(Made->GetController()) : nullptr;
+			if (!Brain)
+			{
+				continue;
+			}
+			// Behind her he cannot see her: the shot is about where they stand, not about losing her.
+			Brain->LoseTargetSeconds = 60.f;
+			Brain->SetThinkingEnabled(true);
+			Brain->SetTarget(Kate);
+			Brain->ReportStimulus(EStimulusKind::Hearing, Kate->GetActorLocation(), true, Brain->GunshotLoudnessThreshold);
+			RingFoes.Add(Made);
+		}
+		const FVector Chest = StreetFeet + FVector(0.f, 0.f, 100.f);
+		Frame(World, PC, Chest - Along * 520.f + FVector(0.f, 0.f, 820.f), Chest, 70.f);
+		break;
+	}
+
 	case EShot::Cleanup:
 		UnhookSpark(World);
 		if (UHawkeyeVfxSubsystem* Vfx = UHawkeyeVfxSubsystem::Find(World))
@@ -801,6 +847,7 @@ bool FHawkeyeMeleeShot::Update()
 			}
 		}
 		Spawned.Reset();
+		RingFoes.Reset();
 		Foe = nullptr;
 		SecondFoe = nullptr;
 		Kate->TeleportTo(KateStart.GetLocation(), KateStart.Rotator(), false, true);
@@ -920,6 +967,37 @@ private:
 /** Waits (up to Timeout) for the moment a shot is about, then reports it. */
 class FHawkeyeMeleeWait : public IAutomationLatentCommand
 {
+	/** token_ring.png: who holds her token, and where each thug stands and faces. Off the ring is a warning. */
+	void ReportTokenRing(UWorld* World, const AHawkeyeCharacter* Kate) const
+	{
+		const UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(World);
+		const FHawkeyeTokenBudgetView View = Tokens ? Tokens->GetBudgetView(Kate, EHawkeyeAttackKind::Melee)
+			: FHawkeyeTokenBudgetView();
+		FString Line = FString::Printf(TEXT("token_ring.png: %d holding, %d in line, %d cooling"), View.Holders.Num(),
+			View.Waiters.Num(), View.Idle.Num());
+		for (const TWeakObjectPtr<AThugCharacter>& Weak : HawkeyeMeleeShots::RingFoes)
+		{
+			const AThugCharacter* Thug = Weak.Get();
+			if (!Thug)
+			{
+				continue;
+			}
+			const FVector To = Kate->GetActorLocation() - Thug->GetActorLocation();
+			const float Facing = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
+				FVector::DotProduct(Thug->GetActorForwardVector().GetSafeNormal2D(), To.GetSafeNormal2D()), -1.f, 1.f)));
+			const bool bHolds = View.Holders.Contains(Thug);
+			Line += FString::Printf(TEXT("; %s %s %.0f cm, %.0f deg round her, facing %.0f deg off her, %.0f cm/s"),
+				*Thug->GetName(), bHolds ? TEXT("HOLDS") : TEXT("waits"), To.Size2D(),
+				FRotator::NormalizeAxis((-To).Rotation().Yaw - Kate->GetActorRotation().Yaw), Facing, Thug->GetVelocity().Size2D());
+			if (!bHolds && FMath::Abs(To.Size2D() - 300.f) > 120.f)
+			{
+				Test->AddWarning(FString::Printf(TEXT("token_ring.png: %s waits %.0f cm from her, off the 300 cm ring."),
+					*Thug->GetName(), To.Size2D()));
+			}
+		}
+		Test->AddInfo(Line);
+	}
+
 public:
 	FHawkeyeMeleeWait(FAutomationTestBase* InTest, FString InLabel, float InTimeout)
 		: Test(InTest), Label(MoveTemp(InLabel)), Timeout(InTimeout) {}
@@ -1118,6 +1196,11 @@ public:
 				Test->AddError(FString::Printf(TEXT("%s: Kate is not framed (hidden %d, head on screen %d, feet on screen %d)."), *Label,
 					bHidden ? 1 : 0, bHeadOn ? 1 : 0, bFeetOn ? 1 : 0));
 			}
+			return true;
+		}
+		if (Label == TEXT("token_ring.png"))
+		{
+			ReportTokenRing(World, Kate);
 			return true;
 		}
 		if (Label == TEXT("target_ring.png"))
@@ -1507,6 +1590,13 @@ void HawkeyeAddMeleeShots(FAutomationTestBase* Test)
 	Take(TEXT("knockdown_dust.png"));
 	Shot(EShot::Uncrawl, 0.f);
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeTrackFall(Test, 2.f));
+
+	// Four thugs come at her from 7 m: one at a time swings, the rest wait their turn on the ring.
+	Shot(EShot::TokenRingSetup, 5.f);
+	Shot(EShot::Crawl, 0.05f);
+	Wait(TEXT("token_ring.png"), 0.f);
+	Take(TEXT("token_ring.png"));
+	Shot(EShot::Uncrawl, 0.f);
 
 	Shot(EShot::Cleanup, 0.5f);
 }
