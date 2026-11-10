@@ -395,6 +395,8 @@ private:
 	int32 Zips = 0;
 	float RoofZ = 0.f;
 	bool bOnRoofAtEnd = false;
+	/** A crime thug standing (not down) off the crime's roof: the leash failed. */
+	FString ThugOffRoof;
 
 	// Ambush.
 	bool bOpeningTrickDone = false;
@@ -765,8 +767,8 @@ void FHawkeyeCrimeLapRunner::Report(UWorld* World, AHawkeyeCharacter* Kate)
 			bLootPicked ? TEXT("true") : TEXT("false"));
 		break;
 	case ECrimeType::Rooftop:
-		Extra = FString::Printf(TEXT("  \"grapple_presses\": %d,\n  \"zips\": %d,\n  \"roof_m\": %.1f,\n  \"on_roof_at_end\": %s,\n"),
-			GrapplePresses, Zips, RoofZ / 100.f, bOnRoofAtEnd ? TEXT("true") : TEXT("false"));
+		Extra = FString::Printf(TEXT("  \"grapple_presses\": %d,\n  \"zips\": %d,\n  \"roof_m\": %.1f,\n  \"on_roof_at_end\": %s,\n  \"thug_off_roof\": \"%s\",\n"),
+			GrapplePresses, Zips, RoofZ / 100.f, bOnRoofAtEnd ? TEXT("true") : TEXT("false"), *ThugOffRoof);
 		break;
 	default:
 		break;
@@ -818,6 +820,8 @@ void FHawkeyeCrimeLapRunner::Report(UWorld* World, AHawkeyeCharacter* Kate)
 	case ECrimeType::Rooftop:
 		Test->TestTrue(TEXT("She grappled up"), Zips > 0);
 		Test->TestTrue(TEXT("And ended it on the roof"), bOnRoofAtEnd);
+		Test->TestTrue(FString::Printf(TEXT("Every crime thug stayed on its roof (%s)"), ThugOffRoof.IsEmpty() ? TEXT("all did") : *ThugOffRoof),
+			ThugOffRoof.IsEmpty());
 		break;
 	default:
 		break;
@@ -1351,6 +1355,15 @@ void FHawkeyeCrimeLapRunner::Rooftop(UWorld* World, APlayerController* PC, AHawk
 		return;
 	case ERoofPhase::Fight:
 	default:
+		for (const TWeakObjectPtr<AThugCharacter>& Weak : Thugs)
+		{
+			const AThugCharacter* Thug = Weak.Get();
+			if (ThugOffRoof.IsEmpty() && !IsDown(Thug) && !Thug->GetCharacterMovement()->IsFlying() && Thug->GetActorLocation().Z < RoofZ - 300.f)
+			{
+				ThugOffRoof = FString::Printf(TEXT("%s at %s, %.1f s"), *Thug->GetName(), *Thug->GetActorLocation().ToCompactString(), Now - StartedAt);
+				Test->AddInfo(TEXT("Crime lap: a crime thug left the roof: ") + ThugOffRoof);
+			}
+		}
 		Fight(World, PC, Kate, Now);
 		return;
 	}
