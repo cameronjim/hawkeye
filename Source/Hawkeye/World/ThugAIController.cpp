@@ -1710,6 +1710,35 @@ bool AThugAIController::CanArcherRelocate() const
 		&& !ArcherHold.IsLoose();
 }
 
+void AThugAIController::SetLeash(const FVector& Centre, float Radius, AActor* Ground)
+{
+	LeashCentre = Centre;
+	LeashRadius = FMath::Max(Radius, 0.f);
+	LeashGround = Ground;
+}
+
+bool AThugAIController::IsInsideLeash(const FVector& Landing) const
+{
+	if (LeashRadius <= 0.f)
+	{
+		return true;
+	}
+	if (FVector::Dist2D(Landing, LeashCentre) > LeashRadius)
+	{
+		return false;
+	}
+	const AActor* Ground = LeashGround.Get();
+	UWorld* World = GetWorld();
+	if (!Ground || !World)
+	{
+		return true;
+	}
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ThugLeash), false, GetPawn());
+	return World->LineTraceSingleByChannel(Hit, Landing + FVector(0.f, 0.f, 50.f), Landing - FVector(0.f, 0.f, 400.f), ECC_Visibility, Params)
+		&& Hit.GetActor() == Ground;
+}
+
 bool AThugAIController::FindArcherRoof(FVector& OutLanding)
 {
 	AThugCharacter* Thug = GetThug();
@@ -1730,7 +1759,8 @@ bool AThugAIController::FindArcherRoof(FVector& OutLanding)
 		const FVector Landing = It->GetLandingLocation() + FVector(0.f, 0.f, HalfHeight + 2.f);
 		const float ToPlayer = FVector::Dist2D(Landing, Player);
 		const float FromMe = FVector::Dist(Landing, Thug->GetActorLocation());
-		if (ToPlayer < ArcherMinRange || ToPlayer > ArcherMaxRange || FromMe < 600.f || FromMe > 4000.f)
+		if (ToPlayer < ArcherMinRange || ToPlayer > ArcherMaxRange || FromMe < 600.f || FromMe > 4000.f
+			|| !IsInsideLeash(It->GetLandingLocation()))
 		{
 			continue;
 		}
@@ -1756,8 +1786,9 @@ bool AThugAIController::FindArcherRoof(FVector& OutLanding)
 		if (!bLoggedNoAnchor)
 		{
 			bLoggedNoAnchor = true;
-			UE_LOG(LogHawkeye, Log, TEXT("%s: wants to relocate (%s) but no anchor lands %.0f to %.0f cm from %s with a line."),
-				*Thug->GetName(), Why, ArcherMinRange, ArcherMaxRange, *GetNameSafe(TargetActor));
+			UE_LOG(LogHawkeye, Log, TEXT("%s: wants to relocate (%s) but no anchor lands %.0f to %.0f cm from %s with a line%s."),
+				*Thug->GetName(), Why, ArcherMinRange, ArcherMaxRange, *GetNameSafe(TargetActor),
+				IsLeashed() ? TEXT(" inside his leash") : TEXT(""));
 		}
 		return false;
 	}

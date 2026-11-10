@@ -339,6 +339,68 @@ bool FHawkeyeArcherRange::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeArcherLeash, "Hawkeye.Archer.LeashKeepsHimOnHisRoof", HawkeyeEnemyTest::Flags)
+
+/**
+ * Found by Hawkeye.Lap.CrimeRooftop (2026-11-10): the rooftop crime's archer zipped to an anchor on another roof, out of
+ * her reach on foot, and the lap either walked off the roof after him or stood aiming at him until it timed out. A
+ * leashed archer relocates only to landings inside his leash's radius and, with a ground, on that ground.
+ */
+bool FHawkeyeArcherLeash::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeEnemyTest;
+	FHawkeyeTestWorld TestWorld;
+	AThugCharacter* Archer = nullptr;
+	AThugAIController* Brain = SpawnThug(TestWorld, FVector::ZeroVector, EThugWeapon::Bow, Archer);
+	AHawkeyeCharacter* Kate = SpawnKate(TestWorld, FVector(500.f, 0.f, 0.f));
+	// Unleashed he would pick Away (on another roof, nearer the middle of his band); Home is on his own roof.
+	AGrappleAnchor* Home = Cast<AGrappleAnchor>(TestWorld.SpawnActor(AGrappleAnchor::StaticClass(), FVector(-1100.f, 0.f, 0.f), FRotator::ZeroRotator));
+	AGrappleAnchor* Away = Cast<AGrappleAnchor>(TestWorld.SpawnActor(AGrappleAnchor::StaticClass(), FVector(-1200.f, 1200.f, 0.f), FRotator::ZeroRotator));
+	if (!Brain || !Kate || !Home || !Away)
+	{
+		AddError(TEXT("Could not spawn the archer, Kate and two anchors."));
+		return false;
+	}
+	auto RoofUnder = [&TestWorld](const AGrappleAnchor* Anchor)
+	{
+		AHawkeyeTestBlocker* Roof = Cast<AHawkeyeTestBlocker>(TestWorld.SpawnActor(AHawkeyeTestBlocker::StaticClass(),
+			Anchor->GetLandingLocation() - FVector(0.f, 0.f, 70.f), FRotator::ZeroRotator));
+		if (Roof)
+		{
+			Roof->SetExtent(FVector(150.f, 150.f, 50.f));
+		}
+		return Roof;
+	};
+	AHawkeyeTestBlocker* HomeRoof = RoofUnder(Home);
+	AHawkeyeTestBlocker* AwayRoof = RoofUnder(Away);
+	if (!HomeRoof || !AwayRoof)
+	{
+		AddError(TEXT("Could not spawn the two roofs."));
+		return false;
+	}
+	ArmArcher(Archer);
+	Alert(Brain, Kate);
+
+	FVector Landing;
+	TestTrue(TEXT("Unleashed, he has somewhere to go"), Brain->FindArcherRoof(Landing));
+	TestTrue(TEXT("Unleashed, the other roof's anchor is his pick"), FVector::Dist2D(Landing, Away->GetLandingLocation()) < 5.f);
+
+	Brain->SetLeash(FVector::ZeroVector, 5000.f, HomeRoof);
+	TestTrue(TEXT("Leashed to his roof, he is leashed"), Brain->IsLeashed());
+	TestFalse(TEXT("The other roof's landing is outside the leash"), Brain->IsInsideLeash(Away->GetLandingLocation()));
+	TestTrue(TEXT("His own roof's landing is inside"), Brain->IsInsideLeash(Home->GetLandingLocation()));
+	TestTrue(TEXT("Leashed to his roof, he still relocates"), Brain->FindArcherRoof(Landing));
+	TestTrue(TEXT("To the anchor on his own roof"), FVector::Dist2D(Landing, Home->GetLandingLocation()) < 5.f);
+
+	Brain->SetLeash(FVector::ZeroVector, 800.f);
+	TestFalse(TEXT("A radius both anchors are outside of leaves him nowhere to go"), Brain->FindArcherRoof(Landing));
+
+	Brain->SetLeash(FVector::ZeroVector, 0.f);
+	TestFalse(TEXT("Radius 0 clears the leash"), Brain->IsLeashed());
+	TestTrue(TEXT("And he may go anywhere again"), Brain->FindArcherRoof(Landing) && FVector::Dist2D(Landing, Away->GetLandingLocation()) < 5.f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeArcherTelegraph, "Hawkeye.Archer.TelegraphInterrupt", HawkeyeEnemyTest::Flags)
 
 bool FHawkeyeArcherTelegraph::RunTest(const FString& Parameters)

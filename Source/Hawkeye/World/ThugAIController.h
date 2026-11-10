@@ -308,6 +308,21 @@ public:
 	void SetTarget(AActor* Target) { TargetActor = Target; }
 
 	/**
+	 * Keeps his relocations (the archer's zip to an anchor) on the ground he was put on: a landing more than Radius
+	 * (flat) from Centre, or, with Ground set, a landing whose floor is not Ground, is never picked. Radius 0 clears
+	 * it. A crime leashes its thugs to its spot (UCrimeDefinition::LeashRadius), so a rooftop crime's archer zips
+	 * about his own roof and never to another one she cannot walk to.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Thug")
+	void SetLeash(const FVector& Centre, float Radius, AActor* Ground = nullptr);
+
+	UFUNCTION(BlueprintPure, Category = "Thug")
+	bool IsLeashed() const { return LeashRadius > 0.f; }
+
+	/** True when a relocation may land at Landing (always, unleashed). Ground is checked by a trace down. */
+	bool IsInsideLeash(const FVector& Landing) const;
+
+	/**
 	 * Off: the think timer stops, he stands where he is (ST_Thug's Stunned), and perception is ignored. For
 	 * scripted moments and the screenshot pass. On: the senses pick up where they left off.
 	 */
@@ -856,6 +871,10 @@ private:
 	double LastRelocateSeconds = -100.0;
 	FVector ZipLanding = FVector::ZeroVector;
 	bool bLoggedNoAnchor = false;
+	/** SetLeash: where his relocations must land. Radius 0 is no leash. */
+	FVector LeashCentre = FVector::ZeroVector;
+	float LeashRadius = 0.f;
+	TWeakObjectPtr<AActor> LeashGround;
 	/** Where the held draw points: the last aim before she went out of his line. */
 	FVector HeldAimPoint = FVector::ZeroVector;
 	FTimerHandle ArcherHoldTimerHandle;
