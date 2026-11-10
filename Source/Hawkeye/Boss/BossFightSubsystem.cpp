@@ -3,10 +3,15 @@
 #include "Hawkeye.h"
 #include "Boss/BossArenaHazard.h"
 #include "Boss/BossDefinition.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "Combat/ArrowDefinition.h"
+#include "Combat/ArrowEffects/ArrowEffect.h"
 #include "Combat/BossPhaseComponent.h"
 #include "Combat/FinisherComponent.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
+#include "Combat/MeleeRules.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -16,7 +21,10 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "InputCoreTypes.h"
 #include "Materials/MaterialInterface.h"
 #include "Mission/MissionDefinition.h"
 #include "Mission/MissionObjective.h"
@@ -25,6 +33,7 @@
 #include "NavigationSystem.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/InventoryComponent.h"
+#include "Save/HawkeyeCampaignState.h"
 #include "Save/HawkeyeSaveSubsystem.h"
 #include "Settings/DifficultySubsystem.h"
 #include "World/ThugAIController.h"
@@ -177,6 +186,14 @@ bool UBossFightSubsystem::BeginChapter(const UMissionDefinition* Mission)
 	{
 		SetUpFight(Wanted);
 	}
+	// The chapter's opening (never a load): a fresh run of the fight, nothing heard yet.
+	HeardLines.Reset();
+	BarkCounts.Reset();
+	BarkLastSeconds.Reset();
+	if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this))
+	{
+		Save->SessionBossHeard.Reset();
+	}
 	APawn* Kate = FindKate();
 	const FBossArena& Arena = Wanted->Arena;
 	if (!Kate || Arena.PlayerStart.IsZero())
@@ -218,6 +235,12 @@ bool UBossFightSubsystem::SetUpFight(UBossDefinition* InDefinition)
 	BarkLastSeconds.Reset();
 	BarksSpoken.Reset();
 	LinesSpoken.Reset();
+	HeardLines.Reset();
+	GuardBreaks = HazardBossHits = UnblockableDodges = BossFinishers = BossFinishersOutsideWindow = DecisiveFinishers = 0;
+	BeatsPlayed = BeatsSkipped = 0;
+	SinceHazardHitBoss = 1000.f;
+	SeenEffects.Reset();
+	bAfterStarted = false;
 	EnsureFurniture();
 	SpawnBoss();
 	SpawnCrew(0);
@@ -230,6 +253,8 @@ bool UBossFightSubsystem::SetUpFight(UBossDefinition* InDefinition)
 
 void UBossFightSubsystem::StopFight()
 {
+	EndBeat(false, /*bCancel=*/true);
+	RestoreFinisherCamera();
 	ClearCrew();
 	ClearBoss();
 	ClearFurniture();
@@ -317,6 +342,7 @@ void UBossFightSubsystem::EnsureFurniture()
 	const FBossArena& Arena = Definition->Arena;
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	TArray<TPair<AActor*, float>> Pushed;
 	for (const FBossArenaProp& Prop : Arena.Props)
 	{
 		UStaticMesh* Mesh = Prop.Mesh.LoadSynchronous();
@@ -334,6 +360,11 @@ void UBossFightSubsystem::EnsureFurniture()
 		Actor->SetActorScale3D(Prop.Transform.GetScale3D());
 		Actor->Tags.Add(FurnitureTag);
 		Furniture.Add(Actor);
+		if (Prop.bHazardPushes)
+		{
+			const FVector Extent = Mesh->GetBounds().BoxExtent * Prop.Transform.GetScale3D();
+			Pushed.Add({ Actor, FMath::Max(Extent.X, Extent.Y) });
+		}
 	}
 	for (const FBossArenaLight& Bulb : Arena.Lights)
 	{
@@ -361,6 +392,10 @@ void UBossFightSubsystem::EnsureFurniture()
 				Definition->Hazard);
 			Body->TargetOverride = PlayerOverride;
 			Body->Tags.Add(FurnitureTag);
+			for (const TPair<AActor*, float>& Prop : Pushed)
+			{
+				Body->AddPushable(Prop.Key, Prop.Value);
+			}
 			Hazard = Body;
 		}
 	}
@@ -430,6 +465,9 @@ AThugCharacter* UBossFightSubsystem::SpawnBoss()
 	Him->ComboAttacks = Definition->Moves.Combo;
 	Him->FinisherDamageFraction = Definition->Moves.FinisherDamageFraction;
 	Him->bResistsKnockdown = Definition->Moves.bResistsKnockdown;
+	Him->bFinisherNeedsGrantedWindow = Definition->Moves.bFinisherOnlyWhenWinded;
+	Him->MaxParryStaggerSeconds = Definition->Moves.ParryStaggerSeconds;
+	AddRimLight(Him);
 	UHealthComponent* Health = Him->GetHealthComponent();
 	const float HealthScale = UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ThugHealth);
 	Health->SetMaxHealth(Definition->MaxHealth * HealthScale, /*bResetCurrent=*/true);
@@ -588,7 +626,7 @@ void UBossFightSubsystem::StartPhase(int32 Index, bool bRestore)
 			}
 		}
 	}
-	Say(Phase.StartLines);
+	Say(Phase.StartLines, /*bStory=*/true);
 	UpdateMarker();
 	UE_LOG(LogHawkeye, Log, TEXT("%s: phase %d ('%s') %s at %.1f s: %d crew, boss %s, hazard %s."), *GetName(), Index,
 		*Phase.Phase.PhaseName.ToString(), bRestore ? TEXT("restarts") : TEXT("starts"), FightSeconds, Crew.Num(),
@@ -605,11 +643,15 @@ void UBossFightSubsystem::HandlePhaseChanged(int32 OldPhaseIndex, int32 NewPhase
 	// Every phase a big hit skipped is behind her too.
 	for (int32 Index = FMath::Max(OldPhaseIndex, 0); Index < NewPhaseIndex && Definition->Phases.IsValidIndex(Index); ++Index)
 	{
-		Say(Definition->Phases[Index].EndLines);
+		Say(Definition->Phases[Index].EndLines, /*bStory=*/true);
 		// Completed before the next phase grants anything: the objective's autosave is the next phase's checkpoint.
 		CompleteObjective(Definition->Phases[Index].ObjectiveId);
 	}
 	StartPhase(NewPhaseIndex, /*bRestore=*/false);
+	if (Definition->Phases.IsValidIndex(NewPhaseIndex))
+	{
+		RequestBeat(Definition->Phases[NewPhaseIndex].TransitionBeat, /*bDefeat=*/false);
+	}
 }
 
 void UBossFightSubsystem::HandleBossHealthChanged(UHealthComponent* Health, float /*NewHealth*/, float Delta, AActor* DamageInstigator)
@@ -640,10 +682,22 @@ void UBossFightSubsystem::HandleBossDeath(UHealthComponent* /*Health*/, AActor* 
 	}
 	if (Definition->Phases.IsValidIndex(PhaseIndex))
 	{
-		Say(Definition->Phases[PhaseIndex].EndLines);
+		Say(Definition->Phases[PhaseIndex].EndLines, /*bStory=*/true);
 	}
 	DefeatedSeconds = 0.f;
+	bAfterStarted = false;
 	SetState(EBossFightState::Defeated);
+	RequestBeat(Definition->DefeatBeat, /*bDefeat=*/true);
+}
+
+void UBossFightSubsystem::BeginAfter()
+{
+	if (bAfterStarted || !Definition)
+	{
+		return;
+	}
+	bAfterStarted = true;
+	DefeatedSeconds = 0.f;
 	if (!bSkipLines && !Definition->AfterSequence.IsNone())
 	{
 		if (UDialogueSubsystem* Dialogue = UDialogueSubsystem::Get(this))
@@ -695,6 +749,7 @@ void UBossFightSubsystem::BindKate(APawn* Kate)
 	if (UFinisherComponent* Finisher = Kate->FindComponentByClass<UFinisherComponent>())
 	{
 		Finisher->OnFinisherStruck.AddUniqueDynamic(this, &UBossFightSubsystem::HandleFinisherStruck);
+		Finisher->OnFinisherStarted.AddUniqueDynamic(this, &UBossFightSubsystem::HandleFinisherStarted);
 	}
 }
 
@@ -709,6 +764,7 @@ void UBossFightSubsystem::UnbindKate()
 		if (UFinisherComponent* Finisher = Kate->FindComponentByClass<UFinisherComponent>())
 		{
 			Finisher->OnFinisherStruck.RemoveDynamic(this, &UBossFightSubsystem::HandleFinisherStruck);
+			Finisher->OnFinisherStarted.RemoveDynamic(this, &UBossFightSubsystem::HandleFinisherStarted);
 		}
 	}
 	BoundKate.Reset();
@@ -727,6 +783,20 @@ void UBossFightSubsystem::Tick(float DeltaTime)
 	}
 	APawn* Kate = FindKate();
 	BindKate(Kate);
+	RestoreFinisherCamera();
+	if (bBeatPending)
+	{
+		const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Kate);
+		if (!Hawkeye || !Hawkeye->IsPerformingFinisher())
+		{
+			StartBeat(Kate);
+		}
+	}
+	if (bInBeat)
+	{
+		UpdateBeat(DeltaTime, Kate);
+		return;
+	}
 	switch (State)
 	{
 	case EBossFightState::Approach:
@@ -805,7 +875,7 @@ void UBossFightSubsystem::UpdateFight(float DeltaSeconds, APawn* Kate)
 		const bool bWasWinded = Combo.IsWinded();
 		if (Combo.Step(DeltaSeconds, Brain ? Brain->GetSwingsStarted() : 0, Melee && Melee->IsAttacking(), Definition->Moves))
 		{
-			Him->OpenFinisherWindow(Definition->Moves.WindedSeconds);
+			Him->GrantFinisherWindow(Definition->Moves.WindedSeconds);
 			UE_LOG(LogHawkeye, Log, TEXT("%s: %s is winded for %.1f s (the %d time) at %.1f s."), *GetName(), *Him->GetName(),
 				Definition->Moves.WindedSeconds, Combo.WindedCount, FightSeconds);
 			Bark(EBossBarkEvent::Winded);
@@ -819,6 +889,13 @@ void UBossFightSubsystem::UpdateFight(float DeltaSeconds, APawn* Kate)
 		{
 			Him->CloseFinisherWindow();
 		}
+		CheckArrowEffects();
+		UpdateHazardOnBoss(DeltaSeconds, Him, Phase);
+		UpdateGuard(Him, Phase);
+	}
+	else if (Him)
+	{
+		UpdateGuard(Him, Phase);
 	}
 	// The crew: who went down, and when the last one does, the next phase.
 	bool bAllDown = Crew.Num() > 0;
@@ -884,6 +961,12 @@ void UBossFightSubsystem::UpdateBarks(APawn* Kate)
 		if (bDodging && !bKateWasDodging && Melee && Melee->IsAttacking()
 			&& FVector::Dist2D(Him->GetActorLocation(), Hawkeye->GetActorLocation()) <= HawkeyeBossFight::DodgeNoticeDistance)
 		{
+			if (UHawkeyeMeleeRules::IsUnblockableWindup(Him))
+			{
+				++UnblockableDodges;
+				UE_LOG(LogHawkeye, Log, TEXT("%s: Kate dodges %s's unblockable %s (%d) at %.1f s."), *GetName(), *Him->GetName(),
+					*Melee->GetCurrentAttack().Name.ToString(), UnblockableDodges, FightSeconds);
+			}
 			Bark(EBossBarkEvent::PlayerDodges);
 		}
 		bKateWasDodging = bDodging;
@@ -901,6 +984,10 @@ void UBossFightSubsystem::UpdateBarks(APawn* Kate)
 
 void UBossFightSubsystem::UpdateDefeated(float DeltaSeconds)
 {
+	if (!bAfterStarted)
+	{
+		BeginAfter();
+	}
 	DefeatedSeconds += DeltaSeconds;
 	const UDialogueSubsystem* Dialogue = UDialogueSubsystem::Get(this);
 	const bool bBusy = !bSkipLines && Dialogue && Dialogue->IsBusy();
@@ -947,11 +1034,16 @@ void UBossFightSubsystem::UpdateMarker()
 	}
 }
 
-void UBossFightSubsystem::Say(const TArray<FName>& Lines)
+void UBossFightSubsystem::Say(const TArray<FName>& Lines, bool bStory)
 {
 	UDialogueSubsystem* Dialogue = bSkipLines ? nullptr : UDialogueSubsystem::Get(this);
-	for (const FName Line : Lines)
+	for (const FName Line : bStory ? UBossRules::UnheardLines(Lines, HeardLines) : Lines)
 	{
+		if (bStory)
+		{
+			HeardLines.Add(Line);
+			RememberHeard(TEXT("line:") + Line.ToString());
+		}
 		LinesSpoken.Add(Line);
 		if (Dialogue)
 		{
@@ -982,6 +1074,7 @@ void UBossFightSubsystem::Bark(EBossBarkEvent Event)
 		BarkCounts.Add(Key, Times + 1);
 		BarkLastSeconds.Add(Key, FightSeconds);
 		BarksSpoken.Add(Key);
+		RememberHeard(TEXT("bark:") + Key);
 		UE_LOG(LogHawkeye, Log, TEXT("%s: bark %s at %.1f s."), *GetName(), *Key, FightSeconds);
 		Say(Entry.Lines);
 		return;
@@ -1011,6 +1104,9 @@ void UBossFightSubsystem::RestartAtPhase(int32 Index)
 	{
 		return;
 	}
+	// The checkpoint is the beat's end state: no beat replays, nothing it held stays held.
+	EndBeat(false, /*bCancel=*/true);
+	RestoreFinisherCamera();
 	if (Index < 0)
 	{
 		SetUpFight(Definition);
@@ -1042,6 +1138,7 @@ void UBossFightSubsystem::RestartAtPhase(int32 Index)
 		Phases->RestorePhase(Index);
 	}
 	Health->SetMaxHealth(Health->GetMaxHealth(), /*bResetCurrent=*/true);
+	Health->IncomingDamageScale = 1.f;
 	const float Drop = Health->GetMaxHealth() * (1.f - Fraction);
 	if (Drop > 0.f && !Health->IsInvulnerable())
 	{
@@ -1064,6 +1161,15 @@ void UBossFightSubsystem::RestoreFromCampaign()
 	{
 		return;
 	}
+	const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this);
+	if (const UHawkeyeCampaignState* Campaign = Save ? Save->GetCampaignState() : nullptr)
+	{
+		ImportHeard(Campaign->BossHeard);
+	}
+	if (Save)
+	{
+		ImportHeard(Save->SessionBossHeard);
+	}
 	const int32 Checkpoint = UBossRules::CheckpointPhase(Definition->MeetObjective, Definition->GetPhaseObjectives(),
 		Tracker->GetCompletedObjectiveIds());
 	UE_LOG(LogHawkeye, Log, TEXT("%s: the save puts the fight at checkpoint %d."), *GetName(), Checkpoint);
@@ -1075,5 +1181,463 @@ void UBossFightSubsystem::HandleCampaignLoaded(bool bSuccess)
 	if (bSuccess && Definition)
 	{
 		RestoreFromCampaign();
+	}
+}
+
+// --- The solves --------------------------------------------------------------------------------------------
+
+bool UBossFightSubsystem::IsGuarding() const
+{
+	const AThugCharacter* Him = Boss.Get();
+	if (!Definition || !Definition->Phases.IsValidIndex(PhaseIndex) || State != EBossFightState::Fight || !Him)
+	{
+		return false;
+	}
+	const FBossPhaseDefinition& Phase = Definition->Phases[PhaseIndex];
+	return UBossRules::IsGuarding(Phase.GuardDamageFraction, Phase.bBossFights && !IsDown(Him), Combo.IsWinded());
+}
+
+void UBossFightSubsystem::UpdateGuard(AThugCharacter* Him, const FBossPhaseDefinition& Phase)
+{
+	UHealthComponent* Health = Him ? Him->GetHealthComponent() : nullptr;
+	if (!Health)
+	{
+		return;
+	}
+	const bool bGuarding = UBossRules::IsGuarding(Phase.GuardDamageFraction, Phase.bBossFights && !IsDown(Him), Combo.IsWinded());
+	Health->IncomingDamageScale = UBossRules::BossDamageScale(bInBeat, bGuarding, Phase.GuardDamageFraction);
+}
+
+bool UBossFightSubsystem::ForceWinded(const TCHAR* Why, AActor* By)
+{
+	AThugCharacter* Him = Boss.Get();
+	if (!Definition || !Him || IsDown(Him))
+	{
+		return false;
+	}
+	const AThugAIController* Brain = Cast<AThugAIController>(Him->GetController());
+	if (!Combo.ForceWinded(Brain ? Brain->GetSwingsStarted() : 0, Definition->Moves.WindedSeconds))
+	{
+		return false;
+	}
+	// Whatever he was swinging is dropped; then he stands there getting his breath back.
+	Him->StaggerFor(By, 0.2f);
+	Him->GrantFinisherWindow(Definition->Moves.WindedSeconds);
+	Him->HoldStagger(Combo.WindedRemaining);
+	if (UHealthComponent* Health = Him->GetHealthComponent())
+	{
+		Health->IncomingDamageScale = 1.f;
+	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: %s is winded for %.1f s (the %d time, %s) at %.1f s."), *GetName(), *Him->GetName(),
+		Definition->Moves.WindedSeconds, Combo.WindedCount, Why, FightSeconds);
+	Bark(EBossBarkEvent::Winded);
+	return true;
+}
+
+void UBossFightSubsystem::CheckArrowEffects()
+{
+	UWorld* World = GetWorld();
+	if (!World || !Definition || !Definition->Phases.IsValidIndex(PhaseIndex))
+	{
+		return;
+	}
+	SeenEffects.RemoveAll([](const TWeakObjectPtr<AActor>& Weak) { return !Weak.IsValid(); });
+	const FBossPhaseDefinition& Phase = Definition->Phases[PhaseIndex];
+	AThugCharacter* Him = Boss.Get();
+	ABossArenaHazard* Body = Hazard.Get();
+	for (TActorIterator<AArrowEffect> It(World); It; ++It)
+	{
+		AArrowEffect* Effect = *It;
+		if (!Effect->IsActivated() || SeenEffects.Contains(Effect))
+		{
+			continue;
+		}
+		SeenEffects.Add(Effect);
+		const UArrowDefinition* Arrow = Effect->GetArrow();
+		if (!Arrow)
+		{
+			continue;
+		}
+		const FVector Impact = Effect->GetImpactPoint();
+		if (Him && !IsDown(Him))
+		{
+			const float Distance = Effect->GetHitActor() == Him ? 0.f : FVector::Dist(Impact, Him->GetActorLocation());
+			if (UBossRules::BreaksGuard(Arrow->OnHitEffect, Distance, Phase.GuardBreakEffects, Phase.GuardBreakRadius, IsGuarding())
+				&& ForceWinded(*FString::Printf(TEXT("guard broken by %s"), *Arrow->GetName()), Effect->GetShooter()))
+			{
+				++GuardBreaks;
+			}
+		}
+		if (Body && Body->IsLoose())
+		{
+			const FBossHazardTuning& Tuning = Body->GetTuning();
+			if (UBossRules::PinsHazard(Arrow->OnHitEffect, FVector::Dist(Impact, Body->GetBodyLocation() + FVector(0.f, 0.f, 150.f)),
+				FVector::Dist(Impact, Body->GetLaneStart()), Tuning))
+			{
+				Body->Pin(Tuning.PinSeconds);
+			}
+		}
+	}
+}
+
+void UBossFightSubsystem::UpdateHazardOnBoss(float DeltaSeconds, AThugCharacter* Him, const FBossPhaseDefinition& Phase)
+{
+	SinceHazardHitBoss += FMath::Max(DeltaSeconds, 0.f);
+	ABossArenaHazard* Body = Hazard.Get();
+	if (!Phase.bHazardWindsBoss || !Body || !Him || IsDown(Him) || !Body->Reaches(Him, SinceHazardHitBoss))
+	{
+		return;
+	}
+	SinceHazardHitBoss = 0.f;
+	++HazardBossHits;
+	// Out of the lane, the short way, and the way it is going: the same shove it gives her.
+	const FVector Lane = (Body->GetLaneEnd() - Body->GetLaneStart()).GetSafeNormal2D();
+	const FVector Across = FVector::CrossProduct(FVector::UpVector, Lane);
+	const float Side = FVector::DotProduct(Him->GetActorLocation() - Body->GetBodyLocation(), Across) >= 0.f ? 1.f : -1.f;
+	const FVector Shove = (Across * Side * 0.8f + Lane * Body->GetSweepDirection() * 0.6f).GetSafeNormal2D() * Body->GetTuning().KnockbackSpeed
+		+ FVector(0.f, 0.f, 250.f);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: the hazard catches %s (%d) at %.1f s."), *GetName(), *Him->GetName(), HazardBossHits, FightSeconds);
+	ForceWinded(TEXT("the hazard caught him"), Body);
+	Him->LaunchCharacter(Shove, true, true);
+}
+
+void UBossFightSubsystem::HandleFinisherStarted(AActor* Target, EHawkeyeFinisherStyle /*Style*/)
+{
+	AThugCharacter* Him = Boss.Get();
+	if (State != EBossFightState::Fight || !Definition || !Him || Target != Him)
+	{
+		return;
+	}
+	++BossFinishers;
+	if (!Combo.IsWinded())
+	{
+		++BossFinishersOutsideWindow;
+		UE_LOG(LogHawkeye, Warning, TEXT("%s: a finisher on %s outside his winded window."), *GetName(), *Him->GetName());
+	}
+	const UHealthComponent* Health = Him->GetHealthComponent();
+	float NextThreshold = -1.f;
+	if (Definition->Phases.IsValidIndex(PhaseIndex + 1) && Definition->Phases[PhaseIndex + 1].Phase.Entry == EBossPhaseEntry::HealthBelow)
+	{
+		NextThreshold = Definition->Phases[PhaseIndex + 1].Phase.HealthThresholdPercent;
+	}
+	const float Scale = Combo.IsWinded() ? Definition->Moves.WindedDamageScale : 1.f;
+	if (!Health || !UBossRules::IsDecisiveFinisher(Health->GetCurrentHealth(), Health->GetMaxHealth(), Definition->Moves.FinisherDamageFraction,
+		Scale, NextThreshold))
+	{
+		return;
+	}
+	++DecisiveFinishers;
+	const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(FindKate());
+	UFinisherComponent* Finisher = Hawkeye ? Hawkeye->GetFinisherComponent() : nullptr;
+	if (!Finisher || WidenedFinisher.IsValid())
+	{
+		return;
+	}
+	const FBossFinisherCamera& Cam = Definition->FinisherCamera;
+	SavedSlowDilation = Finisher->SlowDilation;
+	SavedSlowRealSeconds = Finisher->SlowRealSeconds;
+	SavedCameraPush = Finisher->CameraPushDistance;
+	Finisher->SlowDilation = Cam.TimeDilation;
+	Finisher->SlowRealSeconds = Cam.SlowSeconds;
+	Finisher->CameraPushDistance = Cam.PushDistance;
+	WidenedFinisher = Finisher;
+	UE_LOG(LogHawkeye, Log, TEXT("%s: the finisher on %s ends %s: time %.2f for %.1f s, the camera %.0f cm in."), *GetName(), *Him->GetName(),
+		NextThreshold >= 0.f ? TEXT("a phase or the fight") : TEXT("the fight"), Cam.TimeDilation, Cam.SlowSeconds, Cam.PushDistance);
+}
+
+void UBossFightSubsystem::RestoreFinisherCamera()
+{
+	UFinisherComponent* Finisher = WidenedFinisher.Get();
+	if (!Finisher)
+	{
+		WidenedFinisher.Reset();
+		return;
+	}
+	if (Finisher->IsPerformingFinisher() && State != EBossFightState::Idle)
+	{
+		return;
+	}
+	Finisher->SlowDilation = SavedSlowDilation;
+	Finisher->SlowRealSeconds = SavedSlowRealSeconds;
+	Finisher->CameraPushDistance = SavedCameraPush;
+	WidenedFinisher.Reset();
+}
+
+void UBossFightSubsystem::AddRimLight(AThugCharacter* Him) const
+{
+	if (!Him || !Definition || Definition->RimLightLumens <= 0.f)
+	{
+		return;
+	}
+	UPointLightComponent* Light = NewObject<UPointLightComponent>(Him, TEXT("BossRimLight"));
+	Light->SetupAttachment(Him->GetRootComponent());
+	// In front of him and over his shoulder: he faces her, so it lights the side her camera sees.
+	Light->SetRelativeLocation(FVector(110.f, 40.f, 90.f));
+	Light->SetIntensityUnits(ELightUnits::Lumens);
+	Light->SetIntensity(Definition->RimLightLumens);
+	Light->SetAttenuationRadius(Definition->RimLightRadius);
+	Light->SetLightColor(Definition->RimLightColor);
+	Light->SetCastShadows(false);
+	Light->RegisterComponent();
+}
+
+// --- The beats ---------------------------------------------------------------------------------------------
+
+void UBossFightSubsystem::RequestBeat(const FBossBeat& Beat, bool bDefeat)
+{
+	if (bInBeat)
+	{
+		EndBeat(false, /*bCancel=*/true);
+	}
+	if (!Beat.IsSet())
+	{
+		if (bDefeat)
+		{
+			BeginAfter();
+		}
+		return;
+	}
+	ActiveBeat = Beat;
+	bBeatIsDefeat = bDefeat;
+	bBeatPending = true;
+	bSkipRequested = false;
+	// Her finisher plays out first; the tick starts the beat once it is over.
+	const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(FindKate());
+	if (!Hawkeye || !Hawkeye->IsPerformingFinisher())
+	{
+		StartBeat(FindKate());
+	}
+}
+
+void UBossFightSubsystem::HoldKate(APawn* Kate, bool bHold) const
+{
+	if (!Kate)
+	{
+		return;
+	}
+	if (AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Kate))
+	{
+		Hawkeye->SetScriptedLock(bHold);
+	}
+	if (UHealthComponent* Health = Kate->FindComponentByClass<UHealthComponent>())
+	{
+		Health->IncomingDamageScale = bHold ? 0.f : 1.f;
+	}
+	if (APlayerController* PC = Cast<APlayerController>(Kate->GetController()))
+	{
+		PC->SetIgnoreMoveInput(bHold);
+		PC->SetIgnoreLookInput(bHold);
+	}
+	if (bHold)
+	{
+		if (UCharacterMovementComponent* Movement = Kate->FindComponentByClass<UCharacterMovementComponent>())
+		{
+			Movement->StopMovementImmediately();
+		}
+	}
+}
+
+void UBossFightSubsystem::StartBeat(APawn* Kate)
+{
+	bBeatPending = false;
+	if (!Definition)
+	{
+		return;
+	}
+	bInBeat = true;
+	BeatElapsed = 0.f;
+	++BeatsPlayed;
+	HoldKate(Kate, true);
+	// Nobody fights through it, nobody is hurt in it, the hazard holds where it is.
+	AThugCharacter* Him = Boss.Get();
+	if (Him)
+	{
+		SetFighting(Him, false, nullptr);
+		if (UHealthComponent* Health = Him->GetHealthComponent())
+		{
+			Health->IncomingDamageScale = 0.f;
+		}
+	}
+	for (const TWeakObjectPtr<AThugCharacter>& Weak : Crew)
+	{
+		SetFighting(Weak.Get(), false, nullptr);
+	}
+	if (ABossArenaHazard* Body = Hazard.Get())
+	{
+		Body->SetHeld(true);
+	}
+	// The cut: an angle on the two of them, from the beat's offset in the frame of the line from her to him.
+	const FVector KateAt = Kate ? Kate->GetActorLocation() : Definition->Arena.Centre;
+	// Down, his body is where the ragdoll went, not where the capsule stands.
+	const FVector HimAt = !Him ? Definition->Arena.BossSpot
+		: (Him->IsLimp() && Him->GetMesh() ? Him->GetMesh()->GetComponentLocation() + FVector(0.f, 0.f, 40.f) : Him->GetActorLocation());
+	UBossRules::BeatCamera(KateAt, HimAt, ActiveBeat, BeatCameraLocation, BeatCameraRotation);
+	UWorld* World = GetWorld();
+	APlayerController* PC = Kate ? Cast<APlayerController>(Kate->GetController()) : nullptr;
+	if (World)
+	{
+		// Pulled in front of anything solid between the look point and the lens, as a spring arm would.
+		const FVector Look = FMath::Lerp(KateAt, HimAt, FMath::Clamp(ActiveBeat.LookAtBoss, 0.f, 1.f)) + FVector(0.f, 0.f, 40.f);
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(BossBeatCamera), false);
+		Params.AddIgnoredActor(Kate);
+		Params.AddIgnoredActor(Him);
+		for (const TWeakObjectPtr<AThugCharacter>& Weak : Crew)
+		{
+			Params.AddIgnoredActor(Weak.Get());
+		}
+		FHitResult Hit;
+		if (World->LineTraceSingleByChannel(Hit, Look, BeatCameraLocation, ECC_Camera, Params))
+		{
+			BeatCameraLocation = Hit.Location + (Look - Hit.Location).GetSafeNormal() * 25.f;
+			BeatCameraRotation = (Look - BeatCameraLocation).Rotation();
+		}
+	}
+	if (World && PC)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), BeatCameraLocation, BeatCameraRotation, SpawnParams))
+		{
+			Cam->GetCameraComponent()->SetFieldOfView(ActiveBeat.FieldOfView);
+			Cam->GetCameraComponent()->SetConstraintAspectRatio(false);
+			Cam->Tags.Add(FurnitureTag);
+			PC->SetViewTargetWithBlend(Cam, ActiveBeat.BlendSeconds, VTBlend_Cubic);
+			BeatCamera = Cam;
+		}
+	}
+	Say(ActiveBeat.Lines, /*bStory=*/true);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: %s beat for %.1f s at %.1f s: camera %s looking %s."), *GetName(),
+		bBeatIsDefeat ? TEXT("the defeat") : *FString::Printf(TEXT("phase %d's"), PhaseIndex), ActiveBeat.Seconds, FightSeconds,
+		*BeatCameraLocation.ToCompactString(), *BeatCameraRotation.ToCompactString());
+}
+
+void UBossFightSubsystem::UpdateBeat(float DeltaSeconds, APawn* Kate)
+{
+	BeatElapsed += FMath::Max(DeltaSeconds, 0.f);
+	// Both turned to each other while it holds.
+	FaceKate(Boss.Get(), Kate);
+	const APlayerController* PC = Kate ? Cast<APlayerController>(Kate->GetController()) : nullptr;
+	const bool bKey = PC && (PC->WasInputKeyJustPressed(EKeys::SpaceBar) || PC->WasInputKeyJustPressed(EKeys::Gamepad_FaceButton_Bottom));
+	const bool bSkip = bSkipRequested || bKey;
+	if (UBossRules::IsBeatOver(BeatElapsed, ActiveBeat.Seconds, bSkip))
+	{
+		EndBeat(bSkip && BeatElapsed < ActiveBeat.Seconds);
+	}
+}
+
+void UBossFightSubsystem::EndBeat(bool bSkipped, bool bCancel)
+{
+	const bool bWasPending = bBeatPending;
+	bBeatPending = false;
+	bSkipRequested = false;
+	if (!bInBeat)
+	{
+		// A defeat beat that never got to start still owes the after lines, unless the fight is going away.
+		if (bWasPending && bBeatIsDefeat && !bCancel)
+		{
+			BeginAfter();
+		}
+		return;
+	}
+	bInBeat = false;
+	if (bSkipped)
+	{
+		++BeatsSkipped;
+	}
+	APawn* Kate = FindKate();
+	HoldKate(Kate, false);
+	if (APlayerController* PC = Kate ? Cast<APlayerController>(Kate->GetController()) : nullptr)
+	{
+		PC->SetViewTargetWithBlend(Kate, bCancel ? 0.f : ActiveBeat.BlendSeconds, VTBlend_Cubic);
+	}
+	if (AActor* Cam = BeatCamera.Get())
+	{
+		// It outlives the blend back, which reads from it.
+		Cam->SetLifeSpan(ActiveBeat.BlendSeconds + 0.5f);
+	}
+	BeatCamera.Reset();
+	if (ABossArenaHazard* Body = Hazard.Get())
+	{
+		Body->SetHeld(false);
+	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: the beat ends after %.1f s%s."), *GetName(), BeatElapsed,
+		bCancel ? TEXT(" (cut off)") : (bSkipped ? TEXT(" (skipped)") : TEXT("")));
+	if (bCancel)
+	{
+		return;
+	}
+	if (bBeatIsDefeat)
+	{
+		BeginAfter();
+		return;
+	}
+	// Control back: the phase's crew and the boss as the phase has them.
+	if (Definition && Definition->Phases.IsValidIndex(PhaseIndex))
+	{
+		const FBossPhaseDefinition& Phase = Definition->Phases[PhaseIndex];
+		for (const TWeakObjectPtr<AThugCharacter>& Weak : Crew)
+		{
+			if (!IsDown(Weak.Get()))
+			{
+				SetFighting(Weak.Get(), true, Kate);
+			}
+		}
+		if (AThugCharacter* Him = Boss.Get(); Him && !IsDown(Him))
+		{
+			SetFighting(Him, Phase.bBossFights, Kate);
+			UpdateGuard(Him, Phase);
+		}
+	}
+}
+
+// --- What has been heard -----------------------------------------------------------------------------------
+
+TArray<FString> UBossFightSubsystem::ExportHeard() const
+{
+	TArray<FString> Out;
+	for (const FName Line : HeardLines)
+	{
+		Out.Add(TEXT("line:") + Line.ToString());
+	}
+	for (const TPair<FString, int32>& Entry : BarkCounts)
+	{
+		if (Entry.Value > 0)
+		{
+			Out.Add(TEXT("bark:") + Entry.Key);
+		}
+	}
+	return Out;
+}
+
+void UBossFightSubsystem::ImportHeard(const TArray<FString>& Heard)
+{
+	for (const FString& Key : Heard)
+	{
+		if (Key.StartsWith(TEXT("line:")))
+		{
+			HeardLines.AddUnique(FName(*Key.RightChop(5)));
+		}
+		else if (Key.StartsWith(TEXT("bark:")))
+		{
+			int32& Count = BarkCounts.FindOrAdd(Key.RightChop(5));
+			Count = FMath::Max(Count, 1);
+		}
+	}
+}
+
+void UBossFightSubsystem::RememberHeard(const FString& Key) const
+{
+	if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this))
+	{
+		Save->SessionBossHeard.AddUnique(Key);
+	}
+}
+
+void UBossFightSubsystem::MirrorToCampaign() const
+{
+	const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(this);
+	if (UHawkeyeCampaignState* Campaign = Save ? Save->GetCampaignState() : nullptr)
+	{
+		Campaign->BossHeard = (IsFightActive() || State == EBossFightState::Done) ? ExportHeard() : TArray<FString>();
 	}
 }

@@ -2,6 +2,7 @@
 
 #include "Hawkeye.h"
 #include "HawkeyePlayerController.h"
+#include "Boss/BossFightSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Challenge/ChallengeSubsystem.h"
 #include "Chase/ChaseSubsystem.h"
@@ -179,6 +180,10 @@ void UHawkeyeSaveSubsystem::CaptureCampaign(UWorld* World)
 	{
 		Chase->MirrorToCampaign();
 	}
+	if (const UBossFightSubsystem* Boss = World->GetSubsystem<UBossFightSubsystem>())
+	{
+		Boss->MirrorToCampaign();
+	}
 }
 
 bool UHawkeyeSaveSubsystem::SaveCampaign(const FString& Reason)
@@ -329,6 +334,7 @@ void UHawkeyeSaveSubsystem::StartNewGame()
 	UWorld* World = GetGameWorld();
 	USpudSubsystem* Spud = GetSpud();
 	Campaign->ResetCampaign();
+	SessionBossHeard.Reset();
 	AutosaveClock.Reset();
 	bRestorePending = false;
 	bLoadInFlight = false;

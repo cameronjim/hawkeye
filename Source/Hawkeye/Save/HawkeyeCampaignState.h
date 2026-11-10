@@ -154,6 +154,10 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
 	bool bChaseVaulted = false;
 
+	/** What the chapter's boss fight has spoken ("line:<row>", "bark:<phase>:<event>"), so a load repeats none of it. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Boss")
+	TArray<FString> BossHeard;
+
 	/** Back to a fresh campaign. */
 	UFUNCTION(BlueprintCallable, Category = "Save")
 	void ResetCampaign();

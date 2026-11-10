@@ -3,12 +3,14 @@
 #include "CoreMinimal.h"
 #include "Boss/BossRules.h"
 #include "Boss/BossTypes.h"
+#include "Combat/FinisherComponent.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BossFightSubsystem.generated.h"
 
 class ABossArenaHazard;
 class AThugCharacter;
 class UBossDefinition;
+struct FBossPhaseDefinition;
 class UBossPhaseComponent;
 class UHealthComponent;
 class UMissionDefinition;
@@ -102,6 +104,64 @@ public:
 	/** Every DT_Dialogue row this fight asked to speak, in order. */
 	const TArray<FName>& GetLinesSpoken() const { return LinesSpoken; }
 
+	// --- The solves and the beats (gameplay-semantics.md, "Bosses") -------------------------------------------
+
+	/** He guards now: the phase gives him a guard, he fights, he is not winded. */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	bool IsGuarding() const;
+
+	/** Times a trick arrow broke his guard (he went winded for it). */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	int32 GetGuardBreakCount() const { return GuardBreaks; }
+
+	/** Times the hazard's sweep caught him. */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	int32 GetHazardBossHits() const { return HazardBossHits; }
+
+	/** Kate's dodges started while he wound up an unblockable swing within 450 cm. */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	int32 GetUnblockableDodges() const { return UnblockableDodges; }
+
+	/** Finishers on him, and those that started while he was not winded (the rules make that 0). */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	int32 GetBossFinishers() const { return BossFinishers; }
+
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	int32 GetBossFinishersOutsideWindow() const { return BossFinishersOutsideWindow; }
+
+	/** Finishers on him that ended a phase or the fight (the slow, close camera). */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	int32 GetDecisiveFinishers() const { return DecisiveFinishers; }
+
+	/** A scripted beat holds the fight (or one waits for her finisher to end). */
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	bool IsInBeat() const { return bInBeat; }
+
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	bool IsBeatPending() const { return bBeatPending; }
+
+	UFUNCTION(BlueprintPure, Category = "Boss")
+	float GetBeatElapsed() const { return bInBeat ? BeatElapsed : 0.f; }
+
+	/** Beats played and how many of them were skipped. */
+	int32 GetBeatsPlayed() const { return BeatsPlayed; }
+	int32 GetBeatsSkipped() const { return BeatsSkipped; }
+
+	/** Where the running beat's camera stands and looks (zero when none). */
+	FVector GetBeatCameraLocation() const { return BeatCameraLocation; }
+	FRotator GetBeatCameraRotation() const { return BeatCameraRotation; }
+
+	/** Skips the running beat (its skip key does the same once BeatMinSkipSeconds are in). */
+	UFUNCTION(BlueprintCallable, Category = "Boss")
+	void SkipBeat() { bSkipRequested = true; }
+
+	/** What the fight has spoken, as "line:<row>" and "bark:<phase>:<event>": kept across a load so nothing repeats. */
+	TArray<FString> ExportHeard() const;
+	void ImportHeard(const TArray<FString>& Heard);
+
+	/** Writes ExportHeard into the campaign (UHawkeyeSaveSubsystem::CaptureCampaign) and the save's session memory. */
+	void MirrorToCampaign() const;
+
 	/** The fight is set up or running: the roof is the chapter's arena. */
 	UFUNCTION(BlueprintPure, Category = "Boss")
 	bool IsFightActive() const { return State == EBossFightState::Approach || State == EBossFightState::Intro
@@ -162,8 +222,31 @@ protected:
 	void UpdateMarker();
 	void Finish();
 
-	void Say(const TArray<FName>& Lines);
+	/** Speaks Lines, every one; a story line (bStory) already heard this run of the fight is left out. */
+	void Say(const TArray<FName>& Lines, bool bStory = false);
 	void Bark(EBossBarkEvent Event);
+
+	/** He goes winded now (a broken guard, the hazard): the finisher window, the bark. Why, for the log. */
+	bool ForceWinded(const TCHAR* Why, AActor* By);
+	/** New trick-arrow effects: a guard break on him, a pin on the hazard. */
+	void CheckArrowEffects();
+	void UpdateGuard(AThugCharacter* Him, const FBossPhaseDefinition& Phase);
+	void UpdateHazardOnBoss(float DeltaSeconds, AThugCharacter* Him, const FBossPhaseDefinition& Phase);
+
+	/** Starts Beat now, or once her finisher is over; with nothing to play, a defeat goes straight to the after lines. */
+	void RequestBeat(const FBossBeat& Beat, bool bDefeat);
+	void StartBeat(APawn* Kate);
+	void UpdateBeat(float DeltaSeconds, APawn* Kate);
+	/** Control back. bCancel (a restart, a stop): no after lines follow a defeat beat. */
+	void EndBeat(bool bSkipped, bool bCancel = false);
+	/** Kate held or let go: input, damage, the lock. */
+	void HoldKate(APawn* Kate, bool bHold) const;
+	/** The after sequence (once he is down and the defeat beat, if any, is over). */
+	void BeginAfter();
+	/** Puts Kate's finisher camera back after a boss finisher widened it. */
+	void RestoreFinisherCamera();
+	void AddRimLight(AThugCharacter* Him) const;
+	void RememberHeard(const FString& Key) const;
 	bool CompleteObjective(FName ObjectiveId) const;
 	bool IsDown(const AThugCharacter* Thug) const;
 
@@ -181,6 +264,9 @@ protected:
 
 	UFUNCTION()
 	void HandleFinisherStruck(AActor* Target);
+
+	UFUNCTION()
+	void HandleFinisherStarted(AActor* Target, EHawkeyeFinisherStyle Style);
 
 	UFUNCTION()
 	void HandleMissionStarted(UMissionDefinition* Mission);
@@ -223,4 +309,36 @@ protected:
 	TMap<FString, float> BarkLastSeconds;
 	TArray<FString> BarksSpoken;
 	TArray<FName> LinesSpoken;
+	/** Story lines (start, end, beat) heard this run of the fight, a load included. */
+	TArray<FName> HeardLines;
+
+	// The solves.
+	int32 GuardBreaks = 0;
+	int32 HazardBossHits = 0;
+	int32 UnblockableDodges = 0;
+	int32 BossFinishers = 0;
+	int32 BossFinishersOutsideWindow = 0;
+	int32 DecisiveFinishers = 0;
+	float SinceHazardHitBoss = 1000.f;
+	TArray<TWeakObjectPtr<AActor>> SeenEffects;
+
+	// The beat.
+	bool bInBeat = false;
+	bool bBeatPending = false;
+	bool bBeatIsDefeat = false;
+	bool bSkipRequested = false;
+	bool bAfterStarted = false;
+	float BeatElapsed = 0.f;
+	FBossBeat ActiveBeat;
+	int32 BeatsPlayed = 0;
+	int32 BeatsSkipped = 0;
+	FVector BeatCameraLocation = FVector::ZeroVector;
+	FRotator BeatCameraRotation = FRotator::ZeroRotator;
+	TWeakObjectPtr<AActor> BeatCamera;
+
+	// A boss finisher's wider camera, and Kate's own numbers to put back.
+	TWeakObjectPtr<UFinisherComponent> WidenedFinisher;
+	float SavedSlowDilation = 0.5f;
+	float SavedSlowRealSeconds = 0.4f;
+	float SavedCameraPush = 40.f;
 };

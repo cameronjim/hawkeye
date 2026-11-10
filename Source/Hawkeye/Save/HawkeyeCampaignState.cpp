@@ -35,6 +35,7 @@ void UHawkeyeCampaignState::ResetCampaign()
 	bChaseBeatDone = false;
 	bChasePulledAhead = false;
 	bChaseVaulted = false;
+	BossHeard.Reset();
 }
 
 bool UHawkeyeCampaignState::CanMigrateFrom(int32 SavedVersion)

@@ -102,6 +102,13 @@ public:
 	/** True once after StartNewGame, so the new game's first autosave can be written. */
 	bool ConsumeNewGameAutosave();
 
+	/**
+	 * What the boss fight has spoken since its chapter started, kept in memory across a death's reload (which reads the
+	 * slot back, older than the lines spoken since). UBossFightSubsystem writes and reads it; a chapter's opening and a
+	 * new game clear it.
+	 */
+	TArray<FString> SessionBossHeard;
+
 	// --- Safehouses -------------------------------------------------------------------------------
 
 	/** Records a safehouse as found. True the first time. */

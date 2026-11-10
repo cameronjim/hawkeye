@@ -67,6 +67,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Arrow Effect")
 	AActor* GetShooter() const { return Shooter.Get(); }
 
+	/** The arrow that left it (null when spawned without one). */
+	const UArrowDefinition* GetArrow() const { return Arrow; }
+
 	/** True once SpawnEffectVfx drew something: the placeholder shapes are hidden from then on. */
 	UFUNCTION(BlueprintPure, Category = "Arrow Effect")
 	bool HasEffectVfx() const { return bEffectVfxSpawned; }
