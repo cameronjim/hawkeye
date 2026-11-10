@@ -70,7 +70,8 @@
  * campaign is saved and loaded (its own slot) and must come back the same: objectives, the flag, the events fired (no
  * line said again), the foam in the quiver, the sack carried, no crew, two sacks on the ground. Then the other sacks,
  * the table, the end card, the "Visiting hours" slides, the texts on the phone; then chapter 4 is started the way
- * chapter select does, and must come up clean (no site, its quiver with the foam, Tomas waiting).
+ * chapter select does, and must come up clean (no site, its quiver with the foam and chapter 3's boomerangs, Tomas
+ * waiting).
  *
  * Writes Saved/Automation/reindeer_games_lap.json and Saved/Screenshots/ReindeerGames/reindeer_*.png (the site, the
  * courier examine, the crew, the foam unlock, a sack, the toy return, the end card, a slide, the phone).
@@ -88,6 +89,8 @@ namespace HawkeyeReindeerLap
 	static const TCHAR* InteractPath = TEXT("/Game/Input/IA_Interact.IA_Interact");
 	static const TCHAR* Chapter = TEXT("DA_CH02_ReindeerGames");
 	static const TCHAR* NextChapter = TEXT("DA_CH04_SocialClub");
+	static const TCHAR* FollowingChapter = TEXT("DA_CH03_Grotto");
+	static constexpr int32 SlotBoomerang = 4;
 	static const TCHAR* FirstChapter = TEXT("DA_CH01_NightShift");
 	static const TCHAR* Slot = TEXT("HawkeyeReindeerGamesLap");
 	static const FName Flag(TEXT("saw_courier"));
@@ -427,10 +430,10 @@ bool FHawkeyeReindeerLap::SetUp(UWorld* World, APlayerController* PC, AHawkeyeCh
 		Fail(TEXT("no game mode, chapter 2, site subsystem or save subsystem"));
 		return false;
 	}
-	// The campaign's order: 1, 2, then 4 while chapter 3 does not exist.
+	// The campaign's order: 1, 2, 3, 4.
 	const UMissionDefinition* First = AHawkeyeGameMode::FindChapter(FirstChapter);
 	Test->TestTrue(TEXT("Chapter 1 leads to chapter 2"), First && First->NextChapter.ToSoftObjectPath() == FSoftObjectPath(Mission));
-	Test->TestTrue(TEXT("Chapter 2 leads to chapter 4"), Mission->NextChapter.ToSoftObjectPath().GetAssetName() == NextChapter);
+	Test->TestTrue(TEXT("Chapter 2 leads to chapter 3"), Mission->NextChapter.ToSoftObjectPath().GetAssetName() == FollowingChapter);
 	Test->TestFalse(TEXT("No partner in chapter 2"), Mission->bPartnerPresent);
 	Save->SlotNameOverride = Slot;
 	IFileManager::Get().Delete(*USpudSubsystem::GetSaveGameFilePath(Slot), false, true, true);
@@ -1156,8 +1159,11 @@ bool FHawkeyeReindeerLap::Update()
 		Test->TestEqual(TEXT("...with every one of its actors"), SiteActors, 0);
 		Test->TestTrue(TEXT("Chapter 4: Tomas waits on his roof"), Fight && Fight->GetState() == EBossFightState::Approach && Fight->GetBoss());
 		Test->TestEqual(TEXT("Chapter 4's quiver holds the foam unlocked before it"), Foam, 2);
-		NextChapterCheck = FString::Printf(TEXT("chapter 4 %s, %d site actors left, Tomas %s, foam %d"), bStarted ? TEXT("started") : TEXT("refused"),
-			SiteActors, Fight && Fight->GetBoss() ? TEXT("waiting") : TEXT("missing"), Foam);
+		// Opened from chapter select past chapter 3: its grant holds chapter 3's boomerang too.
+		const int32 Boomerangs = Kate->GetInventoryComponent()->GetArrowCount(SlotBoomerang);
+		Test->TestEqual(TEXT("...and chapter 3's boomerangs"), Boomerangs, 2);
+		NextChapterCheck = FString::Printf(TEXT("chapter 4 %s, %d site actors left, Tomas %s, foam %d, boomerang %d"), bStarted ? TEXT("started") : TEXT("refused"),
+			SiteActors, Fight && Fight->GetBoss() ? TEXT("waiting") : TEXT("missing"), Foam, Boomerangs);
 		Enter(EStep::Done, Now);
 		Report(World);
 		return true;
