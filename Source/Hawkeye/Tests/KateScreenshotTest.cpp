@@ -12,10 +12,12 @@
 #include "Combat/HealthComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/SpotLight.h"
+#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "EnhancedInputSubsystems.h"
@@ -98,6 +100,10 @@
  *   vault_mid.png    sprinting at City_Test_Vault (90 cm): the auto vault, mid-move
  *   mantle_mid.png   the jump key 36 cm from City_Test_Mantle (150 cm): hands on the top
  *   standing_vault.png  standing still, pressed against City_Test_Vault (90 cm), one press: mid-vault
+ *   own_vault_mid.png, own_mantle_150.png, own_mantle_185.png, own_mantle_185_top.png  the same with the
+ *                    sample's traversal off, so the moves are ours (the clip's root motion warped to the
+ *                    probe): the vault, the 150 cm mantle (the 1 m clip) and a 185 cm copy of the mantle
+ *                    block (the 2.5 m clip), mid-move and standing on top
  *   roof_edge_guard.png  walking at a tenement's roof-edge parapet, one jump press: the roof-edge guard
  *                    mantles her onto the parapet top and she stays there with the stick still held
  *   ledge_hang.png   dropped in against a tenement 230 cm under its parapet top: caught, hanging
@@ -979,6 +985,11 @@ namespace HawkeyeKateShots
 		LedgeFall,
 		Climb,
 		EndInput,
+		/** Our own moves from here: the sample's traversal off, and a 185 cm block beside the 150 cm one. */
+		OwnRoute,
+		TallMantleStand,
+		/** The sample's traversal back on, the tall block gone. */
+		SampleRoute,
 	};
 
 	/** Holds or releases IA_Sprint through Enhanced Input injection, like HoldMove. */
@@ -1012,6 +1023,42 @@ namespace HawkeyeKateShots
 			}
 		}
 		return nullptr;
+	}
+
+	static const FName TallBlockTag(TEXT("CityTestTallMantle"));
+
+	/** A copy of City_Test_Mantle 185 cm tall, half way to City_Test_Vault, for the 2.5 m clip's height band. */
+	static AActor* SpawnTallBlock(UWorld* World)
+	{
+		const AActor* Mantle = FindTagged(World, TEXT("CityTestMantle"));
+		const AActor* Vault = FindTagged(World, TEXT("CityTestVault"));
+		const UStaticMeshComponent* Mesh = Mantle ? Mantle->FindComponentByClass<UStaticMeshComponent>() : nullptr;
+		if (!Vault || !Mesh)
+		{
+			return nullptr;
+		}
+		const FBox Bounds = Mantle->GetComponentsBoundingBox();
+		FTransform Transform = Mantle->GetActorTransform();
+		const FVector Scale = Transform.GetScale3D();
+		Transform.SetScale3D(FVector(Scale.X, Scale.Y, Scale.Z * 185.f / FMath::Max(1.f, static_cast<float>(Bounds.GetSize().Z))));
+		const FVector Middle = (Mantle->GetActorLocation() + Vault->GetActorLocation()) * 0.5f;
+		Transform.SetLocation(FVector(Middle.X, Middle.Y, Bounds.Min.Z + 92.5f));
+		AStaticMeshActor* Block = World->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), Transform);
+		if (!Block)
+		{
+			return nullptr;
+		}
+		Block->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+		Block->GetStaticMeshComponent()->SetStaticMesh(Mesh->GetStaticMesh());
+		for (int32 Slot = 0; Slot < Mesh->GetNumMaterials(); ++Slot)
+		{
+			Block->GetStaticMeshComponent()->SetMaterial(Slot, Mesh->GetMaterial(Slot));
+		}
+		Block->SetActorTransform(Transform);
+		// On the street where the 150 cm block stands, whatever the mesh's pivot.
+		Block->AddActorWorldOffset(FVector(0.f, 0.f, Bounds.Min.Z - Block->GetComponentsBoundingBox().Min.Z));
+		Block->Tags.Add(TallBlockTag);
+		return Block;
 	}
 
 	/** The IA_Move value that walks along WorldDirection with the camera at CameraYaw. */
@@ -1294,6 +1341,27 @@ bool FHawkeyeKateParkourShot::Update()
 	case EParkourShot::EndInput:
 		HoldSprint(PC, false);
 		HoldMove(PC, FVector2D::ZeroVector, false);
+		break;
+	case EParkourShot::OwnRoute:
+		// The sample would take these moves on the street; turned off, they are ours (warped clip root motion).
+		Kate->GetParkourComponent()->bUseSampleTraversal = false;
+		if (!FindTagged(World, TallBlockTag) && !SpawnTallBlock(World))
+		{
+			Test->AddWarning(TEXT("No City_Test_Mantle to copy for the 185 cm block."));
+		}
+		break;
+	case EParkourShot::TallMantleStand:
+		if (!FaceTestBlock(World, Kate, PC, TallBlockTag, 70.f, -75.f, Direction))
+		{
+			Test->AddWarning(TEXT("No 185 cm block."));
+		}
+		break;
+	case EParkourShot::SampleRoute:
+		Kate->GetParkourComponent()->bUseSampleTraversal = true;
+		if (AActor* Tall = FindTagged(World, TallBlockTag))
+		{
+			Tall->Destroy();
+		}
 		break;
 	}
 	return true;
@@ -2974,6 +3042,39 @@ bool FHawkeyeScreenshotKate::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateReportParkour(this, TEXT("standing_vault.png")));
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateTakeShot(this, TEXT("standing_vault.png")));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(2.f));
+
+	// The same moves as our own (2026-11-10): the clip's root motion warped to the probe, at two mantle heights.
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::OwnRoute)));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::VaultStand)));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::MantleJump)));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateWaitTraversal(this, 1.f, false));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.2f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateReportParkour(this, TEXT("own_vault_mid.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateTakeShot(this, TEXT("own_vault_mid.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(2.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::MantleStand)));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::MantleJump)));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateWaitTraversal(this, 1.f, false));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.35f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateReportParkour(this, TEXT("own_mantle_150.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateTakeShot(this, TEXT("own_mantle_150.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(2.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::TallMantleStand)));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::MantleJump)));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateWaitTraversal(this, 1.f, false));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.3f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateReportParkour(this, TEXT("own_mantle_185.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateTakeShot(this, TEXT("own_mantle_185.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(2.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateReportParkour(this, TEXT("own_mantle_185_top.png")));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateTakeShot(this, TEXT("own_mantle_185_top.png")));
+	// The capture is queued: the block stays until it is taken.
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::SampleRoute)));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
 
 	// Walking at a roof-edge parapet, one press (2026-09-29, a 1679 cm fall): onto its top, and she stays there.
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeKateParkourShot(this, static_cast<uint8>(EParkour::RoofEdge)));
