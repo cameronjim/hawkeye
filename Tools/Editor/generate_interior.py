@@ -17,7 +17,7 @@ script turns them into actors, in the streets' stylised look:
   sofa, bed, counter, stage, lectern, bench, rug, painting, plant); crates marked traversable are visible
   BP_TraversableBlocks so they can be climbed
 * play: a PlayerStart inside the entrance, a nav volume, the layout's enemies (BP_Thug, BP_Archer or
-  BP_Thug_Heavy by type) with their patrol TargetPoints (tagged PatrolFacing where a point gives a yaw),
+  BP_Thug_Heavy by type, or the Blueprint an enemy names) with their patrol TargetPoints (tagged PatrolFacing where a point gives a yaw),
   alert groups and the keycards they carry (placed pickups in their CarriedPickups), loose pickups,
   BP_GameMode_Interior (no snow, the indoor camera arm)
 * every door knows the nav link through it; a locked one keeps it out of the navmesh until it opens
@@ -470,6 +470,7 @@ def build_doors(b, openings):
         b.prop(actor, "slide_distance", float(DOOR_SLIDE * slide * along_sign), room, 0.5)
         b.prop(actor, "open_seconds", 0.8, room, 0.01)
         b.prop(actor, "locked", bool(door.get("locked", False)), room)
+        b.prop(actor, "opens_on_objective", unreal.Name(door.get("opens_on") or "None"), room)
         if link is not None and actor.get_editor_property("nav_link") != link:
             actor.set_editor_property("nav_link", link)
             b.changes += 1
@@ -858,6 +859,9 @@ def build_thugs(b):
     classes = {}
     for enemy in layout.enemies():
         bp_path, bp_name = ENEMY_BLUEPRINTS[enemy["type"]]
+        if enemy.get("blueprint"):
+            # A chapter's own look (the grotto's elves): the type still picks his weapon.
+            bp_path, bp_name = enemy["blueprint"].rsplit("/", 1)
         if bp_name not in classes:
             classes[bp_name] = c.load_generated_class(bp_path, bp_name)
         cls = classes[bp_name]

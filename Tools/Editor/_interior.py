@@ -15,14 +15,15 @@ so a room's N side is its y0 edge (the district's convention: East 11th Street h
                    "paint": "Cream", "light": "pendant|fluorescent|none", "tone": "warm|cool",
                    "overlooks": "<room>", "rail": ["E"]}],
       "doors":   [{"id", "rooms": [a, b], "floor": k, "at": <coordinate along the wall>, "width": 100,
-                   "leaf": "none|wood|steel", "locked": false, "keycard": "<id>"}],
+                   "leaf": "none|wood|steel", "locked": false, "keycard": "<id>", "opens_on": "<objective id>"}],
       "exits":   [{"id", "room", "side": "N", "floor": k, "at", "return": "<district label>" or null,
                    "name": "[Leave]", "entrance": true}],
       "windows": [{"room", "side", "floor", "at", "width": 120, "sill": 90, "height": 150}],
       "stairs":  [{"id", "room", "landing": 170, "flight": 130}],
       "props":   [{"room", "tag", "at": [dx, dy], "yaw": 0, "size": [x, y, z]}],     at is from the room's x0, y0
       "enemies": [{"id", "type": "FISTS|BAT|PISTOL|BOW|SHIELD", "room", "at": [dx, dy], "facing": 90,
-                   "patrol": [[room, dx, dy], [room, dx, dy, yaw, pitch], ...], "wait": 2.0, "alert_group": "<crew>"}],
+                   "patrol": [[room, dx, dy], [room, dx, dy, yaw, pitch], ...], "wait": 2.0, "alert_group": "<crew>",
+                   "blueprint": "/Game/Blueprints/AI/BP_Thug_Elf"}],
       "keycards": [{"keycard": "<id>", "carrier": "<enemy id>"}],   a keycard a thug carries and drops
       "patrols": [{"id", "weapon": "FISTS|BAT|PISTOL", "wait": 2.0, "points": [[room, dx, dy], ...]}],   the old
                    form of a patrolling enemy, read as one that starts on its first point
@@ -38,7 +39,11 @@ or, with no "at", from the first to the second. A point with a fourth number is 
 at while he waits, and a fifth pitches his gaze (below 0 is down: a gunner at a gallery rail looking down
 into the hall; his sight cone is 35 degrees round his gaze). With no patrol he holds his post. "alert_group" names his crew: his squad alert reaches only thugs of the same group (and a thug with
 none only thugs with none). "type" picks the Blueprint: BP_Thug for FISTS, BAT and PISTOL, BP_Archer for
-BOW, BP_Thug_Heavy for SHIELD. A keycard's carrier drops it where he goes down (takedown or fight).
+BOW, BP_Thug_Heavy for SHIELD; "blueprint" names another (a chapter's look: the grotto's elves), the type still
+picking his weapon. A keycard's carrier drops it where he goes down (takedown or fight).
+
+A locked door with "opens_on" opens by itself when that objective of the running chapter completes (ADoorActor::
+OpensOnObjective: the grotto's workshop door, opened by its keypad's examine); it needs no keycard and a leaf.
 
 A room may span several floors ("floors": 2 is a double-height hall or a stair well). A room with
 "overlooks" is a mezzanine inside that room's upper floor (a gallery over a hall); the edges listed in
@@ -190,14 +195,16 @@ class Layout(object):
                         "at": (float(at[0]), float(at[1])) if at is not None else None,
                         "facing": float(raw["facing"]) if raw.get("facing") is not None else None,
                         "patrol": patrol, "wait": float(raw.get("wait", 2.0)),
-                        "alert_group": raw.get("alert_group") or "", "keycards": []})
+                        "alert_group": raw.get("alert_group") or "", "keycards": [],
+                        "blueprint": raw.get("blueprint") or ""})
         for raw in self.patrols:
             points = [(p[0], float(p[1]), float(p[2]), None, 0.0) for p in raw.get("points", [])]
             first = points[0] if points else (None, 0.0, 0.0, None, 0.0)
             # He starts on his first point: walking out and back is the second point first.
             out.append({"id": raw.get("id"), "type": raw.get("weapon", "FISTS"), "room": first[0], "at": (first[1], first[2]),
                         "facing": None, "patrol": points[1:] + points[:1] if len(points) > 1 else [],
-                        "wait": float(raw.get("wait", 2.0)), "alert_group": raw.get("alert_group") or "", "keycards": []})
+                        "wait": float(raw.get("wait", 2.0)), "alert_group": raw.get("alert_group") or "", "keycards": [],
+                        "blueprint": ""})
         by_id = {e["id"]: e for e in out}
         for card in self.keycards:
             if card.get("carrier") in by_id:
@@ -593,10 +600,16 @@ class Layout(object):
             group = raw.get("alert_group", "")
             if group and not all(ch.isalnum() or ch == "_" for ch in group):
                 errors.append("{0}: alert group {1} is letters, digits and _ only".format(what, group))
+            blueprint = raw.get("blueprint")
+            if blueprint and (not str(blueprint).startswith("/Game/") or "." in str(blueprint)):
+                errors.append("{0}: blueprint {1} is a /Game/ package path".format(what, blueprint))
         for patrol in self.patrols:
             if patrol.get("id") in seen:
                 errors.append("patrol {0}: id used by an enemy too".format(patrol.get("id")))
             seen.add(patrol.get("id"))
+        for door in self.doors:
+            if door.get("opens_on") and (not door.get("locked") or door.get("leaf", "wood") == "none"):
+                errors.append("door {0}: opens_on needs a locked door with a leaf".format(door.get("id")))
         carried = set()
         locks = {d.get("keycard") for d in self.doors if d.get("locked")}
         for card in self.keycards:

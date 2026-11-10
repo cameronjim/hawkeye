@@ -176,9 +176,14 @@ def check_openings(layout, world, actors):
     locked = [d for d in doors if d.get_editor_property("locked")]
     keys = [str(a.get_editor_property("keycard_id")) for a in actors.values() if isinstance(a, unreal.PickupActor)]
 
-    unmatched = [d.get_actor_label() for d in locked if str(d.get_editor_property("required_keycard_id")) not in keys]
-    check(not unmatched and len(locked) == sum(1 for d in leaves if d.get("locked")),
-          layout.name + ": locked doors are locked, and each one's keycard is in the map", ", ".join(unmatched))
+    # A door an objective opens (ADoorActor::OpensOnObjective, the layout's "opens_on") needs no keycard.
+    unmatched = [d.get_actor_label() for d in locked if str(d.get_editor_property("required_keycard_id")) not in keys
+                 and str(d.get_editor_property("opens_on_objective")) == "None"]
+    wrong_objective = [d.get_actor_label() for d in doors
+                       if str(d.get_editor_property("opens_on_objective")) not in ("None",) + tuple(x.get("opens_on") for x in leaves if x.get("opens_on"))]
+    check(not unmatched and not wrong_objective and len(locked) == sum(1 for d in leaves if d.get("locked")),
+          layout.name + ": locked doors are locked, and each one's keycard is in the map or an objective opens it",
+          ", ".join(unmatched + wrong_objective))
     nav = [d.get_actor_label() for d in doors if d.get_editor_property("door_mesh").get_editor_property("can_ever_affect_navigation")]
     check(not nav, layout.name + ": no door leaf cuts the navmesh", ", ".join(nav))
     narrow = [item for item, _bd, _at, width in layout.door_spots() if width < gi.NAV_LINK_WIDTH]
