@@ -144,6 +144,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mission")
 	int32 RestoreCompletedObjectives(const TArray<FName>& ObjectiveIds);
 
+	/**
+	 * A stealth objective seen while it is current (UMissionObjective::SpottedTitle): marks it spotted and fires
+	 * OnObjectiveUpdated for it (not completed). False for an unknown, completed, not stealth, or already spotted one,
+	 * or one that is not the current objective.
+	 */
+	bool MarkObjectiveSpotted(FName ObjectiveId);
+
+	/** Ids of every spotted objective, in array order. The save writes these. */
+	TArray<FName> GetSpottedObjectiveIds() const;
+
+	/** Loading a save: marks each listed objective spotted, silently. Returns how many changed. */
+	int32 RestoreSpottedObjectives(const TArray<FName>& ObjectiveIds);
+
 	/** Drops every binding and all state; the subsystem calls this on Deinitialize. */
 	void Reset();
 

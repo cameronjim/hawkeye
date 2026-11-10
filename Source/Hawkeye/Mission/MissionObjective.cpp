@@ -17,6 +17,18 @@ void UMissionObjective::ResetObjective()
 	bCompleted = false;
 }
 
+bool UMissionObjective::MarkSpotted()
+{
+	if (!IsStealth() || bSpotted)
+	{
+		return false;
+	}
+	bSpotted = true;
+	Title = SpottedTitle;
+	Hint = SpottedHint;
+	return true;
+}
+
 UWorld* UMissionObjective::GetWorld() const
 {
 	// Objectives live on a subsystem or a data asset; route through the outer when there is one

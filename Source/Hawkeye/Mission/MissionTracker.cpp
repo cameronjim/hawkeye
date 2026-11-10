@@ -300,6 +300,44 @@ int32 UMissionTracker::RestoreCompletedObjectives(const TArray<FName>& Objective
 	return Restored;
 }
 
+bool UMissionTracker::MarkObjectiveSpotted(FName ObjectiveId)
+{
+	UMissionObjective* Objective = FindObjective(ObjectiveId);
+	if (!Objective || Objective->bCompleted || Objective != GetCurrentObjective() || !Objective->MarkSpotted())
+	{
+		return false;
+	}
+	UE_LOG(LogHawkeye, Log, TEXT("%s: stealth objective '%s' spotted."), *GetNameSafe(this), *ObjectiveId.ToString());
+	OnObjectiveUpdated.Broadcast(Objective, FindObjectiveIndex(ObjectiveId));
+	return true;
+}
+
+TArray<FName> UMissionTracker::GetSpottedObjectiveIds() const
+{
+	TArray<FName> Out;
+	for (const TObjectPtr<UMissionObjective>& Objective : ActiveObjectives)
+	{
+		if (Objective && Objective->bSpotted)
+		{
+			Out.Add(Objective->ObjectiveId);
+		}
+	}
+	return Out;
+}
+
+int32 UMissionTracker::RestoreSpottedObjectives(const TArray<FName>& ObjectiveIds)
+{
+	int32 Restored = 0;
+	for (const FName Id : ObjectiveIds)
+	{
+		if (UMissionObjective* Objective = FindObjective(Id); Objective && Objective->MarkSpotted())
+		{
+			++Restored;
+		}
+	}
+	return Restored;
+}
+
 void UMissionTracker::Reset()
 {
 	OnMissionStarted.Clear();

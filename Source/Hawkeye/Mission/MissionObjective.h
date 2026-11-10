@@ -63,6 +63,26 @@ public:
 	bool IsHiddenFromHud() const { return bUnmarked && bOptional; }
 
 	/**
+	 * A stealth objective ("get in without being seen"): when a thug goes Alerted while it is the current objective, it
+	 * is spotted (gameplay-semantics.md, "Mission", stealth objectives): the title and hint swap to these, the chapter
+	 * event "spotted:<id>" fires, and it still completes the same way. Empty: not a stealth objective.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective|Stealth")
+	FText SpottedTitle;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective|Stealth")
+	FText SpottedHint;
+
+	/** Runtime: seen while it was current. Saved (UHawkeyeCampaignState::SpottedObjectives). */
+	UPROPERTY(BlueprintReadOnly, Category = "Objective|Stealth")
+	bool bSpotted = false;
+
+	bool IsStealth() const { return !SpottedTitle.IsEmpty(); }
+
+	/** Swaps the title and hint to the spotted ones, once. False when it is not a stealth objective or already spotted. */
+	bool MarkSpotted();
+
+	/**
 	 * Use WorldLocation as the HUD marker's point. Leave off for objectives completed by an
 	 * AObjectiveTriggerVolume: the volume registers its own centre at BeginPlay.
 	 */
