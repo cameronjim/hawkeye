@@ -1,6 +1,7 @@
 """Copy Epic's Game Animation Sample (GASP) sandbox character into Content/, at the same paths.
 
-    source   C:\\Users\\camer\\code\\GASP\\Content   (override with HAWKEYE_GASP_CONTENT)
+    source   C:\\Users\\camer\\code\\GASP\\Content   (override with HAWKEYE_GASP_CONTENT, or HAWKEYE_GASP_ROOT
+             for the sample project; Tools\\create-content.ps1 sets both)
     roots    /Game/Blueprints/SandboxCharacter_CMC       the CharacterMovement sandbox character
              /Game/Blueprints/SandboxCharacter_CMC_ABP   its motion-matching AnimBP
              /Game/Input/IMC_Sandbox                     the mapping context its graph adds
@@ -41,7 +42,18 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-GASP_CONTENT = os.environ.get("HAWKEYE_GASP_CONTENT", r"C:\Users\camer\code\GASP\Content")
+DEFAULT_GASP_ROOT = r"C:\Users\camer\code\GASP"
+
+
+def gasp_content_dir(environ=None):
+    """The sample's Content folder: HAWKEYE_GASP_CONTENT, else HAWKEYE_GASP_ROOT\\Content, else the old default."""
+    environ = os.environ if environ is None else environ
+    if environ.get("HAWKEYE_GASP_CONTENT"):
+        return environ["HAWKEYE_GASP_CONTENT"]
+    return os.path.join(environ.get("HAWKEYE_GASP_ROOT") or DEFAULT_GASP_ROOT, "Content")
+
+
+GASP_CONTENT = gasp_content_dir()
 
 ROOTS = (
     "/Game/Blueprints/SandboxCharacter_CMC",

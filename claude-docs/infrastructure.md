@@ -20,7 +20,28 @@ Prison content removed 2026-09-26; the district is the only map.
 | Logs | `C:\Users\camer\code\hawkeye\Saved\Logs\Hawkeye.log` |
 | Crash dumps | `C:\Users\camer\code\hawkeye\Saved\Crashes\` |
 
-Set these as variables at the top of any script:
+The table shows this machine's values. Every `Tools\*.ps1` script finds the engine and the
+sample through `Tools\hawkeye.env.ps1` (dot-sourced), so none of them hardcodes a path.
+
+Engine root, first hit wins (a candidate must contain `Engine\Build\BatchFiles\Build.bat` and
+`Engine\Binaries\Win64\UnrealEditor-Cmd.exe`):
+
+1. the script's `-Engine` argument
+2. env var `HAWKEYE_UE_ROOT`
+3. `Tools\local.json`, key `engineRoot` (git-ignored; copy `Tools\local.example.json`)
+4. registry `HKLM:\SOFTWARE\EpicGames\Unreal Engine\5.8`, `InstalledDirectory`
+5. the Epic launcher's `C:\ProgramData\Epic\UnrealEngineLauncher\LauncherInstalled.dat` (`UE_5.8`)
+6. `C:\Program Files\Epic Games\UE_5.8`
+
+If none qualifies the script stops and lists every source it tried. Game Animation Sample root:
+env var `HAWKEYE_GASP_ROOT`, then `Tools\local.json` key `gaspRoot`, then
+`C:\Users\camer\code\GASP`. `create-content.ps1` hands it to the editor-side Python as
+`HAWKEYE_GASP_ROOT` and `HAWKEYE_GASP_CONTENT` (`import_gasp.py` reads them). The repo root is
+always derived from the script's own location. Helpers: `Resolve-HawkeyeEngine`,
+`Resolve-HawkeyeGaspRoot`, `Get-HawkeyeBuildBat`, `Get-HawkeyeEditorCmd`, `Get-HawkeyeRepoRoot`.
+`Tools\test-env.ps1` self-tests the precedence with fake folders (no engine needed; CI runs it).
+
+The raw commands in this document use these variables; set them at the top of a shell:
 
 ```powershell
 $UE = "C:\Program Files\Epic Games\UE_5.8"
@@ -156,7 +177,7 @@ Cook content (checks for broken references and packaging problems without a full
 ## Game Animation Sample (not in git)
 
 Kate's locomotion comes from Epic's Game Animation Sample, installed at
-`C:\Users\camer\code\GASP`. `Tools/Editor/import_gasp.py` copies about 2,030 packages
+`C:\Users\camer\code\GASP` by default (see Paths for how to point elsewhere). `Tools/Editor/import_gasp.py` copies about 2,030 packages
 (2 GB, mostly `Content/Characters/UEFN_Mannequin`) into `Content/` at the same paths.
 Those paths are in `.gitignore`: the repo is public and Epic's sample content shouldn't be
 republished, and 2 GB is past the free LFS quota. Consequences:

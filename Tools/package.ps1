@@ -18,8 +18,12 @@ param(
     [switch]$Shipping,
     [switch]$NoZip,
     [switch]$NoIoStore,
-    [string]$Engine = "C:\Program Files\Epic Games\UE_5.8"
+    [string]$Engine = ""
 )
+
+# Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
+. (Join-Path $PSScriptRoot "hawkeye.env.ps1")
+$Engine = Resolve-HawkeyeEngine -Explicit $Engine
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
