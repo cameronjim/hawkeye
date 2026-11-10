@@ -163,20 +163,23 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   at most 750 (`VaultExitMaxSpeed`, above the 700 sprint so a sprint keeps its speed); a vault takes 0.5 s, or
   less when that speed would cover its ground sooner, never under 0.35 s (`VaultMinSeconds`). A mantle and a
   climb leave in Walking moving 150 cm/s (`StepOnSpeed`) the way she faced the wall, so a stick held on runs
-  straight on. The same exit speed is given when the sample's traversal ends, if she is slower: a sprint
+  straight on; the roof-edge guard's mantle onto a parapet stops there, with nothing toward the drop. The same exit speed is given when the sample's traversal ends, if she is slower: a sprint
   into the sample's vault leaves at her sprint. Letting go of a hang falls from still 15 cm off the wall,
   the hop back with nothing behind pushes off at 250 out and 150 up, the roof-edge guard's leap leaves at
   its 450 cm/s (or her speed before the press), as below.
 - Traversal clips (2026-11-10; our own mantle used to stretch the root motion of one 1 m clip over every height
-  from 40 to 200 cm). Vault, mantle and climb play the sample's traversal montages (`AM_`), loaded when play
+  from 40 to 200 cm). Vault and mantle play the sample's traversal montages (`AM_`), loaded when play
   begins, and their root motion moves the capsule, warped by the engine's Motion Warping to the probe: the
   hands (the clip's `attach` bone) onto `FrontLedge` (the top front edge, facing the wall), the body over
-  `BackLedge` (the back edge) and down onto `BackFloor` (the landing). Each clip is played from its start
-  to its end time at the rate that fits the move's time. The mantle takes its clip by the top's height:
-  the 1 m mantle up to 150 cm (`MantleClips`), the 2.5 m climb above. The climb from a hang plays the 2.5 m
-  climb from where its hands reach the edge. Grab, catch, drop to hang, corner, leap, hop and the guard's
-  leap follow a path, the clip only posing the body. A character with no AnimBP, motion warping or clip
-  (the headless tests) follows the plain path for every move.
+  `BackLedge` (the back edge) and down onto `BackFloor` (the landing). Before the hands reach the ledge the
+  clip is warped to its height; after, it is the clip's own motion. Each clip is played from its start to
+  its end time at the rate that fits the move's time. The mantle takes its clip by the top's height: the 1 m
+  mantle up to 150 cm (`MantleClips`), the 2.5 m climb above. A move that must end on the probe's own point
+  follows its path, the clip only posing the body: the climb from a hang (the 2.5 m climb from where its
+  hands reach the edge; a hang is always 145 cm under it, so nothing is stretched), a mantle over a thin
+  top onto the floor behind it, the roof-edge guard's mantle and leap, and grab, catch, drop to hang,
+  corner, leap and hop. A character with no AnimBP, motion warping or clip (the headless tests) follows the
+  plain path for every move.
 - The jump key (revised 2026-09-28 after "spamming jump doesn't help me get over the mini walls").
   It probes a fan of 7 rays from -35 to +35 degrees around the stick direction (the facing when
   the stick is centred), middle ray first, each up to 180 cm from the capsule, and takes tops from
