@@ -110,7 +110,8 @@ EXPECTED = (
         WEAPON_PATH + "/BP_Arrow_Grapple",
         WEAPON_PATH + "/SM_Bow_Placeholder",
         WEAPON_PATH + "/M_Bow",
-        "/Game/Missions/DA_CH01_Rooftops",
+        "/Game/Missions/DA_CH01_NightShift",
+        "/Game/Missions/Chases/DA_Chase_CH01_NightShift",
         "/Game/Maps/L_District_EastVillage",
         c.asset_path(PLAYER_PATH, "BP_Clint"),
         "/Game/Characters/Clint/M_ClintJacket",
@@ -571,11 +572,13 @@ def check_partner():
     if table_name != "DT_Dialogue":
         fail("BP_HawkeyePlayerController's banter has no DT_Dialogue")
 
-    chapter = c.load_or_none("/Game/Missions/DA_CH01_Rooftops")
+    # Act 1 has no Clint on screen: Night Shift benches him and refuses the switch (the code stays for Act 2).
+    chapter = c.load_or_none("/Game/Missions/DA_CH01_NightShift")
     allowed = prop(chapter, "allow_switching") if chapter is not None else None
-    say("  DA_CH01_Rooftops.allow_switching = {0}".format(allowed))
-    if not allowed:
-        fail("DA_CH01_Rooftops does not allow switching")
+    present = prop(chapter, "partner_present") if chapter is not None else None
+    say("  DA_CH01_NightShift.allow_switching = {0}, partner_present = {1}".format(allowed, present))
+    if chapter is None or allowed or present:
+        fail("DA_CH01_NightShift should have no partner and no switching")
 
 
 def check_enemies():
@@ -723,25 +726,27 @@ def check_weapon_data():
 
 def check_data_assets():
     say("---- data assets ----")
-    chapter = c.load_or_none("/Game/Missions/DA_CH01_Rooftops")
+    chapter = c.load_or_none("/Game/Missions/DA_CH01_NightShift")
     if chapter is None:
-        fail("DA_CH01_Rooftops")
+        fail("DA_CH01_NightShift")
     else:
         bow = prop(chapter, "starting_bow")
         grants = [(str(prop(g, "arrow")), prop(g, "count")) for g in list(prop(chapter, "starting_arrows") or [])]
-        say("  DA_CH01_Rooftops: starting_bow={0} starting_arrows={1}".format(bow, grants))
+        say("  DA_CH01_NightShift: starting_bow={0} starting_arrows={1}".format(bow, grants))
         if "DA_Bow_Kate" not in str(bow or ""):
-            fail("DA_CH01_Rooftops.starting_bow is not DA_Bow_Kate")
+            fail("DA_CH01_NightShift.starting_bow is not DA_Bow_Kate")
         ids = [str(prop(obj, "objective_id")) for obj in list(prop(chapter, "objectives") or [])]
-        say("  DA_CH01_Rooftops: objectives={0}".format(ids))
-        wanted_ids = ["reach_roof", "cross_block", "clear_roof", "find_arrow"]
+        say("  DA_CH01_NightShift: objectives={0}".format(ids))
+        wanted_ids = ["chase_thief", "cross_gap", "catch_thief"]
         if ids != wanted_ids:
-            fail("DA_CH01_Rooftops objectives are {0}, expected {1}".format(ids, wanted_ids))
+            fail("DA_CH01_NightShift objectives are {0}, expected {1}".format(ids, wanted_ids))
+        if "DA_Chase_CH01_NightShift" not in str(prop(chapter, "chase")):
+            fail("DA_CH01_NightShift.Chase is not DA_Chase_CH01_NightShift")
         wanted = [("DA_Arrow_Standard", 30), ("DA_Arrow_Grapple", 6), ("DA_Arrow_Putty", 2), ("DA_Arrow_Bola", 2),
                   ("DA_Arrow_Smoke", 1), ("DA_Arrow_EMP", 1)]
         if len(grants) != len(wanted) or any(
                 name not in arrow or count != want for (arrow, count), (name, want) in zip(grants, wanted)):
-            fail("DA_CH01_Rooftops.starting_arrows is {0}, expected {1}".format(grants, wanted))
+            fail("DA_CH01_NightShift.starting_arrows is {0}, expected {1}".format(grants, wanted))
 
 
 def _placeholder(text):
@@ -769,7 +774,8 @@ def _table_rows(path):
 
 
 def check_narrative():
-    """DT_Messages, DT_DialogueSequences, the placeholder flashback and scene, and chapter 1's opening."""
+    """DT_Messages, DT_DialogueSequences and DT_Dialogue's Chapter 1 lines (drafts from ACT1-script.md), the
+    placeholder flashback and scene, and chapter 1's opening."""
     say("---- narrative ----")
     messages = _table_rows("/Game/Data/DT_Messages")
     if messages is None:
@@ -777,11 +783,9 @@ def check_narrative():
     else:
         names, cols = messages
         say("  DT_Messages: {0} rows, triggers {1} on {2}".format(len(names), cols.get("Trigger"), cols.get("TriggerObjectiveId")))
-        if len(names) != 4:
-            fail("DT_Messages has {0} rows, expected 4".format(len(names)))
-        if not all(_placeholder(t) for t in cols.get("Sender", []) + cols.get("Text", [])):
-            fail("DT_Messages has text that is not a [placeholder]")
-        known = {"reach_roof", "cross_block", "clear_roof", "find_arrow"}
+        if len(names) != 7:
+            fail("DT_Messages has {0} rows, expected Chapter 1's 7".format(len(names)))
+        known = {"chase_thief", "cross_gap", "catch_thief"}
         if not all(o in known for o in cols.get("TriggerObjectiveId", [])):
             fail("DT_Messages names an objective CH01 does not have")
     sequences = _table_rows("/Game/Data/DT_DialogueSequences")
@@ -792,16 +796,13 @@ def check_narrative():
         names, cols = sequences
         say("  DT_DialogueSequences: {0} rows, lines {1}".format(len(names), cols.get("Line")))
         lines = dialogue[0]
-        if len(names) != 3 or any(s != "seq_ch01_open" for s in cols.get("Sequence", [])):
-            fail("DT_DialogueSequences is not the three seq_ch01_open steps")
+        if len(names) != 10 or not all(seq.startswith("seq_ch01_") for seq in cols.get("Sequence", [])):
+            fail("DT_DialogueSequences is not Chapter 1's ten steps")
         if not all(line in lines for line in cols.get("Line", [])):
             fail("DT_DialogueSequences names a line DT_Dialogue does not have")
-        texts = dict(zip(lines, dialogue[1].get("Text", [])))
-        if not all(_placeholder(texts.get(line)) for line in cols.get("Line", [])):
-            fail("a sequence line is not a [placeholder]")
         say("  DT_Dialogue: {0} rows".format(len(lines)))
-        if len(lines) != 51:
-            fail("DT_Dialogue has {0} rows, expected 48 banter lines and 3 scripted".format(len(lines)))
+        if len(lines) != 58:
+            fail("DT_Dialogue has {0} rows, expected 48 banter lines and Chapter 1's 10".format(len(lines)))
 
     flashback = c.load_or_none("/Game/Flashbacks/Definitions/DA_FB00_Placeholder")
     if flashback is None:
@@ -816,18 +817,21 @@ def check_narrative():
         if "L_Scene_Placeholder" not in str(scene) or label != "City_SceneReturn_FB00":
             fail("DA_FB00_Placeholder does not end in L_Scene_Placeholder and return to City_SceneReturn_FB00")
 
-    chapter = c.load_or_none("/Game/Missions/DA_CH01_Rooftops")
+    # Night Shift's words are drafts from docs/chapters/ACT1-script.md, flagged so they can be found and replaced.
+    chapter = c.load_or_none("/Game/Missions/DA_CH01_NightShift")
     if chapter is not None:
         fields = [(f, prop(chapter, f)) for f in ("opening_title", "opening_subtitle", "end_card_line", "chapter_complete_toast")]
-        say("  DA_CH01_Rooftops: {0}, sequence {1}, roaming {2}, flashback {3}".format(
+        say("  DA_CH01_NightShift: {0}, sequence {1}, roaming {2}, flashback {3}, draft {4}".format(
             ", ".join("{0}={1}".format(f, v) for f, v in fields), prop(chapter, "opening_dialogue_sequence"),
-            prop(chapter, "return_to_roaming_at_end"), prop(chapter, "flashback_to_play")))
-        if not all(_placeholder(v) for _f, v in fields):
-            fail("DA_CH01_Rooftops opening or ending text is not a [placeholder]")
+            prop(chapter, "return_to_roaming_at_end"), prop(chapter, "flashback_to_play"), prop(chapter, "draft_text")))
+        if not prop(chapter, "draft_text"):
+            fail("DA_CH01_NightShift's text is not flagged a draft")
         if str(prop(chapter, "opening_dialogue_sequence")) != "seq_ch01_open" or not prop(chapter, "return_to_roaming_at_end"):
-            fail("DA_CH01_Rooftops does not open with seq_ch01_open and return to roaming")
-        if "DA_FB00_Placeholder" not in str(prop(chapter, "flashback_to_play")):
-            fail("DA_CH01_Rooftops.flashback_to_play is not DA_FB00_Placeholder")
+            fail("DA_CH01_NightShift does not open with seq_ch01_open and return to roaming")
+        if prop(chapter, "flashback_to_play"):
+            fail("DA_CH01_NightShift still plays a flashback (the old chapter's slides)")
+        if not all(prop(obj, "draft") for obj in list(prop(chapter, "objectives") or [])):
+            fail("DA_CH01_NightShift has an objective not flagged a draft")
 
     scene = c.load_or_none("/Game/Missions/DA_Scene_Placeholder")
     ids = [str(prop(obj, "objective_id")) for obj in list(prop(scene, "objectives") or [])] if scene else []

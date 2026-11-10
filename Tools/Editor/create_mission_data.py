@@ -1,19 +1,24 @@
 """Create the chapter data assets.
 
-    /Game/Missions/DA_CH01_Rooftops               UMissionDefinition (docs/DESIGN.md, chapter 1)
+    /Game/Missions/DA_CH01_NightShift             UMissionDefinition: Act 1's first chapter, "Night Shift"
+                                                  (docs/chapters/ACT1.md, CH01.md)
     /Game/Missions/DA_Scene_Placeholder           UMissionDefinition for L_Scene_Placeholder, the
-                                                  playable scene the placeholder flashback ends in
+                                                  playable scene the placeholder flashback ends in (no
+                                                  chapter plays it now; the scene system stays for later)
 
-DA_CH01_Rooftops is started on L_District_EastVillage by BP_GameMode_EastVillage, which
-generate_city.py makes; its objectives are completed by the City_Obj_* trigger volumes that
-script places on two roofs, a thug group, and the City_ChapterEnd arrow in the find_arrow water
-tower. Its opening title, subtitle, end card line and chapter-complete toast are bracketed
-placeholders until the story is written; create_narrative.py sets its flashback. It grants DA_Bow_Kate with 30 standard, 6 grapple, 2 putty, 2 bola,
-1 smoke and 1 EMP arrow at the start, for now (create_weapon_data.py makes those, and runs first).
+DA_CH01_NightShift is started on L_District_EastVillage by BP_GameMode_EastVillage, which generate_city.py
+makes. It opens mid-chase: its Chase is DA_Chase_CH01_NightShift (create_chase.py, which runs first), whose
+waypoints complete chase_thief and cross_gap and whose catch completes catch_thief. No partner on screen and no
+switching (Act 1: Clint is a voice on the phone). Its title, objective titles and end card line come from
+docs/chapters/ACT1-script.md and are flagged as drafts (bDraftText, UMissionObjective::bDraft) for the owner to
+edit. No flashback: the purple-arrow ending, its slides and the grey room are gone from the chapter. The old
+DA_CH01_Rooftops is deleted (a save that names it starts a new game, the save rule for a stale chapter).
+
+It grants DA_Bow_Kate with 30 standard, 6 grapple, 2 putty, 2 bola, 1 smoke and 1 EMP arrow at the start, for
+now (create_weapon_data.py makes those, and runs first; the crime laps use the bola).
 
 Property names come from Source/Hawkeye/Mission/MissionDefinition.h and
-Source/Hawkeye/Mission/MissionObjective.h. Note the objective id property is ``ObjectiveTag``,
-not ObjectiveId.
+Source/Hawkeye/Mission/MissionObjective.h.
 """
 
 import os
@@ -49,25 +54,30 @@ def objective_id(objective):
 
 
 # --------------------------------------------------------------------------------------
-# chapter 1: Rooftops
+# chapter 1: Night Shift
 # --------------------------------------------------------------------------------------
 
-CH01_NAME = "DA_CH01_Rooftops"
+CH01_NAME = "DA_CH01_NightShift"
+RETIRED = ["DA_CH01_Rooftops"]
+CHASE = "/Game/Missions/Chases/DA_Chase_CH01_NightShift"
 
-# Scalar fields, checked on every run so an existing asset is corrected rather than skipped.
+# Scalar fields, checked on every run so an existing asset is corrected rather than skipped. The title,
+# subtitle and end card line are drafts (ACT1-script.md); the end card carries Kate's last line.
 CH01_FIELDS = [
-    ("mission_name", "Rooftops"),
+    ("mission_name", "Night Shift"),
     ("mission_number", 1),
-    ("end_card_line", "[End card line]"),
+    ("end_card_line", "\"Hawkeye's sidekick.\" I caught him. Me. Put that in the paper."),
     ("show_objective_text", True),
-    # Kate and Clint can swap here while switching is being tested; later chapters decide per story.
-    ("allow_switching", True),
-    ("opening_title", "[CH01 title]"),
-    ("opening_subtitle", "[CH01 subtitle]"),
+    # Act 1: Clint is never on screen; the partner is benched and the switch key does nothing.
+    ("allow_switching", False),
+    ("partner_present", False),
+    ("opening_title", "Night Shift"),
+    ("opening_subtitle", "Early December. The East Village."),
     ("opening_dialogue_sequence", "seq_ch01_open"),
-    # No chapter 2 yet: after the end card and the flashback, back to the district.
+    # No chapter 2 yet: after the end card, back to the district.
     ("return_to_roaming_at_end", True),
     ("chapter_complete_toast", "[Chapter complete]"),
+    ("draft_text", True),
 ]
 
 # The playable scene's own small mission: walk to the marker in the placeholder room.
@@ -81,24 +91,17 @@ SCENE_OBJECTIVES = [
     ("reach_marker", "[Scene objective]", ""),
 ]
 
-# (ObjectiveId, Title, Description). find_arrow is the chapter's closing beat: an arrow that
-# isn't Kate's, fletched purple. A trigger volume completes it until the arrow prop exists.
+# (ObjectiveId, Title, Description), from ACT1-script.md, every one a draft. The chase completes them:
+# chase_thief at her first grapple's stand, cross_gap when she lands across, catch_thief at the catch.
 CH01_OBJECTIVES = [
-    ("reach_roof", "Get to a rooftop", "Up is where the patrol starts."),
-    ("cross_block", "Cross the block without touching the street",
-     "Roof to roof. The street is for people who aren't Hawkeye."),
-    # Beat 4: the Tracksuit pair on the cross_block roof. City_ThugGroup_clear_roof completes it
-    # when both thugs tagged RoofPair are down.
-    ("clear_roof", "Deal with the Tracksuits on the roof",
-     "Two of them, arguing. Fists, the bow, or a quiet one from behind."),
-    ("find_arrow", "Find the arrow", "Someone else has been shooting up here."),
+    ("chase_thief", "Don't lose the bike thief", ""),
+    ("cross_gap", "Get across. Use the grapple", ""),
+    ("catch_thief", "Catch him", ""),
 ]
+DRAFT_OBJECTIVES = {"chase_thief", "cross_gap", "catch_thief"}
 
-# The HUD's second line under an objective's title (UMissionObjective::Hint), by id. Placeholder text:
-# the first objective points at the safehouse on East 7th so the player finds it on the way up.
-OBJECTIVE_HINTS = {
-    "reach_roof": "[Hint: the safehouse door is on East 7th Street, across from the park]",
-}
+# The HUD's second line under an objective's title (UMissionObjective::Hint), by id. None in this chapter.
+OBJECTIVE_HINTS = {}
 
 
 def _hint_value(obj):
@@ -186,6 +189,8 @@ def _objectives_match(asset, wanted):
             return False
         if bool(obj.get_editor_property("optional")):
             return False
+        if bool(obj.get_editor_property("draft")) != (oid in DRAFT_OBJECTIVES):
+            return False
     return True
 
 
@@ -194,8 +199,8 @@ def _build_objectives(asset, objective_cls, wanted):
     for oid, title, description in wanted:
         objective = unreal.new_object(objective_cls, outer=asset)
         c.set_first_prop(objective, OBJECTIVE_ID_PROPS, oid, "MissionObjective " + oid)
-        c.set_props(objective, [("title", title), ("description", description), ("optional", False)],
-                    "MissionObjective " + oid)
+        c.set_props(objective, [("title", title), ("description", description), ("optional", False),
+                                ("draft", oid in DRAFT_OBJECTIVES)], "MissionObjective " + oid)
         if OBJECTIVE_HINTS.get(oid):
             c.set_props(objective, [("hint", OBJECTIVE_HINTS[oid])], "MissionObjective " + oid)
         objectives.append(objective)
@@ -243,9 +248,49 @@ def ensure_mission(name, fields, objectives, with_quiver):
     return asset
 
 
+def _apply_references(asset, name):
+    """Chase = DA_Chase_CH01_NightShift and no flashback. Returns the names of what changed."""
+    changed = []
+    chase = c.load_or_none(CHASE)
+    if chase is None:
+        c.log("skipped", name + ".Chase", "run create_chase first")
+    elif _object_path(asset.get_editor_property("chase")) != _object_path(chase):
+        if c.set_props(asset, [("chase", chase)], name):
+            changed.append("chase")
+    if _object_path(asset.get_editor_property("flashback_to_play")):
+        if c.set_props(asset, [("flashback_to_play", None)], name):
+            changed.append("no flashback")
+    return changed
+
+
+def remove_retired():
+    for old in RETIRED:
+        full = c.asset_path(MISSION_PATH, old)
+        if not c.exists(full):
+            continue
+        registry = unreal.AssetRegistryHelpers.get_asset_registry()
+        referencers = [str(r) for r in registry.get_referencers(full, unreal.AssetRegistryDependencyOptions())]
+        if referencers:
+            # BP_GameMode_EastVillage starts it until generate_city.py points the district at CH01_NAME.
+            c.log("skipped", full, "still referenced by " + ", ".join(referencers))
+            continue
+        unreal.EditorAssetLibrary.delete_asset(full)
+        # A commandlet can report the delete and leave the file; then the file goes by hand.
+        disk = os.path.join(c.project_dir(), "Content", full[len("/Game/"):] + ".uasset")
+        if os.path.exists(disk):
+            os.remove(disk)
+        c.log("deleted", full, "replaced by " + CH01_NAME)
+
+
 def create_chapter_one():
-    """DA_CH01_Rooftops."""
-    return ensure_mission(CH01_NAME, CH01_FIELDS, CH01_OBJECTIVES, with_quiver=True)
+    """DA_CH01_NightShift."""
+    asset = ensure_mission(CH01_NAME, CH01_FIELDS, CH01_OBJECTIVES, with_quiver=True)
+    if asset is not None:
+        changed = _apply_references(asset, CH01_NAME)
+        if changed:
+            c.save(asset)
+            c.log("updated", c.asset_path(MISSION_PATH, CH01_NAME), ", ".join(changed))
+    return asset
 
 
 def create_scene_mission():
@@ -256,7 +301,9 @@ def create_scene_mission():
 def run():
     c.ensure_directory(MISSION_PATH)
     create_scene_mission()
-    return create_chapter_one()
+    chapter = create_chapter_one()
+    remove_retired()
+    return chapter
 
 
 if __name__ == "__main__":

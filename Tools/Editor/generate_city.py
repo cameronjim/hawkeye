@@ -30,7 +30,9 @@ What gets built, all with Geometry Script from Python (the GeometryScripting plu
 * ``City_Ambience`` (AHawkeyeAmbience) at street level: rooftop wind and street hum, crossfaded by
   the player's height above it.
   The lit windows are in the facade material.
-* chapter 1: the BP_GameMode_EastVillage override (starts DA_CH01_Rooftops), three objective roofs
+* chapter 1: the BP_GameMode_EastVillage override (starts DA_CH01_NightShift, whose chase spawns its own
+  thief, dumpster and roof props at run time: create_chase.py); and, kept as furniture from the retired
+  Rooftops chapter (dark and quiet while Night Shift runs), three objective roofs
   picked from the records, each with a 1 m ``City_Beacon_<objective>`` (pole, emissive purple
   ``City_BeaconTop_``, and a movable 300 lm purple ``City_BeaconLight_``) at the end of the roof
   nearest the start, ``City_Obj_<objective>`` trigger volumes on the first two, and on the
@@ -932,7 +934,7 @@ def ensure_nav_volume(district, existing):
 # --------------------------------------------------------------------------------------
 
 DISTRICT_GAME_MODE = "BP_GameMode_EastVillage"
-MISSION_ASSET = "/Game/Missions/DA_CH01_Rooftops"
+MISSION_ASSET = "/Game/Missions/DA_CH01_NightShift"
 OBJECTIVE_PREFIX = "City_Obj_"
 OBJECTIVE_IDS = ("reach_roof", "cross_block", "find_arrow")
 # The roofs with a trigger volume; find_arrow is completed by examining City_ChapterEnd instead.
@@ -942,8 +944,13 @@ OBJECTIVE_MIN_HEIGHT_M = 8.0      # cross_block and find_arrow skip sheds and ga
 OBJECTIVE_ABOVE_ROOF = 50.0       # cm between the roof and the bottom of the volume
 OBJECTIVE_HALF_HEIGHT = 150.0     # cm; tall enough to hold Kate's whole capsule
 
-# Every objective in DA_CH01_Rooftops, in order; clear_roof has no volume (a thug group completes it).
+# The retired Rooftops chapter's objectives, in order; clear_roof has no volume (a thug group completes it). Its
+# volumes, beacons, arrow and fighters stay in the district as furniture (the running chapter has none of these
+# ids, so they keep quiet and the beacons stay dark: gameplay-semantics.md, "Chases").
 MISSION_OBJECTIVE_IDS = ("reach_roof", "cross_block", "clear_roof", "find_arrow")
+
+# The chapter the district starts (DA_CH01_NightShift), in order: its chase completes all three.
+CHAPTER_OBJECTIVE_IDS = ("chase_thief", "cross_gap", "catch_thief")
 
 # Actors the prison build put in its maps. None belong in the district, except the chapter's own
 # thugs, which carry THUG_PREFIX labels.
@@ -951,7 +958,7 @@ PRISON_CLASS_WORDS = ("Thug", "Guard", "Keycard", "Pickup", "Door")
 
 
 def ensure_district_game_mode():
-    """BP_GameMode_EastVillage (child of BP_HawkeyeGameMode) starting DA_CH01_Rooftops.
+    """BP_GameMode_EastVillage (child of BP_HawkeyeGameMode) starting DA_CH01_NightShift.
 
     Returns (generated class or None, number of changes)."""
     parent = c.load_generated_class(PLAYER_PATH, "BP_HawkeyeGameMode")
@@ -976,11 +983,11 @@ def ensure_district_game_mode():
     mission = c.load_or_none(MISSION_ASSET)
     cdo = c.blueprint_cdo(bp)
     if mission is None:
-        c.log("skipped", full, "DA_CH01_Rooftops missing; run create_mission_data.py")
+        c.log("skipped", full, "DA_CH01_NightShift missing; run create_mission_data.py")
     elif cdo is not None and cdo.get_editor_property("starting_mission") != mission:
         if c.set_props(cdo, [("starting_mission", mission)], DISTRICT_GAME_MODE):
             changes += 1
-            c.log("updated", full, "starting_mission = DA_CH01_Rooftops")
+            c.log("updated", full, "starting_mission = DA_CH01_NightShift")
     if changes:
         c.compile_blueprint(bp)
         c.save(bp)

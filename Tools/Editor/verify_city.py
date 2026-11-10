@@ -11,7 +11,8 @@ Prints one line per check and a final ``[Hawkeye] verify_city PASS`` or ``FAIL``
   Static mobility
 * handedness: the streets come out in the real order (1st Ave west of Ave A west of Ave B
   west of Ave C, East 6th south of East 11th), i.e. the map is not mirrored
-* the BP_GameMode_EastVillage override starting DA_CH01_Rooftops, a City_Obj_* volume above the
+* the BP_GameMode_EastVillage override starting DA_CH01_NightShift (its objectives the chase's three),
+  and the retired Rooftops chapter's furniture: a City_Obj_* volume above the
   reach_roof and cross_block roofs, three City_Beacon_* (pole, emissive cap, movable
   300 lm light) on the objective roofs, the chapter end (City_ChapterEndTower on the find_arrow
   roof, City_ChapterEnd completing find_arrow with the arrow meshes, City_SceneReturn_FB00), the street lamps (light, pole, head) matching the
@@ -1252,7 +1253,7 @@ def run():
             starting = unreal.get_default_object(gm).get_editor_property("starting_mission")
         except Exception:  # noqa: BLE001
             starting = None
-    check(mission is not None and starting == mission, "its StartingMission is DA_CH01_Rooftops",
+    check(mission is not None and starting == mission, "its StartingMission is DA_CH01_NightShift",
           c.safe_name(starting) if starting is not None else "None")
 
     # Chapter 1 objective volumes: one per objective id, each above a roof.
@@ -1265,8 +1266,8 @@ def run():
     if mission is not None:
         for obj in mission.get_editor_property("objectives") or []:
             mission_ids.append(str(obj.get_editor_property("objective_id")))
-    check(mission_ids == list(gen.MISSION_OBJECTIVE_IDS), "DA_CH01_Rooftops objectives are "
-          + ", ".join(gen.MISSION_OBJECTIVE_IDS), ", ".join(mission_ids))
+    check(mission_ids == list(gen.CHAPTER_OBJECTIVE_IDS), "DA_CH01_NightShift objectives are "
+          + ", ".join(gen.CHAPTER_OBJECTIVE_IDS), ", ".join(mission_ids))
     detail = []
     ok = len(volumes) == len(gen.VOLUME_OBJECTIVE_IDS)
     for oid in gen.VOLUME_OBJECTIVE_IDS:

@@ -14,8 +14,8 @@
                                                      BP_PartnerController when placed or spawned
     /Game/Data/DT_Dialogue                           FHawkeyeDialogueLine rows: six lines each for Kate and
                                                      Clint in idle_roam, after_fight, objective_near and
-                                                     low_health, plus the Scripted placeholder lines the
-                                                     dialogue sequences name (SCRIPTED_LINES)
+                                                     low_health, plus the Scripted lines the dialogue
+                                                     sequences name (Chapter 1's, create_narrative.CH01_LINES)
 
 Then: CharacterName on BP_Kate and BP_Clint, and on BP_HawkeyePlayerController the switch and mark
 actions and the banter component's DialogueTable.
@@ -152,14 +152,11 @@ LINES = {
 }
 
 
-# Scripted lines (Situation Scripted: banter never picks them). Played by name or from
-# DT_DialogueSequences (create_narrative.py). Placeholders until the chapter's lines are written:
-# (row name, speaker, text).
-SCRIPTED_LINES = [
-    ("seq_ch01_open_01", "Kate", "[line]"),
-    ("seq_ch01_open_02", "Clint", "[line]"),
-    ("seq_ch01_open_03", "Kate", "[line]"),
-]
+def scripted_lines():
+    """Scripted lines (Situation Scripted: banter never picks them), played by name or from DT_DialogueSequences:
+    Chapter 1's, kept with its sequences in create_narrative.py, every one a draft. [(row, speaker, text, seconds)]."""
+    import create_narrative  # noqa: PLC0415 - the chapter's words live with its sequences
+    return create_narrative.CH01_LINES
 
 
 def dialogue_rows():
@@ -172,8 +169,9 @@ def dialogue_rows():
                 "Situation": SITUATIONS[situation],
                 "Text": text,
             })
-    for name, speaker, text in SCRIPTED_LINES:
-        rows.append({"Name": name, "Speaker": speaker, "Situation": "Scripted", "Text": text})
+    for name, speaker, text, seconds in scripted_lines():
+        rows.append({"Name": name, "Speaker": speaker, "Situation": "Scripted", "Text": text,
+                     "DurationSeconds": seconds, "bDraft": True})
     return rows
 
 

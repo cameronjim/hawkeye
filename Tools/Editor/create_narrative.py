@@ -1,11 +1,12 @@
 """Create the narrative plumbing's data: the phone's texts, the dialogue sequences, the placeholder
 flashback and the small playable scene it ends in (claude-docs/gameplay-semantics.md).
 
-    /Game/Data/DT_Messages                          FHawkeyePhoneMessage rows: four placeholder texts
-                                                    tied to DA_CH01_Rooftops' objectives
-    /Game/Data/DT_DialogueSequences                 FHawkeyeDialogueSequenceRow rows: seq_ch01_open,
-                                                    three placeholder lines (DT_Dialogue's
-                                                    seq_ch01_open_0N rows, made by create_partner.py)
+    /Game/Data/DT_Messages                          FHawkeyePhoneMessage rows: Chapter 1's texts after the
+                                                    catch (Clint, Kate's replies in his thread, the landlord)
+    /Game/Data/DT_DialogueSequences                 FHawkeyeDialogueSequenceRow rows: Chapter 1's sequences,
+                                                    one per moment of the chase (open, first vault, pulling
+                                                    ahead, the grapple prompt, the botch, the dumpster, the
+                                                    climb out, cornered, the catch)
     /Game/Blueprints/Player/BP_GameMode_ScenePlaceholder  child of BP_HawkeyeGameMode starting
                                                     DA_Scene_Placeholder (create_mission_data.py)
     /Game/Maps/L_Scene_Placeholder                  a 20 x 20 m greybox room: floor, four walls, a
@@ -16,11 +17,13 @@ flashback and the small playable scene it ends in (claude-docs/gameplay-semantic
                                                     PlayableScene = L_Scene_Placeholder, back to
                                                     City_SceneReturn_FB00 (generate_city.py places it)
 
-Then DA_CH01_Rooftops.FlashbackToPlay = DA_FB00_Placeholder.
+Chapter 1's lines (CH01_LINES, the DT_Dialogue rows create_partner.py writes), its sequences and its phone texts
+come from docs/chapters/ACT1-script.md and are every one flagged a draft (bDraft) so they can be found and
+replaced. Lucky the dog is talked to and never appears. No chapter plays the placeholder flashback or its scene
+now (Night Shift has no flashback); they stay for the chapters that will.
 
-Every string here is a bracketed placeholder: the story is written separately and dropped into these
-rows. The tables and the flashback carry a build tag and are rewritten only when their rows change;
-the map is saved only when an actor changed. Runs after create_mission_data and create_partner.
+The tables and the flashback carry a build tag and are rewritten only when their rows change; the map is saved
+only when an actor changed. Runs after create_mission_data and create_partner.
 """
 
 import hashlib
@@ -41,26 +44,55 @@ FLASHBACK_PATH = "/Game/Flashbacks/Definitions"
 SCENE_MAP = "/Game/Maps/L_Scene_Placeholder"
 SCENE_GAME_MODE = "BP_GameMode_ScenePlaceholder"
 SCENE_MISSION = MISSION_PATH + "/DA_Scene_Placeholder"
-CH01_MISSION = MISSION_PATH + "/DA_CH01_Rooftops"
 FLASHBACK_NAME = "DA_FB00_Placeholder"
 RETURN_POINT = "City_SceneReturn_FB00"
 BUILD_TAG = "HawkeyeBuild"
-CH01_ID = "DA_CH01_Rooftops"
+CH01_ID = "DA_CH01_NightShift"
 
-# DT_Messages: (row, sender, text, trigger, objective or event, delay seconds, arrives read)
-MESSAGES = [
-    ("msg_ch01_01", "[Grills]", "[Grills text 1]", "ObjectiveStarted", "reach_roof", 6.0, False),
-    ("msg_ch01_02", "[Grills]", "[Grills text 2]", "ObjectiveCompleted", "reach_roof", 2.0, False),
-    ("msg_ch01_03", "[Contact 2]", "[Contact 2 text 1]", "ObjectiveCompleted", "clear_roof", 4.0, False),
-    ("msg_ch01_04", "[Contact 2]", "[Contact 2 text 2]", "ObjectiveStarted", "find_arrow", 8.0, False),
+# Chapter 1's lines (ACT1-script.md, all drafts): (DT_Dialogue row, speaker, text, seconds on screen). The rows
+# are named after the DT_DialogueSequences sequence that speaks them. create_partner.py writes them into
+# DT_Dialogue with Situation Scripted and bDraft set.
+CH01_LINES = [
+    ("seq_ch01_open_01", "Kate",
+     "Okay, Lucky, picture it. Rooftops. Snow. One woman, one bow, one guy who stole a nine-year-old's bike.", 5.0),
+    ("seq_ch01_vault_01", "Kate", "See that? Textbook.", 2.5),
+    ("seq_ch01_ahead_01", "Kate", "He's fast. That's fine. I like fast.", 3.0),
+    ("seq_ch01_grapple_01", "Kate", "Grapple arrow. Clint says test the line first. Clint is on a farm.", 4.0),
+    ("seq_ch01_botch_01", "Kate", "Got it, got it, got it, I do not have it\u2014", 2.0),
+    ("seq_ch01_dumpster_01", "Kate",
+     "...Wrapping paper. It's wrapping paper. That's festive. That's a festive landing.", 4.5),
+    ("seq_ch01_climb_01", "Kate", "You saw nothing. You're a dog.", 3.0),
+    ("seq_ch01_cornered_01", "Thief", "Lady, it's a bike!", 2.5),
+    ("seq_ch01_cornered_02", "Kate", "It has streamers on it. You stole streamers.", 3.5),
+    ("seq_ch01_caught_01", "Kate", "And that's the night shift.", 3.0),
 ]
 
-# DT_DialogueSequences: (row, sequence, order, DT_Dialogue line, gap seconds). The first gap lets
-# the 4.5 s title card go first.
+# DT_DialogueSequences: (row, sequence, order, DT_Dialogue line, gap seconds). The opening speaks a second
+# into the run, under the title card; the rest are moments of the chase (DA_Chase_CH01_NightShift names them).
 SEQUENCE_STEPS = [
-    ("seq_ch01_open_01", "seq_ch01_open", 1, "seq_ch01_open_01", 5.0),
-    ("seq_ch01_open_02", "seq_ch01_open", 2, "seq_ch01_open_02", 1.5),
-    ("seq_ch01_open_03", "seq_ch01_open", 3, "seq_ch01_open_03", 1.5),
+    ("seq_ch01_open_01", "seq_ch01_open", 1, "seq_ch01_open_01", 1.0),
+    ("seq_ch01_vault_01", "seq_ch01_vault", 1, "seq_ch01_vault_01", 0.2),
+    ("seq_ch01_ahead_01", "seq_ch01_ahead", 1, "seq_ch01_ahead_01", 0.3),
+    ("seq_ch01_grapple_01", "seq_ch01_grapple", 1, "seq_ch01_grapple_01", 0.2),
+    ("seq_ch01_botch_01", "seq_ch01_botch", 1, "seq_ch01_botch_01", 0.0),
+    ("seq_ch01_dumpster_01", "seq_ch01_dumpster", 1, "seq_ch01_dumpster_01", 0.3),
+    ("seq_ch01_climb_01", "seq_ch01_climb", 1, "seq_ch01_climb_01", 0.0),
+    ("seq_ch01_cornered_01", "seq_ch01_cornered", 1, "seq_ch01_cornered_01", 0.2),
+    ("seq_ch01_cornered_02", "seq_ch01_cornered", 2, "seq_ch01_cornered_02", 0.4),
+    ("seq_ch01_caught_01", "seq_ch01_caught", 1, "seq_ch01_caught_01", 0.4),
+]
+
+# DT_Messages: (row, sender, thread, text, trigger, objective or event, delay seconds, arrives read). After the
+# catch: Clint, Kate's replies in his thread (arriving read: she sent them), the landlord. All drafts.
+MESSAGES = [
+    ("msg_ch01_01", "Clint", "", "saw the news. nice work", "ObjectiveCompleted", "catch_thief", 9.0, False),
+    ("msg_ch01_02", "Clint", "", "take a night off", "ObjectiveCompleted", "catch_thief", 11.0, False),
+    ("msg_ch01_03", "Kate", "Clint", "Can't. Crime doesn't take nights off.", "ObjectiveCompleted", "catch_thief", 14.0, True),
+    ("msg_ch01_04", "Clint", "", "crime takes plenty of nights off. go to bed", "ObjectiveCompleted", "catch_thief", 17.0, False),
+    ("msg_ch01_05", "Landlord (Mr. Pruitt)", "", "Katherine. The 1st was three weeks ago.", "ObjectiveCompleted",
+     "catch_thief", 26.0, False),
+    ("msg_ch01_06", "Kate", "Landlord (Mr. Pruitt)", "Mr. Pruitt! Funny story", "ObjectiveCompleted", "catch_thief", 29.0, True),
+    ("msg_ch01_07", "Landlord (Mr. Pruitt)", "", "It is never a funny story.", "ObjectiveCompleted", "catch_thief", 32.0, False),
 ]
 
 # DA_FB00_Placeholder's slides: (caption, tint). Solid colours until there are images.
@@ -127,12 +159,12 @@ def ensure_table(name, struct_name, rows):
 
 def message_rows():
     rows = []
-    for name, sender, text, trigger, key, delay, read in MESSAGES:
+    for name, sender, thread, text, trigger, key, delay, read in MESSAGES:
         rows.append({
-            "Name": name, "Sender": sender, "Text": text, "Trigger": trigger,
+            "Name": name, "Sender": sender, "Thread": thread, "Text": text, "Trigger": trigger,
             "TriggerObjectiveId": key if trigger != "Event" else "None",
             "TriggerEvent": key if trigger == "Event" else "None",
-            "ChapterId": CH01_ID, "DelaySeconds": delay, "bRead": read,
+            "ChapterId": CH01_ID, "DelaySeconds": delay, "bRead": read, "bDraft": True,
         })
     return rows
 
@@ -359,7 +391,7 @@ def ensure_scene_map():
 
 
 # --------------------------------------------------------------------------------------
-# the placeholder flashback, and chapter 1 pointing at it
+# the placeholder flashback (no chapter plays it now; the system stays for later ones)
 # --------------------------------------------------------------------------------------
 
 def _path_of(value):
@@ -410,28 +442,13 @@ def ensure_flashback(scene_world):
     return asset
 
 
-def point_chapter_one_at(flashback):
-    mission = c.load_or_none(CH01_MISSION)
-    if mission is None or flashback is None:
-        c.log("skipped", CH01_MISSION, "run create_mission_data first")
-        return
-    if _path_of(mission.get_editor_property("flashback_to_play")) == _path_of(flashback):
-        c.log("exists", CH01_MISSION + ".FlashbackToPlay", FLASHBACK_NAME)
-        return
-    c.set_props(mission, [("flashback_to_play", flashback)], "DA_CH01_Rooftops")
-    c.save(mission)
-    c.log("updated", CH01_MISSION + ".FlashbackToPlay", FLASHBACK_NAME)
-
-
 def run():
     c.ensure_directory(DATA_PATH)
     c.ensure_directory(FLASHBACK_PATH)
     ensure_table("DT_Messages", "HawkeyePhoneMessage", message_rows())
     ensure_table("DT_DialogueSequences", "HawkeyeDialogueSequenceRow", sequence_rows())
     scene = ensure_scene_map()
-    flashback = ensure_flashback(scene)
-    point_chapter_one_at(flashback)
-    return flashback
+    return ensure_flashback(scene)
 
 
 if __name__ == "__main__":
