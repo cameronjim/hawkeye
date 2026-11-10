@@ -4,6 +4,7 @@
 #include "HawkeyeGameMode.h"
 #include "HawkeyePlayerController.h"
 #include "AIController.h"
+#include "Chase/ChaseSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Challenge/ChallengeSubsystem.h"
 #include "CollisionQueryParams.h"
@@ -217,6 +218,10 @@ bool UCrimeSubsystem::IsInChapterBeat() const
 		return ChapterBeatOverride.GetValue();
 	}
 	const UWorld* World = GetWorld();
+	if (const UChaseSubsystem* Chase = World ? World->GetSubsystem<UChaseSubsystem>() : nullptr; Chase && Chase->IsChaseRunning())
+	{
+		return true;
+	}
 	const AHawkeyePlayerController* PC = World ? Cast<AHawkeyePlayerController>(World->GetFirstPlayerController()) : nullptr;
 	if (!PC)
 	{

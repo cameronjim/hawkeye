@@ -4,6 +4,7 @@
 #include "HawkeyePlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Challenge/ChallengeSubsystem.h"
+#include "Chase/ChaseSubsystem.h"
 #include "Combat/BowDefinition.h"
 #include "Combat/HealthComponent.h"
 #include "Crime/CrimeSubsystem.h"
@@ -173,6 +174,10 @@ void UHawkeyeSaveSubsystem::CaptureCampaign(UWorld* World)
 	if (const UCrimeSubsystem* Crimes = World->GetSubsystem<UCrimeSubsystem>())
 	{
 		Crimes->MirrorToCampaign();
+	}
+	if (const UChaseSubsystem* Chase = World->GetSubsystem<UChaseSubsystem>())
+	{
+		Chase->MirrorToCampaign();
 	}
 }
 

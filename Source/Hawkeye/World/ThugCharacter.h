@@ -630,6 +630,13 @@ public:
 	UPROPERTY(Transient, BlueprintReadWrite, Category = "Thug")
 	bool bSkipSave = false;
 
+	/**
+	 * A runner who cannot be stopped yet (a chase's thief before its beat, UChaseSubsystem): takedowns are refused.
+	 * Off for every other thug.
+	 */
+	UPROPERTY(Transient, BlueprintReadWrite, Category = "Thug")
+	bool bRefusesTakedown = false;
+
 	//~ Begin ISpudObject interface
 	virtual bool ShouldSkip_Implementation() const override { return bSkipSave; }
 	//~ End ISpudObject interface

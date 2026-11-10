@@ -129,6 +129,31 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Hints")
 	TArray<int32> HintShowCounts;
 
+	/** The running chase's route asset path; empty when none ran at the save. UChaseSubsystem mirrors these seven. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	FString ChaseRoutePath;
+
+	/** The thief's distance along the route, cm. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	float ChaseThiefProgress = 0.f;
+
+	/** Kate's distance along the route, cm. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	float ChaseKateProgress = 0.f;
+
+	/** Waypoints whose objective and line have been handled. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	int32 ChaseReachedWaypoints = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	bool bChaseBeatDone = false;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	bool bChasePulledAhead = false;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Save|Chase")
+	bool bChaseVaulted = false;
+
 	/** Back to a fresh campaign. */
 	UFUNCTION(BlueprintCallable, Category = "Save")
 	void ResetCampaign();

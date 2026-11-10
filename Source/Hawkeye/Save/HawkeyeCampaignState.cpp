@@ -28,6 +28,13 @@ void UHawkeyeCampaignState::ResetCampaign()
 	CrimeCompletions.Reset();
 	HintIds.Reset();
 	HintShowCounts.Reset();
+	ChaseRoutePath.Reset();
+	ChaseThiefProgress = 0.f;
+	ChaseKateProgress = 0.f;
+	ChaseReachedWaypoints = 0;
+	bChaseBeatDone = false;
+	bChasePulledAhead = false;
+	bChaseVaulted = false;
 }
 
 bool UHawkeyeCampaignState::CanMigrateFrom(int32 SavedVersion)

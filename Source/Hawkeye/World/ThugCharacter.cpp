@@ -1056,7 +1056,7 @@ void AThugCharacter::SetAlertState(EThugAlertState NewState)
 bool AThugCharacter::CanBeTakenDown_Implementation(AActor* /*Attacker*/)
 {
 	// The stealth reward: once he has confirmed you, you have to fight him.
-	return AlertState != EThugAlertState::Alerted && HealthComponent && HealthComponent->IsAlive();
+	return !bRefusesTakedown && AlertState != EThugAlertState::Alerted && HealthComponent && HealthComponent->IsAlive();
 }
 
 void AThugCharacter::OnTakedown_Implementation(AActor* Attacker)

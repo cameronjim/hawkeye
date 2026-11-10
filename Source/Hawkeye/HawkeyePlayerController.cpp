@@ -3,6 +3,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Hawkeye.h"
 #include "Audio/HawkeyeAudioMath.h"
+#include "Chase/ChaseSubsystem.h"
 #include "Audio/HawkeyeAudioSubsystem.h"
 #include "Vfx/SnowfallComponent.h"
 #include "Audio/HawkeyeVolumeSubsystem.h"
@@ -1856,6 +1857,11 @@ void AHawkeyePlayerController::BeginChapterOpening(UMissionDefinition* Mission)
 	if (UDialogueSubsystem* Dialogue = UDialogueSubsystem::Get(this); Dialogue && !Mission->OpeningDialogueSequence.IsNone())
 	{
 		Dialogue->PlaySequence(Mission->OpeningDialogueSequence);
+	}
+	// A chapter that opens mid-chase: Kate is already running when the card goes up.
+	if (UChaseSubsystem* Chase = UChaseSubsystem::Get(this))
+	{
+		Chase->BeginChapter(Mission);
 	}
 }
 

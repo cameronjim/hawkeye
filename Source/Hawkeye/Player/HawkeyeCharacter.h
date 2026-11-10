@@ -290,6 +290,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Movement")
 	bool IsSprinting() const { return bIsSprinting; }
 
+	/** Her top speed with sprint held, cm/s (a chase's opening starts her at it). */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Movement")
+	float GetSprintSpeed() const { return SprintSpeed; }
+
 	/**
 	 * The sprint button went down (Shift, or L3 on a pad). Held (the keyboard's default) it sprints until the release;
 	 * toggled (the pad's default, or the setting) the first press turns it on and a second turns it off
