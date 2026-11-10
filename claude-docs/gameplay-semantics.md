@@ -521,8 +521,8 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   down the camera's centre (the player camera manager's view point), up to
   `MarkTraceDistance`, projected onto the navmesh. The HUD's partner line ends with the
   hint, "Clint: following  [T] send" or "[R3] send" by the last input.
-- `SwitchCharacter()` on X or LB: only when the chapter's `bAllowSwitching` is set (CH01
-  true); refused if either character is mid-traversal, mid-zip, mid-takedown, or down.
+- `SwitchCharacter()` on X or LB: only when the chapter's `bAllowSwitching` is set (CH01 Night
+  Shift false: Act 1 has no Clint on screen, and `bPartnerPresent` off benches him; see "Chases"); refused if either character is mid-traversal, mid-zip, mid-takedown, or down.
   Swaps possession, hands the old pawn to the partner controller, rebinds the HUD
   (quiver and name), blends the camera over 0.3 s.
 - Banter: `DT_Dialogue`, 48 lines, six per speaker per situation (idle roam, after a
@@ -570,10 +570,10 @@ for code not yet written; write the tests from them. Everything unmarked stands.
   toast is held: queued, not drawn, its clock and sound waiting; when the card has gone the front one
   comes up for its full 2 s with its sound (`Hawkeye.Objective.ToastsWaitForTheTitle`; the campaign
   lap checks it under the card and after it). Hints wait out the card too (below).
-- CH01's rooftop objectives each get a 1 m beacon with a purple emissive top and a 300 lm
-  purple point light so the roof reads from the street at night.
-- An objective may carry a `Hint`, a second line under its title in the HUD. CH01's
-  reach_roof points at the safehouse door on East 7th (placeholder text). (2026-09-28)
+- The retired Rooftops chapter's objectives each have a 1 m beacon with a purple emissive top and a 300 lm
+  purple point light; tagged `objective:<id>`, they stay dark while Night Shift runs.
+- An objective may carry a `Hint`, a second line under its title in the HUD. (2026-09-28) Night Shift's
+  have none.
 - The compass also shows every safehouse (a filled house once found, a hollow one before)
   and every challenge pedestal within 150 m (a purple medal). A pedestal within 80 m gets
   a world marker (medal and distance) when the current objective is farther, not while a
@@ -1129,14 +1129,17 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
 - Phone (`UPhoneWidget`, P or hold D-pad down 0.4 s): contacts and threads from
   `DT_Messages` (Id, Sender, Text, Trigger: ObjectiveCompleted / ObjectiveStarted /
   ChapterStart / Event, TriggerObjectiveId, TriggerEvent, ChapterId, DelaySeconds,
-  bRead). A message arrives when its trigger fires, with a 2 s HUD notification and an
-  unread badge. Read state is saved. CH01 has four placeholder rows.
+  bRead, Thread, bDraft). A message arrives when its trigger fires, with a 2 s HUD notification and an
+  unread badge. Read state is saved. Contacts group by `Thread` when set, else by Sender: Kate's own
+  replies (Sender Kate, Thread Clint, arriving read) sit in the thread they answer (2026-11-10). Night
+  Shift has seven drafted rows after `catch_thief` (Clint, Kate's replies, the landlord).
 - Chapter title card (`UChapterTitleWidget`): number, `OpeningTitle`, `OpeningSubtitle`
   from the mission definition, 3 s hold then fade, skippable, input live. Seen-state saved.
 - Chapter end: `AChapterEndInteractable` completes an objective on examine, plays a 2 s
   close-up camera push, then the end card (`EndCardLine` from the mission), then the
-  flashback if set, then back to roaming with a "[Chapter complete]" toast. CH01's is the
-  purple-fletched arrow in `City_ChapterEndTower`; the find_arrow trigger volume is gone.
+  flashback if set, then back to roaming with a "[Chapter complete]" toast. The retired Rooftops
+  chapter's was the purple-fletched arrow in `City_ChapterEndTower`; it stays in the district, dark and
+  never offered, since Night Shift has no find_arrow (a chase's catch ends that chapter).
   Not examined while a thug is alerted (CH01's ArcherPair guards the arrow: examined under them, the
   sequence ran and the return from the scene put Kate back in their sight, down 4 s after the toast)
   or while she is down (the sequence ran with her on the ground and the objective's autosave was
@@ -1147,15 +1150,17 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   After the slides the scene map loads; the district is saved first, saves are refused
   inside the scene, and its mission completion returns to `City_SceneReturn_<id>` with
   state restored. `DA_FB00_Placeholder` with three "[Slide N]" slides leads to
-  `L_Scene_Placeholder`, a 20 x 20 m room; CH01 currently plays it.
+  `L_Scene_Placeholder`, a 20 x 20 m room; no chapter plays it now (Night Shift has no flashback).
 - `UDialogueSubsystem`: `PlayLine(Row)` shows speaker and subtitle and plays audio if set;
   a queue; `PlaySequence(Name)` from `DT_DialogueSequences` (Sequence, Order, Line,
   GapSeconds) survives traversal and pauses in combat. Banter routes through it.
   `DT_Dialogue` gained Audio, DurationSeconds, and a Scripted situation banter never picks.
-  One placeholder sequence `seq_ch01_open` with three "[line]" rows.
-- All CH01 text is bracketed placeholders: "[CH01 title]", "[CH01 subtitle]",
-  "[End card line]", "[Grills text 1]" and so on. The 48 banter lines are the only
-  written lines in the game.
+  `bDraft` marks a line as a draft for the owner to edit. Night Shift's ten sequences (`seq_ch01_open`,
+  `_vault`, `_ahead`, `_grapple`, `_botch`, `_dumpster`, `_climb`, `_cornered` (the thief, then Kate),
+  `_caught`) speak `docs/chapters/ACT1-script.md`'s lines, every one flagged a draft.
+- Chapter text: Night Shift's title, subtitle, end card line (Kate's last line) and objective titles come
+  from ACT1-script.md, flagged drafts (`UMissionDefinition::bDraftText`, `UMissionObjective::bDraft`);
+  the toast is still "[Chapter complete]".
 
 ## Small rules added 2026-09-27
 - D-pad down: hold 0.4 s opens the phone; a tap selects arrow slot 2 only on release.
@@ -1515,6 +1520,75 @@ hit her at once from off screen.
   walking to where she landed a zip by a parapet asked for a goal off the roof's navmesh and failed
   (fixed: `AThugAIController::RequestMoveToLocation` walks to the goal's nearest navmesh point within
   2 m); and their own slot change on the release frame loosed a standard arrow instead of the bola.
+
+## Chases (built 2026-11-10 for Act 1's "Night Shift"; rules also in Source/Hawkeye/Chase/ChaseRules.h)
+- A chase is data: a `UChaseRouteDefinition` (`DA_Chase_<chapter>`, planned from the district by
+  `Tools/Editor/create_chase.py`) of ordered thief waypoints (feet points, cm), each with the leg that
+  reaches it from the one before: Run, Vault, Climb, JumpGap or Drop. A chapter names its chase on
+  `UMissionDefinition::Chase`; `UChaseSubsystem` runs it. Another chapter's chase is another asset.
+- It starts at the chapter's opening (the frame its title card goes up: no standing start) or when a save
+  made during it loads. At the opening Kate is put on the route's start, facing along it, moving at her
+  sprint speed, and the thief (the route's `ThiefClass`, thinking off, tagged `ChaseThief`, never saved by
+  SPUD) stands `StartLead` (1100 cm) along the route ahead of her.
+- Progress: the thief's is his distance along the route. Kate's is the route distance of the point of the
+  route nearest her, looked for from `BackWindow` (1500 cm) behind her last progress to `AheadWindow` (6000)
+  ahead of it, and only among points within `OffRouteDistance` (2000 cm, in 3D) of her; with none that close
+  her progress holds. It never goes back, and never on by more than 1.5 times what she really moved that frame
+  plus 300 cm a second, so a projection that jumps to another part of the route is followed, not leapt to. The
+  lead is the thief's progress less hers, but never less than 0; when she is off the route it is the
+  straight-line distance between them.
+- Rubber band: on Run legs the thief moves at `BaseSpeed` (620 cm/s, under her 700 sprint) times a factor:
+  `CloseBoost` (1.15: 713 cm/s, so on foot she cannot close on him; her grapples can) while the lead is under
+  `CloseLead` (700 cm), 1.0 up to `FarLead` (2500), then down in a
+  straight line to `MinSpeedScale` (0.8) at `LoseLead` (4500) and held there. His speed moves toward that at
+  most `SpeedChangeRate` (400 cm/s per s). He never stops before the route's end, never waits and is never
+  placed, except once after the dumpster beat (below). Vault 0.5 s, Climb 0.8 s, JumpGap 0.45 s plus 0.06 s per
+  metre (at most 1.4 s), Drop the height at 900 cm/s plus 0.3 s: the other legs take their own time whatever
+  the lead.
+- Lost: the lose clock runs while the lead is at least `LoseLead` and is back to 0 the moment it is under.
+  At `LoseSeconds` (6 s) the chase is lost: "[He got away]" on the HUD, the thief goes, and the last
+  checkpoint loads (`AHawkeyeGameMode::ReloadLastCheckpoint`, 1.5 s fade). The clock is held during the beat
+  and while she is down.
+- Objectives and lines by place: a waypoint may name an objective (completed when Kate's progress reaches
+  that waypoint's distance less `ReachTolerance`, 300 cm) and a dialogue sequence (played then). Moments the
+  route names sequences for: the first vault she makes, the first time the lead goes past `FarLead`, the
+  botch, the dumpster, the climb out, the thief cornered, the catch. Each plays at most once a campaign (the
+  dialogue rule), so a restart does not repeat them. While a chase runs the thief's position is registered
+  as the marker point of the route's `ThiefObjectives`.
+- Caught: the thief is caught when he is taken down or downed by anything (a bola, the putty, health 0), but
+  only once he is cornered at the route's end: running, he refuses a takedown
+  (`AThugCharacter::bRefusesTakedown`) and a hold or knockdown does not stop the chase, so the chapter's
+  story (the beat, the corner and its lines) is never skipped by catching him early. A catch completes every open objective the route names, in order, after its Caught sequence has spoken (at
+  most `CaughtHoldSeconds`, 4 s), so the chapter ends on the line and then the end card. At the route's end
+  he is cornered: he stops and turns his back on her (facing straight away from her every frame), so the
+  ordinary takedown from behind works from wherever she arrives. He is never alerted: the chase keeps him
+  calm, so he never fights, never counts as a fight for the autosave, the music or the dialogue.
+- Restore: a save during a chase records the route, the thief's progress, the beat's state and Kate's
+  progress; a load puts the thief at the smaller of his saved progress and Kate's plus `RestoreMaxLead`
+  (2200 cm), with the lose clock at 0, so a checkpoint never reloads into a lost chase. Saved under a lead of
+  `RestoreMaxLead` or less, Continue brings him back exactly where he was.
+- The beat (one per route, optional): a zone (a box on the near roof), an anchor across, a dumpster on the
+  ground, the points Kate falls to and climbs out to, and `ResumeLead` (1600 cm). It starts only when Kate
+  starts a zip from inside the zone at an anchor within 300 cm of the beat's anchor, and only once. 0.3 s
+  into the zip the line lets go: she falls into the dumpster (0.7 s, a burst of wrapping paper where she
+  lands), sits in it 1.2 s and climbs out over its rim onto the exit point (0.9 s), walking: 3.1 s in all,
+  her look input hers throughout, move input ignored. As the line lets go the camera is turned to look
+  along the alley (the way with more room behind her) and down 25 degrees, and the dumpster does not push
+  the camera; a warm light hangs over it (the route spawns it with the dumpster). Then the thief is put `ResumeLead` ahead of her
+  progress (the beat's waypoint) and the lose clock reset. On a replay (its botch line already played this
+  campaign) a jump press 0.3 s or more into it skips to the exit point. If her progress passes the beat's
+  waypoint any other way (she fell, jumped, grappled elsewhere) the beat is marked passed and never plays;
+  if it runs longer than 5 s (something interrupted a move) she is put on the exit point, walking, move input
+  back, and the chase goes on.
+- Partner (2026-11-10): `UMissionDefinition::bPartnerPresent` (on by default). With it off the game mode
+  benches every partner when the chapter starts (and a partner controller's first possession in such a chapter
+  benches him; a later one, a switch, is left alone): his controller stops thinking, his pawn is hidden with its
+  collision off, and the HUD's partner line, the switch, the partner mark, banter, revives and the fight check all
+  treat him as absent (`GetPartner()` is null). A chapter with him brings him back. `bAllowSwitching` (off by
+  default) still gates the switch on its own.
+- World furniture of other chapters: an objective volume, a thug group or a chapter-end interactable whose
+  objective the running chapter does not have does nothing and logs nothing above Verbose; actors tagged
+  `objective:<id>` (the beacons) are hidden, their lights off, while the running chapter has no such objective.
 
 ## Safehouses and fast travel (built 2026-09-27; rules also in Source/Hawkeye/World/SafehouseSubsystem.h)
 - Two safehouses: "[Safehouse 1]" at 140 East 7th Street (OSM W248142338) and
