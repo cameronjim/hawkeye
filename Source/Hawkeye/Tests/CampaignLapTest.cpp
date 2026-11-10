@@ -4,12 +4,11 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Challenge/ChallengeStart.h"
 #include "Challenge/ChallengeSubsystem.h"
-#include "Combat/BowComponent.h"
-#include "Combat/FinisherComponent.h"
+#include "Chase/ChaseRouteDefinition.h"
+#include "Chase/ChaseRules.h"
+#include "Chase/ChaseSubsystem.h"
 #include "Combat/HealthComponent.h"
-#include "Combat/MeleeComponent.h"
-#include "Combat/MeleeRules.h"
-#include "Components/BoxComponent.h"
+#include "Combat/TakedownComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Crime/CrimeSpot.h"
 #include "Crime/CrimeSubsystem.h"
@@ -18,12 +17,8 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "EnhancedInputSubsystems.h"
-#include "Flashback/FlashbackSequencer.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Flashback/FlashbackWidget.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "GameFramework/PlayerStart.h"
-#include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFileManager.h"
@@ -42,13 +37,13 @@
 #include "Mission/MissionFlowController.h"
 #include "Mission/MissionObjective.h"
 #include "Mission/MissionSubsystem.h"
-#include "Mission/ObjectiveTriggerVolume.h"
 #include "NavigationPath.h"
 #include "NavigationSystem.h"
 #include "Phone/PhoneInbox.h"
 #include "Phone/PhoneSubsystem.h"
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Player/ParkourComponent.h"
 #include "Player/InventoryComponent.h"
 #include "Save/HawkeyeCampaignState.h"
 #include "Save/HawkeyeSaveSubsystem.h"
@@ -68,9 +63,6 @@
 #include "UI/PhoneWidget.h"
 #include "UObject/UObjectIterator.h"
 #include "World/ChapterEndInteractable.h"
-#include "World/FireEscapeLanding.h"
-#include "Player/ParkourComponent.h"
-#include "Tests/GrappleAuditKit.h"
 #include "World/GrappleAnchor.h"
 #include "World/InteractionComponent.h"
 #include "World/Safehouse.h"
@@ -81,57 +73,53 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Hawkeye.Lap.Campaign: Chapter 1 end to end from a cold start, in the standalone game, played as a new
- * tester would play it:
+ * Hawkeye.Lap.Campaign: Chapter 1, "Night Shift", end to end from a cold start, in the standalone game, played as a
+ * new tester would play it:
  *
  *   UnrealEditor-Cmd.exe Hawkeye.uproject -game -windowed -ResX=1280 -ResY=720 -unattended
  *       -nosplash -log -ExecCmds="Automation RunTests Hawkeye.Lap.Campaign; Quit"
  *
  * Its own save slot, deleted first; the settings are put back as they were at the end. The test hook
- * AHawkeyePlayerController::bAutomationPlaysAsPlayer gives it what automation otherwise skips (the boot
- * menu, the difficulty prompt, the chapter opening, the notices, the crime schedule) and hawkeye.Hints 2
+ * AHawkeyePlayerController::bAutomationPlaysAsPlayer gives it what automation otherwise skips (the boot menu, the
+ * difficulty prompt, the chapter opening and its chase, the notices, the crime schedule) and hawkeye.Hints 2
  * turns the hints on.
  *
- * The run: the main menu with no save, New Game, Normal at the prompt, the title card, the first text
- * read on the phone (P, then P again), reach_roof and cross_block by grapple (a planner that walks to a
- * spot with a clear line, aims, presses Q and walks the roof; with nothing in reach from a roof, down its
- * fire escape and up again from the street), clear_roof against the RoofPair with the
- * bow, a bola and melee, then Esc > Quit to menu and Continue, compared field by field with what was
- * there before; find_arrow, its roof reached by grapple (down cross_block's fire escape and up from the
- * street to the facade anchor on its street wall; never put on it: an error if it cannot), the examine (E),
- * the close-up, the end card, the slides, the placeholder
- * room walked to its trigger, and the street again, where the save, the map, the music, a challenge, a
- * fast travel and the crime schedule are tried; an ambush lost on purpose and the reload after it; and
- * Quit to menu and Continue once more. Every step checks input, the HUD, the pause, the time dilation,
- * the camera fade, the grey post process and the widgets in the viewport. Everything that had to be
- * forced is listed as such. Writes Saved/Automation/campaign_lap.json and
- * Saved/Screenshots/Campaign/campaign_*.png.
+ * The run: the main menu with no save, New Game, Normal at the prompt; the chapter opens mid-chase (Kate on the
+ * route's start at a sprint, the thief ahead, the title card over the first seconds) and the scripted player runs
+ * the route the chase's data asset lays out (DA_Chase_CH01_NightShift): sprinting over the vent boxes (vaults), up
+ * the bulkhead or the step (a mantle), the first grapple at the gap (aimed at the route's anchor, Q), the grapple
+ * and its chain mid-zip, the grapple that goes wrong into the dumpster, out of the alley along the navmesh, and the
+ * takedown from behind where he is cornered. After the first grapple lands, Esc > Quit to menu > Continue is
+ * compared field by field (objective, quiver, thugs, hints, crimes, challenges, phone, safehouses, position,
+ * health, and the chase: its state, both progresses, the waypoints reached, the beat). Then the end card, the
+ * return to the street with the chapter-complete toast, Clint's texts read on the phone, the save, the map, a
+ * challenge, a fast travel, an ambush lost on purpose and its reload, and Quit and Continue again. Every step
+ * checks input, HUD, pause, dilation, fade, the grey post process and the widgets left in the viewport.
+ *
+ * Hawkeye.Lap.ChaseFallBehind: the same start, then the scripted player stands still until the chase is lost,
+ * and checks the "[He got away]" toast, the checkpoint reload, and that the chase picks up again from it.
+ *
+ * Both write Saved/Automation/campaign_lap.json (or campaign_fall_behind.json: the timeline, the chase's lead
+ * sampled each second, the checks, the LogHawkeye warnings and what had to be forced, [lap] for a gap in the
+ * lap's own driving and [game] for one in the game) and Saved/Screenshots/Campaign/campaign_*.png.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapCampaign, "Hawkeye.Lap.Campaign",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapCampaignFallBehind, "Hawkeye.Lap.ChaseFallBehind",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 
 namespace HawkeyeCampaignLap
 {
 	static const TCHAR* MapPath = TEXT("/Game/Maps/L_District_EastVillage");
-	static const TCHAR* SceneMapName = TEXT("L_Scene_Placeholder");
 	static const TCHAR* Slot = TEXT("HawkeyeCampaignLap");
 	static const TCHAR* MovePath = TEXT("/Game/Input/IA_Move.IA_Move");
 	static const TCHAR* SprintPath = TEXT("/Game/Input/IA_Sprint.IA_Sprint");
 	static const TCHAR* GrapplePath = TEXT("/Game/Input/IA_Grapple.IA_Grapple");
-	static const TCHAR* FirePath = TEXT("/Game/Input/IA_Fire.IA_Fire");
-	static const TCHAR* MeleePath = TEXT("/Game/Input/IA_Melee.IA_Melee");
 	static const TCHAR* TakedownPath = TEXT("/Game/Input/IA_Takedown.IA_Takedown");
-	static const TCHAR* InteractPath = TEXT("/Game/Input/IA_Interact.IA_Interact");
-	static const TCHAR* Slot1Path = TEXT("/Game/Input/IA_Slot1.IA_Slot1");
-	static const TCHAR* Slot4Path = TEXT("/Game/Input/IA_Slot4.IA_Slot4");
-	static const TCHAR* CrouchPath = TEXT("/Game/Input/IA_Crouch.IA_Crouch");
-	static const FName BuildingTag(TEXT("CityBuilding"));
-	static const FName RoofPairTag(TEXT("RoofPair"));
-	static const FName ArcherPairTag(TEXT("ArcherPair"));
+	static const TCHAR* JumpPath = TEXT("/Game/Input/IA_Jump.IA_Jump");
 	static const FName FirstSafehouse(TEXT("ch01_east_7th"));
 	static const FName SecondSafehouse(TEXT("avenue_b"));
-	static constexpr int32 SlotStandard = 1;
-	static constexpr int32 SlotBola = 4;
 
 	static UWorld* FindWorld()
 	{
@@ -154,11 +142,6 @@ namespace HawkeyeCampaignLap
 	{
 		const AHawkeyePlayerController* PC = FindController(World);
 		return PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
-	}
-
-	static bool IsSceneWorld(const UWorld* World)
-	{
-		return World && World->GetMapName().Contains(SceneMapName);
 	}
 
 	static FString ShotPath(const FString& FileName)
@@ -239,33 +222,6 @@ namespace HawkeyeCampaignLap
 		return Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 	}
 
-	/** The CityBuilding under Point within Depth cm, or null. */
-	static AActor* BuildingUnder(UWorld* World, const FVector& Point, const AActor* Ignore, float Depth = 300.f)
-	{
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(CampaignRoof), false, Ignore);
-		FHitResult Hit;
-		if (World->LineTraceSingleByChannel(Hit, Point + FVector(0.f, 0.f, 50.f), Point - FVector(0.f, 0.f, Depth), ECC_Visibility, Params)
-			&& Hit.GetActor() && Hit.GetActor()->Tags.Contains(BuildingTag))
-		{
-			return Hit.GetActor();
-		}
-		return nullptr;
-	}
-
-	/** The first thing under XY from FromZ down to ToZ. */
-	static bool GroundAt(UWorld* World, const FVector& XY, float FromZ, float ToZ, const AActor* Ignore, FVector& OutGround, AActor** OutActor)
-	{
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(CampaignGround), false, Ignore);
-		FHitResult Hit;
-		if (!World->LineTraceSingleByChannel(Hit, FVector(XY.X, XY.Y, FromZ), FVector(XY.X, XY.Y, ToZ), ECC_Visibility, Params))
-		{
-			return false;
-		}
-		OutGround = Hit.ImpactPoint;
-		*OutActor = Hit.GetActor();
-		return true;
-	}
-
 	static void AimAt(APlayerController* PC, const AHawkeyeCharacter* Kate, const FVector& Target)
 	{
 		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
@@ -276,18 +232,6 @@ namespace HawkeyeCampaignLap
 	static bool IsDown(const AThugCharacter* Thug)
 	{
 		return !Thug || Thug->IsLimp() || Thug->GetHealthComponent()->IsDead();
-	}
-
-	static AObjectiveTriggerVolume* FindTrigger(UWorld* World, FName Id)
-	{
-		for (TActorIterator<AObjectiveTriggerVolume> It(World); It; ++It)
-		{
-			if (It->ObjectiveId == Id)
-			{
-				return *It;
-			}
-		}
-		return nullptr;
 	}
 
 	static AChapterEndInteractable* FindChapterEnd(UWorld* World)
@@ -360,6 +304,12 @@ namespace HawkeyeCampaignLap
 		FVector Kate = FVector::ZeroVector;
 		float Health = 0.f;
 		FString Difficulty;
+		/** The chase: its state, both progresses (cm along the route), the waypoints reached, the beat done. */
+		FString Chase;
+		float ThiefProgress = 0.f;
+		float KateProgress = 0.f;
+		int32 ChaseReached = 0;
+		bool bBeatDone = false;
 	};
 
 	static FSnapshot TakeSnapshot(UWorld* World)
@@ -381,7 +331,7 @@ namespace HawkeyeCampaignLap
 		}
 		for (TActorIterator<AThugCharacter> It(World); It; ++It)
 		{
-			if (It->ActorHasTag(UCrimeSubsystem::CrimeThugTag))
+			if (It->ActorHasTag(UCrimeSubsystem::CrimeThugTag) || It->ActorHasTag(UChaseSubsystem::ThiefTag))
 			{
 				continue;
 			}
@@ -434,6 +384,14 @@ namespace HawkeyeCampaignLap
 		if (const UHawkeyeSettingsSubsystem* Settings = UHawkeyeSettingsSubsystem::Get(World))
 		{
 			Out.Difficulty = UDifficultySubsystem::GetDifficultyName(Settings->GetDifficulty()).ToString();
+		}
+		if (const UChaseSubsystem* Chase = UChaseSubsystem::Get(World))
+		{
+			Out.Chase = UEnum::GetValueAsString(Chase->GetState());
+			Out.ThiefProgress = Chase->GetThiefProgress();
+			Out.KateProgress = Chase->GetKateProgress();
+			Out.ChaseReached = Chase->GetReachedWaypoints();
+			Out.bBeatDone = Chase->IsBeatDone();
 		}
 		return Out;
 	}
@@ -518,6 +476,22 @@ namespace HawkeyeCampaignLap
 		{
 			Out.Add(FString::Printf(TEXT("difficulty %s, was %s"), *After.Difficulty, *Before.Difficulty));
 		}
+		if (Before.Chase != After.Chase || Before.ChaseReached != After.ChaseReached || Before.bBeatDone != After.bBeatDone)
+		{
+			Out.Add(FString::Printf(TEXT("chase %s, %d waypoint(s), beat %s; was %s, %d, %s"), *After.Chase, After.ChaseReached,
+				After.bBeatDone ? TEXT("done") : TEXT("to come"), *Before.Chase, Before.ChaseReached, Before.bBeatDone ? TEXT("done") : TEXT("to come")));
+		}
+		if (FMath::Abs(Before.KateProgress - After.KateProgress) > 100.f)
+		{
+			Out.Add(FString::Printf(TEXT("Kate's chase progress %.0f, was %.0f"), After.KateProgress, Before.KateProgress));
+		}
+		// He runs on once the world is back: no further than he could have since the load, never behind.
+		const float Ran = 700.f * After.WorldSeconds + 50.f;
+		if (After.ThiefProgress < Before.ThiefProgress - 1.f || After.ThiefProgress > Before.ThiefProgress + Ran)
+		{
+			Out.Add(FString::Printf(TEXT("thief progress %.0f, was %.0f (%.1f s of world since)"), After.ThiefProgress, Before.ThiefProgress,
+				After.WorldSeconds));
+		}
 		return Out;
 	}
 }
@@ -527,7 +501,7 @@ namespace HawkeyeCampaignLap
 class FHawkeyeCampaignLapRunner : public IAutomationLatentCommand
 {
 public:
-	explicit FHawkeyeCampaignLapRunner(FAutomationTestBase* InTest) : Test(InTest)
+	FHawkeyeCampaignLapRunner(FAutomationTestBase* InTest, bool bInFallBehind) : Test(InTest), bFallBehind(bInFallBehind)
 	{
 		LapStart = FPlatformTime::Seconds();
 		Log.Start = LapStart;
@@ -554,44 +528,38 @@ private:
 		Boot,
 		NewGame,
 		Difficulty,
-		Title,
-		PhoneWait,
-		PhoneOpen,
-		PhoneClose,
-		ReachRoof,
-		CrossBlock,
-		ClearRoof,
-		Calm,
-		ArcherFight,
+		Chase,
 		QuitMenu,
 		Continue,
 		AfterContinue,
-		FindArrow,
 		ChapterEnd,
-		Scene,
-		SceneWalk,
-		Return,
+		PhoneWait,
+		PhoneOpen,
+		PhoneClose,
 		Systems,
 		CrimeApproach,
 		Crime,
 		CrimeReload,
 		FinalQuit,
 		FinalContinue,
+		FallBehind,
+		Reloaded,
 		Done,
 	};
 
-	/** The traversal legs' own steps. */
-	enum class ELeg : uint8
+	/** The chase's own steps, in the order the route teaches them. */
+	enum class EStep : uint8
 	{
-		Plan,
-		Walk,
+		Run,
 		Aim,
 		Zip,
-		Descend,
-		Final,
+		Beat,
+		Street,
+		Caught,
 	};
 
 	FAutomationTestBase* Test;
+	bool bFallBehind = false;
 	HawkeyeCampaignLap::FLogCapture Log;
 	EPhase Phase = EPhase::Boot;
 	double LapStart = 0.0;
@@ -602,88 +570,66 @@ private:
 	TArray<FString> Forced;
 	TArray<FString> Findings;
 	TArray<FString> Checks;
+	TArray<FString> LeadSamples;
 	int32 CheckFailures = 0;
 	TWeakObjectPtr<UWorld> LastWorld;
+	TWeakObjectPtr<UWorld> DistrictWorld;
 	TArray<FString> Shots;
-
-	// Traversal.
-	ELeg Leg = ELeg::Plan;
-	FName LegObjective;
-	FVector Goal = FVector::ZeroVector;
-	TWeakObjectPtr<AActor> GoalBuilding;
-	TWeakObjectPtr<AGrappleAnchor> PlanAnchor;
-	TArray<FVector> Path;
-	int32 PathIndex = 0;
-	TSet<TWeakObjectPtr<AGrappleAnchor>> Excluded;
-	TSet<TWeakObjectPtr<AActor>> VisitedRoofs;
-	int32 Hops = 0;
-	int32 Presses = 0;
-	double LegStart = 0.0;
-	double SubStart = 0.0;
-	double PressAt = -1.0;
 	bool bMoveInjecting = false;
 	bool bSprintHeld = false;
+
+	// The chase.
+	EStep ChaseStep = EStep::Run;
+	int32 Target = 1;           // the waypoint she is running to
+	int32 Grapple = 0;          // the route's grapple she is on
+	TArray<int32> StandIndex;   // the waypoint of each grapple's stand
+	double SubStart = 0.0;
+	double PressAt = -1.0;
+	double LastSample = 0.0;
+	double LastPathAt = -10.0;
+	double JumpAt = -10.0;
 	FVector LastProgressSpot = FVector::ZeroVector;
 	double LastProgressAt = 0.0;
-	TArray<FString> LegNotes;
-
-	// Down a fire escape (the find_arrow leg: the street to it is wider than the grapple's range).
-	int32 DescendPhase = 0;
-	FVector DescendStand = FVector::ZeroVector;
-	FVector DescendOut = FVector::ForwardVector;
-	FString DescendRoute;
-	double DescendStart = 0.0;
-	bool bDescendPushed = false;
-	int32 DescendRetries = 0;
-	int32 DescendHangs = 0;
-	int32 DescendCatches = 0;
-	int32 DescendStops = 0;
-	float StreetZ = 0.f;
-
-	/** The top landing of the fire escape on Roof, or null. */
-	AFireEscapeLanding* TopLandingOn(UWorld* World, const AActor* Roof) const;
-
-	/** Down the fire escape on the roof she stands on: false when it has none. */
-	bool BeginDescend(UWorld* World, AHawkeyeCharacter* Kate);
-
-	// The fight.
-	FName FightTag = HawkeyeCampaignLap::RoofPairTag;
-	double FightStartedAt = 0.0;
-	TArray<TWeakObjectPtr<AThugCharacter>> Pair;
-	bool bFightSetUp = false;
-	bool bDrawing = false;
-	bool bMeleeHeld = false;
-	bool bBolaLoosed = false;
-	int32 BolaStage = 0;
-	int32 BolaTries = 0;
-	double DrawStart = 0.0;
-	double MeleeHeldSince = 0.0;
-	double NextActionAt = 0.0;
-	double LastParryTap = -10.0;
-	int32 BolaBefore = 0;
-	int32 ArrowsLoosed = 0;
-	int32 Swings = 0;
-	int32 Parries = 0;
-	int32 Finishers = 0;
-	int32 HitsTaken = 0;
-	float LastHealth = 0.f;
+	bool bChained = false;
+	bool bChainTried = false;
+	bool bQuitDone = false;
+	bool bTitleShot = false;
+	bool bTitleChecked = false;
+	bool bTitleGone = false;
+	bool bThiefShot = false;
+	bool bPromptShot = false;
+	bool bDumpsterShot = false;
+	bool bCorneredShot = false;
+	bool bVaulted = false;
+	bool bMantled = false;
+	int32 Zips = 0;
+	int32 BeatPhaseSeen = 0;
+	double BeatPhaseAt = 0.0;
+	double ChaseStartedAt = 0.0;
+	float ChaseSeconds = 0.f;
+	/** Unpaused seconds of the chase in the lap's own count (the chase's clock restarts on a load). */
+	float ChaseActiveSeconds = 0.f;
+	bool bLostToastSeen = false;
+	float MinLead = BIG_NUMBER;
+	float MaxLead = 0.f;
+	TArray<FVector> Path;
+	int32 PathIndex = 0;
+	FVector Goal = FVector::ZeroVector;
 
 	// Save and chapter end.
 	HawkeyeCampaignLap::FSnapshot BeforeQuit;
 	int32 SavesAtQuit = 0;
-	TArray<FString> Beats;
-	int32 LastSlide = INDEX_NONE;
-	TArray<FString> SlideTimes;
 	bool bEndCardShot = false;
-	bool bSlideShot = false;
 	double EndCardSeenAt = -1.0;
-	double SlideSeenAt = -1.0;
-	TWeakObjectPtr<UWorld> DistrictWorld;
+	bool bEndCardSeen = false;
 	bool bDied = false;
 	int32 DownCount = 0;
+	double LostAt = -1.0;
 
 	double Clock() const { return FPlatformTime::Seconds() - LapStart; }
 	double InPhase() const { return FPlatformTime::Seconds() - PhaseStart; }
+	double InStep() const { return FPlatformTime::Seconds() - StepAt; }
+	double InSub() const { return FPlatformTime::Seconds() - SubStart; }
 
 	void Mark(const FString& What)
 	{
@@ -707,7 +653,12 @@ private:
 		StepAt = FPlatformTime::Seconds();
 	}
 
-	double InStep() const { return FPlatformTime::Seconds() - StepAt; }
+	void Sub(EStep NewStep)
+	{
+		ChaseStep = NewStep;
+		SubStart = FPlatformTime::Seconds();
+		PressAt = -1.0;
+	}
 
 	/** Something the lap had to do for the game. bLapOnly: a gap in the lap's own driving, not the game's. */
 	void Force(const FString& What, bool bLapOnly = false)
@@ -736,69 +687,29 @@ private:
 		return bHeld;
 	}
 
-	/** The widgets in this world's viewport other than the HUD and the ones named in Allowed. */
 	static TArray<FString> StrayWidgets(UWorld* World, const TArray<UClass*>& Allowed);
-
-	/**
-	 * Input free, HUD up, nothing paused, dilated, faded, greyed or left on the screen. What says what the
-	 * moment allows (the menu, a card).
-	 */
 	void CheckClean(const FString& Where, const TArray<UClass*>& Allowed = {}, bool bHudExpected = true, bool bToastAllowed = true);
-
 	void StopMoving(APlayerController* PC);
 	bool Steer(APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Target, bool bSprint, float Arrive);
 	void SetSprint(APlayerController* PC, bool bSprint);
 
-	/** Starts a traversal leg to Id's goal. False (and an error) when the goal is not on the map. */
-	bool BeginLeg(UWorld* World, FName Id);
+	/** Sets up the chase's driving from the route: where each grapple is fired from. */
+	void PlanChase(const UChaseRouteDefinition* Route);
 
-	/** One frame of a traversal leg. True when the leg is over (the objective done, or given up). */
-	bool TickLeg(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate);
+	/** One frame of the chase. True when it is over (caught, or given up). */
+	bool TickChase(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate);
+	bool TickRun(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseRouteDefinition* Route);
+	bool TickAim(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseRouteDefinition* Route);
+	bool TickZip(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseRouteDefinition* Route);
+	bool TickBeat(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseSubsystem* Chase);
+	bool TickStreet(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseSubsystem* Chase);
+	void WatchTitle(AHawkeyePlayerController* PC);
+	void SampleLead(const UChaseSubsystem* Chase);
 
-	/** Finds an anchor and a stand spot that gets Kate onto GoalBuilding, or nearer it. */
-	bool PlanHop(UWorld* World, AHawkeyeCharacter* Kate, FString& OutNote);
+	/** The grapple anchor nearest Point (within 150 cm), or null. */
+	static AGrappleAnchor* AnchorNear(UWorld* World, const FVector& Point);
 
-	/** One frame of the roof fight. True when both of the pair are down (or it gave up). */
-	bool TickFight(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate);
-
-	/**
-	 * One frame of the archer duel on the find_arrow roof, played the way the ArcherDuel lap does: crouch
-	 * behind a parapet both archers cannot see over, stand only when neither is mid-draw, loose at full
-	 * draw on one she can see, crouch again. True when both are down (or she went down and the save
-	 * reloaded: DuelLosses counts those).
-	 */
-	bool TickDuel(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate);
-	bool FindCover(UWorld* World, AHawkeyeCharacter* Kate);
-	void Crouch(APlayerController* PC, AHawkeyeCharacter* Kate, bool bDown);
-	enum class EDuel : uint8 { SetUp, Moving, Hidden, Rising, Drawing };
-	EDuel Duel = EDuel::SetUp;
-	double DuelSince = 0.0;
-	double DuelStart = 0.0;
-	double LastCrouchTap = -10.0;
-	FVector Cover = FVector::ZeroVector;
-	TWeakObjectPtr<UWorld> DuelWorld;
-	TWeakObjectPtr<AThugCharacter> DuelTarget;
-	int32 DuelLosses = 0;
-	int32 DuelArrows = 0;
-	int32 DuelHits = 0;
-	int32 CoverSearches = 0;
-	float DuelAimHeight = 30.f;
-
-	/** Where the chapter end is up to, as a beat name. */
-	FString CurrentBeat(UWorld* World) const;
-
-	void NoteBeat(const FString& Beat)
-	{
-		if (!Beat.IsEmpty() && (Beats.IsEmpty() || Beats.Last() != Beat))
-		{
-			Beats.Add(Beat);
-			Mark(TEXT("beat ") + Beat);
-		}
-	}
-
-	/** Waits for a freshly loaded world with a player, no load pending and the fade in over. */
 	bool WorldSettled(UWorld* World, const UWorld* NotThis, float MinSeconds) const;
-
 	void Finish(UWorld* World);
 };
 
@@ -935,10 +846,10 @@ void FHawkeyeCampaignLapRunner::StopMoving(APlayerController* PC)
 	}
 }
 
-bool FHawkeyeCampaignLapRunner::Steer(APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Target, bool bSprint, float Arrive)
+bool FHawkeyeCampaignLapRunner::Steer(APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& InTarget, bool bSprint, float Arrive)
 {
 	using namespace HawkeyeCampaignLap;
-	const FVector To = (Target - Kate->GetActorLocation()) * FVector(1.f, 1.f, 0.f);
+	const FVector To = (InTarget - Kate->GetActorLocation()) * FVector(1.f, 1.f, 0.f);
 	if (To.Size() <= Arrive)
 	{
 		return true;
@@ -968,1377 +879,458 @@ bool FHawkeyeCampaignLapRunner::Steer(APlayerController* PC, AHawkeyeCharacter* 
 	return false;
 }
 
-bool FHawkeyeCampaignLapRunner::BeginLeg(UWorld* World, FName Id)
+AGrappleAnchor* FHawkeyeCampaignLapRunner::AnchorNear(UWorld* World, const FVector& Point)
 {
-	using namespace HawkeyeCampaignLap;
-	LegObjective = Id;
-	Leg = ELeg::Plan;
-	Hops = 0;
-	Excluded.Reset();
-	VisitedRoofs.Reset();
-	LegNotes.Reset();
-	LegStart = FPlatformTime::Seconds();
-	AHawkeyeCharacter* Kate = FindPlayer(World);
-	if (Id == TEXT("find_arrow"))
-	{
-		const AChapterEndInteractable* Arrow = FindChapterEnd(World);
-		if (!Arrow)
-		{
-			Test->AddError(TEXT("Campaign: no chapter-end arrow in the district."));
-			return false;
-		}
-		// Where she stands to examine it: the middle of its zone, on whatever roof is under that.
-		const UPrimitiveComponent* Zone = Arrow->FindComponentByClass<UBoxComponent>();
-		const FVector Centre = Zone ? Zone->GetComponentLocation() : Arrow->GetActorLocation();
-		FVector Ground = Centre;
-		AActor* Under = nullptr;
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(CampaignArrowRoof), false, Kate);
-		Params.AddIgnoredActor(Arrow);
-		FHitResult Hit;
-		if (World->LineTraceSingleByChannel(Hit, Centre + FVector(0.f, 0.f, 100.f), Centre - FVector(0.f, 0.f, 3000.f), ECC_Visibility, Params))
-		{
-			Ground = Hit.ImpactPoint;
-			Under = Hit.GetActor();
-		}
-		// The tower sits on the roof; walk down to the building proper.
-		AActor* Roof = Under;
-		FVector Probe = Ground;
-		for (int32 Guard = 0; Guard < 4 && Roof && !Roof->Tags.Contains(BuildingTag); ++Guard)
-		{
-			Params.AddIgnoredActor(Roof);
-			if (!World->LineTraceSingleByChannel(Hit, Probe + FVector(0.f, 0.f, 10.f), Probe - FVector(0.f, 0.f, 3000.f), ECC_Visibility, Params))
-			{
-				Roof = nullptr;
-				break;
-			}
-			Roof = Hit.GetActor();
-			Probe = Hit.ImpactPoint;
-		}
-		Goal = Ground;
-		GoalBuilding = Roof;
-		// How a player gets up there at all: every spot (street or roof, the top surface on a 2 m grid) within
-		// grapple range of an anchor on that roof with a clear zip, and the fire escapes on it.
-		if (Roof && Kate)
-		{
-			const UGrappleComponent* Grapple = Kate->GetGrappleComponent();
-			const float HalfHeight = Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-			int32 Anchors = 0;
-			int32 Clear = 0;
-			TMap<FString, int32> From;
-			for (TActorIterator<AGrappleAnchor> It(World); It; ++It)
-			{
-				if (BuildingUnder(World, It->GetLandingLocation(), Kate) != Roof)
-				{
-					continue;
-				}
-				++Anchors;
-				const FVector Marker = It->GetMarkerLocation();
-				for (float X = -2400.f; X <= 2400.f; X += 200.f)
-				{
-					for (float Y = -2400.f; Y <= 2400.f; Y += 200.f)
-					{
-						FVector Spot;
-						AActor* Top = nullptr;
-						if (!GroundAt(World, Marker + FVector(X, Y, 0.f), Marker.Z + 3000.f, -1000.f, Kate, Spot, &Top) || Top == Roof)
-						{
-							continue;
-						}
-						const FVector At = Spot + FVector(0.f, 0.f, HalfHeight + 2.f);
-						const float Reach = FVector::Dist(At, Marker);
-						if (Reach > Grapple->Range - 150.f || Reach < Grapple->MinRange + 100.f || !Grapple->IsZipClear(At, *It, true))
-						{
-							continue;
-						}
-						++Clear;
-						From.FindOrAdd(Top && Top->Tags.Contains(BuildingTag) ? Top->GetName() : FString(TEXT("street")))++;
-					}
-				}
-			}
-			int32 Escapes = 0;
-			const FBox Box = Roof->GetComponentsBoundingBox().ExpandBy(300.f);
-			for (TActorIterator<AFireEscapeLanding> It(World); It; ++It)
-			{
-				Escapes += Box.IsInside(It->GetActorLocation()) ? 1 : 0;
-			}
-			TArray<FString> Lines;
-			for (const TPair<FString, int32>& Entry : From)
-			{
-				Lines.Add(FString::Printf(TEXT("%s %d"), *Entry.Key, Entry.Value));
-			}
-			Mark(FString::Printf(TEXT("survey of %s: %d anchor(s), %d clear stand spot(s) [%s], %d fire-escape landing(s)"), *Roof->GetName(),
-				Anchors, Clear, *FString::Join(Lines, TEXT(", ")), Escapes));
-		}
-		Mark(FString::Printf(TEXT("leg find_arrow: the arrow's zone at %s on %s (%s), %.0f m away"), *Goal.ToCompactString(),
-			*GetNameSafe(Under), *GetNameSafe(Roof), Kate ? FVector::Dist(Kate->GetActorLocation(), Goal) / 100.f : -1.f));
-		return true;
-	}
-	const AObjectiveTriggerVolume* Trigger = FindTrigger(World, Id);
-	if (!Trigger)
-	{
-		Test->AddError(FString::Printf(TEXT("Campaign: no trigger volume for %s."), *Id.ToString()));
-		return false;
-	}
-	Goal = Trigger->GetActorLocation();
-	FVector Ground;
-	AActor* Under = nullptr;
-	if (GroundAt(World, Goal, Goal.Z + 400.f, Goal.Z - 3000.f, Kate, Ground, &Under))
-	{
-		Goal = Ground;
-	}
-	GoalBuilding = Under && Under->Tags.Contains(BuildingTag) ? Under : nullptr;
-	Mark(FString::Printf(TEXT("leg %s: trigger at %s on %s, %.0f m away"), *Id.ToString(), *Goal.ToCompactString(), *GetNameSafe(Under),
-		Kate ? FVector::Dist(Kate->GetActorLocation(), Goal) / 100.f : -1.f));
-	return true;
-}
-
-bool FHawkeyeCampaignLapRunner::PlanHop(UWorld* World, AHawkeyeCharacter* Kate, FString& OutNote)
-{
-	using namespace HawkeyeCampaignLap;
-	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
-	const FVector Here = Kate->GetActorLocation();
-	const FVector HereFeet = Feet(Kate);
-	const float HalfHeight = Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	AActor* OnBuilding = BuildingUnder(World, HereFeet, Kate);
-	if (OnBuilding)
-	{
-		VisitedRoofs.Add(OnBuilding);
-	}
-	const float HereToGoal = FVector::Dist2D(Here, Goal);
-
-	// Anchors on the goal's roof first (nearest its point), then any that land nearer the goal.
-	TArray<TPair<float, AGrappleAnchor*>> Ranked;
+	AGrappleAnchor* Best = nullptr;
+	float BestDistance = 150.f;
 	for (TActorIterator<AGrappleAnchor> It(World); It; ++It)
 	{
-		if (!It->bEnabled || Excluded.Contains(*It))
+		const float Distance = FVector::Dist(It->GetActorLocation(), Point);
+		if (Distance < BestDistance)
 		{
-			continue;
-		}
-		const FVector Landing = It->GetLandingLocation();
-		AActor* LandsOn = BuildingUnder(World, Landing, Kate);
-		if (!LandsOn || LandsOn == OnBuilding)
-		{
-			continue;
-		}
-		const float ToGoal = FVector::Dist2D(Landing, Goal);
-		if (LandsOn == GoalBuilding.Get())
-		{
-			Ranked.Emplace(ToGoal, *It);
-		}
-		else if (ToGoal < HereToGoal - 800.f && FVector::Dist(Here, It->GetMarkerLocation()) < 6000.f)
-		{
-			Ranked.Emplace(100000.f + ToGoal, *It);
-		}
-		else if (!VisitedRoofs.Contains(LandsOn) && FVector::Dist(Here, It->GetMarkerLocation()) < 3000.f)
-		{
-			// Sideways, to a roof not stood on yet this leg: the way round when nothing ahead is in reach.
-			Ranked.Emplace(200000.f + ToGoal, *It);
+			BestDistance = Distance;
+			Best = *It;
 		}
 	}
-	Ranked.Sort([](const TPair<float, AGrappleAnchor*>& A, const TPair<float, AGrappleAnchor*>& B) { return A.Key < B.Key; });
-
-	int32 Tried = 0;
-	int32 Spots = 0;
-	TMap<FString, int32> Blockers;
-	for (const TPair<float, AGrappleAnchor*>& Entry : Ranked)
-	{
-		AGrappleAnchor* Anchor = Entry.Value;
-		const FVector Marker = Anchor->GetMarkerLocation();
-		// Only anchors a stand spot could be in range of count against the 25 tried: the far ones nearer the goal
-		// used to use the budget up before one in reach was looked at.
-		if (FVector::Dist2D(Here, Marker) > Grapple->Range + (OnBuilding ? 2200.f : 9000.f))
-		{
-			continue;
-		}
-		if (++Tried > 25)
-		{
-			break;
-		}
-		const int32 SpotsBefore = Spots;
-		TArray<FVector> Stands;
-		Stands.Add(Here);
-		for (const float Distance : { 300.f, 600.f, 900.f, 1200.f, 1600.f, 2000.f })
-		{
-			for (int32 Angle = 0; Angle < 16; ++Angle)
-			{
-				Stands.Add(Here + FRotator(0.f, 22.5f * Angle, 0.f).Vector() * Distance);
-			}
-		}
-		// A 2 m grid round the anchor, within reach of it in plan.
-		for (float X = -2200.f; X <= 2200.f; X += 200.f)
-		{
-			for (float Y = -2200.f; Y <= 2200.f; Y += 200.f)
-			{
-				if (X * X + Y * Y <= 2200.f * 2200.f && X * X + Y * Y >= 500.f * 500.f)
-				{
-					Stands.Add(Marker + FVector(X, Y, 0.f));
-				}
-			}
-		}
-		float BestCost = BIG_NUMBER;
-		FVector BestStand = FVector::ZeroVector;
-		TArray<FVector> BestPath;
-		for (int32 Index = 0; Index < Stands.Num(); ++Index)
-		{
-			FVector Ground = HereFeet;
-			AActor* Under = OnBuilding;
-			if (Index > 0)
-			{
-				if (!GroundAt(World, Stands[Index], HereFeet.Z + 250.f, HereFeet.Z - 400.f, Kate, Ground, &Under)
-					|| FMath::Abs(Ground.Z - HereFeet.Z) > 150.f)
-				{
-					continue;
-				}
-				// The same roof she is on, or (on the street) not a roof at all.
-				const bool bRoof = Under && Under->Tags.Contains(BuildingTag);
-				if (OnBuilding ? Under != OnBuilding : bRoof)
-				{
-					continue;
-				}
-			}
-			const FVector From = Ground + FVector(0.f, 0.f, HalfHeight + 2.f);
-			const float Reach = FVector::Dist(From, Marker);
-			if (Reach > Grapple->Range - 150.f || Reach < Grapple->MinRange + 100.f)
-			{
-				continue;
-			}
-			++Spots;
-			if (FVector::Dist2D(Here, From) >= BestCost)
-			{
-				continue;
-			}
-			// The grapple picks by what the lens sees: the hip camera turned to put the anchor in the middle of the
-			// screen (the spring arm's sums, the pitch limit and the probe, as Hawkeye.Grapple.Audit has it), so an
-			// awning or a fire escape over her can hide it, and past the pitch limit it can leave the screen.
-			{
-				FVector Lens, Forward;
-				HawkeyeGrappleView::PredictLens(Kate, From, Marker, Lens, Forward);
-				const float Angle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
-					FVector::DotProduct(Forward, (Marker - Lens).GetSafeNormal()), -1.f, 1.f)));
-				if (Angle > Grapple->ConeDegrees - 3.f || !Grapple->IsOnScreen(Lens, Forward, Marker))
-				{
-					Blockers.FindOrAdd(TEXT("too steep for the camera"))++;
-					continue;
-				}
-				if (!Grapple->HasLineOfSight(Anchor, Lens))
-				{
-					FCollisionQueryParams SightParams(SCENE_QUERY_STAT(CampaignLens), false, Kate);
-					SightParams.AddIgnoredActor(Anchor);
-					FHitResult SightHit;
-					World->LineTraceSingleByChannel(SightHit, Lens, Marker, ECC_Visibility, SightParams);
-					Blockers.FindOrAdd(FString(TEXT("the lens: ")) + GetNameSafe(SightHit.GetActor()))++;
-					continue;
-				}
-			}
-			AActor* Blocker = nullptr;
-			if (!Grapple->IsZipClear(From, Anchor, /*bFromGround=*/true, &Blocker))
-			{
-				Blockers.FindOrAdd(Blocker ? Blocker->GetName() : FString(TEXT("something")))++;
-				continue;
-			}
-			TArray<FVector> Route;
-			float Length = FVector::Dist2D(Here, From);
-			if (Index > 0)
-			{
-				bool bRouted = false;
-				if (!OnBuilding)
-				{
-					const UNavigationPath* NavPath = UNavigationSystemV1::FindPathToLocationSynchronously(World, Here, From, Kate);
-					if (NavPath && NavPath->IsValid() && !NavPath->IsPartial() && NavPath->PathPoints.Num() > 0)
-					{
-						Route = NavPath->PathPoints;
-						Length = NavPath->GetPathLength();
-						bRouted = Length < 9000.f;
-					}
-				}
-				else
-				{
-					// Across her own roof in a straight line: every metre of it still roof.
-					bRouted = true;
-					const int32 Samples = FMath::Max(2, FMath::CeilToInt(Length / 100.f));
-					for (int32 Sample = 1; Sample < Samples && bRouted; ++Sample)
-					{
-						const FVector At = FMath::Lerp(HereFeet, Ground, static_cast<float>(Sample) / Samples);
-						bRouted = BuildingUnder(World, At, Kate, 200.f) == OnBuilding;
-					}
-					Route = { From };
-				}
-				if (!bRouted)
-				{
-					continue;
-				}
-			}
-			// A steep look up from the foot of a wall rarely targets (the lens sits behind her): prefer standing back.
-			const float Rise = FMath::RadiansToDegrees(FMath::Atan2(Marker.Z - From.Z, FVector::Dist2D(Marker, From)));
-			Length += Rise > 45.f ? 3000.f : 0.f;
-			if (Length < BestCost)
-			{
-				BestCost = Length;
-				BestStand = From;
-				BestPath = Route;
-			}
-		}
-		if (BestCost < BIG_NUMBER)
-		{
-			PlanAnchor = Anchor;
-			Path = BestPath;
-			PathIndex = 0;
-			OutNote = FString::Printf(TEXT("%s (lands on %s, %.0f m from the goal) from %s, %.0f m walk, %d anchors tried"),
-				*Anchor->GetName(), *GetNameSafe(BuildingUnder(World, Anchor->GetLandingLocation(), Kate)),
-				FVector::Dist2D(Anchor->GetLandingLocation(), Goal) / 100.f, *BestStand.ToCompactString(), BestCost / 100.f, Tried);
-			return true;
-		}
-		if (Spots == SpotsBefore)
-		{
-			--Tried;
-		}
-	}
-	Blockers.ValueSort([](int32 A, int32 B) { return A > B; });
-	TArray<FString> Worst;
-	for (const TPair<FString, int32>& Entry : Blockers)
-	{
-		if (Worst.Num() < 4)
-		{
-			Worst.Add(FString::Printf(TEXT("%s x%d"), *Entry.Key, Entry.Value));
-		}
-	}
-	OutNote = FString::Printf(TEXT("no clear grapple from %s (%s): %d anchors ranked, %d tried, %d stand spots in range, lines blocked by %s"),
-		*Here.ToCompactString(), OnBuilding ? *OnBuilding->GetName() : TEXT("street"), Ranked.Num(), Tried, Spots,
-		Worst.Num() ? *FString::Join(Worst, TEXT(", ")) : TEXT("nothing"));
-	return false;
+	return Best;
 }
 
-AFireEscapeLanding* FHawkeyeCampaignLapRunner::TopLandingOn(UWorld* World, const AActor* Roof) const
+// --- The chase ----------------------------------------------------------------------------------------
+
+void FHawkeyeCampaignLapRunner::PlanChase(const UChaseRouteDefinition* Route)
 {
-	if (!Roof)
+	StandIndex.Reset();
+	for (const FChaseGrapple& Line : Route->Grapples)
 	{
-		return nullptr;
-	}
-	FString Osm;
-	for (const FName& Tag : Roof->Tags)
-	{
-		if (Tag.ToString().StartsWith(TEXT("osm:")))
+		int32 Best = 0;
+		float BestDistance = BIG_NUMBER;
+		for (int32 Index = 0; Index < Route->Waypoints.Num(); ++Index)
 		{
-			Osm = Tag.ToString().Mid(4);
+			const float Distance = FVector::Dist(Route->Waypoints[Index].Location, Line.Stand);
+			if (Distance < BestDistance)
+			{
+				BestDistance = Distance;
+				Best = Index;
+			}
 		}
+		StandIndex.Add(Best);
 	}
-	AFireEscapeLanding* Top = nullptr;
-	for (TActorIterator<AFireEscapeLanding> It(World); It; ++It)
-	{
-		if (!Osm.IsEmpty() && It->GetRecord().OsmId == Osm && (!Top || It->GetRecord().Floor > Top->GetRecord().Floor))
-		{
-			Top = *It;
-		}
-	}
-	return Top;
+	Mark(FString::Printf(TEXT("chase plan: %d waypoints, grapples fired from waypoints %s, %d roof(s): %s"), Route->Waypoints.Num(),
+		*FString::JoinBy(StandIndex, TEXT(", "), [](int32 I) { return FString::FromInt(I); }), Route->RoofIds.Num(),
+		*FString::JoinBy(Route->RoofIds, TEXT(" > "), [](FName N) { return N.ToString(); })));
 }
 
-bool FHawkeyeCampaignLapRunner::BeginDescend(UWorld* World, AHawkeyeCharacter* Kate)
+void FHawkeyeCampaignLapRunner::SampleLead(const UChaseSubsystem* Chase)
 {
-	using namespace HawkeyeCampaignLap;
-	AActor* Roof = BuildingUnder(World, Feet(Kate), Kate);
-	const AFireEscapeLanding* Landing = TopLandingOn(World, Roof);
-	if (!Landing)
-	{
-		return false;
-	}
-	// On the roof, square behind the top landing's middle: parapet (30), capsule (34), a margin.
-	DescendOut = Landing->GetActorRightVector().GetSafeNormal2D();
-	const FVector Facade = Landing->GetActorLocation();
-	DescendStand = FVector(Facade.X, Facade.Y, Feet(Kate).Z) - DescendOut * 110.f;
-	DescendRoute = FString::Printf(TEXT("fire escape of %s (%d landings)"), *GetNameSafe(Roof), Landing->GetRecord().Floor);
-	FVector Street;
-	AActor* Under = nullptr;
-	StreetZ = GroundAt(World, Facade + DescendOut * 300.f, Facade.Z, Facade.Z - 5000.f, Kate, Street, &Under) ? Street.Z : 0.f;
-	DescendPhase = 1;
-	DescendStart = FPlatformTime::Seconds();
-	SubStart = DescendStart;
-	DescendRetries = 0;
-	DescendHangs = 0;
-	DescendCatches = 0;
-	DescendStops = 0;
-	bDescendPushed = false;
-	Leg = ELeg::Descend;
-	return true;
-}
-
-bool FHawkeyeCampaignLapRunner::TickLeg(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate)
-{
-	using namespace HawkeyeCampaignLap;
-	if (IsObjectiveDone(World, LegObjective))
-	{
-		StopMoving(PC);
-		Mark(FString::Printf(TEXT("%s complete (%.1f s, %d grapple(s)%s)"), *LegObjective.ToString(), FPlatformTime::Seconds() - LegStart, Hops,
-			LegNotes.Num() ? *(TEXT(": ") + FString::Join(LegNotes, TEXT("; "))) : TEXT("")));
-		return true;
-	}
-	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
-	const double Now = FPlatformTime::Seconds();
-	if (Now - LegStart > 150.0)
-	{
-		StopMoving(PC);
-		if (LegObjective == TEXT("find_arrow"))
-		{
-			Test->AddError(FString::Printf(TEXT("Campaign: find_arrow roof not reached by grapple in 150 s: %s"), *FString::Join(LegNotes, TEXT("; "))));
-		}
-		Force(FString::Printf(TEXT("%s not reached in 150 s (%s); completing it"), *LegObjective.ToString(), *FString::Join(LegNotes, TEXT("; "))));
-		if (UMissionSubsystem* Missions = UMissionSubsystem::Get(World))
-		{
-			Missions->CompleteObjective(LegObjective);
-		}
-		return true;
-	}
-	switch (Leg)
-	{
-	case ELeg::Plan:
-	{
-		if (!Kate->GetCharacterMovement()->IsMovingOnGround() || Kate->IsTraversing())
-		{
-			return false;
-		}
-		const AActor* On = BuildingUnder(World, Feet(Kate), Kate);
-		if (GoalBuilding.IsValid() ? On == GoalBuilding.Get() : !On)
-		{
-			Leg = ELeg::Final;
-			SubStart = Now;
-			LastProgressSpot = Kate->GetActorLocation();
-			LastProgressAt = Now;
-			return false;
-		}
-		FString Note;
-		if (Hops < 14 && On && !PlanHop(World, Kate, Note))
-		{
-			// Nothing in reach from this roof: down its fire escape as a player would, then up again from the street.
-			if (BeginDescend(World, Kate))
-			{
-				LegNotes.Add(Note);
-				Mark(FString::Printf(TEXT("%s: %s; down the %s"), *LegObjective.ToString(), *Note, *DescendRoute));
-				return false;
-			}
-			FVector Street = FVector::ZeroVector;
-			AActor* StreetActor = nullptr;
-			bool bFound = false;
-			for (float Radius = 500.f; Radius <= 3000.f && !bFound; Radius += 250.f)
-			{
-				for (int32 Angle = 0; Angle < 16 && !bFound; ++Angle)
-				{
-					const FVector Probe = Kate->GetActorLocation() + FRotator(0.f, 22.5f * Angle, 0.f).Vector() * Radius;
-					bFound = GroundAt(World, Probe, Feet(Kate).Z - 100.f, -1000.f, Kate, Street, &StreetActor) && StreetActor
-						&& !StreetActor->Tags.Contains(BuildingTag) && Street.Z < Feet(Kate).Z - 500.f;
-				}
-			}
-			if (bFound)
-			{
-				if (LegObjective == TEXT("find_arrow"))
-				{
-					Test->AddError(FString::Printf(TEXT("Campaign: find_arrow: no fire escape down from %s"), *GetNameSafe(On)));
-				}
-				Force(FString::Printf(TEXT("%s: %s; no fire escape here, putting Kate on the street %.0f m below"), *LegObjective.ToString(),
-					*Note, (Feet(Kate).Z - Street.Z) / 100.f), /*bLapOnly=*/true);
-				StopMoving(PC);
-				Kate->TeleportTo(Street + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 5.f), Kate->GetActorRotation());
-				return false;
-			}
-		}
-		if (Hops >= 14 || !PlanHop(World, Kate, Note))
-		{
-			LegNotes.Add(Note);
-			StopMoving(PC);
-			if (LegObjective == TEXT("find_arrow"))
-			{
-				// The find_arrow roof must be reached by grapple (generate_city's facade anchor on its street wall).
-				Test->AddError(FString::Printf(TEXT("Campaign: find_arrow roof not reached by grapple: %s"), *Note));
-			}
-			Force(FString::Printf(TEXT("%s: %s; putting Kate on the goal"), *LegObjective.ToString(), *Note));
-			Kate->TeleportTo(Goal + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 5.f), Kate->GetActorRotation());
-			Leg = ELeg::Final;
-			SubStart = Now;
-			return false;
-		}
-		Mark(FString::Printf(TEXT("%s plan: %s"), *LegObjective.ToString(), *Note));
-		Leg = ELeg::Walk;
-		SubStart = Now;
-		LastProgressSpot = Kate->GetActorLocation();
-		LastProgressAt = Now;
-		return false;
-	}
-
-	case ELeg::Walk:
-	{
-		if (!Path.IsValidIndex(PathIndex))
-		{
-			StopMoving(PC);
-			Leg = ELeg::Aim;
-			SubStart = Now;
-			Presses = 0;
-			PressAt = -1.0;
-			return false;
-		}
-		const bool bLast = PathIndex == Path.Num() - 1;
-		if (Steer(PC, Kate, Path[PathIndex], !bLast, bLast ? 60.f : 120.f))
-		{
-			++PathIndex;
-		}
-		if (FVector::Dist2D(Kate->GetActorLocation(), LastProgressSpot) > 100.f)
-		{
-			LastProgressSpot = Kate->GetActorLocation();
-			LastProgressAt = Now;
-		}
-		else if (Now - LastProgressAt > 4.0)
-		{
-			LegNotes.Add(FString::Printf(TEXT("stuck walking to the stand spot at %s"), *Kate->GetActorLocation().ToCompactString()));
-			Mark(TEXT("stuck on the walk; aiming from here"));
-			StopMoving(PC);
-			Leg = ELeg::Aim;
-			SubStart = Now;
-			Presses = 0;
-			PressAt = -1.0;
-		}
-		return false;
-	}
-
-	case ELeg::Aim:
-	{
-		AGrappleAnchor* Anchor = PlanAnchor.Get();
-		if (!Anchor)
-		{
-			Leg = ELeg::Plan;
-			return false;
-		}
-		if (PressAt >= 0.0)
-		{
-			if (Grapple->IsArrowInFlight() || Grapple->IsZipping())
-			{
-				++Hops;
-				Mark(FString::Printf(TEXT("grapple %d to %s on press %d"), Hops, *Anchor->GetName(), Presses));
-				Leg = ELeg::Zip;
-				SubStart = Now;
-				return false;
-			}
-			if (Now - PressAt < 0.5)
-			{
-				return false;
-			}
-			PressAt = -1.0;
-		}
-		AimAt(PC, Kate, Anchor->GetMarkerLocation());
-		Grapple->RefreshTarget();
-		// The grapple's own pick is fine when it lands on the same roof: that is the one a player would take.
-		if (AGrappleAnchor* Picked = Grapple->GetTargetAnchor(); Picked && Picked != Anchor && !Excluded.Contains(Picked)
-			&& BuildingUnder(World, Picked->GetLandingLocation(), Kate) == BuildingUnder(World, Anchor->GetLandingLocation(), Kate)
-			&& Grapple->IsZipClear(Kate->GetActorLocation(), Picked, /*bFromGround=*/true))
-		{
-			PlanAnchor = Picked;
-			Anchor = Picked;
-		}
-		if (Grapple->GetTargetAnchor() == Anchor && Grapple->CanChain() && !Grapple->IsArrowInFlight() && Presses < 3 && Now - SubStart > 0.25)
-		{
-			++Presses;
-			PressAt = Now;
-			Tap(PC, GrapplePath);
-			return false;
-		}
-		if (Now - SubStart > 2.0 || Presses >= 3)
-		{
-			LegNotes.Add(FString::Printf(TEXT("%s never targeted (%d press(es), target %s, blocked %s: %s)"), *Anchor->GetName(), Presses,
-				*GetNameSafe(Grapple->GetTargetAnchor()), *GetNameSafe(Grapple->GetBlockedAnchor()), *Grapple->GetBlockedReason()));
-			Excluded.Add(Anchor);
-			Leg = ELeg::Plan;
-		}
-		return false;
-	}
-
-	case ELeg::Zip:
-		if (Grapple->IsZipping() || Grapple->IsArrowInFlight() || !Kate->GetCharacterMovement()->IsMovingOnGround() || Kate->IsTraversing())
-		{
-			if (Now - SubStart > 12.0)
-			{
-				LegNotes.Add(TEXT("zip or fall did not end in 12 s"));
-				Leg = ELeg::Plan;
-			}
-			return false;
-		}
-		Mark(FString::Printf(TEXT("landed on %s"), *GetNameSafe(BuildingUnder(World, Feet(Kate), Kate))));
-		Leg = ELeg::Plan;
-		return false;
-
-	case ELeg::Descend:
-	{
-		// As the EastVillage lap: crouch at the parapet over the top landing (a drop to hang), crouch to drop, and
-		// at each landing catch its rail on the way down or stand on it and crouch at its rail, to the street.
-		UParkourComponent* Parkour = Kate->GetParkourComponent();
-		const float FeetZ = Feet(Kate).Z;
-		auto Fail = [&](const FString& Why)
-		{
-			StopMoving(PC);
-			LegNotes.Add(TEXT("descent: ") + Why);
-			Mark(FString::Printf(TEXT("%s: the descent stopped: %s"), *LegObjective.ToString(), *Why));
-			Leg = ELeg::Plan;
-			++Hops;
-		};
-		if (Now - DescendStart > 45.0)
-		{
-			Fail(FString::Printf(TEXT("over 45 s (phase %d at %s)"), DescendPhase, *Kate->GetActorLocation().ToCompactString()));
-			return false;
-		}
-		if (DescendPhase == 1)
-		{
-			if (Steer(PC, Kate, DescendStand, false, 40.f) || Now - SubStart > 10.0)
-			{
-				StopMoving(PC);
-				DescendPhase = 2;
-				SubStart = Now;
-				bDescendPushed = false;
-			}
-		}
-		else if (DescendPhase == 2)
-		{
-			Steer(PC, Kate, FVector(DescendStand.X, DescendStand.Y, FeetZ) + DescendOut * 1000.f, false, 1.f);
-			if (Parkour->IsBusy())
-			{
-				StopMoving(PC);
-				DescendRetries = 0;
-				DescendPhase = 3;
-				SubStart = Now;
-			}
-			else if (Now - SubStart > 0.25 && !bDescendPushed)
-			{
-				bDescendPushed = true;
-				Tap(PC, CrouchPath);
-			}
-			else if (Now - SubStart > 1.0)
-			{
-				bDescendPushed = false;
-				SubStart = Now;
-				if (++DescendRetries >= 3)
-				{
-					Fail(FString::Printf(TEXT("crouch at the edge found no drop to hang three times at %s"), *Kate->GetActorLocation().ToCompactString()));
-				}
-			}
-		}
-		else if (DescendPhase == 3)
-		{
-			if (Parkour->IsHanging())
-			{
-				if (Now - SubStart > 0.3)
-				{
-					++DescendHangs;
-					Tap(PC, CrouchPath);
-					DescendPhase = 4;
-					SubStart = Now;
-				}
-			}
-			else if (!Parkour->IsBusy() && Now - SubStart > 2.0)
-			{
-				Fail(FString::Printf(TEXT("the move over the edge did not end in a hang (at %s)"), *Kate->GetActorLocation().ToCompactString()));
-			}
-		}
-		else if (DescendPhase == 4 && Now - SubStart > 0.15)
-		{
-			if (Parkour->IsBusy())
-			{
-				if (Parkour->IsHanging() || Parkour->GetActiveMove() == EHawkeyeParkourMove::LedgeGrab)
-				{
-					++DescendCatches;
-					DescendPhase = 3;
-					SubStart = Now;
-				}
-			}
-			else if (Kate->GetCharacterMovement()->IsMovingOnGround() && Now - SubStart > 0.2)
-			{
-				if (FeetZ - StreetZ > 200.f)
-				{
-					++DescendStops;
-					DescendStand = FVector(Kate->GetActorLocation().X, Kate->GetActorLocation().Y, FeetZ);
-					DescendRetries = 0;
-					bDescendPushed = false;
-					DescendPhase = 2;
-					SubStart = Now;
-				}
-				else
-				{
-					StopMoving(PC);
-					const FString Done = FString::Printf(TEXT("down the %s: %d hang(s), %d catch(es), %d stop(s) on a landing, %.1f s"),
-						*DescendRoute, DescendHangs, DescendCatches, DescendStops, Now - DescendStart);
-					LegNotes.Add(Done);
-					Mark(FString::Printf(TEXT("%s: on the street, %s"), *LegObjective.ToString(), *Done));
-					VisitedRoofs.Reset();
-					Excluded.Reset();
-					Leg = ELeg::Plan;
-				}
-			}
-			else if (Now - SubStart > 5.0)
-			{
-				Fail(FString::Printf(TEXT("still in the air 5 s after a drop (at %s)"), *Kate->GetActorLocation().ToCompactString()));
-			}
-		}
-		return false;
-	}
-
-	case ELeg::Final:
-	{
-		// Along the roof (or the street) to the goal; a trigger completes itself, the arrow needs examining.
-		const bool bArrow = LegObjective == TEXT("find_arrow");
-		if (bArrow)
-		{
-			AChapterEndInteractable* Arrow = FindChapterEnd(World);
-			UInteractionComponent* Interaction = Kate->GetInteractionComponent();
-			if (Arrow && Interaction && IInteractable::Execute_CanInteract(Arrow, Kate))
-			{
-				Interaction->RefreshFocus();
-				if (Interaction->GetFocusedActor() == Arrow || FVector::Dist2D(Kate->GetActorLocation(), Goal) < 120.f)
-				{
-					StopMoving(PC);
-					if (Interaction->GetFocusedActor() != Arrow)
-					{
-						AimAt(PC, Kate, Arrow->GetActorLocation());
-						Interaction->RefreshFocus();
-					}
-					if (Interaction->GetFocusedActor() == Arrow && Now - SubStart > 0.3)
-					{
-						Mark(TEXT("the arrow offers [Examine]; pressing E"));
-						Tap(PC, InteractPath);
-						// Its completion is what ends the leg; give it the frame.
-						SubStart = Now + 1.0;
-					}
-					return false;
-				}
-			}
-		}
-		if (Steer(PC, Kate, Goal, false, bArrow ? 60.f : 80.f))
-		{
-			StopMoving(PC);
-		}
-		if (FVector::Dist2D(Kate->GetActorLocation(), LastProgressSpot) > 60.f)
-		{
-			LastProgressSpot = Kate->GetActorLocation();
-			LastProgressAt = Now;
-		}
-		else if (Now - LastProgressAt > 6.0)
-		{
-			StopMoving(PC);
-			if (bArrow)
-			{
-				AChapterEndInteractable* Arrow = FindChapterEnd(World);
-				Force(FString::Printf(TEXT("stood %.0f cm from the arrow's zone for 6 s without [Examine]; examining directly"),
-					FVector::Dist2D(Kate->GetActorLocation(), Goal)));
-				if (Arrow)
-				{
-					IInteractable::Execute_Interact(Arrow, Kate);
-				}
-			}
-			else
-			{
-				Force(FString::Printf(TEXT("%s: stuck %.0f cm from the trigger; completing it"), *LegObjective.ToString(),
-					FVector::Dist2D(Kate->GetActorLocation(), Goal)));
-				if (UMissionSubsystem* Missions = UMissionSubsystem::Get(World))
-				{
-					Missions->CompleteObjective(LegObjective);
-				}
-			}
-			LastProgressAt = Now + 30.0;
-		}
-		return false;
-	}
-	}
-	return false;
-}
-
-bool FHawkeyeCampaignLapRunner::TickFight(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate)
-{
-	using namespace HawkeyeCampaignLap;
-	const double Now = FPlatformTime::Seconds();
-	UInventoryComponent* Inventory = Kate->GetInventoryComponent();
-	if (!bFightSetUp)
-	{
-		bFightSetUp = true;
-		for (TActorIterator<AThugCharacter> It(World); It; ++It)
-		{
-			if (It->ActorHasTag(FightTag))
-			{
-				Pair.Add(*It);
-			}
-		}
-		BolaBefore = Inventory->GetArrowCount(SlotBola);
-		LastHealth = Kate->GetHealthComponent()->GetCurrentHealth();
-		Mark(FString::Printf(TEXT("fight: %d of the %s, %d bola(s), health %.0f"), Pair.Num(), *FightTag.ToString(), BolaBefore, LastHealth));
-		bBolaLoosed = FightTag != RoofPairTag;
-	}
-	const float Health = Kate->GetHealthComponent()->GetCurrentHealth();
-	if (Health < LastHealth - 0.01f)
-	{
-		++HitsTaken;
-	}
-	LastHealth = Health;
-	bool bAllDown = Pair.Num() > 0;
-	for (const TWeakObjectPtr<AThugCharacter>& Thug : Pair)
-	{
-		bAllDown &= IsDown(Thug.Get());
-	}
-	if (FightTag == RoofPairTag ? IsObjectiveDone(World, TEXT("clear_roof")) : bAllDown)
-	{
-		StopMoving(PC);
-		Hold(PC, FirePath, false);
-		Hold(PC, MeleePath, false);
-		bDrawing = false;
-		bMeleeHeld = false;
-		Mark(FString::Printf(TEXT("%s down (%.1f s): %d arrow(s), bola used %s, %d swing(s), %d parr(ies), %d finisher(s), %d hit(s) taken, health %.0f"),
-			*FightTag.ToString(), InPhase() - FightStartedAt, ArrowsLoosed, Inventory->GetArrowCount(SlotBola) < BolaBefore ? TEXT("yes") : TEXT("no"), Swings, Parries, Finishers,
-			HitsTaken, Health));
-		return true;
-	}
-	if (Kate->IsDowned())
-	{
-		StopMoving(PC);
-		return false;
-	}
-	if (InPhase() - FightStartedAt > 120.0)
-	{
-		StopMoving(PC);
-		Force(FString::Printf(TEXT("the %s fight ran 120 s; downing them"), *FightTag.ToString()));
-		for (const TWeakObjectPtr<AThugCharacter>& Thug : Pair)
-		{
-			if (!IsDown(Thug.Get()))
-			{
-				Thug->GetHealthComponent()->ApplyDamage(100000.f, Kate);
-			}
-		}
-		return false;
-	}
-	AThugCharacter* Target = nullptr;
-	float Distance = BIG_NUMBER;
-	for (const TWeakObjectPtr<AThugCharacter>& Thug : Pair)
-	{
-		if (!IsDown(Thug.Get()))
-		{
-			const float D = FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation());
-			if (D < Distance)
-			{
-				Distance = D;
-				Target = Thug.Get();
-			}
-		}
-	}
-	if (!Target)
-	{
-		// Both down but the objective waits on a limp body: give it a moment.
-		StopMoving(PC);
-		return false;
-	}
-	const FVector Chest = Target->GetActorLocation() + FVector(0.f, 0.f, 30.f);
-	AimAt(PC, Kate, Chest);
-
-	// The bola: slot 4, a full draw at whoever is nearest while there is room, then back to slot 1.
-	if (!bBolaLoosed && BolaBefore > 0)
-	{
-		switch (BolaStage)
-		{
-		case 0:
-			if (Distance > 600.f || InPhase() - FightStartedAt > 4.0)
-			{
-				StopMoving(PC);
-				Tap(PC, Slot4Path);
-				BolaStage = 1;
-				NextActionAt = Now + 0.25;
-			}
-			else if (UEnhancedInputLocalPlayerSubsystem* Input = InputOf(PC))
-			{
-				// Too close for a draw: back off a few steps first, facing him.
-				const FVector Away = (Kate->GetActorLocation() - Target->GetActorLocation()).GetSafeNormal2D();
-				const FVector2D Value = MoveTowards(Away, PC->GetControlRotation().Yaw);
-				if (!bMoveInjecting)
-				{
-					Input->StartContinuousInputInjectionForAction(Action(MovePath), FInputActionValue(Value), {}, {});
-					bMoveInjecting = true;
-				}
-				else
-				{
-					Input->UpdateValueOfContinuousInputInjectionForAction(Action(MovePath), FInputActionValue(Value));
-				}
-			}
-			return false;
-		case 1:
-			// Feet down and free: a draw is refused mid-landing, mid-traversal or staggered.
-			if (Now < NextActionAt || !Kate->GetCharacterMovement()->IsMovingOnGround() || Kate->IsTraversing()
-				|| Kate->IsRecoveringFromLanding() || Kate->IsStaggered() || Kate->IsMeleeAttacking())
-			{
-				return false;
-			}
-			if (Inventory->GetActiveArrowSlot() != SlotBola)
-			{
-				Mark(TEXT("IA_Slot4 did not select the bola; selecting it on the inventory"));
-				Inventory->SelectArrowSlot(SlotBola);
-			}
-			Hold(PC, FirePath, true);
-			DrawStart = Now;
-			BolaStage = 2;
-			return false;
-		case 2:
-			if (Now - DrawStart > 0.25 && !Kate->IsDrawingBow())
-			{
-				// The press did not start a draw (a hit, a stagger): let go and press again.
-				Hold(PC, FirePath, false);
-				BolaStage = 1;
-				NextActionAt = Now + 0.2;
-				if (++BolaTries >= 6)
-				{
-					bBolaLoosed = true;
-					Tap(PC, Slot1Path);
-					Mark(TEXT("the bola never drew in six presses"));
-				}
-				return false;
-			}
-			if (Now - DrawStart < (Distance < 450.f ? 0.45 : 0.85))
-			{
-				return false;
-			}
-			Hold(PC, FirePath, false);
-			++ArrowsLoosed;
-			BolaStage = 3;
-			NextActionAt = Now + 0.3;
-			return false;
-		default:
-			if (Now < NextActionAt)
-			{
-				return false;
-			}
-			Tap(PC, Slot1Path);
-			++BolaTries;
-			bBolaLoosed = Inventory->GetArrowCount(SlotBola) < BolaBefore || BolaTries >= 3;
-			BolaStage = bBolaLoosed ? BolaStage : 0;
-			Mark(FString::Printf(TEXT("bola try %d at %s, %.0f cm; %d left%s"), BolaTries, *Target->GetName(), Distance,
-				Inventory->GetArrowCount(SlotBola), bBolaLoosed ? TEXT("") : TEXT(" (not loosed: again)")));
-			NextActionAt = Now + 0.25;
-			return false;
-		}
-	}
-
-	const bool bBusy = Kate->IsMeleeAttacking() || Kate->IsDodging() || Kate->IsStaggered() || Kate->IsLockedOutByTakedown();
-	if (bMeleeHeld)
-	{
-		if (Now - MeleeHeldSince >= 0.45)
-		{
-			Hold(PC, MeleePath, false);
-			bMeleeHeld = false;
-			NextActionAt = Now + 0.1;
-		}
-		return false;
-	}
-	if (bDrawing)
-	{
-		if (Now - DrawStart >= 0.82 || Distance < 260.f)
-		{
-			Hold(PC, FirePath, false);
-			bDrawing = false;
-			++ArrowsLoosed;
-			NextActionAt = Now + 0.15;
-		}
-		return false;
-	}
-	// A wind-up in front of her: tap melee to parry it.
-	const FVector Forward = FRotator(0.f, PC->GetControlRotation().Yaw, 0.f).Vector();
-	if (Now - LastParryTap > 0.3 && !bBusy && !Kate->IsDrawingBow())
-	{
-		for (TActorIterator<AThugCharacter> It(World); It; ++It)
-		{
-			const EHawkeyeParryKind Kind = UHawkeyeMeleeRules::ClassifyParry(*It);
-			const UMeleeComponent* Melee = It->GetMeleeComponent();
-			if (Kind != EHawkeyeParryKind::None && Melee
-				&& UHawkeyeMeleeRules::IsInFrontWithin(Kate->GetActorLocation(), Forward, It->GetActorLocation(), 240.f, 65.f)
-				&& Melee->GetCurrentAttack().WindupSeconds - Melee->GetPhaseRemaining() >= 0.2f)
-			{
-				StopMoving(PC);
-				Tap(PC, MeleePath);
-				LastParryTap = Now;
-				++Parries;
-				NextActionAt = Now + 0.25;
-				return false;
-			}
-		}
-	}
-	if (Now < NextActionAt || bBusy)
-	{
-		return false;
-	}
-	if (Kate->GetFinisherComponent() && Kate->GetFinisherComponent()->FindTarget())
-	{
-		StopMoving(PC);
-		Tap(PC, TakedownPath);
-		++Finishers;
-		NextActionAt = Now + 0.3;
-		return false;
-	}
-	if (Distance <= 190.f)
-	{
-		StopMoving(PC);
-		const UMeleeComponent* ThugMelee = Target->GetMeleeComponent();
-		if ((ThugMelee && ThugMelee->IsWindingUp()) || Target->IsKnockedDown() || Target->IsStaggered())
-		{
-			Tap(PC, MeleePath);
-			NextActionAt = Now + 0.32;
-		}
-		else
-		{
-			Hold(PC, MeleePath, true);
-			bMeleeHeld = true;
-			MeleeHeldSince = Now;
-		}
-		++Swings;
-		return false;
-	}
-	if (Distance <= 450.f || Target->GetAlertState() != EThugAlertState::Alerted)
-	{
-		// Close in (an unalerted thug has to be walked up to; he will turn).
-		const FVector To = (Target->GetActorLocation() - Kate->GetActorLocation()).GetSafeNormal2D();
-		if (UEnhancedInputLocalPlayerSubsystem* Input = InputOf(PC))
-		{
-			const FVector2D Value = MoveTowards(To, PC->GetControlRotation().Yaw);
-			if (!bMoveInjecting)
-			{
-				Input->StartContinuousInputInjectionForAction(Action(MovePath), FInputActionValue(Value), {}, {});
-				bMoveInjecting = true;
-			}
-			else
-			{
-				Input->UpdateValueOfContinuousInputInjectionForAction(Action(MovePath), FInputActionValue(Value));
-			}
-		}
-		return false;
-	}
-	StopMoving(PC);
-	Hold(PC, FirePath, true);
-	bDrawing = true;
-	DrawStart = Now;
-	return false;
-}
-
-void FHawkeyeCampaignLapRunner::Crouch(APlayerController* PC, AHawkeyeCharacter* Kate, bool bDown)
-{
-	const double Now = FPlatformTime::Seconds();
-	if (Kate->bIsCrouched == bDown || Now - LastCrouchTap < 0.25)
+	if (!Chase || !Chase->IsChaseRunning() || FPlatformTime::Seconds() - LastSample < 1.0)
 	{
 		return;
 	}
-	LastCrouchTap = Now;
-	HawkeyeCampaignLap::Tap(PC, HawkeyeCampaignLap::CrouchPath);
+	LastSample = FPlatformTime::Seconds();
+	if (Chase->GetState() == EChaseState::Running)
+	{
+		MinLead = FMath::Min(MinLead, Chase->GetLead());
+		MaxLead = FMath::Max(MaxLead, Chase->GetLead());
+	}
+	LeadSamples.Add(FString::Printf(TEXT("%.1f s: %s lead %.0f cm (thief %.0f, Kate %.0f of %.0f, speed %.0f, lose clock %.1f%s)"),
+		ChaseActiveSeconds, *UEnum::GetValueAsString(Chase->GetState()), Chase->GetLead(), Chase->GetThiefProgress(),
+		Chase->GetKateProgress(), Chase->GetRouteLength(), Chase->GetThiefSpeed(), Chase->GetLoseClock(),
+		Chase->IsKateOnRoute() ? TEXT("") : TEXT(", Kate off the route")));
 }
 
-bool FHawkeyeCampaignLapRunner::FindCover(UWorld* World, AHawkeyeCharacter* Kate)
+void FHawkeyeCampaignLapRunner::WatchTitle(AHawkeyePlayerController* PC)
 {
-	using namespace HawkeyeCampaignLap;
-	++CoverSearches;
-	const FVector Here = Feet(Kate);
-	AActor* Roof = BuildingUnder(World, Here, Kate);
-	const float Crouched = Kate->GetCharacterMovement()->GetCrouchedHalfHeight();
-	const float Radius = Kate->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	const float HalfHeight = Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	auto Sees = [World, Kate](const AThugCharacter* Archer, const FVector& Point)
+	if (bFallBehind)
 	{
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(CampaignDuelSight), false, Archer);
-		Params.AddIgnoredActor(Kate);
-		return !World->LineTraceTestByChannel(Archer->GetActorLocation() + FVector(0.f, 0.f, 60.f), Point, ECC_Visibility, Params);
-	};
-	float Best = BIG_NUMBER;
-	int32 Spots = 0;
-	for (float X = -1500.f; X <= 1500.f; X += 50.f)
-	{
-		for (float Y = -1500.f; Y <= 1500.f; Y += 50.f)
-		{
-			FVector Ground;
-			AActor* Under = nullptr;
-			if (!GroundAt(World, Here + FVector(X, Y, 0.f), Here.Z + 300.f, Here.Z - 300.f, Kate, Ground, &Under) || Under != Roof
-				|| FMath::Abs(Ground.Z - Here.Z) > 40.f)
-			{
-				continue;
-			}
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(CampaignDuelRoom), false, Kate);
-			if (World->OverlapBlockingTestByChannel(Ground + FVector(0.f, 0.f, HalfHeight + 5.f), FQuat::Identity, ECC_Pawn,
-				FCollisionShape::MakeCapsule(Radius + 5.f, HalfHeight), Params))
-			{
-				continue;
-			}
-			bool bHidden = true;
-			int32 Seen = 0;
-			int32 Living = 0;
-			for (const TWeakObjectPtr<AThugCharacter>& Archer : Pair)
-			{
-				if (IsDown(Archer.Get()))
-				{
-					continue;
-				}
-				++Living;
-				const FVector Low = Ground + FVector(0.f, 0.f, Crouched);
-				bHidden &= !Sees(Archer.Get(), Low) && !Sees(Archer.Get(), Low + FVector(0.f, 0.f, 15.f));
-				FCollisionQueryParams ArrowParams(SCENE_QUERY_STAT(CampaignDuelLine), false, Kate);
-				ArrowParams.AddIgnoredActor(Archer.Get());
-				Seen += World->LineTraceTestByChannel(Ground + FVector(0.f, 0.f, 120.f), Archer->GetActorLocation() + FVector(0.f, 0.f, 55.f),
-					ECC_Visibility, ArrowParams) ? 0 : 1;
-			}
-			if (!bHidden || Seen == 0)
-			{
-				continue;
-			}
-			++Spots;
-			const float Score = FVector::Dist2D(Ground, Here) + (Seen == Living ? 0.f : 600.f);
-			if (Score < Best)
-			{
-				Best = Score;
-				Cover = Ground;
-			}
-		}
+		// The main lap checks the card; a second run in one process has already seen it (a campaign of its own).
+		return;
 	}
-	Mark(FString::Printf(TEXT("duel: %d cover spot(s) on %s; the nearest %.0f cm away"), Spots, *GetNameSafe(Roof),
-		Spots ? FVector::Dist2D(Cover, Here) : -1.f));
-	return Spots > 0;
+	if (!bTitleShot && InPhase() >= 1.0 && PC->IsChapterTitleShowing())
+	{
+		bTitleShot = true;
+		Shot(TEXT("campaign_open.png"));
+	}
+	if (!bTitleChecked && InPhase() >= 1.4)
+	{
+		bTitleChecked = true;
+		const UHawkeyeHudWidget* Hud = PC->GetHawkeyeHud();
+		const UHawkeyeObjectiveWidget* Toasts = Hud ? Hud->GetObjectiveMarker() : nullptr;
+		Expect(TEXT("the title card is up over the running chase"), PC->IsChapterTitleShowing());
+		Expect(TEXT("the first objective's toast waits under the title card"), Toasts && Toasts->AreToastsHeld() && !Toasts->IsToastVisible());
+	}
+	if (bTitleChecked && !bTitleGone && !PC->IsChapterTitleShowing())
+	{
+		bTitleGone = true;
+		Mark(FString::Printf(TEXT("title card gone after %.1f s of the run"), InPhase()));
+	}
+	if (!bTitleGone && InPhase() > 10.0)
+	{
+		bTitleGone = true;
+		Expect(TEXT("the title card goes by itself inside 10 s"), false);
+	}
 }
 
-bool FHawkeyeCampaignLapRunner::TickDuel(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate)
+bool FHawkeyeCampaignLapRunner::TickRun(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseRouteDefinition* Route)
 {
 	using namespace HawkeyeCampaignLap;
-	const double Now = FPlatformTime::Seconds();
-	auto DrawOf = [](const AThugCharacter* Archer)
+	const int32 Stop = StandIndex.IsValidIndex(Grapple) ? StandIndex[Grapple] : Route->Waypoints.Num() - 1;
+	if (Target > Stop)
 	{
-		const UBowComponent* Bow = Archer ? Archer->GetBowComponent() : nullptr;
-		return Bow && Bow->IsDrawing() ? Bow->GetDrawElapsed() : -1.f;
-	};
-	if (Duel == EDuel::SetUp)
+		Target = Stop;
+	}
+	const FChaseWaypoint& Point = Route->Waypoints[Target];
+	// A step up ahead and her stopped against it: the jump key mantles what the sprint did not.
+	const float Speed = Kate->GetVelocity().Size2D();
+	const bool bHigher = Point.Location.Z > Feet(Kate).Z + 60.f;
+	if (bHigher && Speed < 120.f && Kate->GetCharacterMovement()->IsMovingOnGround() && FPlatformTime::Seconds() - JumpAt > 0.8
+		&& FVector::Dist2D(Point.Location, Kate->GetActorLocation()) < 260.f)
 	{
-		Pair.Reset();
-		for (TActorIterator<AThugCharacter> It(World); It; ++It)
-		{
-			if (It->ActorHasTag(ArcherPairTag) && !IsDown(*It))
-			{
-				Pair.Add(*It);
-			}
-		}
-		DuelWorld = World;
-		DuelStart = Now;
-		LastHealth = Kate->GetHealthComponent()->GetCurrentHealth();
-		Kate->GetInventoryComponent()->SelectArrowSlot(SlotStandard);
-		StopMoving(PC);
-		Mark(FString::Printf(TEXT("duel with the ArcherPair (%d up), health %.0f"), Pair.Num(), LastHealth));
-		if (!FindCover(World, Kate))
-		{
-			Force(TEXT("no cover from both archers on the arrow's roof; downing them"));
-			for (const TWeakObjectPtr<AThugCharacter>& Archer : Pair)
-			{
-				if (!IsDown(Archer.Get()))
-				{
-					Archer->GetHealthComponent()->ApplyDamage(100000.f, Kate);
-				}
-			}
-			return true;
-		}
-		Duel = EDuel::Moving;
-		DuelSince = Now;
+		JumpAt = FPlatformTime::Seconds();
+		Tap(PC, JumpPath);
+		Mark(FString::Printf(TEXT("jump: up onto waypoint %d (%.0f cm above her feet)"), Target, Point.Location.Z - Feet(Kate).Z));
+	}
+	const UParkourComponent* Parkour = Kate->GetParkourComponent();
+	const EHawkeyeParkourMove Move = Parkour ? Parkour->GetActiveMove() : EHawkeyeParkourMove::None;
+	if (Move == EHawkeyeParkourMove::Vault && !bVaulted)
+	{
+		bVaulted = true;
+		Mark(TEXT("vault (the sprint took the vent box)"));
+	}
+	if ((Move == EHawkeyeParkourMove::Mantle || Move == EHawkeyeParkourMove::Climb || Move == EHawkeyeParkourMove::LedgeGrab) && !bMantled)
+	{
+		bMantled = true;
+		Mark(FString::Printf(TEXT("mantle (%s)"), *UEnum::GetValueAsString(Move)));
+	}
+	const bool bThere = Steer(PC, Kate, Point.Location + FVector(0.f, 0.f, 90.f), true, Target == Stop ? 60.f : 110.f);
+	if (FVector::Dist2D(Kate->GetActorLocation(), LastProgressSpot) > 60.f)
+	{
+		LastProgressSpot = Kate->GetActorLocation();
+		LastProgressAt = FPlatformTime::Seconds();
+	}
+	else if (FPlatformTime::Seconds() - LastProgressAt > 5.0)
+	{
+		Force(FString::Printf(TEXT("stuck 5 s short of waypoint %d (%s); putting Kate on it"), Target, *UEnum::GetValueAsString(Point.Leg)), true);
+		Kate->TeleportTo(Point.Location + FVector(0.f, 0.f, 95.f), Kate->GetActorRotation());
+		LastProgressAt = FPlatformTime::Seconds();
 		return false;
 	}
-	if (World != DuelWorld.Get())
+	if (!bThere)
 	{
-		// She went down and the last save loaded: the duel starts again from wherever that put her.
-		++DuelLosses;
-		StopMoving(PC);
-		Mark(FString::Printf(TEXT("duel lost (%d); the save reloaded"), DuelLosses));
-		bDrawing = false;
-		Duel = EDuel::SetUp;
+		return false;
+	}
+	if (Target < Stop)
+	{
+		++Target;
+		return false;
+	}
+	if (!StandIndex.IsValidIndex(Grapple))
+	{
 		return true;
 	}
-	const float Health = Kate->GetHealthComponent()->GetCurrentHealth();
-	if (Health < LastHealth - 0.01f)
+	StopMoving(PC);
+	Sub(EStep::Aim);
+	return false;
+}
+
+bool FHawkeyeCampaignLapRunner::TickAim(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseRouteDefinition* Route)
+{
+	using namespace HawkeyeCampaignLap;
+	const FChaseGrapple& Line = Route->Grapples[Grapple];
+	if (InSub() < 0.4 || !Kate->GetCharacterMovement()->IsMovingOnGround() || Kate->GetVelocity().Size2D() > 60.f)
 	{
-		++DuelHits;
+		return false;
 	}
-	LastHealth = Health;
-	int32 Living = 0;
-	for (const TWeakObjectPtr<AThugCharacter>& Archer : Pair)
+	AimAt(PC, Kate, Line.Anchor);
+	UGrappleComponent* Hook = Kate->GetGrappleComponent();
+	AGrappleAnchor* Wanted = AnchorNear(World, Line.Anchor);
+	if (InSub() < 0.8)
 	{
-		Living += IsDown(Archer.Get()) ? 0 : 1;
+		return false;
 	}
-	if (Living == 0)
+	const AGrappleAnchor* Marked = Hook ? Hook->GetTargetAnchor() : nullptr;
+	const bool bReady = Hook && Hook->GetTargetState() == EGrappleTargetState::Ready && Marked;
+	if (Grapple == 0 && !bPromptShot && bReady)
 	{
-		Hold(PC, FirePath, false);
-		Crouch(PC, Kate, false);
-		Mark(FString::Printf(TEXT("ArcherPair down (%.1f s, %d arrow(s), %d hit(s) taken, %d loss(es)), health %.0f"), Now - DuelStart,
-			DuelArrows, DuelHits, DuelLosses, Health));
-		Duel = EDuel::SetUp;
+		bPromptShot = true;
+		Shot(TEXT("campaign_grapple_prompt.png"));
+		CheckClean(TEXT("at the first grapple's stand"));
+		Expect(TEXT("the first grapple's stand completed chase_thief; cross_gap is current"), CurrentObjectiveId(World) == TEXT("cross_gap"));
+		return false;
+	}
+	if (bReady && (Marked == Wanted || !Wanted || FVector::Dist(Marked->GetActorLocation(), Line.Anchor) < 600.f))
+	{
+		if (Marked != Wanted)
+		{
+			Findings.Add(FString::Printf(TEXT("grapple %d: the picker marked %s, not the route's %s (%.0f cm apart); fired at the marked one"),
+				Grapple, *GetNameSafe(Marked), *GetNameSafe(Wanted), FVector::Dist(Marked->GetActorLocation(), Line.Anchor)));
+		}
+		Mark(FString::Printf(TEXT("Q: grapple %d at %s%s"), Grapple, *GetNameSafe(Marked), Line.bBeat ? TEXT(" (the beat's gap)") : TEXT("")));
+		Tap(PC, GrapplePath);
+		++Zips;
+		bChained = bChainTried = false;
+		Sub(EStep::Zip);
+		return false;
+	}
+	if (InSub() > 4.0)
+	{
+		Force(FString::Printf(TEXT("grapple %d: no Ready marker on the route's anchor %s in 4 s (marked %s, state %d); zipping to it"),
+			Grapple, *GetNameSafe(Wanted), *GetNameSafe(Marked), Hook ? static_cast<int32>(Hook->GetTargetState()) : -1));
+		if (Hook && Wanted)
+		{
+			Hook->StartZip(Wanted);
+		}
+		++Zips;
+		Sub(EStep::Zip);
+	}
+	return false;
+}
+
+bool FHawkeyeCampaignLapRunner::TickZip(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseRouteDefinition* Route)
+{
+	using namespace HawkeyeCampaignLap;
+	const FChaseGrapple& Line = Route->Grapples[Grapple];
+	UGrappleComponent* Hook = Kate->GetGrappleComponent();
+	const UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
+	if (Line.bBeat && Chase && Chase->GetState() == EChaseState::Beat)
+	{
+		Mark(TEXT("the beat: the grapple goes wrong"));
+		Sub(EStep::Beat);
+		return false;
+	}
+	const bool bZipping = Hook && (Hook->IsZipping() || Hook->IsArrowInFlight() || Hook->IsHopping());
+	if (Line.IsChain() && Hook && Hook->IsZipping() && !bChained && Hook->GetZipProgress() >= FMath::Max(Line.ChainAt - 0.08f, 0.42f))
+	{
+		bChainTried = true;
+		AimAt(PC, Kate, Line.ChainAnchor);
+		const AGrappleAnchor* Marked = Hook->GetTargetAnchor();
+		if (Hook->GetTargetState() == EGrappleTargetState::Ready && Marked && FVector::Dist(Marked->GetActorLocation(), Line.ChainAnchor) < 600.f)
+		{
+			bChained = true;
+			Mark(FString::Printf(TEXT("Q: chain at %.0f%% of the line to %s"), Hook->GetZipProgress() * 100.f, *GetNameSafe(Marked)));
+			Tap(PC, GrapplePath);
+			return false;
+		}
+	}
+	if (bZipping || InSub() < 0.5)
+	{
+		if (InSub() > 12.0)
+		{
+			Force(FString::Printf(TEXT("grapple %d: still zipping after 12 s; putting Kate on the next waypoint"), Grapple), true);
+			Kate->TeleportTo(Route->Waypoints[FMath::Min(StandIndex[Grapple] + 1, Route->Waypoints.Num() - 1)].Location + FVector(0.f, 0.f, 95.f),
+				Kate->GetActorRotation());
+		}
+		return false;
+	}
+	if (Line.bBeat)
+	{
+		if (InSub() > 2.0)
+		{
+			Expect(TEXT("the beat's grapple starts the dumpster beat"), false);
+			Sub(EStep::Street);
+		}
+		return false;
+	}
+	if (!Kate->GetCharacterMovement()->IsMovingOnGround() || InSub() < 0.8)
+	{
+		return false;
+	}
+	if (Line.IsChain())
+	{
+		Expect(TEXT("the second grapple chains mid-zip"), bChained);
+	}
+	// On, from the waypoint nearest where she landed.
+	int32 Nearest = Target;
+	float NearestDistance = BIG_NUMBER;
+	for (int32 Index = StandIndex[Grapple] + 1; Index < Route->Waypoints.Num(); ++Index)
+	{
+		const float Distance = FVector::Dist(Route->Waypoints[Index].Location, Feet(Kate));
+		if (Distance < NearestDistance)
+		{
+			NearestDistance = Distance;
+			Nearest = Index;
+		}
+	}
+	Mark(FString::Printf(TEXT("landed grapple %d (%s), %.0f cm from waypoint %d; objective %s"), Grapple,
+		Line.IsChain() ? (bChained ? TEXT("chained") : TEXT("no chain")) : TEXT("plain"), NearestDistance, Nearest,
+		*CurrentObjectiveId(World).ToString()));
+	if (Grapple == 0)
+	{
+		Expect(TEXT("landing across completes cross_gap; catch_thief is current"), IsObjectiveDone(World, TEXT("cross_gap"))
+			&& CurrentObjectiveId(World) == TEXT("catch_thief"));
+	}
+	Target = FMath::Min(Nearest + 1, Route->Waypoints.Num() - 1);
+	++Grapple;
+	Sub(EStep::Run);
+	LastProgressAt = FPlatformTime::Seconds();
+	return false;
+}
+
+bool FHawkeyeCampaignLapRunner::TickBeat(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseSubsystem* Chase)
+{
+	using namespace HawkeyeCampaignLap;
+	const int32 Phase4 = Chase->GetBeatPhase();
+	if (Phase4 != BeatPhaseSeen)
+	{
+		BeatPhaseSeen = Phase4;
+		BeatPhaseAt = FPlatformTime::Seconds();
+		Mark(FString::Printf(TEXT("beat phase %d at %.2f s into it"), Phase4, Chase->GetBeatSeconds()));
+	}
+	if (Phase4 == 3 && !bDumpsterShot && FPlatformTime::Seconds() - BeatPhaseAt > 0.25)
+	{
+		bDumpsterShot = true;
+		Shot(TEXT("campaign_dumpster.png"));
+		Expect(TEXT("in the beat, move input is the beat's"), PC->IsMoveInputIgnored());
+		Expect(TEXT("in the beat, look input stays hers"), !PC->IsLookInputIgnored());
+	}
+	if (Chase->GetState() == EChaseState::Beat)
+	{
+		if (InSub() > 8.0)
+		{
+			Expect(TEXT("the beat ends inside 8 s"), false);
+			Sub(EStep::Street);
+		}
+		return false;
+	}
+	Mark(FString::Printf(TEXT("beat over after %.1f s (%s); Kate %.0f cm off the alley floor, lead %.0f cm"), InSub(),
+		Chase->DidBeatPlay() ? TEXT("played through") : TEXT("cut short"), Feet(Kate).Z, Chase->GetLead()));
+	Expect(TEXT("the beat played through in under 4 s of its moves"), Chase->DidBeatPlay() && InSub() < 4.5);
+	Expect(TEXT("move input is hers again after the beat"), !PC->IsMoveInputIgnored());
+	Expect(TEXT("the beat leaves her walking on the ground"), Kate->GetCharacterMovement()->IsMovingOnGround());
+	Sub(EStep::Street);
+	LastPathAt = -10.0;
+	return false;
+}
+
+bool FHawkeyeCampaignLapRunner::TickStreet(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate, const UChaseSubsystem* Chase)
+{
+	using namespace HawkeyeCampaignLap;
+	AThugCharacter* Thief = Chase->GetThief();
+	if (!Thief)
+	{
+		Expect(TEXT("a thief to catch"), false);
 		return true;
 	}
-	if (Now - DuelStart > 120.0 || DuelLosses >= 2)
+	const float Distance = FVector::Dist2D(Thief->GetActorLocation(), Kate->GetActorLocation());
+	if (Chase->GetState() == EChaseState::Cornered && !bCorneredShot && Distance < 1500.f)
 	{
-		Hold(PC, FirePath, false);
-		Force(FString::Printf(TEXT("the archer duel ran %.0f s with %d loss(es); downing them"), Now - DuelStart, DuelLosses));
-		for (const TWeakObjectPtr<AThugCharacter>& Archer : Pair)
-		{
-			if (!IsDown(Archer.Get()))
-			{
-				Archer->GetHealthComponent()->ApplyDamage(100000.f, Kate);
-			}
-		}
-		return false;
-	}
-	if (Kate->IsDowned())
-	{
-		Hold(PC, FirePath, false);
+		bCorneredShot = true;
 		StopMoving(PC);
+		SubStart = FPlatformTime::Seconds();
 		return false;
 	}
-	// The worst draw of an archer who can see her; a draw held after losing her is waited out by the clock.
-	float Danger = -1.f;
-	bool bAnyHold = false;
-	for (const TWeakObjectPtr<AThugCharacter>& Archer : Pair)
+	if (bCorneredShot && InSub() < 0.9)
 	{
-		if (IsDown(Archer.Get()))
+		// Held on him a moment, then the shot, so it is not the camera's swing.
+		AimAt(PC, Kate, Thief->GetActorLocation() + FVector(0.f, 0.f, 40.f));
+		if (InSub() > 0.7 && (Shots.Num() == 0 || Shots.Last() != TEXT("campaign_cornered.png")))
 		{
-			continue;
+			Shot(TEXT("campaign_cornered.png"));
 		}
-		const AThugAIController* Brain = Cast<AThugAIController>(Archer->GetController());
-		if (Brain && Brain->IsHoldingDraw())
-		{
-			bAnyHold = true;
-		}
-		else
-		{
-			Danger = FMath::Max(Danger, DrawOf(Archer.Get()));
-		}
+		return false;
 	}
-	switch (Duel)
+	if (Distance < 700.f)
 	{
-	case EDuel::Moving:
-		Crouch(PC, Kate, false);
-		if (Steer(PC, Kate, Cover, false, 40.f) || Now - DuelSince > 8.0)
+		// Up behind him: his back is to her when he is cornered, and he runs away from her when he is not.
+		const FVector Behind = Thief->GetActorLocation() - Thief->GetActorForwardVector() * 90.f;
+		Steer(PC, Kate, Behind, Distance > 250.f, 40.f);
+		UTakedownComponent* Takedown = Kate->GetTakedownComponent();
+		if (Takedown && Distance < 170.f && Takedown->IsValidTakedownTarget(Thief, Kate->GetActorLocation()) && PressAt < 0.0)
 		{
 			StopMoving(PC);
-			Crouch(PC, Kate, true);
-			Duel = EDuel::Hidden;
-			DuelSince = Now;
+			PressAt = FPlatformTime::Seconds();
+			Mark(FString::Printf(TEXT("F: takedown on the thief (%s, %.0f cm)"), *UEnum::GetValueAsString(Chase->GetState()), Distance));
+			Tap(PC, TakedownPath);
 		}
-		return false;
-	case EDuel::Hidden:
-		Crouch(PC, Kate, true);
-		if (Now - DuelSince > 0.5 && Kate->bIsCrouched && Danger < 0.25f && (!bAnyHold || Now - DuelSince >= 1.5))
+		if (PressAt > 0.0 && FPlatformTime::Seconds() - PressAt > 1.5 && Chase->GetState() != EChaseState::Caught && Chase->IsChaseRunning())
 		{
-			Crouch(PC, Kate, false);
-			Duel = EDuel::Rising;
-			DuelSince = Now;
-		}
-		else if (Now - DuelSince > 6.0 && CoverSearches < 6)
-		{
-			// Waited out a long hold, or an archer moved: look for cover again.
-			if (FindCover(World, Kate))
-			{
-				Duel = EDuel::Moving;
-			}
-			DuelSince = Now;
-		}
-		return false;
-	case EDuel::Rising:
-	{
-		if (Now - DuelSince < 0.25)
-		{
-			return false;
-		}
-		// The weakest she can see from her bow hand: his chest if it shows over his parapet, else his head.
-		const FVector Hand = Feet(Kate) + FVector(0.f, 0.f, 120.f);
-		AThugCharacter* Pick = nullptr;
-		for (const TWeakObjectPtr<AThugCharacter>& Archer : Pair)
-		{
-			if (IsDown(Archer.Get()))
-			{
-				continue;
-			}
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(CampaignDuelShot), false, Kate);
-			Params.AddIgnoredActor(Archer.Get());
-			for (const float Try : { 30.f, 55.f, 70.f })
-			{
-				if (!World->LineTraceTestByChannel(Hand, Archer->GetActorLocation() + FVector(0.f, 0.f, Try), ECC_Visibility, Params))
-				{
-					if (!Pick || Archer->GetHealthComponent()->GetCurrentHealth() < Pick->GetHealthComponent()->GetCurrentHealth())
-					{
-						Pick = Archer.Get();
-						DuelAimHeight = Try;
-					}
-					break;
-				}
-			}
-		}
-		if (!Pick)
-		{
-			Crouch(PC, Kate, true);
-			Duel = EDuel::Hidden;
-			DuelSince = Now - 4.0;
-			return false;
-		}
-		DuelTarget = Pick;
-		AimAt(PC, Kate, Pick->GetActorLocation() + FVector(0.f, 0.f, 55.f));
-		Hold(PC, FirePath, true);
-		DrawStart = Now;
-		Duel = EDuel::Drawing;
-		return false;
-	}
-	case EDuel::Drawing:
-	{
-		AThugCharacter* Target = DuelTarget.Get();
-		UBowComponent* Bow = Kate->GetBowComponent();
-		if (Target && !IsDown(Target) && Bow)
-		{
-			// Where the arrow meets him, dropping over the flight; the reticle override is the ArcherDuel lap's own
-			// (the camera sits behind and above her, so its trace would meet her parapet first).
-			const FVector Aim = AThugAIController::ComputeLeadAimPoint(Bow->GetArrowSpawnLocation(),
-				Target->GetActorLocation() + FVector(0.f, 0.f, DuelAimHeight), Target->GetVelocity(), 6000.f, World->GetGravityZ());
-			Bow->SetAimOverride(Aim);
-			AimAt(PC, Kate, Aim);
-		}
-		const bool bFull = Now - DrawStart >= 0.85;
-		const bool bThreat = Danger >= 0.9f && Now - DrawStart < 0.82;
-		if (bFull || bThreat || !Target || IsDown(Target))
-		{
-			Hold(PC, FirePath, false);
-			if (Bow)
-			{
-				Bow->ClearAimOverride();
-			}
-			DuelArrows += bFull ? 1 : 0;
-			Crouch(PC, Kate, true);
-			Duel = EDuel::Hidden;
-			DuelSince = Now;
+			PressAt = -1.0;
+			Findings.Add(TEXT("a takedown press did not take the thief; tried again"));
 		}
 		return false;
 	}
+	if (FPlatformTime::Seconds() - LastPathAt > 1.5)
+	{
+		LastPathAt = FPlatformTime::Seconds();
+		const UNavigationPath* NavPath = UNavigationSystemV1::FindPathToLocationSynchronously(World, Kate->GetActorLocation(),
+			Thief->GetActorLocation(), Kate);
+		Path = NavPath && NavPath->IsValid() ? NavPath->PathPoints : TArray<FVector>{ Thief->GetActorLocation() };
+		PathIndex = Path.Num() > 1 ? 1 : 0;
+	}
+	if (Path.IsValidIndex(PathIndex) && Steer(PC, Kate, Path[PathIndex], true, 120.f))
+	{
+		++PathIndex;
+	}
+	if (InSub() > 90.0)
+	{
+		Force(TEXT("not at the thief 90 s after the beat; putting Kate behind him"), true);
+		Kate->TeleportTo(Thief->GetActorLocation() - Thief->GetActorForwardVector() * 120.f, Thief->GetActorRotation());
+		SubStart = FPlatformTime::Seconds();
+	}
+	return false;
+}
+
+bool FHawkeyeCampaignLapRunner::TickChase(UWorld* World, AHawkeyePlayerController* PC, AHawkeyeCharacter* Kate)
+{
+	using namespace HawkeyeCampaignLap;
+	UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
+	const UChaseRouteDefinition* Route = Chase ? Chase->GetRoute() : nullptr;
+	if (!Chase || !Route)
+	{
+		Expect(TEXT("a chase with a route"), false);
+		return true;
+	}
+	SampleLead(Chase);
+	if (Chase->GetState() == EChaseState::Lost)
+	{
+		Expect(TEXT("the scripted player keeps the thief"), false);
+		return true;
+	}
+	if (ChaseStep == EStep::Caught || Chase->GetState() == EChaseState::Caught)
+	{
+		if (ChaseStep != EStep::Caught)
+		{
+			ChaseSeconds = ChaseActiveSeconds;
+			Mark(FString::Printf(TEXT("caught after %.1f s of chase; lead %.0f to %.0f cm"), ChaseSeconds, MinLead, MaxLead));
+			StopMoving(PC);
+			Sub(EStep::Caught);
+		}
+		return !Chase->IsChaseRunning();
+	}
+	if (!bThiefShot && Grapple == 1 && ChaseStep == EStep::Run && InSub() > 0.3 && Chase->GetThief())
+	{
+		// Turn to him and hold it a moment, so the shot is not the camera's swing.
+		StopMoving(PC);
+		AimAt(PC, Kate, Chase->GetThief()->GetActorLocation() + FVector(0.f, 0.f, 60.f));
+		if (InSub() < 0.9)
+		{
+			return false;
+		}
+		bThiefShot = true;
+		Shot(TEXT("campaign_thief_roof.png"));
+		Mark(FString::Printf(TEXT("the thief %.0f cm ahead along the route, on %s"), Chase->GetLead(),
+			Chase->GetThief()->GetActorLocation().Z > 800.f ? TEXT("a roof") : TEXT("the street")));
+		return false;
+	}
+	if (bThiefShot && !bQuitDone && Grapple == 1 && Phase == EPhase::Chase)
+	{
+		// Held still for the quit that follows (Phase Chase does it), so the snapshot is of a standing Kate.
+		return false;
+	}
+	switch (ChaseStep)
+	{
+	case EStep::Run:
+		return TickRun(World, PC, Kate, Route);
+	case EStep::Aim:
+		return TickAim(World, PC, Kate, Route);
+	case EStep::Zip:
+		return TickZip(World, PC, Kate, Route);
+	case EStep::Beat:
+		return TickBeat(World, PC, Kate, Chase);
+	case EStep::Street:
+		return TickStreet(World, PC, Kate, Chase);
 	default:
 		return false;
 	}
-}
-
-
-FString FHawkeyeCampaignLapRunner::CurrentBeat(UWorld* World) const
-{
-	using namespace HawkeyeCampaignLap;
-	if (IsSceneWorld(World))
-	{
-		return TEXT("Scene");
-	}
-	const AHawkeyePlayerController* PC = FindController(World);
-	if (!PC)
-	{
-		return FString();
-	}
-	if (PC->IsCloseUpActive())
-	{
-		return TEXT("CloseUp");
-	}
-	const UMissionFlowController* Flow = PC->GetMissionFlow();
-	if (Flow && Flow->GetStep() == EMissionFlowStep::EndCard)
-	{
-		return TEXT("EndCard");
-	}
-	if (PC->IsFlashbackActive())
-	{
-		return TEXT("Flashback");
-	}
-	if (Flow && Flow->GetStep() == EMissionFlowStep::PlayableScene)
-	{
-		return TEXT("ToScene");
-	}
-	return FString();
 }
 
 bool FHawkeyeCampaignLapRunner::WorldSettled(UWorld* World, const UWorld* NotThis, float MinSeconds) const
@@ -2392,12 +1384,15 @@ void FHawkeyeCampaignLapRunner::Finish(UWorld* World)
 		}
 		return FString::Join(Out, TEXT(",\n"));
 	};
-	const FString Json = FString::Printf(TEXT("{\n  \"test\": \"Hawkeye.Lap.Campaign\",\n  \"seconds\": %.1f,\n  \"check_failures\": %d,\n"
-		"  \"timeline\": [\n%s\n  ],\n  \"forced\": [\n%s\n  ],\n  \"findings\": [\n%s\n  ],\n  \"hawkeye_warnings\": [\n%s\n  ],\n"
-		"  \"checks\": [\n%s\n  ],\n  \"shots\": [\n%s\n  ]\n}\n"),
-		Clock(), CheckFailures, *Quote(Timeline), *Quote(Forced), *Quote(Findings), *Quote(Warnings), *Quote(Checks), *Quote(Shots));
-	WriteText(TEXT("campaign_lap.json"), Json);
-	Test->AddInfo(TEXT("campaign_lap.json:\n") + Json);
+	const FString Name = bFallBehind ? TEXT("Hawkeye.Lap.ChaseFallBehind") : TEXT("Hawkeye.Lap.Campaign");
+	const FString Json = FString::Printf(TEXT("{\n  \"test\": \"%s\",\n  \"seconds\": %.1f,\n  \"check_failures\": %d,\n"
+		"  \"chase_seconds\": %.1f,\n  \"lead_min_cm\": %.0f,\n  \"lead_max_cm\": %.0f,\n"
+		"  \"timeline\": [\n%s\n  ],\n  \"lead\": [\n%s\n  ],\n  \"forced\": [\n%s\n  ],\n  \"findings\": [\n%s\n  ],\n"
+		"  \"hawkeye_warnings\": [\n%s\n  ],\n  \"checks\": [\n%s\n  ],\n  \"shots\": [\n%s\n  ]\n}\n"),
+		*Name, Clock(), CheckFailures, ChaseSeconds, MinLead < BIG_NUMBER ? MinLead : 0.f, MaxLead, *Quote(Timeline), *Quote(LeadSamples),
+		*Quote(Forced), *Quote(Findings), *Quote(Warnings), *Quote(Checks), *Quote(Shots));
+	WriteText(bFallBehind ? TEXT("campaign_fall_behind.json") : TEXT("campaign_lap.json"), Json);
+	Test->AddInfo(TEXT("campaign lap json:\n") + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] campaign lap:\n%s"), *Json);
 	for (const FString& Warning : Warnings)
 	{
@@ -2461,6 +1456,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 		{
 			const UHawkeyeMainMenuWidget* Menu = PC->GetMainMenuWidget();
 			const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(World);
+			const UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
 			Mark(TEXT("main menu up over the district"));
 			Expect(TEXT("no save in the lap's slot"), Save && !Save->HasSave() && Save->GetSlotName() == Slot);
 			Expect(TEXT("Continue greyed with no save"), Menu && !Menu->IsContinueEnabled());
@@ -2468,7 +1464,11 @@ bool FHawkeyeCampaignLapRunner::Update()
 			Expect(TEXT("the cursor is up for the menu"), PC->bShowMouseCursor);
 			Expect(TEXT("no HUD under the menu"), !PC->GetHawkeyeHud() || !PC->GetHawkeyeHud()->IsVisible());
 			Expect(TEXT("no title card before New Game"), !PC->IsChapterTitleShowing());
-			Shot(TEXT("campaign_menu.png"));
+			Expect(TEXT("no chase before New Game"), Chase && !Chase->IsChaseRunning());
+			if (!bFallBehind)
+			{
+				Shot(TEXT("campaign_menu.png"));
+			}
 			Enter(EPhase::NewGame);
 		}
 		return false;
@@ -2505,88 +1505,74 @@ bool FHawkeyeCampaignLapRunner::Update()
 			NextStep();
 			return false;
 		}
-		if (InStep() < 0.3)
-		{
-			return false;
-		}
 		{
 			const UHawkeyeSettingsSubsystem* Settings = UHawkeyeSettingsSubsystem::Get(World);
 			const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(World);
+			const UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
+			const UChaseRouteDefinition* Route = Chase ? Chase->GetRoute() : nullptr;
 			Expect(TEXT("Normal is the difficulty"), Settings && Settings->GetDifficulty() == EHawkeyeDifficulty::Normal);
 			Expect(TEXT("the menu and the prompt are gone"), !PC->IsMainMenuOpen() && !PC->IsDifficultyPromptOpen());
 			Expect(TEXT("New Game wrote the first save"), Save && Save->HasSave());
-			Expect(TEXT("the title card is up"), PC->IsChapterTitleShowing());
-			Expect(TEXT("the current objective is reach_roof"), CurrentObjectiveId(World) == TEXT("reach_roof"));
-			Mark(TEXT("playing: title card up"));
-			Enter(EPhase::Title);
+			Expect(TEXT("the current objective is chase_thief"), CurrentObjectiveId(World) == TEXT("chase_thief"));
+			Expect(TEXT("the chase is running from the first frame"), Chase && Chase->GetState() == EChaseState::Running && Route);
+			Expect(TEXT("no partner on screen: no HUD partner line"), !PC->FindPartnerController());
+			Expect(TEXT("the switch is refused"), !PC->IsSwitchingAllowed());
+			if (Route && Kate)
+			{
+				const float FromStart = FVector::Dist(Feet(Kate), Route->PlayerStart);
+				Expect(FString::Printf(TEXT("Kate is on the route's start (%.0f cm off)"), FromStart), FromStart < 400.f);
+				Expect(FString::Printf(TEXT("Kate opens at a run (%.0f cm/s)"), Kate->GetVelocity().Size2D()), Kate->GetVelocity().Size2D() > 400.f);
+				Mark(FString::Printf(TEXT("playing: mid-chase on %s, the thief %.0f cm ahead"), *Route->GetName(), Chase->GetLead()));
+				PlanChase(Route);
+			}
+			ChaseStartedAt = FPlatformTime::Seconds();
+			LastProgressAt = ChaseStartedAt;
+			Enter(bFallBehind ? EPhase::FallBehind : EPhase::Chase);
+			Sub(EStep::Run);
 		}
 		return false;
 
-	case EPhase::Title:
-		if (Step == 0 && InPhase() >= 1.4)
-		{
-			Shot(TEXT("campaign_title.png"));
-			CheckClean(TEXT("under the title card"), { UChapterTitleWidget::StaticClass() });
-			const UHawkeyeHudWidget* Hud = PC->GetHawkeyeHud();
-			const UHawkeyeObjectiveWidget* Toasts = Hud ? Hud->GetObjectiveMarker() : nullptr;
-			Expect(TEXT("the first objective's toast waits under the title card"),
-				Toasts && Toasts->AreToastsHeld() && Toasts->IsToastQueued() && !Toasts->IsToastVisible());
-			NextStep();
-			return false;
-		}
-		if (PC->IsChapterTitleShowing())
-		{
-			if (InPhase() > 10.0)
-			{
-				Expect(TEXT("the title card goes by itself inside 10 s"), false);
-				Enter(EPhase::PhoneWait);
-			}
-			return false;
-		}
-		if (Step <= 1)
-		{
-			Mark(FString::Printf(TEXT("title card gone after %.1f s"), InPhase()));
-			NextStep();
-			return false;
-		}
-		// The HUD releases the held toast on its next tick; read it a moment later, while it is up.
-		if (InStep() < 0.4)
+	case EPhase::Chase:
+		if (!Kate || !PC)
 		{
 			return false;
 		}
+		ChaseActiveSeconds += UGameplayStatics::IsGamePaused(World) ? 0.f : World->GetDeltaSeconds();
+		WatchTitle(PC);
+		// The quit in the middle: once she has landed the first grapple, the thief's shot taken.
+		if (!bQuitDone && Grapple == 1 && ChaseStep == EStep::Run && bThiefShot && InSub() > 1.4)
 		{
-			const UHawkeyeHudWidget* Hud = PC->GetHawkeyeHud();
-			const UHawkeyeObjectiveWidget* Toasts = Hud ? Hud->GetObjectiveMarker() : nullptr;
-			const bool bToastAfter = Toasts && Toasts->IsToastVisible();
-			Expect(TEXT("the held toast plays once the card is gone"), bToastAfter);
-			if (bToastAfter)
-			{
-				Mark(FString::Printf(TEXT("toast after the card: %s %s"), *Toasts->GetToastHeading().ToString(),
-					*Toasts->GetToastTitle().ToString()));
-				Shot(TEXT("campaign_title_toast.png"));
-			}
+			bQuitDone = true;
+			StopMoving(PC);
+			Mark(TEXT("Esc: pause mid-chase"));
+			PressKey(PC, EKeys::Escape);
+			Enter(EPhase::QuitMenu);
+			return false;
 		}
-		Enter(EPhase::PhoneWait);
+		if (TickChase(World, PC, Kate))
+		{
+			StopMoving(PC);
+			Enter(EPhase::ChapterEnd);
+		}
 		return false;
 
-	case EPhase::PhoneWait:
-	{
-		const UPhoneSubsystem* Phone = UPhoneSubsystem::Get(World);
-		const int32 Arrived = Phone && Phone->GetInbox() ? Phone->GetInbox()->GetArrivedCount() : 0;
-		if (Arrived == 0)
-		{
-			if (InPhase() > 20.0)
-			{
-				Expect(TEXT("the first text arrives within 20 s of the title"), false);
-				Enter(EPhase::ReachRoof);
-				BeginLeg(World, TEXT("reach_roof"));
-			}
-			return false;
-		}
+	case EPhase::QuitMenu:
 		if (Step == 0)
 		{
-			const UHawkeyeHudWidget* Hud = PC->GetHawkeyeHud();
-			Mark(FString::Printf(TEXT("first text arrived (%d unread, badge %d)"), Phone->GetUnreadCount(), Hud ? Hud->GetPhoneBadgeCount() : -1));
+			if (InPhase() < 0.6)
+			{
+				return false;
+			}
+			if (!PC->IsPauseMenuOpen())
+			{
+				Findings.Add(TEXT("Esc (simulated key) did not open the pause menu; opened through the controller"));
+				PC->TogglePause();
+			}
+			Expect(TEXT("the pause menu is open"), PC->IsPauseMenuOpen());
+			BeforeQuit = TakeSnapshot(World);
+			SavesAtQuit = UHawkeyeSaveSubsystem::Get(World) ? UHawkeyeSaveSubsystem::Get(World)->GetSaveCount() : 0;
+			Mark(FString::Printf(TEXT("Quit to menu mid-chase (thief %.0f, Kate %.0f along)"), BeforeQuit.ThiefProgress, BeforeQuit.KateProgress));
+			PC->QuitToMenu();
 			NextStep();
 			return false;
 		}
@@ -2594,8 +1580,129 @@ bool FHawkeyeCampaignLapRunner::Update()
 		{
 			return false;
 		}
-		CheckClean(TEXT("the text arrived"));
-		Mark(TEXT("P: opening the phone"));
+		{
+			const UHawkeyeMainMenuWidget* Menu = PC->GetMainMenuWidget();
+			Expect(TEXT("the main menu is up after Quit to menu"), PC->IsMainMenuOpen() && !PC->IsPauseMenuOpen());
+			Expect(TEXT("Continue is on"), Menu && Menu->IsContinueEnabled());
+			Expect(TEXT("the world is paused under the menu"), UGameplayStatics::IsGamePaused(World));
+			Mark(FString::Printf(TEXT("menu up (saves this session %d at the quit, %d now); Continue"), SavesAtQuit,
+				UHawkeyeSaveSubsystem::Get(World)->GetSaveCount()));
+			DistrictWorld = World;
+			PC->MainMenuContinue();
+			Enter(EPhase::Continue);
+		}
+		return false;
+
+	case EPhase::Continue:
+		if (!WorldSettled(World, DistrictWorld.Get(), 0.5f))
+		{
+			if (InPhase() > 60.0)
+			{
+				Expect(TEXT("Continue loads the district inside 60 s"), false);
+				Finish(World);
+				return true;
+			}
+			return false;
+		}
+		{
+			const HawkeyeCampaignLap::FSnapshot After = TakeSnapshot(World);
+			const TArray<FString> Diff = Compare(BeforeQuit, After);
+			Mark(FString::Printf(TEXT("Continue: district back after %.1f s; objective %s, %d difference(s)%s"), InPhase(),
+				*After.Objective.ToString(), Diff.Num(), Diff.Num() ? *(TEXT(": ") + FString::Join(Diff, TEXT("; "))) : TEXT("")));
+			for (const FString& Line : Diff)
+			{
+				Expect(TEXT("Continue brings back what was there at the quit: ") + Line, false);
+			}
+			Expect(TEXT("no title card after Continue"), !PC->IsChapterTitleShowing());
+			Expect(TEXT("still no partner after Continue"), !PC->FindPartnerController());
+		}
+		Enter(EPhase::AfterContinue);
+		return false;
+
+	case EPhase::AfterContinue:
+		if (InPhase() < 0.5)
+		{
+			return false;
+		}
+		CheckClean(TEXT("after Continue mid-chase"), {}, true, true);
+		Enter(EPhase::Chase);
+		bTitleGone = bTitleChecked = bTitleShot = true;
+		Sub(EStep::Run);
+		LastProgressAt = FPlatformTime::Seconds();
+		return false;
+
+	case EPhase::ChapterEnd:
+	{
+		const UMissionFlowController* Flow = PC ? PC->GetMissionFlow() : nullptr;
+		const bool bCard = Flow && Flow->GetStep() == EMissionFlowStep::EndCard;
+		if (bCard)
+		{
+			if (EndCardSeenAt < 0.0)
+			{
+				EndCardSeenAt = FPlatformTime::Seconds();
+				bEndCardSeen = true;
+				Mark(TEXT("end card"));
+			}
+			if (!bEndCardShot && FPlatformTime::Seconds() - EndCardSeenAt > 1.2)
+			{
+				bEndCardShot = true;
+				Shot(TEXT("campaign_endcard.png"));
+			}
+			return false;
+		}
+		if (!bEndCardSeen)
+		{
+			if (InPhase() > 20.0)
+			{
+				Expect(TEXT("the catch ends the chapter on the end card inside 20 s"), false);
+				Enter(EPhase::PhoneWait);
+			}
+			return false;
+		}
+		if (Flow && Flow->IsRunning())
+		{
+			return false;
+		}
+		if (Step == 0)
+		{
+			const UHawkeyeObjectiveWidget* Toasts = PC->GetHawkeyeHud() ? PC->GetHawkeyeHud()->GetObjectiveMarker() : nullptr;
+			Expect(TEXT("back on the street with the chapter-complete toast"), Toasts && Toasts->IsToastVisible()
+				&& Toasts->GetToastHeading().ToString() == TEXT("[Chapter complete]"));
+			Expect(TEXT("every objective is complete"), CurrentObjectiveId(World).IsNone());
+			Expect(TEXT("no flashback, no scene: the street"), !PC->IsFlashbackActive() && UHawkeyeSaveSubsystem::Get(World)
+				&& !UHawkeyeSaveSubsystem::Get(World)->IsInPlayableScene());
+			Mark(TEXT("back on the street after the end card"));
+			NextStep();
+			return false;
+		}
+		if (InStep() < 1.0)
+		{
+			return false;
+		}
+		Shot(TEXT("campaign_street.png"));
+		Enter(EPhase::PhoneWait);
+		return false;
+	}
+
+	case EPhase::PhoneWait:
+	{
+		const UPhoneSubsystem* Phone = UPhoneSubsystem::Get(World);
+		const int32 Unread = Phone ? Phone->GetUnreadCount() : 0;
+		if (Unread < 3)
+		{
+			if (InPhase() > 45.0)
+			{
+				Expect(FString::Printf(TEXT("Clint's and the landlord's texts arrive within 45 s of the street (%d unread)"), Unread), false);
+				Enter(EPhase::Systems);
+			}
+			return false;
+		}
+		if (InPhase() < 3.0)
+		{
+			return false;
+		}
+		CheckClean(TEXT("the texts arrived"), {}, true, true);
+		Mark(FString::Printf(TEXT("%d unread texts; P: opening the phone"), Unread));
 		PressKey(PC, EKeys::P);
 		Enter(EPhase::PhoneOpen);
 		return false;
@@ -2609,7 +1716,6 @@ bool FHawkeyeCampaignLapRunner::Update()
 		if (!PC->IsPhoneOpen())
 		{
 			Findings.Add(TEXT("P did not open the phone from a simulated key; opened through the controller"));
-			Mark(TEXT("P did nothing; TogglePhone"));
 			PC->TogglePhone();
 			PhaseStart = FPlatformTime::Seconds();
 			return false;
@@ -2618,6 +1724,10 @@ bool FHawkeyeCampaignLapRunner::Update()
 			const UPhoneWidget* Phone = PC->GetPhoneWidget();
 			Expect(TEXT("the phone shows a thread"), Phone && Phone->GetThreadLength() > 0);
 			Expect(TEXT("the game is paused under the phone"), UGameplayStatics::IsGamePaused(World));
+			const UPhoneSubsystem* Phones = UPhoneSubsystem::Get(World);
+			const TArray<FString> Contacts = Phones && Phones->GetInbox() ? Phones->GetInbox()->GetContacts() : TArray<FString>();
+			Mark(FString::Printf(TEXT("phone contacts: %s"), *FString::Join(Contacts, TEXT(", "))));
+			Expect(TEXT("Kate's replies sit in the threads they answer, not under her own name"), !Contacts.Contains(TEXT("Kate")));
 			Shot(TEXT("campaign_phone.png"));
 			Enter(EPhase::PhoneClose);
 		}
@@ -2646,323 +1756,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 			StepAt = FPlatformTime::Seconds();
 			return false;
 		}
-		{
-			const UPhoneSubsystem* Phone = UPhoneSubsystem::Get(World);
-			Expect(TEXT("the text is read"), Phone && Phone->GetUnreadCount() == 0);
-			CheckClean(TEXT("phone closed"));
-			Enter(EPhase::ReachRoof);
-			BeginLeg(World, TEXT("reach_roof"));
-		}
-		return false;
-
-	case EPhase::ReachRoof:
-	case EPhase::CrossBlock:
-		if (!Kate)
-		{
-			return false;
-		}
-		if (TickLeg(World, PC, Kate))
-		{
-			if (Phase == EPhase::ReachRoof)
-			{
-				Enter(EPhase::CrossBlock);
-				BeginLeg(World, TEXT("cross_block"));
-			}
-			else
-			{
-				Enter(EPhase::ClearRoof);
-			}
-		}
-		return false;
-
-	case EPhase::ClearRoof:
-		if (Kate && TickFight(World, PC, Kate))
-		{
-			Enter(EPhase::Calm);
-		}
-		return false;
-
-	case EPhase::ArcherFight:
-		if (Kate && TickDuel(World, PC, Kate))
-		{
-			// Back to the arrow from wherever the fight left her.
-			Enter(EPhase::FindArrow);
-			const double Started = LegStart;
-			BeginLeg(World, TEXT("find_arrow"));
-			LegStart = Started;
-		}
-		return false;
-
-	case EPhase::Calm:
-		// The fight over and her health back: then the quit.
-		if (InPhase() < 3.0 || (Kate && Kate->GetHealthComponent()->GetHealthPercent() < 0.999f && InPhase() < 20.0))
-		{
-			return false;
-		}
-		CheckClean(TEXT("after the roof fight"));
-		Mark(TEXT("Esc: pause"));
-		PressKey(PC, EKeys::Escape);
-		Enter(EPhase::QuitMenu);
-		return false;
-
-	case EPhase::QuitMenu:
-		if (Step == 0)
-		{
-			if (InPhase() < 0.6)
-			{
-				return false;
-			}
-			if (!PC->IsPauseMenuOpen())
-			{
-				Findings.Add(TEXT("Esc (simulated key) did not open the pause menu; opened through the controller"));
-				PC->TogglePause();
-			}
-			Expect(TEXT("the pause menu is open"), PC->IsPauseMenuOpen());
-			BeforeQuit = TakeSnapshot(World);
-			SavesAtQuit = UHawkeyeSaveSubsystem::Get(World) ? UHawkeyeSaveSubsystem::Get(World)->GetSaveCount() : 0;
-			Mark(TEXT("Quit to menu"));
-			PC->QuitToMenu();
-			NextStep();
-			return false;
-		}
-		if (InStep() < 1.5)
-		{
-			return false;
-		}
-		{
-			const UHawkeyeMainMenuWidget* Menu = PC->GetMainMenuWidget();
-			Expect(TEXT("the main menu is up after Quit to menu"), PC->IsMainMenuOpen() && !PC->IsPauseMenuOpen());
-			Expect(TEXT("Continue is on"), Menu && Menu->IsContinueEnabled());
-			Expect(TEXT("the world is paused under the menu"), UGameplayStatics::IsGamePaused(World));
-			Mark(FString::Printf(TEXT("menu up (saves this session %d at the quit, %d now); Continue"), SavesAtQuit,
-				UHawkeyeSaveSubsystem::Get(World)->GetSaveCount()));
-			DistrictWorld = World;
-			PC->MainMenuContinue();
-			Enter(EPhase::Continue);
-		}
-		return false;
-
-	case EPhase::Continue:
-		if (!WorldSettled(World, DistrictWorld.Get(), 1.f))
-		{
-			if (InPhase() > 60.0)
-			{
-				Expect(TEXT("Continue loads the district inside 60 s"), false);
-				Finish(World);
-				return true;
-			}
-			return false;
-		}
-		Mark(FString::Printf(TEXT("Continue: district back after %.1f s"), InPhase()));
-		Enter(EPhase::AfterContinue);
-		return false;
-
-	case EPhase::AfterContinue:
-		if (InPhase() < 2.0)
-		{
-			return false;
-		}
-		{
-			const HawkeyeCampaignLap::FSnapshot After = TakeSnapshot(World);
-			const TArray<FString> Diff = Compare(BeforeQuit, After);
-			Mark(FString::Printf(TEXT("after Continue: objective %s, %d difference(s)%s"), *After.Objective.ToString(), Diff.Num(),
-				Diff.Num() ? *(TEXT(": ") + FString::Join(Diff, TEXT("; "))) : TEXT("")));
-			for (const FString& Line : Diff)
-			{
-				Expect(TEXT("Continue brings back what was there at the quit: ") + Line, false);
-			}
-			Expect(TEXT("no title card after Continue"), !PC->IsChapterTitleShowing());
-			CheckClean(TEXT("after Continue"), {}, true, true);
-			Enter(EPhase::FindArrow);
-			BeginLeg(World, TEXT("find_arrow"));
-		}
-		return false;
-
-	case EPhase::FindArrow:
-		if (!Kate)
-		{
-			return false;
-		}
-		// The ArcherPair guards the arrow: a player within 35 m of either (or seen by one) takes them on first.
-		if (Leg == ELeg::Final && Kate->GetCharacterMovement()->IsMovingOnGround())
-		{
-			for (TActorIterator<AThugCharacter> It(World); It; ++It)
-			{
-				if (It->ActorHasTag(ArcherPairTag) && !IsDown(*It) && (It->IsAlerted()
-					|| FVector::Dist(It->GetActorLocation(), Kate->GetActorLocation()) < 3500.f))
-				{
-					StopMoving(PC);
-					Mark(FString::Printf(TEXT("the ArcherPair: %s %s, %.0f m; fighting them"), *It->GetName(),
-						It->IsAlerted() ? TEXT("alerted") : TEXT("calm"), FVector::Dist(It->GetActorLocation(), Kate->GetActorLocation()) / 100.f));
-					FightTag = ArcherPairTag;
-					FightStartedAt = 0.0;
-					bFightSetUp = false;
-					Pair.Reset();
-					Duel = EDuel::SetUp;
-					Enter(EPhase::ArcherFight);
-					return false;
-				}
-			}
-		}
-		if (TickLeg(World, PC, Kate))
-		{
-			DistrictWorld = World;
-			Beats.Reset();
-			NoteBeat(TEXT("Interact"));
-			Enter(EPhase::ChapterEnd);
-		}
-		return false;
-
-	case EPhase::ChapterEnd:
-	{
-		NoteBeat(CurrentBeat(World));
-		const FString Beat = CurrentBeat(World);
-		if (Beat == TEXT("EndCard"))
-		{
-			if (EndCardSeenAt < 0.0)
-			{
-				EndCardSeenAt = FPlatformTime::Seconds();
-			}
-			if (!bEndCardShot && FPlatformTime::Seconds() - EndCardSeenAt > 1.2)
-			{
-				bEndCardShot = true;
-				Shot(TEXT("campaign_endcard.png"));
-			}
-		}
-		for (TObjectIterator<UFlashbackWidget> It; It; ++It)
-		{
-			if (It->GetWorld() == World && It->IsPlaying() && It->GetSequencer())
-			{
-				const int32 Slide = It->GetSequencer()->GetCurrentSlideIndex();
-				if (Slide != LastSlide)
-				{
-					LastSlide = Slide;
-					SlideSeenAt = FPlatformTime::Seconds();
-					SlideTimes.Add(FString::Printf(TEXT("slide %d at %.1f s"), Slide, Clock()));
-					Mark(FString::Printf(TEXT("flashback slide %d"), Slide));
-				}
-				if (!bSlideShot && Slide == 1 && FPlatformTime::Seconds() - SlideSeenAt > 0.8)
-				{
-					bSlideShot = true;
-					Shot(TEXT("campaign_flashback.png"));
-				}
-			}
-		}
-		if (IsSceneWorld(World) && Kate)
-		{
-			Enter(EPhase::Scene);
-			return false;
-		}
-		if (InPhase() > 90.0)
-		{
-			Expect(TEXT("the chapter end reaches the playable scene inside 90 s"), false);
-			Finish(World);
-			return true;
-		}
-		return false;
-	}
-
-	case EPhase::Scene:
-		if (!WorldSettled(World, DistrictWorld.Get(), 1.f) || InPhase() < 1.5)
-		{
-			if (InPhase() > 30.0)
-			{
-				Expect(TEXT("the scene settles inside 30 s"), false);
-				Enter(EPhase::SceneWalk);
-			}
-			return false;
-		}
-		if (Step == 0)
-		{
-			const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(World);
-			const UMissionSubsystem* Missions = UMissionSubsystem::Get(World);
-			Expect(TEXT("in the scene, saves are refused"), Save && Save->IsInPlayableScene());
-			Expect(TEXT("the scene runs its own mission"), Missions && Missions->GetCurrentMission()
-				&& Missions->GetCurrentMission()->GetName() == TEXT("DA_Scene_Placeholder"));
-			Mark(FString::Printf(TEXT("in the scene (beats %s; slides: %s)"), *FString::Join(Beats, TEXT(" -> ")), *FString::Join(SlideTimes, TEXT(", "))));
-			CheckClean(TEXT("in the scene room"));
-			PC->SetControlRotation(FRotator(-6.f, Kate->GetActorRotation().Yaw, 0.f));
-			NextStep();
-			return false;
-		}
-		if (InStep() < 1.0)
-		{
-			return false;
-		}
-		Shot(TEXT("campaign_scene.png"));
-		Enter(EPhase::SceneWalk);
-		return false;
-
-	case EPhase::SceneWalk:
-	{
-		if (InPhase() < 0.5)
-		{
-			return false;
-		}
-		if (!IsSceneWorld(World))
-		{
-			StopMoving(PC);
-			Mark(TEXT("left the scene"));
-			Enter(EPhase::Return);
-			return false;
-		}
-		TActorIterator<AObjectiveTriggerVolume> Volume(World);
-		if (!Kate || !Volume)
-		{
-			return false;
-		}
-		Steer(PC, Kate, Volume->GetActorLocation(), false, 20.f);
-		if (InPhase() > 20.0 && Step == 0)
-		{
-			NextStep();
-			StopMoving(PC);
-			Force(TEXT("did not walk into the scene's trigger in 20 s; putting Kate in it"));
-			Kate->TeleportTo(Volume->GetActorLocation(), Kate->GetActorRotation());
-		}
-		return false;
-	}
-
-	case EPhase::Return:
-		if (!WorldSettled(World, DistrictWorld.Get(), 0.5f) || IsSceneWorld(World))
-		{
-			if (InPhase() > 60.0)
-			{
-				Expect(TEXT("the district comes back from the scene inside 60 s"), false);
-				Finish(World);
-				return true;
-			}
-			return false;
-		}
-		if (Step == 0)
-		{
-			const UHawkeyeObjectiveWidget* Toasts = PC->GetHawkeyeHud() ? PC->GetHawkeyeHud()->GetObjectiveMarker() : nullptr;
-			const bool bToast = Toasts && Toasts->IsToastVisible() && Toasts->GetToastHeading().ToString() == TEXT("[Chapter complete]");
-			if (bToast)
-			{
-				NoteBeat(TEXT("Toast"));
-			}
-			Expect(TEXT("the chapter end runs Interact, close-up, end card, flashback, scene, toast"),
-				FString::Join(Beats, TEXT(" -> ")) == TEXT("Interact -> CloseUp -> EndCard -> Flashback -> ToScene -> Scene -> Toast"));
-			Expect(TEXT("every objective is complete in the district"), CurrentObjectiveId(World).IsNone());
-			Mark(FString::Printf(TEXT("back on the street (%s)"), *FString::Join(Beats, TEXT(" -> "))));
-			NextStep();
-			return false;
-		}
-		if (Step == 1)
-		{
-			if (InStep() < 1.0)
-			{
-				return false;
-			}
-			Shot(TEXT("campaign_street.png"));
-			NextStep();
-			return false;
-		}
-		if (InStep() < 4.0)
-		{
-			return false;
-		}
-		CheckClean(TEXT("back from the scene"), {}, true, false);
+		CheckClean(TEXT("phone closed"));
 		Enter(EPhase::Systems);
 		return false;
 
@@ -2972,8 +1766,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 		case 0:
 		{
 			UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(World);
-			Expect(TEXT("the scene is over (no scene flag)"), Save && !Save->IsInPlayableScene() && !Save->GetSceneReturn().bInScene);
-			Expect(TEXT("a save works after the return"), Save && Save->SaveCampaign(TEXT("campaign lap: after the return")));
+			Expect(TEXT("a save works on the street after the chapter"), Save && Save->SaveCampaign(TEXT("campaign lap: after the chapter")));
 			const UHawkeyeMusicSubsystem* Music = UHawkeyeMusicSubsystem::Get(World);
 			Expect(TEXT("the score is on and roaming"), Music && !Music->IsScorePaused() && Music->GetState() == EHawkeyeMusicState::Roam);
 			Expect(TEXT("hints may run"), UHawkeyeHintSubsystem::IsRunAllowed());
@@ -2992,7 +1785,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 				Findings.Add(TEXT("M (simulated key) did not open the map; opened through the controller"));
 				PC->SetMapOpen(true);
 			}
-			Expect(TEXT("the map opens after the return"), PC->IsMapOpen());
+			Expect(TEXT("the map opens after the chapter"), PC->IsMapOpen());
 			PC->SetMapOpen(false);
 			NextStep();
 			return false;
@@ -3006,7 +1799,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 			UChallengeSubsystem* Challenges = UChallengeSubsystem::Get(World);
 			AChallengeStart* Start = Challenges ? Challenges->FindNearestStart(Kate->GetActorLocation()) : nullptr;
 			const bool bStarted = Start && Challenges->StartChallenge(Start, Kate);
-			Expect(TEXT("a challenge starts after the return"), bStarted && Challenges->IsRunning());
+			Expect(TEXT("a challenge starts after the chapter"), bStarted && Challenges->IsRunning());
 			Mark(FString::Printf(TEXT("challenge %s started (test shortcut: started from here, not walked to)"), *GetNameSafe(Start)));
 			NextStep();
 			return false;
@@ -3017,8 +1810,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 			{
 				return false;
 			}
-			UChallengeSubsystem* Challenges = UChallengeSubsystem::Get(World);
-			if (Challenges)
+			if (UChallengeSubsystem* Challenges = UChallengeSubsystem::Get(World))
 			{
 				Challenges->AbortChallenge();
 			}
@@ -3041,7 +1833,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 				Save->DiscoverSafehouse(FirstSafehouse);
 				Save->DiscoverSafehouse(SecondSafehouse);
 				Mark(TEXT("fast travel to [Safehouse 1] (test shortcut: both marked found)"));
-				Expect(TEXT("fast travel starts after the return"), PC->FastTravelTo(FirstSafehouse));
+				Expect(TEXT("fast travel starts after the chapter"), PC->FastTravelTo(FirstSafehouse));
 			}
 			NextStep();
 			return false;
@@ -3173,7 +1965,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 			NextStep();
 			return false;
 		}
-		// Walk in and stand there; when down, a key gives up (with Clint coming, wait him out and go down again).
+		// Walk in and stand there; when down, a key gives up (no partner in Act 1: no revive is coming).
 		if (!Kate->IsDowned() && Kate->GetHealthComponent()->IsAlive())
 		{
 			if (Path.IsValidIndex(PathIndex) && Steer(PC, Kate, Path[PathIndex], false, 150.f))
@@ -3197,7 +1989,8 @@ bool FHawkeyeCampaignLapRunner::Update()
 		if (Kate->IsDowned() && Step == 2)
 		{
 			++DownCount;
-			Mark(FString::Printf(TEXT("down (%s)"), Kate->IsReviveExpected() ? TEXT("Clint is coming") : TEXT("no revive coming")));
+			Mark(FString::Printf(TEXT("down (%s)"), Kate->IsReviveExpected() ? TEXT("a revive is coming") : TEXT("no revive coming")));
+			Expect(TEXT("no partner revive in Act 1"), !Kate->IsReviveExpected());
 			NextStep();
 			return false;
 		}
@@ -3225,13 +2018,6 @@ bool FHawkeyeCampaignLapRunner::Update()
 				Expect(TEXT("dying reloads the last save inside 45 s"), false);
 				Enter(EPhase::FinalQuit);
 			}
-			// Revived by Clint before the key: back to the crime to go down again.
-			if (Kate && World == DistrictWorld.Get() && !Kate->IsDowned() && Kate->GetHealthComponent()->IsAlive() && InPhase() > 3.0)
-			{
-				Mark(TEXT("revived; going down again"));
-				Enter(EPhase::Crime);
-				Step = 2;
-			}
 			return false;
 		}
 		if (InPhase() < 3.0)
@@ -3241,19 +2027,18 @@ bool FHawkeyeCampaignLapRunner::Update()
 		{
 			const UCrimeSubsystem* Crimes = UCrimeSubsystem::Get(World);
 			const UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(World);
-			const USafehouseSubsystem* Safehouses = USafehouseSubsystem::Get(World);
-			const ASafehouse* Door = Safehouses ? Safehouses->FindSafehouse(FirstSafehouse) : nullptr;
+			const UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
 			int32 CrimeThugs = 0;
 			for (TActorIterator<AThugCharacter> It(World); It; ++It)
 			{
 				CrimeThugs += It->ActorHasTag(UCrimeSubsystem::CrimeThugTag) ? 1 : 0;
 			}
-			Mark(FString::Printf(TEXT("reloaded after %.1f s: health %.0f, %.0f m from [Safehouse 1], %d crime thug(s), crime %s"), InPhase(),
-				Kate->GetHealthComponent()->GetCurrentHealth(), Door ? FVector::Dist(Kate->GetActorLocation(), Door->GetActorLocation()) / 100.f : -1.f,
-				CrimeThugs, Crimes && Crimes->IsCrimeActive() ? TEXT("on") : TEXT("off")));
+			Mark(FString::Printf(TEXT("reloaded after %.1f s: health %.0f, %d crime thug(s), crime %s"), InPhase(),
+				Kate->GetHealthComponent()->GetCurrentHealth(), CrimeThugs, Crimes && Crimes->IsCrimeActive() ? TEXT("on") : TEXT("off")));
 			Expect(TEXT("no crime running after the reload"), Crimes && !Crimes->IsCrimeActive() && CrimeThugs == 0);
 			Expect(TEXT("full health after the reload"), Kate->GetHealthComponent()->GetHealthPercent() > 0.99f);
 			Expect(TEXT("the chapter is still complete after the reload"), CurrentObjectiveId(World).IsNone());
+			Expect(TEXT("no chase after the chapter's reload"), Chase && !Chase->IsChaseRunning());
 			Expect(TEXT("not in a scene after the reload"), Save && !Save->IsInPlayableScene());
 			CheckClean(TEXT("after the death reload"), {}, true, false);
 			if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(TEXT("hawkeye.CrimeType")))
@@ -3286,7 +2071,7 @@ bool FHawkeyeCampaignLapRunner::Update()
 				PC->TogglePause();
 			}
 			BeforeQuit = TakeSnapshot(World);
-			Mark(TEXT("Esc > Quit to menu after the chapter end"));
+			Mark(TEXT("Esc > Quit to menu after the chapter"));
 			PC->QuitToMenu();
 			NextStep();
 			return false;
@@ -3327,12 +2112,102 @@ bool FHawkeyeCampaignLapRunner::Update()
 				Expect(TEXT("the second Continue brings back what was there: ") + Line, false);
 			}
 			Expect(TEXT("the chapter is still complete"), CurrentObjectiveId(World).IsNone());
-			Expect(TEXT("the chapter-end arrow does not offer itself again"), !FindChapterEnd(World)
+			Expect(TEXT("the old chapter's arrow does not offer itself"), !FindChapterEnd(World)
 				|| !IInteractable::Execute_CanInteract(FindChapterEnd(World), Kate));
 			Expect(TEXT("no title card, end card or flashback after the second Continue"), !PC->IsChapterTitleShowing()
 				&& !PC->IsFlashbackActive() && !(PC->GetMissionFlow() && PC->GetMissionFlow()->IsRunning()));
 			CheckClean(TEXT("after the second Continue"), {}, true, false);
 			Mark(TEXT("done"));
+			Finish(World);
+			Enter(EPhase::Done);
+		}
+		return false;
+
+	case EPhase::FallBehind:
+	{
+		// The new tester who stops to look at the view: no input at all until the chase is lost.
+		UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
+		if (!Chase || !PC)
+		{
+			return false;
+		}
+		ChaseActiveSeconds += UGameplayStatics::IsGamePaused(World) ? 0.f : World->GetDeltaSeconds();
+		WatchTitle(PC);
+		SampleLead(Chase);
+		if (LostAt < 0.0 && Chase->GetState() == EChaseState::Lost)
+		{
+			LostAt = FPlatformTime::Seconds();
+			ChaseSeconds = ChaseActiveSeconds;
+			const UHawkeyeObjectiveWidget* Toasts = PC->GetHawkeyeHud() ? PC->GetHawkeyeHud()->GetObjectiveMarker() : nullptr;
+			const FString Heading = Toasts && Toasts->IsToastQueued() ? Toasts->GetToastHeading().ToString() : FString();
+			bLostToastSeen = Heading == TEXT("[He got away]");
+			Mark(FString::Printf(TEXT("lost after %.1f s of chase standing still (lead %.0f to %.0f cm); toast \"%s\""), ChaseSeconds, MinLead,
+				MaxLead, *Heading));
+			Expect(TEXT("the thief goes with the loss"), !Chase->GetThief());
+			DistrictWorld = World;
+			Shot(TEXT("campaign_lost.png"));
+			Enter(EPhase::Reloaded);
+			return false;
+		}
+		if (InPhase() > 40.0)
+		{
+			Expect(TEXT("standing still loses the chase inside 40 s"), false);
+			Finish(World);
+			return true;
+		}
+		return false;
+	}
+
+	case EPhase::Reloaded:
+		if (World == DistrictWorld.Get() && PC && !bLostToastSeen)
+		{
+			// Another notice may be in front for a moment: the loss's toast is looked for until the reload.
+			const UHawkeyeObjectiveWidget* Toasts = PC->GetHawkeyeHud() ? PC->GetHawkeyeHud()->GetObjectiveMarker() : nullptr;
+			bLostToastSeen = Toasts && Toasts->IsToastQueued() && Toasts->GetToastHeading().ToString() == TEXT("[He got away]");
+		}
+		if (!WorldSettled(World, DistrictWorld.Get(), 0.5f))
+		{
+			if (InPhase() > 60.0)
+			{
+				Expect(TEXT("the checkpoint reloads inside 60 s of the loss"), false);
+				Finish(World);
+				return true;
+			}
+			return false;
+		}
+		if (Step == 0)
+		{
+			const UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
+			const UChaseRouteDefinition* Route = Chase ? Chase->GetRoute() : nullptr;
+			Mark(FString::Printf(TEXT("checkpoint loaded %.1f s after the loss"), FPlatformTime::Seconds() - LostAt));
+			Expect(TEXT("losing him says so before the reload: \"[He got away]\""), bLostToastSeen);
+			Expect(TEXT("the chase picks up again from the checkpoint"), Chase && Chase->GetState() == EChaseState::Running && Chase->GetThief());
+			Expect(TEXT("the objective is chase_thief again"), CurrentObjectiveId(World) == TEXT("chase_thief"));
+			if (Chase && Route && Kate)
+			{
+				const float FromStart = FVector::Dist(Feet(Kate), Route->PlayerStart);
+				Mark(FString::Printf(TEXT("after the reload: Kate %.0f cm from the start, thief %.0f along (Kate %.0f), lose clock %.1f"), FromStart,
+					Chase->GetThiefProgress(), Chase->GetKateProgress(), Chase->GetLoseClock()));
+				Expect(TEXT("Kate is back where the new game's save had her (the chase's start)"), FromStart < 400.f);
+				Expect(TEXT("the thief is no further ahead than a load allows"),
+					Chase->GetThiefProgress() <= Chase->GetKateProgress() + Route->Tuning.RestoreMaxLead + 1.f);
+				Expect(TEXT("the lose clock is back to 0"), Chase->GetLoseClock() < 0.5f);
+				Goal = FVector(Chase->GetThiefProgress(), 0.f, 0.f);
+			}
+			CheckClean(TEXT("after the chase's checkpoint reload"), {}, true, true);
+			Expect(TEXT("no partner after the reload"), !PC->FindPartnerController());
+			Shot(TEXT("campaign_lost_reload.png"));
+			NextStep();
+			return false;
+		}
+		if (InStep() < 3.0)
+		{
+			return false;
+		}
+		{
+			const UChaseSubsystem* Chase = UChaseSubsystem::Get(World);
+			Expect(TEXT("the thief runs on after the reload"), Chase && Chase->GetThiefProgress() > Goal.X + 300.f);
+			Mark(FString::Printf(TEXT("3 s on: thief %.0f along"), Chase ? Chase->GetThiefProgress() : -1.f));
 			Finish(World);
 			Enter(EPhase::Done);
 		}
@@ -3344,12 +2219,12 @@ bool FHawkeyeCampaignLapRunner::Update()
 	return false;
 }
 
-bool FHawkeyeLapCampaign::RunTest(const FString& Parameters)
+static bool HawkeyeStartCampaignLap(FAutomationTestBase* Test, bool bFallBehind)
 {
 	using namespace HawkeyeCampaignLap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the campaign lap. Run it from the standalone game (-game, no -nullrhi)."));
+		Test->AddInfo(TEXT("No RHI: skipping the campaign lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	UWorld* World = FindWorld();
@@ -3357,10 +2232,10 @@ bool FHawkeyeLapCampaign::RunTest(const FString& Parameters)
 	UHawkeyeSettingsSubsystem* Settings = UHawkeyeSettingsSubsystem::Get(World);
 	if (!Save || !Settings)
 	{
-		AddError(TEXT("Campaign: no save or settings subsystem (run it in the standalone game)."));
+		Test->AddError(TEXT("Campaign: no save or settings subsystem (run it in the standalone game)."));
 		return true;
 	}
-	const TSharedRef<FHawkeyeCampaignLapRunner> Runner = MakeShared<FHawkeyeCampaignLapRunner>(this);
+	const TSharedRef<FHawkeyeCampaignLapRunner> Runner = MakeShared<FHawkeyeCampaignLapRunner>(Test, bFallBehind);
 	Runner->SettingsBefore = Settings->GetSettings();
 	Runner->bHaveSettings = true;
 	auto ReadCVar = [](const TCHAR* Name)
@@ -3382,8 +2257,18 @@ bool FHawkeyeLapCampaign::RunTest(const FString& Parameters)
 	Save->RearmBootMenu();
 	AHawkeyePlayerController::bAutomationPlaysAsPlayer = true;
 	FAutomationTestFramework::Get().EnqueueLatentCommand(Runner);
-	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(Test));
 	return true;
+}
+
+bool FHawkeyeLapCampaign::RunTest(const FString& Parameters)
+{
+	return HawkeyeStartCampaignLap(this, /*bFallBehind=*/false);
+}
+
+bool FHawkeyeLapCampaignFallBehind::RunTest(const FString& Parameters)
+{
+	return HawkeyeStartCampaignLap(this, /*bFallBehind=*/true);
 }
 
 #endif
