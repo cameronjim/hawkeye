@@ -145,7 +145,7 @@ namespace HawkeyeCombatReadability
 			{
 				return false;
 			}
-			OutWindupSeconds = Brain->Burst.TelegraphSeconds;
+			OutWindupSeconds = Brain->Burst.GetTelegraphSeconds();
 		}
 		else
 		{

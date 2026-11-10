@@ -70,8 +70,11 @@ struct HAWKEYE_API FHawkeyeBurstClock
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Burst", meta = (ClampMin = "0.01"))
 	float ShotIntervalSeconds = 0.25f;
 
-	/** Begins the telegraph. Ignored while a burst is running. */
-	void Start()
+	/**
+	 * Begins the telegraph, lasting TelegraphSeconds or MinTelegraphSeconds if longer (a burst granted from off
+	 * her screen). Ignored while a burst is running.
+	 */
+	void Start(float MinTelegraphSeconds = 0.f)
 	{
 		if (bActive)
 		{
@@ -80,6 +83,7 @@ struct HAWKEYE_API FHawkeyeBurstClock
 		bActive = true;
 		Elapsed = 0.f;
 		ShotsFired = 0;
+		ActiveTelegraphSeconds = FMath::Max(TelegraphSeconds, MinTelegraphSeconds);
 	}
 
 	/** Drops the burst where it is (a hit, a duck into cover). */
@@ -99,9 +103,9 @@ struct HAWKEYE_API FHawkeyeBurstClock
 		}
 		Elapsed += FMath::Max(DeltaSeconds, 0.f);
 		int32 Due = 0;
-		if (Elapsed >= TelegraphSeconds)
+		if (Elapsed >= ActiveTelegraphSeconds)
 		{
-			Due = FMath::Min(ShotsPerBurst, 1 + FMath::FloorToInt((Elapsed - TelegraphSeconds) / ShotIntervalSeconds));
+			Due = FMath::Min(ShotsPerBurst, 1 + FMath::FloorToInt((Elapsed - ActiveTelegraphSeconds) / ShotIntervalSeconds));
 		}
 		const int32 New = FMath::Max(Due - ShotsFired, 0);
 		ShotsFired = Due;
@@ -114,8 +118,10 @@ struct HAWKEYE_API FHawkeyeBurstClock
 	}
 
 	bool IsActive() const { return bActive; }
-	bool IsTelegraphing() const { return bActive && Elapsed < TelegraphSeconds; }
-	bool IsFiring() const { return bActive && Elapsed >= TelegraphSeconds; }
+	bool IsTelegraphing() const { return bActive && Elapsed < ActiveTelegraphSeconds; }
+	bool IsFiring() const { return bActive && Elapsed >= ActiveTelegraphSeconds; }
+	/** The running burst's telegraph, seconds (TelegraphSeconds unless Start was given a longer one). */
+	float GetTelegraphSeconds() const { return bActive ? ActiveTelegraphSeconds : TelegraphSeconds; }
 	int32 GetShotsFired() const { return ShotsFired; }
 	int32 GetBurstsCompleted() const { return BurstsCompleted; }
 	float GetElapsed() const { return Elapsed; }
@@ -123,6 +129,7 @@ struct HAWKEYE_API FHawkeyeBurstClock
 private:
 	bool bActive = false;
 	float Elapsed = 0.f;
+	float ActiveTelegraphSeconds = 0.f;
 	int32 ShotsFired = 0;
 	int32 BurstsCompleted = 0;
 };
