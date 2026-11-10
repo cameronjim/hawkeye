@@ -394,8 +394,8 @@ bool FHawkeyeJumpHeight::RunTest(const FString& Parameters)
 }
 
 /**
- * hawkeye.DebugMovement on a ledge: the line reads the hang, the shimmy at the speed she really moves (the capsule
- * is placed by hand, so its velocity is 0 and the gait reads idle), and each traversal move by name.
+ * hawkeye.DebugMovement on a ledge: the line reads the hang (not the gait, which reads idle there), the shimmy at the
+ * speed she really moves, and each traversal move by name.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeMovementDebugReadsTheHang, "Hawkeye.Movement.DebugLineReadsTheHang",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -450,7 +450,7 @@ bool FHawkeyeMovementDebugReadsTheHang::RunTest(const FString& Parameters)
 	}
 	for (float Time = 0.f; Time < 1.5f && Parkour->IsPerformingMove(); Time += Step)
 	{
-		Parkour->AdvanceMove(Step);
+		Kate->TestTickMovement(Step);
 		static_cast<AActor*>(Kate)->Tick(Step);
 	}
 	if (!TestTrue(TEXT("Hanging"), Parkour->IsHanging()))
@@ -470,6 +470,7 @@ bool FHawkeyeMovementDebugReadsTheHang::RunTest(const FString& Parameters)
 	{
 		Parkour->SetHangInput(FVector(0.f, 1.f, 0.f));
 		Parkour->AdvanceHang(Step);
+		Kate->TestTickMovement(Step);
 		static_cast<AActor*>(Kate)->Tick(Step);
 	}
 	const FString Shimmy = Kate->GetMovementDebugText();
@@ -477,7 +478,9 @@ bool FHawkeyeMovementDebugReadsTheHang::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Shimmying it says so"), Shimmy.StartsWith(TEXT("hang shimmy  ")));
 	const int32 SpeedAt = FString(TEXT("hang shimmy  ")).Len();
 	const float Speed = FCString::Atof(*Shimmy.Mid(SpeedAt));
-	TestEqual(TEXT("at the shimmy's speed, 120 cm/s (not the velocity's 0)"), Speed, Parkour->ShimmySpeed, 12.f);
+	TestEqual(TEXT("at the shimmy's speed, 120 cm/s"), Speed, Parkour->ShimmySpeed, 12.f);
+	TestEqual(TEXT("which the movement's velocity now reads too"), static_cast<float>(Kate->GetVelocity().Size()),
+		Parkour->ShimmySpeed, 1.f);
 	return true;
 }
 

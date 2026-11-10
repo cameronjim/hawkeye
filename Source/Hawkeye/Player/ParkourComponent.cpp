@@ -2,7 +2,6 @@
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
-#include "Animation/AnimSequenceBase.h"
 #include "Hawkeye.h"
 #include "Audio/HawkeyeAudioSubsystem.h"
 #include "CollisionQueryParams.h"
@@ -11,24 +10,37 @@
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/Controller.h"
 #include "Misc/Paths.h"
+#include "MotionWarpingComponent.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Player/GaspTraversal.h"
 
 namespace HawkeyeParkour
 {
 	static const TCHAR* TraversalAnims = TEXT("/Game/Characters/UEFN_Mannequin/Animations/Traversal/");
 
-	static FHawkeyeParkourClip MakeClip(const TCHAR* RelativePath, float StartTime, float EndTime)
+	static FHawkeyeParkourClip MakeClip(const TCHAR* RelativePath, float StartTime, float EndTime, float MaxHeight = 0.f)
 	{
 		FHawkeyeParkourClip Clip;
 		const FString Package = FString(TraversalAnims) + RelativePath;
-		Clip.Sequence = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(Package + TEXT(".") + FPaths::GetBaseFilename(Package)));
+		Clip.Montage = TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(Package + TEXT(".") + FPaths::GetBaseFilename(Package)));
 		Clip.StartTime = StartTime;
 		Clip.EndTime = EndTime;
+		Clip.MaxHeight = MaxHeight;
 		return Clip;
 	}
+
+	/** The sample's warp target names, as its traversal montages' motion-warping windows ask for them. */
+	static const FName FrontLedge(TEXT("FrontLedge"));
+	static const FName BackLedge(TEXT("BackLedge"));
+	static const FName BackFloor(TEXT("BackFloor"));
+
+	/** A path move is handed over as this many even steps; the corner's quarter turn needs no more. */
+	static constexpr int32 PathSteps = 24;
+	/** A clip blends out over this once a move ends. */
+	static constexpr float ClipBlendOut = 0.2f;
 
 	/** Heights the front face is probed at, above the feet. The lowest skips kerbs and steps. */
 	static constexpr float FaceProbeLowest = 35.f;
@@ -79,20 +91,53 @@ UParkourComponent::UParkourComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 
-	// The Game Animation Sample's clips (copied by import_gasp.py). Times from the root motion:
-	// the hurdle clears 1 m between 0.1 and 1.0 s, the mantle rises 1 m and steps on between 0.3 and
-	// 1.4 s, and the 2.5 m climb has both hands on the edge at 0.75 s and stands on top by 2.1 s.
-	VaultClip = HawkeyeParkour::MakeClip(TEXT("Hurdle/M_Neutral_Traversal_Hurdle_1_0_stand_F_V2_Lfoot"), 0.1f, 1.0f);
-	MantleClip = HawkeyeParkour::MakeClip(TEXT("Mantle/M_Neutral_Traversal_Mantle_1_0_stand_F_Lfoot"), 0.3f, 1.4f);
-	GrabClip = HawkeyeParkour::MakeClip(TEXT("Climb/M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.3f, 0.75f);
-	CatchClip = HawkeyeParkour::MakeClip(TEXT("Climb/M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.65f, 0.75f);
-	ClimbClip = HawkeyeParkour::MakeClip(TEXT("Climb/M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.75f, 2.1f);
+	// The Game Animation Sample's montages (copied by import_gasp.py), each from the start of its first
+	// motion-warping window to before its blend-out window. The hurdle puts the hands on FrontLedge by 0.4 s,
+	// clears BackLedge by 0.6 and lands on BackFloor by 0.83; the 1 m mantle has its hands on FrontLedge at
+	// 0.7 s and stands by 1.4; the 2.5 m climb has its hands on the edge at 0.73 s and stands by 1.85.
+	using HawkeyeParkour::MakeClip;
+	VaultClip = MakeClip(TEXT("Hurdle/AM_M_Neutral_Traversal_Hurdle_1_0_stand_F_V2_Lfoot"), 0.08f, 1.0f);
+	MantleClips = {
+		MakeClip(TEXT("Mantle/AM_M_Neutral_Traversal_Mantle_1_0_stand_F_Lfoot"), 0.14f, 1.4f, 150.f),
+		MakeClip(TEXT("Climb/AM_M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.4f, 1.85f),
+	};
+	GrabClip = MakeClip(TEXT("Climb/AM_M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.3f, 0.75f);
+	CatchClip = MakeClip(TEXT("Climb/AM_M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.65f, 0.75f);
+	ClimbClip = MakeClip(TEXT("Climb/AM_M_Neutral_Traversal_Climb_Start_2_5_stand_F_Lfoot"), 0.75f, 1.85f);
 }
 
 void UParkourComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	SampleTraversal = HawkeyeGaspTraversal::FindTraversalLogic(GetOwner());
+	// The rules for a frame (a shimmy's next point, a move's start) are in before the movement runs it.
+	if (UCharacterMovementComponent* Movement = GetMovement())
+	{
+		Movement->AddTickPrerequisiteComponent(this);
+	}
+	// Only a character with an AnimBP plays them; one with none (a test's) never waits on a load.
+	const ACharacter* Character = GetCharacter();
+	if (!Character || !Character->GetMesh() || !Character->GetMesh()->GetAnimInstance())
+	{
+		return;
+	}
+	TArray<const FHawkeyeParkourClip*> Clips = { &VaultClip, &GrabClip, &CatchClip, &ClimbClip };
+	for (const FHawkeyeParkourClip& Clip : MantleClips)
+	{
+		Clips.Add(&Clip);
+	}
+	for (const FHawkeyeParkourClip* Clip : Clips)
+	{
+		if (UAnimMontage* Montage = Clip->Montage.IsNull() ? nullptr : Clip->Montage.LoadSynchronous())
+		{
+			LoadedClips.AddUnique(Montage);
+		}
+		else if (!Clip->Montage.IsNull())
+		{
+			UE_LOG(LogHawkeye, Warning, TEXT("%s: parkour clip %s does not load; its moves follow the plain path"),
+				*GetNameSafe(GetOwner()), *Clip->Montage.ToString());
+		}
+	}
 }
 
 void UParkourComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -110,6 +155,11 @@ UCharacterMovementComponent* UParkourComponent::GetMovement() const
 {
 	const ACharacter* Character = GetCharacter();
 	return Character ? Character->GetCharacterMovement() : nullptr;
+}
+
+UHawkeyeMovementComponent* UParkourComponent::GetHawkeyeMovement() const
+{
+	return Cast<UHawkeyeMovementComponent>(GetMovement());
 }
 
 float UParkourComponent::GetFeetZ() const
@@ -180,6 +230,37 @@ EHawkeyeParkourMove UParkourComponent::ChooseMoveFor(const FHawkeyeParkourObstac
 	const float MinHeight = bAuto ? VaultMinHeight : FMath::Min(JumpMinHeight, VaultMinHeight);
 	return ChooseMoveFrom(MinHeight - HawkeyeParkour::HeightSlack, Obstacle.Height, bClear,
 		Obstacle.bStandingSurface);
+}
+
+int32 UParkourComponent::ChooseClipForHeight(const TArray<FHawkeyeParkourClip>& Clips, float Height)
+{
+	return Clips.IndexOfByPredicate([Height](const FHawkeyeParkourClip& Clip)
+	{
+		return Clip.MaxHeight <= 0.f || Height <= Clip.MaxHeight;
+	});
+}
+
+float UParkourComponent::GetExitSpeed(EHawkeyeParkourMove Move, float EntrySpeed) const
+{
+	switch (Move)
+	{
+	case EHawkeyeParkourMove::Vault:
+		return FMath::Clamp(EntrySpeed, VaultExitMinSpeed, FMath::Max(VaultExitMinSpeed, VaultExitMaxSpeed));
+	case EHawkeyeParkourMove::Mantle:
+	case EHawkeyeParkourMove::Climb:
+		return StepOnSpeed;
+	default:
+		return 0.f;
+	}
+}
+
+float UParkourComponent::GetVaultSeconds(float Distance, float EntrySpeed) const
+{
+	if (EntrySpeed <= KINDA_SMALL_NUMBER)
+	{
+		return VaultSeconds;
+	}
+	return FMath::Clamp(Distance / EntrySpeed, FMath::Min(VaultMinSeconds, VaultSeconds), VaultSeconds);
 }
 
 FString UParkourComponent::DescribeRefusal(const FHawkeyeParkourObstacle& Obstacle, bool bLateCatch) const
@@ -548,8 +629,13 @@ bool UParkourComponent::StartChosenMove(EHawkeyeParkourMove Move, const FHawkeye
 		{
 			Character->SetActorRotation(FRotator(0.f, ToWall.Rotation().Yaw, 0.f));
 		}
+		const float EntrySpeed = static_cast<float>(FVector::DotProduct(Movement->Velocity, ToWall));
 		if (TryStartSampleTraversal())
 		{
+			// The sample's montage decides the speed she comes out at; the exit rule is ours.
+			bSampleExitPending = true;
+			SampleExitDirection = ToWall;
+			SampleExitSpeed = GetExitSpeed(Move, EntrySpeed);
 			LastMove = Move;
 			LastRoute = EHawkeyeParkourRoute::SampleTraversal;
 			PlayEffortSound(Move);
@@ -837,9 +923,9 @@ bool UParkourComponent::GuardRoofEdge(const FHawkeyeParkourObstacle& Parapet)
 			TEXT("%s: jump: roof-edge guard: a %.0f cm parapet with a %.0f cm drop beyond, on %s: mantle onto its top and stop there (a double tap within %.1f s leaps)"),
 			*GetNameSafe(GetOwner()), Parapet.Height, Parapet.FarSideDrop, *GetNameSafe(Parapet.Actor), DoubleTapSeconds);
 		// Ours, not the sample's: the sample's traversal picks its own move and could hurdle it.
+		bGuardMantle = true;
 		if (StartMove(EHawkeyeParkourMove::Mantle, Onto))
 		{
-			bGuardMantle = true;
 			bGuardFlight = false;
 			LastJumpRefusal.Reset();
 			return true;
@@ -870,11 +956,10 @@ void UParkourComponent::LeapFromGuard(const TCHAR* Why)
 	}
 	if (IsPerformingMove())
 	{
-		// Out of the guard's mantle where she is: the leap's hop starts from there.
+		// Out of the guard's mantle where she is: the leap's hop starts from there and replaces it in the movement.
 		const EHawkeyeParkourMove Move = ActiveMove;
 		ActiveMove = EHawkeyeParkourMove::None;
 		StopClip(0.1f);
-		RestoreRootMotionMode();
 		OnParkourFinished.Broadcast(Move);
 	}
 	bGuardMantle = false;
@@ -890,10 +975,9 @@ void UParkourComponent::LeapFromGuard(const TCHAR* Why)
 	LastObstacle = GuardParapet;
 	// Arched enough that the feet clear the top from wherever the mantle had got to.
 	const float Rise = FMath::Max(30.f, (GuardParapet.LedgePoint.Z - GetFeetZ()) * 0.8f + 10.f);
-	if (BeginMove(EHawkeyeParkourMove::Vault, End, Rise, VaultSeconds * 0.7f, VaultClip))
-	{
-		bGuardLeap = true;
-	}
+	// A leap, not a vault: it ends in the air past the top, so it follows its path and the clip only poses her.
+	bGuardLeap = true;
+	bGuardLeap = BeginMove(EHawkeyeParkourMove::Vault, End, Rise, VaultSeconds * 0.7f, VaultClip, { GuardParapet.Actor.Get() });
 	UE_LOG(LogHawkeye, Log, TEXT("%s: roof-edge guard: %s, so she leaps over (then %.0f cm/s toward the drop)"),
 		*GetNameSafe(GetOwner()), Why, GuardSpeed);
 }
@@ -945,8 +1029,8 @@ void UParkourComponent::TickRoofEdgeGuard(float DeltaSeconds)
 	if (bGuardFlight)
 	{
 		GuardFlightElapsed += DeltaSeconds;
-		// Flying is a move or a hang, a custom mode is a zip: either way the held jump is over.
-		if (!Movement || IsBusy() || Movement->MovementMode == MOVE_Flying || Movement->MovementMode == MOVE_Custom)
+		// A move, a hang or the sample's traversal is busy, a custom mode is a zip or one of ours: the held jump is over.
+		if (!Movement || IsBusy() || Movement->MovementMode == MOVE_Custom)
 		{
 			bGuardFlight = false;
 		}
@@ -1025,7 +1109,7 @@ void UParkourComponent::TickJumpAssist(float DeltaSeconds)
 		CancelLateCatch(TEXT("a move or a hang started"));
 		return;
 	}
-	if (!Movement || Movement->MovementMode == MOVE_Flying || Movement->MovementMode == MOVE_Custom)
+	if (!Movement || Movement->MovementMode == MOVE_Custom)
 	{
 		CancelLateCatch(TEXT("a zip, or no movement"));
 		return;
@@ -1092,71 +1176,194 @@ FVector UParkourComponent::HangLocationFor(const FHawkeyeParkourObstacle& Obstac
 bool UParkourComponent::StartMove(EHawkeyeParkourMove Move, const FHawkeyeParkourObstacle& Obstacle)
 {
 	const ACharacter* Character = GetCharacter();
-	if (!Character || !Obstacle.bFound || IsBusy())
+	const UCharacterMovementComponent* Movement = GetMovement();
+	if (!Character || !Movement || !Obstacle.bFound || IsBusy())
 	{
 		return false;
 	}
 	const FVector Lift(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + HawkeyeParkour::FloorGap);
+	const TArray<TWeakObjectPtr<AActor>> Climbed = FindClimbedActors(Obstacle);
 	LastObstacle = Obstacle;
 	switch (Move)
 	{
 	case EHawkeyeParkourMove::Vault:
-		return Obstacle.bClearBeyond
-			&& BeginMove(Move, Obstacle.LandingPoint + Lift, Obstacle.Height + 10.f, VaultSeconds, VaultClip);
+	{
+		if (!Obstacle.bClearBeyond)
+		{
+			return false;
+		}
+		const FVector End = Obstacle.LandingPoint + Lift;
+		const float EntrySpeed = static_cast<float>(FVector::DotProduct(Movement->Velocity, -Obstacle.WallNormal.GetSafeNormal2D()));
+		const float Seconds = GetVaultSeconds(static_cast<float>(FVector::Dist2D(Character->GetActorLocation(), End)), EntrySpeed);
+		return BeginMove(Move, End, Obstacle.Height + 10.f, Seconds, VaultClip, Climbed);
+	}
 	case EHawkeyeParkourMove::Mantle:
-		return Obstacle.bStandingSurface && BeginMove(Move, Obstacle.StandPoint + Lift, -1.f, MantleSeconds, MantleClip);
+	{
+		static const FHawkeyeParkourClip NoClip;
+		const int32 Clip = ChooseClipForHeight(MantleClips, Obstacle.Height);
+		return Obstacle.bStandingSurface && BeginMove(Move, Obstacle.StandPoint + Lift, -1.f, MantleSeconds,
+			MantleClips.IsValidIndex(Clip) ? MantleClips[Clip] : NoClip, Climbed);
+	}
 	case EHawkeyeParkourMove::LedgeGrab:
 	{
 		HangObstacle = Obstacle;
 		// Falling onto it is the quick catch; a jump still rising (the late catch) reaches up the grab's way.
-		const bool bFalling = GetMovement() && GetMovement()->IsFalling() && GetMovement()->Velocity.Z <= 0.f;
+		const bool bFalling = Movement->IsFalling() && Movement->Velocity.Z <= 0.f;
 		return BeginMove(Move, HangLocationFor(Obstacle), -1.f, bFalling ? CatchSeconds : GrabSeconds,
-			bFalling ? CatchClip : GrabClip);
+			bFalling ? CatchClip : GrabClip, Climbed);
 	}
 	case EHawkeyeParkourMove::DropToHang:
 	{
-		// Over the lip (a parapet or a rail) with a hop that clears it, then down to the hang.
+		// Over the lip (a parapet or a rail) with a hop that clears it, then down past the floor she leaves to the hang.
 		HangObstacle = Obstacle;
 		DropHop = FMath::Max(0.f, Obstacle.Height) + HawkeyeParkour::DropHopClearance;
-		return BeginMove(Move, HangLocationFor(Obstacle), DropHop, DropToHangSeconds, CatchClip);
+		TArray<TWeakObjectPtr<AActor>> Through = Climbed;
+		Through.Add(Movement->CurrentFloor.HitResult.GetActor());
+		return BeginMove(Move, HangLocationFor(Obstacle), DropHop, DropToHangSeconds, CatchClip, Through);
 	}
 	default:
 		return false;
 	}
 }
 
+TArray<TWeakObjectPtr<AActor>> UParkourComponent::FindClimbedActors(const FHawkeyeParkourObstacle& Obstacle) const
+{
+	TArray<TWeakObjectPtr<AActor>> Actors = { Obstacle.Actor.Get() };
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return Actors;
+	}
+	// The probe names what its trace met first (a city ledge block stands 2 cm proud of the facade); the capsule
+	// collides with whatever is solid just under the top behind the front face, so that is what the move passes.
+	const FVector Under = Obstacle.LedgePoint - Obstacle.WallNormal.GetSafeNormal2D() * 15.f - FVector(0.f, 0.f, 15.f);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeParkourClimbed), false, GetOwner());
+	TArray<FOverlapResult> Overlaps;
+	World->OverlapMultiByChannel(Overlaps, Under, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeSphere(10.f), Params);
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		if (Overlap.bBlockingHit && Overlap.GetActor())
+		{
+			Actors.AddUnique(Overlap.GetActor());
+		}
+	}
+	return Actors;
+}
+
 bool UParkourComponent::BeginMove(EHawkeyeParkourMove Move, const FVector& End, float Rise, float Seconds,
-	const FHawkeyeParkourClip& Clip)
+	const FHawkeyeParkourClip& Clip, const TArray<TWeakObjectPtr<AActor>>& PassThrough)
 {
 	ACharacter* Character = GetCharacter();
-	UCharacterMovementComponent* Movement = GetMovement();
+	UHawkeyeMovementComponent* Movement = GetHawkeyeMovement();
 	if (!Character || !Movement)
 	{
 		return false;
-	}
-	if (Move != EHawkeyeParkourMove::Climb)
-	{
-		Character->SetActorRotation(FRotator(0.f, (-LastObstacle.WallNormal).Rotation().Yaw, 0.f));
 	}
 	MoveStart = Character->GetActorLocation();
 	MoveEnd = End;
 	MoveRise = Rise < 0.f ? End.Z - MoveStart.Z : Rise;
 	MoveSeconds = Seconds;
-	MoveElapsed = 0.f;
+	MoveYaw = Move == EHawkeyeParkourMove::Climb ? Character->GetActorRotation().Yaw : (-LastObstacle.WallNormal).Rotation().Yaw;
 	ActiveMove = Move;
 	LastMove = Move;
 	LastRoute = EHawkeyeParkourRoute::Procedural;
 	bHanging = false;
 
-	Movement->StopMovementImmediately();
-	Movement->SetMovementMode(MOVE_Flying);
-	PlayClip(Clip, Seconds);
-	UE_LOG(LogHawkeye, Log, TEXT("%s: parkour %s from %s to %s over %.2f s (%s)"), *GetNameSafe(Character),
-		*UEnum::GetValueAsString(Move), *MoveStart.ToCompactString(), *MoveEnd.ToCompactString(), Seconds,
-		MoveClip ? *MoveClip->GetName() : TEXT("plain arc"));
+	PlayMoveClip(Move, Clip, Seconds);
+	FHawkeyeTraversalMove Traversal;
+	Traversal.Seconds = Seconds;
+	Traversal.PassThrough = PassThrough;
+	SetMoveExit(Traversal);
+	if (bMoveByRootMotion)
+	{
+		// Facing the wall from the start, as a path move does; the warp windows do the rest.
+		Character->SetActorRotation(FRotator(0.f, MoveYaw, 0.f));
+	}
+	else
+	{
+		BuildMovePath(Traversal);
+	}
+	Movement->OnTraversalEnded.BindUObject(this, &UParkourComponent::HandleTraversalEnded);
+	Movement->StartTraversal(Traversal);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: parkour %s from %s to %s over %.2f s (%s), leaving at %.0f cm/s"), *GetNameSafe(Character),
+		*UEnum::GetValueAsString(Move), *MoveStart.ToCompactString(), *MoveEnd.ToCompactString(), Seconds, *DescribeMoveDrive(),
+		Traversal.ExitVelocity.Size());
 	PlayEffortSound(Move);
 	OnParkourStarted.Broadcast(Move, LastRoute);
 	return true;
+}
+
+void UParkourComponent::PlayMoveClip(EHawkeyeParkourMove Move, const FHawkeyeParkourClip& Clip, float Seconds)
+{
+	bMoveByRootMotion = IsClipDriven(Move) && SetWarpTargets(Move, LastObstacle) && PlayClip(Clip, Seconds, /*bDriveCapsule=*/true);
+	if (!bMoveByRootMotion)
+	{
+		PlayClip(Clip, Seconds, /*bDriveCapsule=*/false);
+	}
+}
+
+FString UParkourComponent::DescribeMoveDrive() const
+{
+	if (bMoveByRootMotion)
+	{
+		return FString::Printf(TEXT("%s root motion, warped"), *GetNameSafe(ActiveMontage));
+	}
+	return ActiveMontage ? FString::Printf(TEXT("path, posed by %s"), *GetNameSafe(ActiveMontage)) : FString(TEXT("plain path"));
+}
+
+bool UParkourComponent::IsClipDriven(EHawkeyeParkourMove Move) const
+{
+	// The clip's root motion ends where the clip does; a move that must end on the probe's point follows its path. So
+	// the guard's leap (out over the drop), the guard's mantle (the middle of a thin parapet with a drop beyond), a
+	// mantle over a thin top onto the floor behind it, and the climb from a hang, whose height never varies, do.
+	switch (Move)
+	{
+	case EHawkeyeParkourMove::Vault:
+		return !bGuardLeap;
+	case EHawkeyeParkourMove::Mantle:
+		return !bGuardMantle && FMath::Abs(LastObstacle.StandPoint.Z - LastObstacle.LedgePoint.Z) < HawkeyeParkour::FloorTolerance;
+	default:
+		return false;
+	}
+}
+
+void UParkourComponent::BuildMovePath(FHawkeyeTraversalMove& OutMove) const
+{
+	OutMove.Keys.Reset(HawkeyeParkour::PathSteps + 1);
+	for (int32 Step = 0; Step <= HawkeyeParkour::PathSteps; ++Step)
+	{
+		const float Alpha = static_cast<float>(Step) / HawkeyeParkour::PathSteps;
+		FHawkeyeTraversalKey& Key = OutMove.Keys.AddDefaulted_GetRef();
+		Key.Location = ComputeMoveLocation(Alpha);
+		Key.Yaw = ComputeMoveYaw(Alpha);
+	}
+}
+
+void UParkourComponent::SetMoveExit(FHawkeyeTraversalMove& OutMove) const
+{
+	if (ActiveMove == EHawkeyeParkourMove::LedgeGrab || ActiveMove == EHawkeyeParkourMove::DropToHang || IsHangTransfer(ActiveMove))
+	{
+		OutMove.Exit = EHawkeyeTraversalExit::Hold;
+		return;
+	}
+	if (bGuardLeap)
+	{
+		// Over the top and let go toward the drop.
+		OutMove.Exit = EHawkeyeTraversalExit::Fall;
+		OutMove.ExitVelocity = GuardDirection * GuardSpeed;
+		return;
+	}
+	OutMove.Exit = EHawkeyeTraversalExit::Walk;
+	if (bGuardMantle)
+	{
+		// Onto the parapet top and stopped there: no step on toward the drop.
+		OutMove.ExitVelocity = FVector::ZeroVector;
+		return;
+	}
+	const UCharacterMovementComponent* Movement = GetMovement();
+	const FVector Along = FRotator(0.f, MoveYaw, 0.f).Vector();
+	const float EntrySpeed = Movement ? static_cast<float>(FVector::DotProduct(Movement->Velocity, Along)) : 0.f;
+	OutMove.ExitVelocity = Along * GetExitSpeed(ActiveMove, EntrySpeed);
 }
 
 void UParkourComponent::PlayEffortSound(EHawkeyeParkourMove Move) const
@@ -1172,22 +1379,8 @@ void UParkourComponent::PlayEffortSound(EHawkeyeParkourMove Move) const
 
 // --- Running ------------------------------------------------------------------------------------
 
-FVector UParkourComponent::ClipRootOffset(float Time) const
-{
-	const ACharacter* Character = GetCharacter();
-	const UAnimSequenceBase* Clip = MoveClip.Get();
-	if (!Clip || !Character || !Character->GetMesh() || Time <= ClipStart)
-	{
-		return FVector::ZeroVector;
-	}
-	const FTransform Delta = Clip->ExtractRootMotionFromRange(ClipStart, Time, FAnimExtractContext());
-	// Root motion is in the mesh's space; the mesh is turned relative to the actor (-90 yaw).
-	return Character->GetMesh()->GetRelativeRotation().RotateVector(Delta.GetTranslation());
-}
-
 void UParkourComponent::ComputeMoveShape(float Alpha, float& OutForward, float& OutUp) const
 {
-	const bool bArc = ActiveMove == EHawkeyeParkourMove::Vault;
 	if (ActiveMove == EHawkeyeParkourMove::DropToHang)
 	{
 		// Out over the lip in the first 70% with a hop that peaks halfway there; the clip only
@@ -1196,14 +1389,8 @@ void UParkourComponent::ComputeMoveShape(float Alpha, float& OutForward, float& 
 		OutUp = FMath::Sin(PI * FMath::Min(Alpha / 0.7f, 1.f));
 		return;
 	}
-	if (MoveClip && ClipForwardTotal > 1.f && ClipPeakUp > 1.f)
-	{
-		const FVector Offset = ClipRootOffset(FMath::Lerp(ClipStart, ClipEnd, Alpha));
-		OutForward = FMath::Clamp(Offset.X / ClipForwardTotal, -0.5f, 1.5f);
-		OutUp = Offset.Z / ClipPeakUp;
-		return;
-	}
-	// No clip (a plain character, or a test): over in an arc, or up first and then in.
+	// Over in an arc (a vault, the guard's leap), or up first and then in.
+	const bool bArc = ActiveMove == EHawkeyeParkourMove::Vault;
 	OutForward = bArc ? Alpha : FMath::SmoothStep(0.35f, 1.f, Alpha);
 	OutUp = bArc ? FMath::Sin(PI * Alpha) : FMath::SmoothStep(0.f, 0.6f, Alpha);
 }
@@ -1231,67 +1418,53 @@ FVector UParkourComponent::ComputeMoveLocation(float Alpha) const
 		+ FVector(0.f, 0.f, Up * MoveRise + LeftOverZ * A);
 }
 
-void UParkourComponent::AdvanceMove(float DeltaSeconds)
+void UParkourComponent::HandleTraversalEnded(EHawkeyeTraversalEnd End)
 {
-	ACharacter* Character = GetCharacter();
-	if (!IsPerformingMove() || !Character)
+	switch (End)
 	{
-		return;
-	}
-	MoveElapsed += DeltaSeconds;
-	const float Alpha = MoveSeconds > 0.f ? MoveElapsed / MoveSeconds : 1.f;
-	Character->SetActorLocation(ComputeMoveLocation(Alpha), false, nullptr, ETeleportType::None);
-	if (bMoveTurns)
-	{
-		ApplyMoveTurn(FMath::Min(Alpha, 1.f));
-	}
-	if (UCharacterMovementComponent* Movement = GetMovement())
-	{
-		Movement->Velocity = FVector::ZeroVector;
-	}
-	if (Alpha >= 1.f)
-	{
-		FinishMove();
+	case EHawkeyeTraversalEnd::Held:
+	case EHawkeyeTraversalEnd::Exited:
+		if (IsPerformingMove())
+		{
+			FinishMove();
+		}
+		break;
+	case EHawkeyeTraversalEnd::Interrupted:
+		AbandonTraversal();
+		break;
+	default:
+		// Released: the call that let go has already left the hang.
+		break;
 	}
 }
 
 void UParkourComponent::FinishMove()
 {
 	const EHawkeyeParkourMove Move = ActiveMove;
+	// The last of a turn happened in the movement's tick that ended it.
+	TickMoveTurnCamera();
 	ActiveMove = EHawkeyeParkourMove::None;
 	const bool bOntoParapet = bGuardMantle && Move == EHawkeyeParkourMove::Mantle;
 	bGuardMantle = false;
 	bMoveTurns = false;
-	if (bGuardLeap)
-	{
-		// The leap's hop is over the top: she carries on out over the drop.
-		bGuardLeap = false;
-		StopClip(0.2f);
-		RestoreRootMotionMode();
-		if (UCharacterMovementComponent* Movement = GetMovement())
-		{
-			Movement->SetMovementMode(MOVE_Falling);
-			Movement->Velocity = GuardDirection * GuardSpeed;
-		}
-		UE_LOG(LogHawkeye, Log, TEXT("%s: roof-edge guard: over the parapet at %s, off the roof at %.0f cm/s"), *GetNameSafe(GetOwner()),
-			GetOwner() ? *GetOwner()->GetActorLocation().ToCompactString() : TEXT("?"), GuardSpeed);
-		OnParkourFinished.Broadcast(Move);
-		return;
-	}
 	if (Move == EHawkeyeParkourMove::LedgeGrab || Move == EHawkeyeParkourMove::DropToHang || IsHangTransfer(Move))
 	{
 		EnterHang();
 		return;
 	}
-	StopClip(0.2f);
-	RestoreRootMotionMode();
-	if (UCharacterMovementComponent* Movement = GetMovement())
+	StopClip(HawkeyeParkour::ClipBlendOut);
+	const FVector Velocity = GetMovement() ? GetMovement()->Velocity : FVector::ZeroVector;
+	if (bGuardLeap)
 	{
-		// Walking finds the floor the move ended on, or falls if there is none.
-		Movement->SetMovementMode(MOVE_Walking);
+		bGuardLeap = false;
+		UE_LOG(LogHawkeye, Log, TEXT("%s: roof-edge guard: over the parapet at %s, off the roof at %.0f cm/s"), *GetNameSafe(GetOwner()),
+			GetOwner() ? *GetOwner()->GetActorLocation().ToCompactString() : TEXT("?"), Velocity.Size2D());
+		OnParkourFinished.Broadcast(Move);
+		return;
 	}
-	UE_LOG(LogHawkeye, Log, TEXT("%s: parkour %s done at %s"), *GetNameSafe(GetOwner()), *UEnum::GetValueAsString(Move),
-		GetOwner() ? *GetOwner()->GetActorLocation().ToCompactString() : TEXT("?"));
+	UE_LOG(LogHawkeye, Log, TEXT("%s: parkour %s done at %s, %s at %.0f cm/s"), *GetNameSafe(GetOwner()), *UEnum::GetValueAsString(Move),
+		GetOwner() ? *GetOwner()->GetActorLocation().ToCompactString() : TEXT("?"),
+		GetMovement() ? *GetMovement()->GetMovementName() : TEXT("?"), Velocity.Size2D());
 	if (bOntoParapet)
 	{
 		BeginPerch();
@@ -1299,13 +1472,28 @@ void UParkourComponent::FinishMove()
 	OnParkourFinished.Broadcast(Move);
 }
 
+void UParkourComponent::AbandonTraversal()
+{
+	if (!IsPerformingMove() && !bHanging)
+	{
+		return;
+	}
+	const EHawkeyeParkourMove Move = IsPerformingMove() ? ActiveMove : EHawkeyeParkourMove::LedgeGrab;
+	UE_LOG(LogHawkeye, Log, TEXT("%s: parkour %s ends: the movement mode changed to %s under it"), *GetNameSafe(GetOwner()),
+		bHanging ? TEXT("hang") : *UEnum::GetValueAsString(Move), GetMovement() ? *GetMovement()->GetMovementName() : TEXT("?"));
+	ActiveMove = EHawkeyeParkourMove::None;
+	bHanging = false;
+	bGuardMantle = false;
+	bGuardLeap = false;
+	bMoveTurns = false;
+	EndHangState();
+	StopClip(HawkeyeParkour::ClipBlendOut);
+	OnParkourFinished.Broadcast(Move);
+}
+
 void UParkourComponent::EnterHang()
 {
 	bHanging = true;
-	if (UCharacterMovementComponent* Movement = GetMovement())
-	{
-		Movement->StopMovementImmediately();
-	}
 	const ACharacter* Character = GetCharacter();
 	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
 	if (Anim && ActiveMontage)
@@ -1337,25 +1525,23 @@ bool UParkourComponent::ClimbFromHang()
 	bHanging = false;
 	EndHangState();
 	const FVector Lift(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + HawkeyeParkour::FloorGap);
-	return BeginMove(EHawkeyeParkourMove::Climb, HangObstacle.StandPoint + Lift, -1.f, ClimbSeconds, ClimbClip);
+	return BeginMove(EHawkeyeParkourMove::Climb, HangObstacle.StandPoint + Lift, -1.f, ClimbSeconds, ClimbClip,
+		FindClimbedActors(HangObstacle));
 }
 
 bool UParkourComponent::DropFromHang()
 {
 	ACharacter* Character = GetCharacter();
-	if (!bHanging || !Character)
+	UHawkeyeMovementComponent* Movement = GetHawkeyeMovement();
+	if (!bHanging || !Character || !Movement)
 	{
 		return false;
 	}
 	bHanging = false;
 	EndHangState();
-	StopClip(0.2f);
-	RestoreRootMotionMode();
-	Character->SetActorLocation(Character->GetActorLocation() + HangObstacle.WallNormal * 15.f);
-	if (UCharacterMovementComponent* Movement = GetMovement())
-	{
-		Movement->SetMovementMode(MOVE_Falling);
-	}
+	StopClip(HawkeyeParkour::ClipBlendOut);
+	// Falling from still, a step off the wall first so the capsule does not scrape down it.
+	Movement->ReleaseTraversal(FVector::ZeroVector, HangObstacle.WallNormal.GetSafeNormal2D() * 15.f);
 	RegrabCooldown = DropRegrabSeconds;
 	DroppedLedgePoint = HangObstacle.LedgePoint;
 	bIgnoreDroppedLedge = true;
@@ -1552,6 +1738,15 @@ void UParkourComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	RegrabCooldown = FMath::Max(0.f, RegrabCooldown - DeltaTime);
 	TickJumpAssist(DeltaTime);
 	TickRoofEdgeGuard(DeltaTime);
+	TickSampleExit();
+	if (RootMotionRestoreIn > 0.f)
+	{
+		RootMotionRestoreIn -= DeltaTime;
+		if (RootMotionRestoreIn <= 0.f && !IsPerformingMove() && !bHanging)
+		{
+			RestoreRootMotionMode();
+		}
+	}
 	if (!bHanging && HandsAlpha > 0.f)
 	{
 		// Out of the hang the hands go back to the body's clip.
@@ -1567,7 +1762,8 @@ void UParkourComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	}
 	if (IsPerformingMove())
 	{
-		AdvanceMove(DeltaTime);
+		// The movement runs the move; the camera follows a turning one.
+		TickMoveTurnCamera();
 		return;
 	}
 	if (bHanging)
@@ -1581,46 +1777,73 @@ void UParkourComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	}
 }
 
+void UParkourComponent::TickSampleExit()
+{
+	UCharacterMovementComponent* Movement = GetMovement();
+	// The sample sets the mode it leaves in as its montage blends out; until then it is still Flying.
+	if (!bSampleExitPending || !Movement || IsSampleTraversalActive() || Movement->IsFlying())
+	{
+		return;
+	}
+	bSampleExitPending = false;
+	const float Along = static_cast<float>(FVector::DotProduct(Movement->Velocity, SampleExitDirection));
+	if ((!Movement->IsMovingOnGround() && !Movement->IsFalling()) || Along >= SampleExitSpeed)
+	{
+		return;
+	}
+	Movement->Velocity += SampleExitDirection * (SampleExitSpeed - Along);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: the sample's traversal is over: out at %.0f cm/s along it, raised to %.0f"),
+		*GetNameSafe(GetOwner()), Along, SampleExitSpeed);
+}
+
 // --- Clips --------------------------------------------------------------------------------------
 
-bool UParkourComponent::PlayClip(const FHawkeyeParkourClip& Clip, float Seconds)
+bool UParkourComponent::PlayClip(const FHawkeyeParkourClip& Clip, float Seconds, bool bDriveCapsule)
 {
-	MoveClip = nullptr;
-	ClipForwardTotal = ClipPeakUp = ClipEndUp = 0.f;
 	const ACharacter* Character = GetCharacter();
 	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
-	if (!Anim || Clip.Sequence.IsNull() || Clip.EndTime <= Clip.StartTime)
+	// Resident since BeginPlay (LoadedClips), or not at all: a move never waits on a load.
+	UAnimMontage* Montage = Clip.Montage.Get();
+	if (!Anim || !Montage || Clip.EndTime <= Clip.StartTime || (bDriveCapsule && !Montage->HasRootMotion()))
 	{
 		return false;
 	}
-	// Loaded synchronously: the move starts this frame and must not depend on the clip being resident.
-	UAnimSequenceBase* Sequence = Clip.Sequence.LoadSynchronous();
-	if (!Sequence)
+	SetClipRootMotion(bDriveCapsule);
+	const float End = FMath::Min(Clip.EndTime, Montage->GetPlayLength());
+	const float Rate = (End - Clip.StartTime) / FMath::Max(Seconds, 0.05f);
+	if (Anim->Montage_Play(Montage, Rate, EMontagePlayReturnType::MontageLength, Clip.StartTime) <= 0.f)
 	{
-		UE_LOG(LogHawkeye, Warning, TEXT("%s: parkour clip %s does not load; using the plain arc"),
-			*GetNameSafe(GetOwner()), *Clip.Sequence.ToString());
 		return false;
 	}
-	MoveClip = Sequence;
-	ClipStart = Clip.StartTime;
-	ClipEnd = FMath::Min(Clip.EndTime, Sequence->GetPlayLength());
-	for (int32 Step = 1; Step <= 16; ++Step)
+	ActiveMontage = Montage;
+	RootMotionRestoreIn = 0.f;
+	return true;
+}
+
+bool UParkourComponent::SetWarpTargets(EHawkeyeParkourMove Move, const FHawkeyeParkourObstacle& Obstacle) const
+{
+	using namespace HawkeyeParkour;
+	const AActor* Owner = GetOwner();
+	UMotionWarpingComponent* Warp = Owner ? Owner->FindComponentByClass<UMotionWarpingComponent>() : nullptr;
+	if (!Warp)
 	{
-		const FVector Offset = ClipRootOffset(FMath::Lerp(ClipStart, ClipEnd, Step / 16.f));
-		ClipPeakUp = FMath::Max(ClipPeakUp, Offset.Z);
-		ClipForwardTotal = Offset.X;
-		ClipEndUp = Offset.Z;
+		return false;
 	}
-	if (!bRootMotionOverridden)
+	// Where the sample's traversal puts them: on the top's edges, facing into the wall.
+	const FVector Normal = Obstacle.WallNormal.GetSafeNormal2D();
+	const FRotator Facing(0.f, (-Normal).Rotation().Yaw, 0.f);
+	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(FrontLedge, Obstacle.LedgePoint, Facing);
+	if (Move == EHawkeyeParkourMove::Vault && Obstacle.bClearBeyond)
 	{
-		SavedRootMotionMode = Anim->RootMotionMode;
-		bRootMotionOverridden = true;
+		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(BackLedge, Obstacle.LedgePoint - Normal * Obstacle.Depth, Facing);
+		Warp->AddOrUpdateWarpTargetFromLocationAndRotation(BackFloor, Obstacle.LandingPoint, Facing);
 	}
-	// The capsule follows our warped copy of the root motion; the clip only poses the body.
-	Anim->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
-	const float Rate = (ClipEnd - ClipStart) / FMath::Max(Seconds, 0.05f);
-	ActiveMontage = Anim->PlaySlotAnimationAsDynamicMontage(Sequence, ClipSlot, 0.08f, 0.2f, Rate, 1, -1.f, ClipStart);
-	return ActiveMontage != nullptr;
+	else
+	{
+		Warp->RemoveWarpTarget(BackLedge);
+		Warp->RemoveWarpTarget(BackFloor);
+	}
+	return true;
 }
 
 void UParkourComponent::StopClip(float BlendOutSeconds)
@@ -1632,6 +1855,29 @@ void UParkourComponent::StopClip(float BlendOutSeconds)
 		Anim->Montage_Stop(BlendOutSeconds, ActiveMontage);
 	}
 	ActiveMontage = nullptr;
+	bMoveByRootMotion = false;
+	if (bRootMotionOverridden)
+	{
+		// The blend-out must not drive the capsule she has just been given back; the AnimBP's mode returns after it.
+		SetClipRootMotion(false);
+		RootMotionRestoreIn = BlendOutSeconds + 0.05f;
+	}
+}
+
+void UParkourComponent::SetClipRootMotion(bool bDriveCapsule)
+{
+	const ACharacter* Character = GetCharacter();
+	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+	if (!Anim)
+	{
+		return;
+	}
+	if (!bRootMotionOverridden)
+	{
+		SavedRootMotionMode = Anim->RootMotionMode;
+		bRootMotionOverridden = true;
+	}
+	Anim->SetRootMotionMode(bDriveCapsule ? ERootMotionMode::RootMotionFromMontagesOnly : ERootMotionMode::IgnoreRootMotion);
 }
 
 void UParkourComponent::RestoreRootMotionMode()

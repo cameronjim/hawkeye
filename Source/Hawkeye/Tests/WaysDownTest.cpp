@@ -73,11 +73,12 @@ namespace HawkeyeWaysDownTest
 		static_cast<UActorComponent*>(Parkour)->TickComponent(DeltaSeconds, LEVELTICK_All, nullptr);
 	}
 
-	static void AdvanceMoveFor(UParkourComponent* Parkour, float Seconds)
+	/** Ticks the movement, which runs the move, for Seconds. */
+	static void TickMovementFor(UParkourComponent* Parkour, float Seconds)
 	{
 		for (float T = 0.f; T < Seconds; T += 0.05f)
 		{
-			Parkour->AdvanceMove(0.05f);
+			Cast<AHawkeyeAimTestCharacter>(Parkour->GetOwner())->TestTickMovement(0.05f);
 		}
 	}
 
@@ -186,7 +187,7 @@ bool FHawkeyeDropToHangMove::RunTest(const FString& Parameters)
 		TestTrue(TEXT("TryDropToHang starts the move"), Parkour->TryDropToHang(FVector::ForwardVector, TEXT("test")));
 		TestEqual(TEXT("Drop to hang"), Parkour->GetActiveMove(), EHawkeyeParkourMove::DropToHang);
 		TestTrue(TEXT("Input locked"), Parkour->IsLockingInput());
-		AdvanceMoveFor(Parkour, Parkour->DropToHangSeconds + 0.05f);
+		TickMovementFor(Parkour, Parkour->DropToHangSeconds + 0.05f);
 		TestTrue(TEXT("Hanging after 0.5 s"), Parkour->IsHanging());
 		TestEqual(TEXT("Feet 145 cm under the parapet top, like a catch"), Feet(Kate), 90.f - 145.f, 1.f);
 		TestEqual(TEXT("36 cm out from the outer face"), static_cast<float>(Kate->GetActorLocation().X), 146.f, 1.f);
@@ -201,7 +202,7 @@ bool FHawkeyeDropToHangMove::RunTest(const FString& Parameters)
 		UParkourComponent* Parkour = Kate->GetParkourComponent();
 		Kate->Jump();
 		TestEqual(TEXT("The jump key with the edge behind her drops to the hang"), Parkour->GetActiveMove(), EHawkeyeParkourMove::DropToHang);
-		AdvanceMoveFor(Parkour, 0.6f);
+		TickMovementFor(Parkour, 0.6f);
 		TestTrue(TEXT("Hanging"), Parkour->IsHanging());
 	}
 	{
@@ -271,7 +272,7 @@ bool FHawkeyeFireEscapeChain::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A 90 cm rail"), Edge.Height, 90.f, 3.f);
 	TestTrue(TEXT("The street is far below beyond it"), Edge.LandingDrop > 600.f);
 	TestTrue(TEXT("Crouch toward it (TryDropToHang) goes over"), Parkour->TryDropToHang(FVector::RightVector, TEXT("test")));
-	AdvanceMoveFor(Parkour, 0.6f);
+	TickMovementFor(Parkour, 0.6f);
 	TestTrue(TEXT("Hanging from the rail"), Parkour->IsHanging());
 	TestEqual(TEXT("Feet 145 cm under the rail top"), Feet(Kate), 750.f - 145.f, 1.f);
 
@@ -288,7 +289,7 @@ bool FHawkeyeFireEscapeChain::RunTest(const FString& Parameters)
 	Movement->Velocity = FVector(0.f, 0.f, -500.f);
 	TickParkour(Parkour, 1.f / 60.f);
 	TestEqual(TEXT("The next landing's rail is caught"), Parkour->GetActiveMove(), EHawkeyeParkourMove::LedgeGrab);
-	AdvanceMoveFor(Parkour, 0.2f);
+	TickMovementFor(Parkour, 0.2f);
 	TestTrue(TEXT("Hanging from the lower landing"), Parkour->IsHanging());
 	TestEqual(TEXT("Feet 145 cm under its rail"), Feet(Kate), 420.f - 145.f, 1.f);
 	TestFalse(TEXT("A catch clears the ignored ledge"), Parkour->IsIgnoringDroppedLedge());

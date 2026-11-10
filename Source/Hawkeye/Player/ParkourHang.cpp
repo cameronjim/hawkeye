@@ -15,6 +15,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "Hawkeye.h"
+#include "Player/HawkeyeMovementComponent.h"
 
 namespace HawkeyeHang
 {
@@ -552,10 +553,6 @@ void UParkourComponent::AdvanceHang(float DeltaSeconds)
 	{
 		return;
 	}
-	if (UCharacterMovementComponent* Movement = GetMovement())
-	{
-		Movement->Velocity = FVector::ZeroVector;
-	}
 	const FVector Input = GetFreshHangInput();
 	const float Push = FMath::Min(static_cast<float>(Input.Size2D()), 1.f);
 	const FVector Direction = Input.GetSafeNormal2D();
@@ -710,7 +707,11 @@ float UParkourComponent::Shimmy(float Sign, float Step)
 	const float Moved = FMath::Abs(Target - Start);
 	if (Moved > 0.01f)
 	{
-		Character->SetActorLocation(HangLocationAt(Target));
+		// The movement takes her there on its tick, which follows this one.
+		if (UHawkeyeMovementComponent* Movement = GetHawkeyeMovement())
+		{
+			Movement->MoveTraversalHold(HangLocationAt(Target));
+		}
 		HangObstacle.LedgePoint = HangLine.PointAt(Target);
 		HangObstacle.WallPoint = FVector(HangObstacle.LedgePoint.X, HangObstacle.LedgePoint.Y, HangObstacle.WallPoint.Z);
 		if (!bShimmying)
@@ -1111,7 +1112,7 @@ bool UParkourComponent::JumpFromHang()
 {
 	using namespace HawkeyeHang;
 	ACharacter* Character = GetCharacter();
-	UCharacterMovementComponent* Movement = GetMovement();
+	UHawkeyeMovementComponent* Movement = GetHawkeyeMovement();
 	if (!bHanging || !Character || !Movement)
 	{
 		return false;
@@ -1164,12 +1165,9 @@ bool UParkourComponent::JumpFromHang()
 		bHanging = false;
 		EndHangState();
 		StopClip(0.2f);
-		RestoreRootMotionMode();
-		Character->SetActorLocation(Character->GetActorLocation() + N * 15.f);
 		Character->SetActorRotation(FRotator(0.f, N.Rotation().Yaw, 0.f));
-		// Falling from still, so it counts as a controlled drop; then the push off the wall.
-		Movement->SetMovementMode(MOVE_Falling);
-		Movement->Velocity = N * HangHopDropVelocity.X + FVector(0.f, 0.f, HangHopDropVelocity.Y);
+		// A step off the wall, then the push off it: a controlled drop all the same.
+		Movement->ReleaseTraversal(N * HangHopDropVelocity.X + FVector(0.f, 0.f, HangHopDropVelocity.Y), N * 15.f);
 		// No regrab cooldown: she faces away from her own ledge now (and ignores it until she lands), and the
 		// late catch takes anything that comes into reach on the way down.
 		DroppedLedgePoint = HangObstacle.LedgePoint;
@@ -1191,29 +1189,27 @@ bool UParkourComponent::BeginHangTransfer(EHawkeyeParkourMove Move, const FHawke
 	{
 		return false;
 	}
-	const float StartYaw = Character->GetActorRotation().Yaw;
+	// The wall she leaves and the one she goes to are the move's to pass; anything between them stops her.
+	const TArray<TWeakObjectPtr<AActor>> Walls = { HangObstacle.Actor.Get(), Target.Actor.Get() };
 	bHanging = false;
 	EndHangState();
 	HangObstacle = Target;
 	TransferTarget = Target;
 	LastObstacle = Target;
-	// The corner keeps the hang pose (the paused clip); a leap or a hop reaches for the edge with the catch.
-	static const FHawkeyeParkourClip NoClip;
-	if (!BeginMove(Move, HangLocationFor(Target), Rise, Seconds, Move == EHawkeyeParkourMove::HangCorner ? NoClip : CatchClip))
-	{
-		return false;
-	}
-	// BeginMove faced her to the new wall at once; a turning move turns over its length instead.
+	// A turning move turns over its length; any other faces the new wall at once.
 	bMoveTurns = !FMath::IsNearlyZero(TurnDegrees);
-	MoveYawStart = StartYaw;
+	MoveYawStart = Character->GetActorRotation().Yaw;
 	MoveYawDelta = TurnDegrees;
-	MoveYawApplied = 0.f;
-	if (bMoveTurns)
-	{
-		Character->SetActorRotation(FRotator(0.f, StartYaw, 0.f));
-	}
+	CameraFollowedYaw = MoveYawStart;
 	bMoveArc = bArc;
 	MovePivot = Pivot;
+	// The corner keeps the hang pose (the paused clip); a leap or a hop reaches for the edge with the catch.
+	static const FHawkeyeParkourClip NoClip;
+	if (!BeginMove(Move, HangLocationFor(Target), Rise, Seconds, Move == EHawkeyeParkourMove::HangCorner ? NoClip : CatchClip, Walls))
+	{
+		bMoveTurns = false;
+		return false;
+	}
 	return true;
 }
 
@@ -1231,19 +1227,27 @@ FVector UParkourComponent::ComputeHangTransferLocation(float Alpha) const
 	return Location;
 }
 
-void UParkourComponent::ApplyMoveTurn(float Alpha)
+float UParkourComponent::ComputeMoveYaw(float Alpha) const
 {
-	ACharacter* Character = GetCharacter();
-	if (!Character)
+	if (!bMoveTurns)
+	{
+		return MoveYaw;
+	}
+	return MoveYawStart + MoveYawDelta * FMath::SmoothStep(0.f, 1.f, FMath::Clamp(Alpha, 0.f, 1.f));
+}
+
+void UParkourComponent::TickMoveTurnCamera()
+{
+	const AActor* Owner = GetOwner();
+	if (!bMoveTurns || !Owner)
 	{
 		return;
 	}
-	const float Turned = MoveYawDelta * FMath::SmoothStep(0.f, 1.f, FMath::Clamp(Alpha, 0.f, 1.f));
-	Character->SetActorRotation(FRotator(0.f, MoveYawStart + Turned, 0.f));
 	// The camera comes round with her, so the stick still means along the ledge and the wall stays to one side.
-	const float Step = Turned - MoveYawApplied;
-	MoveYawApplied = Turned;
-	if (AController* Controller = HawkeyeHang::LocalController(GetOwner()))
+	const float Yaw = Owner->GetActorRotation().Yaw;
+	const float Step = FMath::FindDeltaAngleDegrees(CameraFollowedYaw, Yaw);
+	CameraFollowedYaw = Yaw;
+	if (AController* Controller = HawkeyeHang::LocalController(Owner))
 	{
 		FRotator Control = Controller->GetControlRotation();
 		Control.Yaw += Step;

@@ -43,12 +43,31 @@ namespace HawkeyeHangTest
 		return Kate->GetActorLocation().Z - HalfHeight;
 	}
 
+	/** One tick of the movement, which runs a move and takes a hang to its held point. */
+	static void TickMovement(const UParkourComponent* Parkour)
+	{
+		if (AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(Parkour->GetOwner()))
+		{
+			Kate->TestTickMovement(Tick);
+		}
+	}
+
+	/** One hang tick: the rules, then the movement, unless the rules started a move (it runs from the next tick). */
+	static void TickHang(UParkourComponent* Parkour)
+	{
+		Parkour->AdvanceHang(Tick);
+		if (Parkour->IsHanging())
+		{
+			TickMovement(Parkour);
+		}
+	}
+
 	/** Runs the current move of ours to its end (a grab, a corner, a leap), at most Seconds. */
 	static void FinishMove(UParkourComponent* Parkour, float Seconds = 1.5f)
 	{
 		for (float Time = 0.f; Time < Seconds && Parkour->IsPerformingMove(); Time += Tick)
 		{
-			Parkour->AdvanceMove(Tick);
+			TickMovement(Parkour);
 		}
 	}
 
@@ -77,11 +96,11 @@ namespace HawkeyeHangTest
 			Parkour->SetHangInput(Input);
 			if (Parkour->IsHanging())
 			{
-				Parkour->AdvanceHang(Tick);
+				TickHang(Parkour);
 			}
 			else if (Parkour->IsPerformingMove())
 			{
-				Parkour->AdvanceMove(Tick);
+				TickMovement(Parkour);
 			}
 		}
 		Parkour->SetHangInput(FVector::ZeroVector);
@@ -197,7 +216,7 @@ bool FHawkeyeHangOutsideCorner::RunTest(const FString& Parameters)
 		Parkour->SetHangInput(FVector(0.f, 1.f, 0.f));
 		if (Parkour->IsHanging())
 		{
-			Parkour->AdvanceHang(Tick);
+			TickHang(Parkour);
 			if (Parkour->GetActiveMove() == EHawkeyeParkourMove::HangCorner)
 			{
 				bTurned = true;
@@ -206,7 +225,7 @@ bool FHawkeyeHangOutsideCorner::RunTest(const FString& Parameters)
 		}
 		else if (Parkour->GetActiveMove() == EHawkeyeParkourMove::HangCorner)
 		{
-			Parkour->AdvanceMove(Tick);
+			TickMovement(Parkour);
 			TurnSeconds += Tick;
 			if (FMath::IsNearlyEqual(TurnSeconds, 0.2f, 0.01f))
 			{
@@ -270,12 +289,12 @@ bool FHawkeyeHangParapetCorner::RunTest(const FString& Parameters)
 		if (Parkour->IsHanging())
 		{
 			StoppedAt = Kate->GetActorLocation().Y;
-			Parkour->AdvanceHang(Tick);
+			TickHang(Parkour);
 			bTurned |= Parkour->GetActiveMove() == EHawkeyeParkourMove::HangCorner;
 		}
 		else if (Parkour->IsPerformingMove())
 		{
-			Parkour->AdvanceMove(Tick);
+			TickMovement(Parkour);
 			// Round the corner without going through the parapet or the corner itself.
 			Clipping += TestWorld.Get()->OverlapBlockingTestByChannel(Kate->GetActorLocation(), FQuat::Identity, ECC_Pawn,
 				FCollisionShape::MakeCapsule(30.f, HalfHeight - 4.f), Params) ? 1 : 0;
@@ -328,12 +347,12 @@ bool FHawkeyeHangConcaveParapetCorner::RunTest(const FString& Parameters)
 		Parkour->SetHangInput(FVector(0.f, 1.f, 0.f));
 		if (Parkour->IsHanging())
 		{
-			Parkour->AdvanceHang(Tick);
+			TickHang(Parkour);
 			bTurned |= Parkour->GetActiveMove() == EHawkeyeParkourMove::HangCorner;
 		}
 		else if (Parkour->IsPerformingMove())
 		{
-			Parkour->AdvanceMove(Tick);
+			TickMovement(Parkour);
 			Clipping += TestWorld.Get()->OverlapBlockingTestByChannel(Kate->GetActorLocation(), FQuat::Identity, ECC_Pawn,
 				FCollisionShape::MakeCapsule(30.f, HalfHeight - 4.f), Params) ? 1 : 0;
 		}
@@ -374,12 +393,12 @@ bool FHawkeyeHangInsideCorner::RunTest(const FString& Parameters)
 		Parkour->SetHangInput(FVector(0.f, 1.f, 0.f));
 		if (Parkour->IsHanging())
 		{
-			Parkour->AdvanceHang(Tick);
+			TickHang(Parkour);
 			bTurned |= Parkour->GetActiveMove() == EHawkeyeParkourMove::HangCorner;
 		}
 		else if (Parkour->IsPerformingMove())
 		{
-			Parkour->AdvanceMove(Tick);
+			TickMovement(Parkour);
 		}
 		if (bTurned && Parkour->IsHanging())
 		{

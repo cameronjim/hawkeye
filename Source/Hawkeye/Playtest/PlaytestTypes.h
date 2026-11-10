@@ -13,7 +13,10 @@ struct HAWKEYE_API FPlaytestState
 {
 	GENERATED_BODY()
 
-	/** The movement component's mode: "Walking", "Falling", "Flying", "Custom", "None" (no pawn). */
+	/**
+	 * The movement component's mode: "Walking", "Falling", "Flying" (the sample's traversal), "Zip", "Traversal" (one of
+	 * our parkour moves or a hang), "None" (no pawn).
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Playtest")
 	FString Movement = TEXT("None");
 

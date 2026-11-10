@@ -1870,7 +1870,8 @@ void AHawkeyeCharacter::UpdateBodyLocomotion()
 	const float Speed = GetVelocity().Size2D();
 
 	UAnimSequence* Wanted = IdleAnim;
-	if (Movement && (Movement->IsFalling() || Movement->IsFlying()) && FallAnim)
+	// Off the ground: falling, the sample's traversal (Flying), a zip or one of our moves and hangs (custom).
+	if (Movement && (Movement->IsFalling() || Movement->IsFlying() || Movement->MovementMode == MOVE_Custom) && FallAnim)
 	{
 		Wanted = FallAnim;
 	}
@@ -3177,16 +3178,16 @@ void AHawkeyeCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, ui
 {
 	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
 
-	const UCharacterMovementComponent* Movement = GetCharacterMovement();
-	if (Movement && (Movement->MovementMode == MOVE_Flying || Movement->MovementMode == MOVE_Custom))
+	const UHawkeyeMovementComponent* Movement = GetHawkeyeMovement();
+	if (Movement && (Movement->MovementMode == MOVE_Custom || Movement->MovementMode == MOVE_Flying))
 	{
-		// A parkour move, a hang or a zip ends the crouch; she comes out of it standing. (The movement
-		// component would stand her up for the move and crouch her again after it.)
+		// A parkour move or hang, a zip, or the sample's traversal (which runs in Flying) ends the crouch; she comes
+		// out of it standing. (The movement component would stand her up for it and crouch her again after.)
 		EndSlide();
 		if (IsCrouchWanted() && !bDowned && !IsRolling())
 		{
-			EndCrouch(Movement->MovementMode == MOVE_Flying ? TEXT("a parkour move or hang")
-				: IsZipping() ? TEXT("a zip") : TEXT("a custom movement mode"));
+			EndCrouch(Movement->IsTraversing() ? TEXT("a parkour move or hang")
+				: Movement->IsZipping() ? TEXT("a zip") : TEXT("the sample's traversal"));
 		}
 	}
 	if (Movement && Movement->IsFalling())
@@ -3195,15 +3196,18 @@ void AHawkeyeCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, ui
 		FallApexZ = GetActorLocation().Z;
 		FallSeconds = 0.f;
 		EndSlide();
-		// Not rising: stepped off an edge or let go of a hang. Any way off a zip counts, a jump's let-go
-		// included, since the line is what she lets go of.
+		// Not rising: stepped off an edge or out of the sample's traversal. Any way off a zip, a hang or one of
+		// our moves counts, a jump's let-go and the hop's push off the wall included, since that is what she lets go of.
 		const bool bFromZip = PrevMovementMode == MOVE_Custom && PreviousCustomMode == static_cast<uint8>(EHawkeyeCustomMovement::Zip);
-		bControlledDrop = bFromZip || (Movement->Velocity.Z <= 0.f
+		const bool bFromTraversal = PrevMovementMode == MOVE_Custom
+			&& PreviousCustomMode == static_cast<uint8>(EHawkeyeCustomMovement::Traversal);
+		bControlledDrop = bFromZip || bFromTraversal || (Movement->Velocity.Z <= 0.f
 			&& (PrevMovementMode == MOVE_Walking || PrevMovementMode == MOVE_NavWalking || PrevMovementMode == MOVE_Flying));
 		if (bControlledDrop)
 		{
 			UE_LOG(LogHawkeye, Log, TEXT("%s: controlled drop from %s at feet %.0f"), *GetNameSafe(this),
-				bFromZip ? TEXT("a zip") : PrevMovementMode == MOVE_Flying ? TEXT("a hang") : TEXT("an edge"),
+				bFromZip ? TEXT("a zip") : bFromTraversal ? TEXT("a hang or a parkour move")
+					: PrevMovementMode == MOVE_Flying ? TEXT("the sample's traversal") : TEXT("an edge"),
 				GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 		}
 	}
@@ -3621,7 +3625,7 @@ FString AHawkeyeCharacter::GetMovementDebugText() const
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();
 	const float Speed = GetVelocity().Size2D();
 
-	// On a ledge or in a move the capsule is placed by hand: the gait and the velocity mean nothing there.
+	// On a ledge or in a move the gait means nothing: the line names the traversal and its smoothed speed.
 	if (ParkourComponent)
 	{
 		const bool bHanging = ParkourComponent->IsHanging();
@@ -3636,7 +3640,11 @@ FString AHawkeyeCharacter::GetMovementDebugText() const
 	}
 
 	const TCHAR* State = TEXT("walk");
-	if (Movement && Movement->IsFalling())
+	if (IsZipping())
+	{
+		State = TEXT("zip");
+	}
+	else if (Movement && Movement->IsFalling())
 	{
 		State = TEXT("air");
 	}

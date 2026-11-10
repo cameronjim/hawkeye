@@ -2,6 +2,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/AutomationTest.h"
 #include "NavigationSystem.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/InteriorTestKit.h"
 #include "World/DoorActor.h"
@@ -273,10 +274,15 @@ bool FHawkeyeCrouchKeep::RunTest(const FString& Parameters)
 			}
 			return false;
 		case EPhase::Parkour:
-			// The mode a vault, a mantle, the hang and the zip move her in.
+			// Held in the traversal mode where she stands, as a hang holds her.
 			if (S->Point == 0)
 			{
-				Movement->SetMovementMode(MOVE_Flying);
+				FHawkeyeTraversalMove Hold;
+				Hold.Exit = EHawkeyeTraversalExit::Hold;
+				FHawkeyeTraversalKey& Here = Hold.Keys.AddDefaulted_GetRef();
+				Here.Location = Kate->GetActorLocation();
+				Here.Yaw = Kate->GetActorRotation().Yaw;
+				Kate->GetHawkeyeMovement()->StartTraversal(Hold);
 				S->Point = 1;
 				return false;
 			}

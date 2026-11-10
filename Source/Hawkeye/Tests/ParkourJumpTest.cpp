@@ -89,11 +89,12 @@ namespace HawkeyeParkourJumpTest
 		return Flown;
 	}
 
-	static void RunMove(UParkourComponent* Parkour, float Seconds)
+	/** Runs the current move to its end by ticking the movement, at most Seconds. */
+	static void RunMove(AHawkeyeAimTestCharacter* Kate, float Seconds)
 	{
-		for (float T = 0.f; T < Seconds && Parkour->IsPerformingMove(); T += 0.05f)
+		for (float T = 0.f; T < Seconds && Kate->GetParkourComponent()->IsPerformingMove(); T += 0.05f)
 		{
-			Parkour->AdvanceMove(0.05f);
+			Kate->TestTickMovement(0.05f);
 		}
 	}
 }
@@ -159,7 +160,7 @@ bool FHawkeyeParkourJumpHeights::RunTest(const FString& Parameters)
 				// Up she goes: the late catch takes the 280 cm top as a hang as soon as it is in a grab's reach.
 				FlyJump(Kate, Parkour, FVector(0.f, 0.f, 420.f), 0.8f);
 				TestEqual(What + TEXT(": the late catch grabs it on the way up"), Parkour->GetActiveMove(), EMove::LedgeGrab);
-				RunMove(Parkour, 1.f);
+				RunMove(Kate, 1.f);
 				TestTrue(What + TEXT(": and hangs from it"), Parkour->IsHanging());
 			}
 			else if (Case.Expected == EMove::LedgeGrab || Case.Expected == EMove::Mantle)
@@ -240,7 +241,7 @@ bool FHawkeyeParkourJumpEarly::RunTest(const FString& Parameters)
 		const EHawkeyeParkourMove Move = Parkour->GetActiveMove();
 		TestTrue(What + TEXT(": onto it or hanging from it"), Move == EHawkeyeParkourMove::Mantle
 			|| Move == EHawkeyeParkourMove::LedgeGrab || Move == EHawkeyeParkourMove::Vault);
-		RunMove(Parkour, 1.f);
+		RunMove(Kate, 1.f);
 		TestTrue(What + TEXT(": up there (on top or hanging)"),
 			Parkour->IsHanging() || Feet(Kate) >= Height - 1.f);
 	}
@@ -268,7 +269,7 @@ bool FHawkeyeParkourJumpBuffer::RunTest(const FString& Parameters)
 		const float PressAt = bLate ? 0.3f : 0.6f;
 		for (float T = 0.f; T < PressAt - 0.01f; T += 0.05f)
 		{
-			Parkour->AdvanceMove(0.05f);
+			Kate->TestTickMovement(0.05f);
 			Parkour->TickJumpAssist(0.05f);
 		}
 		Kate->Jump();
@@ -277,7 +278,7 @@ bool FHawkeyeParkourJumpBuffer::RunTest(const FString& Parameters)
 		for (float T = 0.f; T < 0.6f && Parkour->IsPerformingMove(); T += 0.05f)
 		{
 			Parkour->TickJumpAssist(0.05f);
-			Parkour->AdvanceMove(0.05f);
+			Kate->TestTickMovement(0.05f);
 		}
 		TestFalse(TEXT("The mantle is over"), Parkour->IsPerformingMove());
 		Parkour->TickJumpAssist(0.02f);
@@ -289,7 +290,7 @@ bool FHawkeyeParkourJumpBuffer::RunTest(const FString& Parameters)
 		{
 			TestEqual(TEXT("The held press fires at the end: the next step is mantled"), Parkour->GetActiveMove(),
 				EHawkeyeParkourMove::Mantle);
-			RunMove(Parkour, 1.f);
+			RunMove(Kate, 1.f);
 			TestEqual(TEXT("And she is on the second step"), Feet(Kate), 302.f, 3.f);
 		}
 	}
@@ -316,7 +317,7 @@ bool FHawkeyeParkourLateCatchFalling::RunTest(const FString& Parameters)
 	FlyJump(Kate, Parkour, FVector(0.f, 0.f, -50.f), 0.8f);
 	TestTrue(TEXT("Caught on the way down"), Parkour->IsBusy());
 	TestTrue(TEXT("Before she has fallen more than a storey past the top"), Feet(Kate) > 350.f - 330.f);
-	RunMove(Parkour, 1.f);
+	RunMove(Kate, 1.f);
 	TestTrue(TEXT("On top of the wall or hanging from its edge"),
 		Parkour->IsHanging() || FMath::IsNearlyEqual(Feet(Kate), 352.f, 3.f));
 
@@ -395,7 +396,7 @@ bool FHawkeyeParkourJumpStandstill::RunTest(const FString& Parameters)
 					}
 					TestTrue(What + TEXT(": vaulted or mantled (") + UEnum::GetValueAsString(Move) + TEXT(", ")
 						+ Parkour->GetLastJumpRefusal() + TEXT(")"), Move == EMove::Vault || Move == EMove::Mantle);
-					RunMove(Parkour, 1.f);
+					RunMove(Kate, 1.f);
 					TestTrue(What + TEXT(": over it or on it"),
 						Kate->GetActorLocation().X > Front + Wall.Depth || Feet(Kate) >= Wall.Height - 1.f);
 				}

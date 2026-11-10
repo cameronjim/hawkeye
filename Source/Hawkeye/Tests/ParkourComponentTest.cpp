@@ -2,6 +2,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Player/HawkeyeMovementComponent.h"
 #include "Player/ParkourComponent.h"
 #include "Tests/HawkeyeTestUtils.h"
 
@@ -10,8 +11,9 @@
 /**
  * Vault, mantle and ledge grab (claude-docs/gameplay-semantics.md, traversal): which move each
  * height and shape calls for, what the probe reads off box obstacles, and the procedural moves
- * themselves (a plain character has no AnimBP, so the capsule follows the plain arc). Kate stands
- * at the origin facing +X with her feet at z = 0 on a big floor; obstacles start 100 cm ahead.
+ * themselves, run by ticking the movement (a plain character has no AnimBP, so the capsule follows
+ * the plain path). Kate stands at the origin facing +X with her feet at z = 0 on a big floor;
+ * obstacles start 100 cm ahead.
  */
 namespace HawkeyeParkourTest
 {
@@ -198,13 +200,13 @@ bool FHawkeyeParkourVaultMove::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Moved by the component (no sample on a plain character)"), Parkour->GetLastRoute(),
 		EHawkeyeParkourRoute::Procedural);
 	TestTrue(TEXT("Input is locked"), Parkour->IsLockingInput() && Kate->IsTraversing());
-	TestEqual(TEXT("Flying while it runs"), ModeOf(Kate), static_cast<int32>(MOVE_Flying));
+	TestTrue(TEXT("In the traversal movement mode while it runs"), Kate->GetHawkeyeMovement()->IsTraversing());
 
 	float PeakFeet = Feet(Kate);
 	float FeetOverBlock = -1.f;
 	for (int32 Step = 0; Step < 4; ++Step)
 	{
-		Parkour->AdvanceMove(0.1f);
+		Kate->TestTickMovement(0.1f);
 		PeakFeet = FMath::Max(PeakFeet, Feet(Kate));
 		if (Kate->GetActorLocation().X > 100.f && Kate->GetActorLocation().X < 160.f)
 		{
@@ -213,8 +215,8 @@ bool FHawkeyeParkourVaultMove::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("0.4 s in, still locked"), Parkour->IsLockingInput());
 	TestTrue(TEXT("Her feet clear the 90 cm top while over the block"), FeetOverBlock >= 90.f);
-	Parkour->AdvanceMove(0.1f);
-	Parkour->AdvanceMove(0.1f);
+	Kate->TestTickMovement(0.1f);
+	Kate->TestTickMovement(0.1f);
 	TestFalse(TEXT("Past 0.5 s the lock is gone"), Parkour->IsLockingInput());
 	TestFalse(TEXT("And the move is over"), Parkour->IsPerformingMove());
 	TestTrue(TEXT("She is on the far side"), Kate->GetActorLocation().X > 160.f + 34.f);
@@ -237,11 +239,11 @@ bool FHawkeyeParkourMantleMove::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Mantle"), Parkour->GetActiveMove(), EHawkeyeParkourMove::Mantle);
 	for (int32 Step = 0; Step < 7; ++Step)
 	{
-		Parkour->AdvanceMove(0.1f);
+		Kate->TestTickMovement(0.1f);
 	}
 	TestTrue(TEXT("0.7 s in, still going (0.8 s)"), Parkour->IsPerformingMove());
-	Parkour->AdvanceMove(0.1f);
-	Parkour->AdvanceMove(0.1f);
+	Kate->TestTickMovement(0.1f);
+	Kate->TestTickMovement(0.1f);
 	TestFalse(TEXT("Done after 0.8 s"), Parkour->IsPerformingMove());
 	TestEqual(TEXT("Feet on the 150 cm top"), Feet(Kate), 152.f, 1.f);
 	TestTrue(TEXT("Standing on it, capsule clear of the edge"), Kate->GetActorLocation().X >= 100.f + 34.f);
@@ -263,7 +265,7 @@ bool FHawkeyeParkourLedge::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Ledge grab"), Parkour->GetActiveMove(), EHawkeyeParkourMove::LedgeGrab);
 	for (int32 Step = 0; Step < 8; ++Step)
 	{
-		Parkour->AdvanceMove(0.05f);
+		Kate->TestTickMovement(0.05f);
 	}
 	TestTrue(TEXT("Hanging after the 0.35 s jump"), Parkour->IsHanging());
 	TestTrue(TEXT("Input locked while hanging"), Parkour->IsLockingInput());
@@ -275,7 +277,7 @@ bool FHawkeyeParkourLedge::RunTest(const FString& Parameters)
 	TestFalse(TEXT("No longer hanging"), Parkour->IsHanging());
 	for (int32 Step = 0; Step < 11; ++Step)
 	{
-		Parkour->AdvanceMove(0.1f);
+		Kate->TestTickMovement(0.1f);
 	}
 	TestFalse(TEXT("The 1 s climb is over"), Parkour->IsBusy());
 	TestEqual(TEXT("Feet on top"), Feet(Kate), 232.f, 1.f);
@@ -287,7 +289,7 @@ bool FHawkeyeParkourLedge::RunTest(const FString& Parameters)
 	DropParkour->TryParkour(false);
 	for (int32 Step = 0; Step < 8; ++Step)
 	{
-		DropParkour->AdvanceMove(0.05f);
+		Dropper->TestTickMovement(0.05f);
 	}
 	TestTrue(TEXT("Hanging again"), DropParkour->IsHanging());
 	TestTrue(TEXT("Drop lets go"), DropParkour->DropFromHang());
@@ -321,7 +323,7 @@ bool FHawkeyeParkourCatch::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A ledge grab"), Parkour->GetActiveMove(), EHawkeyeParkourMove::LedgeGrab);
 	for (int32 Step = 0; Step < 4; ++Step)
 	{
-		Parkour->AdvanceMove(0.05f);
+		Kate->TestTickMovement(0.05f);
 	}
 	TestTrue(TEXT("Hanging after the 0.15 s catch"), Parkour->IsHanging());
 	TestEqual(TEXT("Feet 145 cm below the top"), Feet(Kate), 800.f - 145.f, 1.f);

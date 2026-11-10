@@ -64,12 +64,12 @@ namespace HawkeyeRoofEdgeGuardTest
 	}
 
 	/** Runs the current move to its end in 1/60 s steps; returns the lowest feet height seen while over the parapet. */
-	static float RunMove(ACharacter* Kate, UParkourComponent* Parkour, float MaxSeconds = 3.f)
+	static float RunMove(AHawkeyeAimTestCharacter* Kate, UParkourComponent* Parkour, float MaxSeconds = 3.f)
 	{
 		float LowestOver = BIG_NUMBER;
 		for (float T = 0.f; T < MaxSeconds && Parkour->IsPerformingMove(); T += 1.f / 60.f)
 		{
-			Parkour->AdvanceMove(1.f / 60.f);
+			Kate->TestTickMovement(1.f / 60.f);
 			const float X = Kate->GetActorLocation().X;
 			if (X > 100.f - 30.f && X < 130.f + 30.f)
 			{
@@ -118,6 +118,7 @@ bool FHawkeyeRoofEdgeGuardOnePress::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Perched"), Parkour->IsPerchedOnParapet());
 	UCharacterMovementComponent* Movement = Kate->GetCharacterMovement();
 	TestFalse(TEXT("Walking off it is off"), Movement->bCanWalkOffLedges);
+	TestTrue(TEXT("She stops there: no step on toward the drop"), Movement->Velocity.IsNearlyZero());
 
 	// The stick still at the drop: the top's edge holds her; back toward the roof it lets her step down.
 	Kate->AddMovementInput(FVector::ForwardVector, 1.f);
@@ -155,7 +156,7 @@ bool FHawkeyeRoofEdgeGuardDoubleTap::RunTest(const FString& Parameters)
 	// 0.15 s later, the second press.
 	for (int32 Step = 0; Step < 9; ++Step)
 	{
-		Parkour->AdvanceMove(1.f / 60.f);
+		Kate->TestTickMovement(1.f / 60.f);
 		Parkour->TickRoofEdgeGuard(1.f / 60.f);
 	}
 	Kate->Jump();
@@ -177,7 +178,7 @@ bool FHawkeyeRoofEdgeGuardDoubleTap::RunTest(const FString& Parameters)
 	Kate2->Jump();
 	for (int32 Step = 0; Step < 24; ++Step)
 	{
-		Parkour2->AdvanceMove(1.f / 60.f);
+		Kate2->TestTickMovement(1.f / 60.f);
 		Parkour2->TickRoofEdgeGuard(1.f / 60.f);
 	}
 	Kate2->Jump();

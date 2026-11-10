@@ -9,30 +9,38 @@
 class ACharacter;
 struct FHawkeyeStrikePoseSample;
 class UAnimMontage;
-class UAnimSequenceBase;
 class UCharacterMovementComponent;
+class UHawkeyeMovementComponent;
 class USoundBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnParkourStartedSignature, EHawkeyeParkourMove, Move, EHawkeyeParkourRoute, Route);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnParkourFinishedSignature, EHawkeyeParkourMove, Move);
 
-/** A stretch of one of the sample's traversal clips that poses the body for a move. */
+/** A stretch of one of the sample's traversal montages, played for a move. */
 USTRUCT(BlueprintType)
 struct HAWKEYE_API FHawkeyeParkourClip
 {
 	GENERATED_BODY()
 
-	/** Played in the full-body slot with root motion ignored; the capsule follows its root motion, warped. */
+	/**
+	 * One of the sample's traversal montages (AM_), loaded when play begins. For a vault or a mantle onto its top its
+	 * root motion, warped by its motion-warping windows to the probed ledge, moves the capsule; for any other move it
+	 * only poses the body.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour")
-	TSoftObjectPtr<UAnimSequenceBase> Sequence;
+	TSoftObjectPtr<UAnimMontage> Montage;
 
-	/** Clip time the move starts at, s. */
+	/** Montage time the move starts at, s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour", meta = (ClampMin = "0.0"))
 	float StartTime = 0.f;
 
-	/** Clip time the move ends at, s. The stretch is played faster or slower to fit the move's duration. */
+	/** Montage time the move ends at, s. The stretch is played faster or slower to fit the move's duration. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour", meta = (ClampMin = "0.0"))
 	float EndTime = 1.f;
+
+	/** In a list chosen by height (MantleClips): the tallest top this clip is for, cm; 0 takes any. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour", meta = (ClampMin = "0.0"))
+	float MaxHeight = 0.f;
 };
 
 /**
@@ -43,10 +51,11 @@ struct HAWKEYE_API FHawkeyeParkourClip
  * turns the numbers into a move. Sprinting into an obstacle within AutoTriggerDistance starts it
  * on its own; the jump key starts it at any speed. Vault and mantle go to the Game Animation
  * Sample's traversal first (GaspTraversal.h) when the owner carries it; when the sample finds no
- * traversable block or no montage fits, or the owner has no sample, this component moves the
- * capsule itself: along the root motion of a sample clip (or a plain arc when there is no
- * animation), warped so it starts where the character is and ends on the far side, on top, or
- * at the hang point. Input is locked exactly as long as the move lasts.
+ * traversable block or no montage fits, or the owner has no sample, the move is ours. This
+ * component decides it and hands it to UHawkeyeMovementComponent's traversal mode, which moves the
+ * capsule: by a vault or mantle montage's root motion, warped to the probed ledge, or along a path
+ * this component works out (the plain arc, the climb, the hang moves). Input is locked exactly as long
+ * as the move lasts, and the move leaves with the momentum gameplay-semantics.md gives it.
  *
  * The ledge grab has no sample equivalent: the character jumps to a hang (the sample's 2.5 m
  * climb clip paused where the hands reach the edge), then the jump key climbs and crouch drops.
@@ -170,12 +179,23 @@ public:
 	/** The jump buffer and the late catch for one tick. TickComponent calls it; a test calls it directly. */
 	void TickJumpAssist(float DeltaSeconds);
 
-	/** Starts Move over Obstacle with this component moving the capsule (no sample traversal). */
+	/** Starts Move over Obstacle as our own move (no sample traversal). */
 	UFUNCTION(BlueprintCallable, Category = "Parkour")
 	bool StartMove(EHawkeyeParkourMove Move, const FHawkeyeParkourObstacle& Obstacle);
 
-	/** Moves the current move DeltaSeconds on. Tick calls it; a test with no ticking calls it directly. */
-	void AdvanceMove(float DeltaSeconds);
+	/** Of Clips, the first whose MaxHeight takes a top Height cm up (0 takes any); INDEX_NONE when none does. */
+	static int32 ChooseClipForHeight(const TArray<FHawkeyeParkourClip>& Clips, float Height);
+
+	/**
+	 * How fast Move leaves along its direction, cm/s, for a start at EntrySpeed along it: a vault keeps it within
+	 * VaultExitMinSpeed..VaultExitMaxSpeed, a mantle or climb steps on at StepOnSpeed, anything else 0.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Parkour")
+	float GetExitSpeed(EHawkeyeParkourMove Move, float EntrySpeed) const;
+
+	/** A vault over Distance cm of ground started at EntrySpeed: VaultSeconds, or the time that speed covers it in, never under VaultMinSeconds. */
+	UFUNCTION(BlueprintPure, Category = "Parkour")
+	float GetVaultSeconds(float Distance, float EntrySpeed) const;
 
 	/** From a hang: up onto the top. False when not hanging or there is nowhere to stand. */
 	UFUNCTION(BlueprintCallable, Category = "Parkour")
@@ -477,6 +497,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Timing", meta = (ClampMin = "0.0"))
 	float DropRegrabSeconds = 0.6f;
 
+	/** The quickest a fast vault runs, however fast she came in, s. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parkour|Timing", meta = (ClampMin = "0.05"))
+	float VaultMinSeconds = 0.35f;
+
+	// --- Momentum, cm/s -------------------------------------------------------------------------
+
+	/** A vault leaves at least this fast along it, even from a standstill. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parkour|Momentum", meta = (ClampMin = "0.0"))
+	float VaultExitMinSpeed = 300.f;
+
+	/** A vault leaves at her entry speed up to this (above the sprint, so a sprint keeps its speed). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parkour|Momentum", meta = (ClampMin = "0.0"))
+	float VaultExitMaxSpeed = 750.f;
+
+	/** A mantle or climb leaves Walking this fast the way she faced the wall, so a held stick runs straight on. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Parkour|Momentum", meta = (ClampMin = "0.0"))
+	float StepOnSpeed = 150.f;
+
 	// --- Hang -----------------------------------------------------------------------------------
 
 	/**
@@ -553,21 +591,23 @@ public:
 
 	// --- Clips ----------------------------------------------------------------------------------
 
+	/** Over the obstacle and down onto the floor beyond (FrontLedge, BackLedge and BackFloor warp targets). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Clips")
 	FHawkeyeParkourClip VaultClip;
 
+	/** Up onto the top, by its height: the first whose MaxHeight takes it (a FrontLedge warp target). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Clips")
-	FHawkeyeParkourClip MantleClip;
+	TArray<FHawkeyeParkourClip> MantleClips;
 
-	/** Standing jump to the hang; its EndTime is the hang pose. */
+	/** Standing jump to the hang; its EndTime is the hang pose. Poses the body only. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Clips")
 	FHawkeyeParkourClip GrabClip;
 
-	/** The last moment before the hang pose, for a catch while falling. */
+	/** The last moment before the hang pose, for a catch while falling. Poses the body only. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Clips")
 	FHawkeyeParkourClip CatchClip;
 
-	/** From the hang pose to standing on top. */
+	/** From the hang pose to standing on top. Poses the body: the climb follows its path to the probed stand point. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Clips")
 	FHawkeyeParkourClip ClimbClip;
 
@@ -619,29 +659,68 @@ protected:
 	/** The sample's TryTraversalAction; true when it started a montage. */
 	bool TryStartSampleTraversal();
 
-	/** Common start: face the wall, Flying, clip, state. Rise < 0 means End.Z - Start.Z. */
-	bool BeginMove(EHawkeyeParkourMove Move, const FVector& End, float Rise, float Seconds, const FHawkeyeParkourClip& Clip);
+	/**
+	 * Common start: the clip, the state, and the move handed to the movement. A clip-driven move whose clip plays is
+	 * moved by its warped root motion; anything else follows the path to End (Rise < 0 means End.Z - Start.Z).
+	 * PassThrough is what the move goes through on purpose.
+	 */
+	bool BeginMove(EHawkeyeParkourMove Move, const FVector& End, float Rise, float Seconds, const FHawkeyeParkourClip& Clip,
+		const TArray<TWeakObjectPtr<AActor>>& PassThrough);
 
-	/** Where the capsule is Alpha of the way through the current move. */
+	/** What a move over Obstacle passes through: the actor the probe met and whatever is solid under its top's edge. */
+	TArray<TWeakObjectPtr<AActor>> FindClimbedActors(const FHawkeyeParkourObstacle& Obstacle) const;
+
+	/** A vault, or a mantle onto its own top, outside the roof-edge guard: the clip's warped root motion moves her. */
+	bool IsClipDriven(EHawkeyeParkourMove Move) const;
+
+	/** Starts the move's clip: driving the capsule when the move is clip driven and it can, else posing her. */
+	void PlayMoveClip(EHawkeyeParkourMove Move, const FHawkeyeParkourClip& Clip, float Seconds);
+
+	/** What moves her in the current move, for the log: the clip's root motion, a path it poses, or the plain path. */
+	FString DescribeMoveDrive() const;
+
+	/** The current move's path: the capsule and its facing at even steps from now to the end. */
+	void BuildMovePath(FHawkeyeTraversalMove& OutMove) const;
+
+	/** How the current move leaves the traversal and with what velocity, measured from her velocity now. */
+	void SetMoveExit(FHawkeyeTraversalMove& OutMove) const;
+
+	/** Where the capsule is Alpha of the way through the current path move. */
 	FVector ComputeMoveLocation(float Alpha) const;
 
-	/** Forward (0..1 of the way) and up (in units of the rise) at Alpha, from the clip or an arc. */
+	/** Forward (0..1 of the way) and up (in units of the rise) at Alpha: over in an arc, or up first and then in. */
 	void ComputeMoveShape(float Alpha, float& OutForward, float& OutUp) const;
 
-	/** Clip root motion from its start to Time, in the actor's frame: X forward, Z up. */
-	FVector ClipRootOffset(float Time) const;
+	/** The movement's word on how a move or hang ended. */
+	void HandleTraversalEnded(EHawkeyeTraversalEnd End);
 
 	void FinishMove();
 	void EnterHang();
+	/** The movement mode was changed under a move or hang: drop the state that depended on it. */
+	void AbandonTraversal();
 	FVector HangLocationFor(const FHawkeyeParkourObstacle& Obstacle) const;
 
-	/** Starts Clip on the body (root motion ignored) so its stretch lasts Seconds. False without an AnimBP. */
-	bool PlayClip(const FHawkeyeParkourClip& Clip, float Seconds);
+	/**
+	 * Starts Clip's montage so its stretch lasts Seconds. bDriveCapsule: its root motion, warped to the move's ledge,
+	 * moves the capsule (false when it has none or there is no motion warping); else it only poses the body.
+	 * False without an AnimBP or a loaded clip.
+	 */
+	bool PlayClip(const FHawkeyeParkourClip& Clip, float Seconds, bool bDriveCapsule);
+	/** The probe's ledge as warp targets for the traversal montages' windows. */
+	bool SetWarpTargets(EHawkeyeParkourMove Move, const FHawkeyeParkourObstacle& Obstacle) const;
 	void StopClip(float BlendOutSeconds);
+	/** Root motion from montages drives the capsule (true) or is ignored; the AnimBP's own mode is kept to restore. */
+	void SetClipRootMotion(bool bDriveCapsule);
 	void RestoreRootMotionMode();
+
+	/** After the sample's traversal: her speed raised to its exit speed when she came out slower. */
+	void TickSampleExit();
+	/** The camera turned with a turning move, by as much as she turned since the last tick. */
+	void TickMoveTurnCamera();
 
 	ACharacter* GetCharacter() const;
 	UCharacterMovementComponent* GetMovement() const;
+	UHawkeyeMovementComponent* GetHawkeyeMovement() const;
 
 	/** The bottom of the capsule, world z. */
 	float GetFeetZ() const;
@@ -667,9 +746,9 @@ protected:
 	UPROPERTY(Transient)
 	FHawkeyeParkourObstacle HangObstacle;
 
-	/** The clip posing the current move; null means the plain arc. */
+	/** Every clip's montage, loaded at BeginPlay so no move waits on a load. */
 	UPROPERTY(Transient)
-	TObjectPtr<UAnimSequenceBase> MoveClip;
+	TArray<TObjectPtr<UAnimMontage>> LoadedClips;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> ActiveMontage;
@@ -677,15 +756,18 @@ protected:
 	FVector MoveStart = FVector::ZeroVector;
 	FVector MoveEnd = FVector::ZeroVector;
 	float MoveRise = 0.f;
-	float MoveElapsed = 0.f;
 	float MoveSeconds = 0.f;
-	float ClipStart = 0.f;
-	float ClipEnd = 0.f;
-	/** The clip's root motion over the stretch: forward at the end, peak rise, rise at the end. */
-	float ClipForwardTotal = 0.f;
-	float ClipPeakUp = 0.f;
-	float ClipEndUp = 0.f;
+	/** The move's facing at its end (yaw, degrees). */
+	float MoveYaw = 0.f;
+	/** The current move is moved by its montage's root motion, not a path. */
+	bool bMoveByRootMotion = false;
 	float RegrabCooldown = 0.f;
+	/** After a clip that drove the capsule, root motion is ignored until its blend-out is over, s. */
+	float RootMotionRestoreIn = 0.f;
+	/** The sample's traversal ran: once it is over she leaves along SampleExitDirection at least SampleExitSpeed. */
+	bool bSampleExitPending = false;
+	FVector SampleExitDirection = FVector::ZeroVector;
+	float SampleExitSpeed = 0.f;
 	/** The ledge the last drop let go of: not caught again until the fall ends. */
 	FVector DroppedLedgePoint = FVector::ZeroVector;
 	bool bIgnoreDroppedLedge = false;
@@ -767,8 +849,8 @@ protected:
 		float TurnDegrees, bool bArc, const FVector& Pivot);
 	/** Where the capsule is Alpha through a hang transfer. */
 	FVector ComputeHangTransferLocation(float Alpha) const;
-	/** The yaw a turning move has at Alpha, and the camera carried round with her. */
-	void ApplyMoveTurn(float Alpha);
+	/** The facing a move has at Alpha: a turning move turns by MoveYawDelta, eased; any other faces MoveYaw. */
+	float ComputeMoveYaw(float Alpha) const;
 	/** The hands' hand-over-hand state for one tick, after the capsule moved Moved cm along the line. */
 	void AdvanceHangHands(float DeltaSeconds, float Moved, float Sign);
 	/** Eases the control yaw back inside HangCameraMaxYaw of the wall. */
@@ -808,11 +890,12 @@ protected:
 	float SwayAlpha = 0.f;
 	FVector SwayDirection = FVector::ZeroVector;
 
-	// A turning move (a corner, the hop): the yaw it starts at and turns by, and the corner's swing.
+	// A turning move (a corner, the hop): the yaw it starts at and turns by, the yaw the camera last followed, and the
+	// corner's swing.
 	bool bMoveTurns = false;
 	float MoveYawStart = 0.f;
 	float MoveYawDelta = 0.f;
-	float MoveYawApplied = 0.f;
+	float CameraFollowedYaw = 0.f;
 	bool bMoveArc = false;
 	FVector MovePivot = FVector::ZeroVector;
 	/** The hang transfer's target, which becomes HangObstacle when it ends. */
