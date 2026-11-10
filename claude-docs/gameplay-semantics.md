@@ -488,8 +488,9 @@ gone from the code, and so from this file. Every section below describes code th
   for 6 s. Cap 3.
 - Explosive: 80 damage at the centre falling linearly to 0 at 400 cm, knocks thugs down
   2 s, camera shake, a flash. Kate takes the damage too if she is inside. Cap 2.
-- Thug AI honours `bHeld`, `bBlinded`, and `bJammed`. CH01 grants 2 putty, 2 bola,
-  1 smoke, 1 EMP for testing.
+- Thug AI honours `bHeld`, `bBlinded`, and `bJammed`. CH01 granted 2 putty, 2 bola, 1 smoke and 1 EMP for testing
+  until 2026-11-10; Act 1 now unlocks along the campaign order ("Bosses", Campaign order). The putty arrow is the
+  story's sticky foam: its display name is "Sticky foam arrow", "Foam" on the hotbar (asset and code keep Putty).
 
 ## Bow and arrows, original rules
 - Draw is a hold: 0 to `FullDrawSeconds` (0.8 Kate, 1.0 Clint). Release below 25% draw
@@ -550,6 +551,48 @@ gone from the code, and so from this file. Every section below describes code th
   the controller proceeds straight to `NextLevel`.
 - The current objective is the first incomplete non-optional objective in array order.
   HUD shows that one.
+- Unmarked (2026-11-10, chapter 2's courier). An optional objective with `bUnmarked` is never on the HUD: never the
+  current objective (no marker, no compass bearing, no title), and its completion shows no "Objective complete" toast
+  (`UHawkeyeObjectiveWidget::ShouldToastCompletion`); it still fires `OnObjectiveUpdated` (the autosave hears it) and is
+  saved with the rest. On a required objective the flag is ignored. Completing it before, after or never changes when
+  the chapter completes (`Hawkeye.Mission.UnmarkedOptionalNeverBlocksOrShows`).
+- Campaign flags (2026-11-10). An objective's `CampaignFlag` goes up in `UHawkeyeCampaignState::CampaignFlags` when it
+  completes, in the game mode's objective handler before that objective's autosave, once. Flags outlive the chapter
+  (the completed objectives do not); only a new game clears them (`Hawkeye.Campaign.FlagRaisedOnceAndSaved`).
+  Chapter 2's courier raises `saw_courier` for later acts.
+
+## Chapter events (built 2026-11-10 for Act 1's "Reindeer Games")
+- `UMissionDefinition::Events`: entries of an event name, DT_Dialogue lines and arrow grants. `UChapterEventSubsystem`
+  fires every entry for an event the first time it happens in a run of the chapter (`UHawkeyeChapterEventRules::Match`):
+  the lines through `PlayLine` (queued one after another, fight or not, unlike sequences), the arrows into the
+  player's quiver up to each cap. Events: `parry` (the player's parry landed, `AHawkeyeCharacter::TryParry`),
+  `arrow_loosed:<arrow asset>` (the player's bow loosed it), `objective_completed:<id>`, `objective_started:<id>` (it
+  became the current one; the first objective's at the chapter's start, never on a load). No chapter is named in C++.
+- What has fired is mirrored into the save (`FiredChapterEvents`) and put back on a load, so a load mid-chapter says no
+  line and grants nothing twice; a chapter started afresh (chapter select, a new game) starts with nothing fired.
+  `Hawkeye.ChapterEvents.FireOnceARun`.
+- Chapter 2's: arriving at the drive speaks her two lines, the crew's bark and her reply, then the foam unlock line and
+  grants 3 foam; the first parry, the first foam arrow ("Stay."), the crew down, the toys back (the volunteer) and the
+  courier each speak theirs. The script has the foam unlocked after the first parry; it unlocks on arrival so a player
+  who never parries still gets it.
+
+## Chapter sites (built 2026-11-10 for Act 1's "Reindeer Games")
+- A chapter's set piece on the district is data: `UChapterSiteDefinition` (`UMissionDefinition::Site`) of props (static
+  meshes, blocking or not), point lights, objective volumes (`AObjectiveTriggerVolume`), a crew (thugs with a class, weapon,
+  place and facing), the crew's objective (an `AThugGroupObjective` at their middle: every one down completes it) and the
+  objective that wakes them, keycard pickups, and examines (`AChapterEndInteractable`: objective, prompt, prop, whether it
+  must be the current objective, the keycards it asks for, its close-up). `UChapterSiteSubsystem` spawns it when the
+  chapter starts and clears every actor when another starts; nothing is placed in the map.
+- The crew stand still (thinking off) until the alert objective completes (none: at once), then are alerted on her. They
+  are never saved by SPUD (`bSkipSave`): on a load the site is spawned again from the mission start and matched to the
+  save (`Reconcile`): the crew gone if their objective is done, awake if the alert one is; a pickup whose keycard she
+  carries is not on the ground.
+- The chapter's opening puts Kate at the site's `PlayerStart` (zero leaves her where she is).
+- An examine can ask for keycards (`AChapterEndInteractable::RequiredKeycards`): offered only when she carries all of
+  them. Kate's keycard ring is saved with her (`SavedKeycards`), so a load keeps what she carries.
+- `Hawkeye.ChapterSite.ChapterTwoCompletesInAWorld`: a site built like chapter 2's in a test world: spawned by the
+  mission start, the crew still until the arrival, the courier offered out of order, the table refused without both
+  sacks, the chapter complete without the courier, a load matched, another chapter clearing it.
 - Objective ids are `FName`, unique within a mission, lowercase snake_case
   (`find_weapon`, `reach_stairwell`). Reusing an id across missions is fine.
 
@@ -772,7 +815,10 @@ gone from the code, and so from this file. Every section below describes code th
   phase is short.
 - Street crimes wait while a fight is past its approach.
 - Campaign order: the chain of `UMissionDefinition::NextChapter` from the district's `StartingMission` (Night Shift,
-  then The Social Club while chapters 2 and 3 do not exist). Chapter select in the safehouse lists it: a chapter at or
+  Reindeer Games, then The Social Club while chapter 3 does not exist). Act 1's arrows unlock along it, and a chapter's
+  `StartingArrows` hold everything unlocked before it, so chapter select can open any chapter cold: chapter 1 the
+  standard arrow and the grapple; chapter 2 the same, and the sticky foam (the putty arrow, shown as "Foam") granted by
+  its arrival event; chapter 4 the standard, the grapple and 2 foam, and the confetti in its last phase. Chapter select in the safehouse lists it: a chapter at or
   before the one in progress is open, the one after it opens once it is complete, the rest say "[Locked]"; picking an
   open chapter that is not the one in progress starts it (`AHawkeyeGameMode::StartChapter`: the chapter before is put
   away without the replaced-mission warning, then the mission, its opening, and a save 1.5 s later). `-HawkeyeChapter=<mission asset>` on the command line starts the district on that chapter,
@@ -797,7 +843,12 @@ gone from the code, and so from this file. Every section below describes code th
 - Three presents (`SM_Kit_Present`) sit in the Santa's lane at 0.3, 0.55 and 0.8 of it; it shoves them along. A putty
   arrow (her quiver carries putty into the chapter) on it or its tether pins it 4 s; the lap does not use it.
 - The Santa: waits 2 s, then telegraphs 1.5 s, sweeps 2.5 s, rests 3.5 s; 20 damage (12 / 20 / 28), once per 2 s,
-  170 cm either side of its lane and 160 cm along it, a 700 cm/s shove.
+  240 cm either side of its lane and 160 cm along it, a 700 cm/s shove.
+- The lane's width comes from his reach (2026-11-10; it was 170 and the lure caught him in one lap run of four): half
+  width = where he stops to let a swing land (`MeleeCloseDistance`, 120) + his longest lunge (the haymaker's 60) + her
+  capsule (35) + 25 (`_arena.SANTA_HALF_WIDTH`, `create_boss.HAZARD`). So with Kate just outside the lit strip, Tomas
+  closing on her stops inside it, and waiting on his 300 cm ring he stands across its middle. `Hawkeye.Lap.SocialClub`
+  stands her 60 cm outside its edge across from him while it telegraphs and asserts the sweep catches him at least once.
 - The confetti arrow (`DA_Arrow_Confetti`, slot 5, the smoke arrow's slot, which Act 1 never fills otherwise): a smoke
   effect retuned by data (`BP_Effect_Confetti`, a child of `ASmokeCloud`: 350 cm for 2.5 s, the wrapping-paper burst
   as its look), so thugs in it are blinded for a moment; no damage, cap 3, not recoverable. Kate's first one loosed
@@ -1125,8 +1176,9 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   dropping loot twice), campaign state (`UHawkeyeCampaignState`, version 1: mission path, completed objectives,
   safehouses found and the last one used, noticed places, play time, which character was controlled,
   the phone's received, read and pending messages, seen chapter titles, played dialogue sequences,
-  challenge bests and completions, crime counts, hints shown and learned, and a running chase's
-  route, progress and beat flags). Not saved: stuck arrows,
+  challenge bests and completions, crime counts, hints shown and learned, a running chase's
+  route, progress and beat flags, what a boss fight has said, the campaign flags and the running chapter's fired events;
+  Kate's keycards since 2026-11-10). Not saved: stuck arrows,
   pickups, EMP lamp state, spawner-created actors, the partner's fight state.
 - Autosave on objective completion, safehouse entry and visit, fast travel, a finished challenge or
   crime, entering an interior or a playable scene, new game, quit to menu, and after 60 s of roaming
