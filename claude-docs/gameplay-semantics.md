@@ -1528,8 +1528,8 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   tap now would parry him: in the difficulty's window (Hard: not the first 0.1 s), within 250 cm and
   70 degrees of her view, 150 cm up or down (`AHawkeyeCharacter::CanParryNow`, the same test the
   parry itself uses).
-- (2026-11-11: the hit stop is now both bodies' own time, by the blow's weight, and every landed blow kicks the lens;
-  see "Contact, reaction and knockout". The parry and the perfect dodge keep the world's stop.)
+- (2026-11-11: the hit stop's length is now by the blow's weight, a thug's blow on her stops it too, and every landed
+  blow kicks the lens; see "Contact, reaction and knockout".)
 - Hit read: a landed light keeps 2 frames of hit stop (0.033 s); a landed heavy gets 4 (0.067 s, as
   the parry) and a camera punch, the lens 2.5 cm in toward her and back over 0.1 s of real time (a
   half sine), times the camera shake scale (0.3 with reduce camera shake). Every landed strike puts
@@ -1679,13 +1679,15 @@ on every `FHawkeyeMeleeAttack`, the hit-stop, reaction and knockout tuning on th
   between them), its `Weight` (0 to 1). The struck body hears it before the damage, so a reaction clip picks the side it
   came from (`ClassifyReaction`) and a death throws the ragdoll from there. The melee hit sound plays at the contact point;
   Kate's spark sits at its height.
-- Hit-stop: both bodies' own time (`CustomTimeDilation`, 0.02) for `Lerp(0.02, 0.07, weight)` s of world time; the
-  world, the tokens, the AI and the boss's combo clock run on. Never on anyone winding up a swing (a boss swinging through
-  a light: his telegraph is a promise) or dead. Kate's light (0.3) is 0.035 s, her heavy (1.0) 0.07 s. The finisher's slow
-  motion composes with it. Every landed blow of hers kicks the lens in by `Lerp(0.8, 2.5, weight)` cm over 0.1 s.
+- Hit-stop: the world's time at 0.1 (as the parry's stop) for `Lerp(0.02, 0.07, weight)` real seconds, on any landed
+  blow Kate or Clint lands or takes (thugs' blows on her stop it too now). It is the world's, not the two bodies' own:
+  a per-body stop (tried first) let the AI's, the tokens' and a boss's clocks run on while Kate's stood still, and Santa,
+  winding up through her lights, caught her in her frozen recoveries and killed her twice in the grotto lap. Kate's light
+  (0.3) is 0.035 s, her heavy (1.0) 0.07 s, as before. It never cuts the finisher's slow motion short. Every landed blow
+  of hers kicks the lens in by `Lerp(0.8, 2.5, weight)` cm over 0.1 s of real time.
 - Reaction: after the hit-stop, the struck body (Kate's look when she has one) simulates from the pelvis's child above the
   struck body down (spine_01 for the torso, a thigh for a leg) under physical-animation motors (orientation 1200, angular
-  velocity 80), the struck body given `ImpulseSpeed` (420 cm/s) along the blow times `Lerp(0.35, 1, weight)`; its blend
+  velocity 80), a struck body swinging through it excepted, the struck body given `ImpulseSpeed` (420 cm/s) along the blow times `Lerp(0.35, 1, weight)`; its blend
   over the animation rises to 0.8 of that share in 0.04 s and eases back to none by 0.4 s. A guard (incoming damage
   scaled under 1) takes it at 0.35. A body already simulating (a knockdown, a get-up) is left alone. Arrows react too
   (weight `ImpactWeight`, 0.5).
