@@ -55,9 +55,11 @@ const TCHAR* LexToString(EGrappleRoofReach Reach)
 
 float FGrappleReachQuery::AngleOffViewDegrees(const FVector& ViewLocation, const FVector& ViewForward, const FVector& Point)
 {
+	// Float arithmetic on purpose: this is the expression UGrappleComponent::IsAnchorValid had before it moved here,
+	// kept bit for bit so the game's picks did not change.
 	const FVector ToPoint = (Point - ViewLocation).GetSafeNormal();
-	const double Cosine = FMath::Clamp(FVector::DotProduct(ViewForward.GetSafeNormal(), ToPoint), -1.0, 1.0);
-	return static_cast<float>(FMath::RadiansToDegrees(FMath::Acos(Cosine)));
+	const float Cosine = FMath::Clamp(FVector::DotProduct(ViewForward.GetSafeNormal(), ToPoint), -1.f, 1.f);
+	return FMath::RadiansToDegrees(FMath::Acos(Cosine));
 }
 
 bool FGrappleReachQuery::IsOnScreen(const FGrappleReachRules& Rules, const FVector& ViewLocation, const FVector& ViewForward,
@@ -151,20 +153,22 @@ FVector FGrappleReachQuery::ComputeStandingCentre(const FGrappleReachRules& Rule
 FVector FGrappleReachQuery::ComputeStartReleasePoint(const FVector& From, const FVector& Launch, const FVector& End,
 	float ReleaseDistance)
 {
+	// The far root of |Launch + Dir * S - From| = ReleaseDistance. Float arithmetic on purpose: the expression
+	// UGrappleComponent::IsZipClear had before it moved here, kept bit for bit so zips clear exactly as they did.
+	const float Release = ReleaseDistance;
 	const FVector Line = End - Launch;
-	const double Length = Line.Size();
+	const float Length = Line.Size();
 	if (Length <= KINDA_SMALL_NUMBER)
 	{
 		return End;
 	}
-	// The far root of |Launch + Dir * S - From| = ReleaseDistance.
 	const FVector Dir = Line / Length;
 	const FVector Offset = Launch - From;
-	const double B = FVector::DotProduct(Offset, Dir);
-	const double C = Offset.SizeSquared() - double(ReleaseDistance) * double(ReleaseDistance);
-	const double Disc = B * B - C;
-	const double S = Disc >= 0.0 ? -B + FMath::Sqrt(Disc) : 0.0;
-	return Launch + Dir * FMath::Clamp(S, 0.0, Length);
+	const float B = FVector::DotProduct(Offset, Dir);
+	const float C = Offset.SizeSquared() - Release * Release;
+	const float Disc = B * B - C;
+	const float S = Disc >= 0.f ? -B + FMath::Sqrt(Disc) : 0.f;
+	return Launch + Dir * FMath::Clamp(S, 0.f, Length);
 }
 
 // --- Anchors from a standing point ---------------------------------------------------------------
