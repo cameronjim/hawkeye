@@ -17,6 +17,15 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Traversal Debugger (editor tool).** A second, editor-only module `HawkeyeEditor` adds
+  a tab at Tools > Hawkeye > Traversal Debugger and a headless audit
+  (`Tools\traversal-audit.ps1`) that answers "which roofs can be grappled from where"
+  using the same reach code the game uses. The audit and the in-game test agree on every
+  row (2,457 anchors, 24,420 reachable pairs). 570 tests pass; all 13 laps passed first
+  try. The packaged game target was broken on main (IKRig linked for the editor only) and
+  is fixed. **Nobody has seen the tab on screen**: open it and check the viewport drawing,
+  toggles and buttons. The audit exits 1 because 14 street-facing roofs have no anchor
+  reachable from the sidewalk; that is either a generator fix or an allow list, your call.
 - **The hero block is dressed for December.** Avenue B to C, E 9th to 10th: ten strings of
   coloured bulbs across the street, 22 lit wreaths, lit windows and candles, snow on
   parapets, kerbs and cars, a tree stand with six trees. 1,012 planned records drawn as 25
