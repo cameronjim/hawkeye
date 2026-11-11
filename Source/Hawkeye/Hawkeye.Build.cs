@@ -58,6 +58,10 @@ public class Hawkeye : ModuleRules
 		// -HawkeyePerfLog reads the stat unit split (game and render thread, GPU) the engine keeps.
 		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI" });
 
+		// UHawkeyeRetargetGraphBuilder's UFUNCTION takes a UIKRetargeter*, so the generated code needs the IK Rig
+		// plugin's runtime module in every target, not only the editor (without it the game target's RetargetGraphBuilder.gen.cpp does not compile).
+		PrivateDependencyModuleNames.Add("IKRig");
+
 		// UHawkeyePartnerTreeBuilder authors ST_Partner headless through the StateTree editor API;
 		// UHawkeyeBowIKGraphBuilder authors the bow hands AnimBlueprints through the anim graph nodes;
 		// UHawkeyeVfxBuilder authors the Niagara systems through the Niagara editor's stack view model;
@@ -67,7 +71,7 @@ public class Hawkeye : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new string[] { "StateTreeEditorModule", "PropertyBindingUtils", "UnrealEd",
 				"AnimGraph", "AnimGraphRuntime", "BlueprintGraph", "NiagaraEditor", "NiagaraCore", "AnimationBlueprintLibrary" });
 			// UHawkeyeRetargetGraphBuilder authors a body look's AnimBlueprint: Retarget Pose From Mesh, the IK Rig plugin's node.
-			PrivateDependencyModuleNames.AddRange(new string[] { "IKRig", "IKRigDeveloper" });
+			PrivateDependencyModuleNames.Add("IKRigDeveloper");
 		}
 	}
 }
