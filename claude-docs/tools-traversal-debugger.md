@@ -127,6 +127,13 @@ the editor world with `FGrappleReachWorld`'s oracle.
 | Chapter 1 chain | reach_roof 1 from the street; cross_block 7 hops; find_arrow 37 hops | the same |
 | Picked dead on / picker disagreements | 24371 of 24420 (49 by the tie rule) / 0 of 24420 dead on, 0 of 97680 aimed off | not checked |
 
+Again on 2026-11-11, after the reach model was matched to the audit and the district regenerated, test and commandlet
+identical: 2457 anchors, 4438 spots (1111, 3327); pairs 76045 in range / 35553 seen / 39181 zip-clear / 24459 reachable;
+roofs with no anchor from a 10 m spot 78 (54 with a spot in range), none at 2.5 m 28, none from another roof 6; neighbour
+pairs 3536, 514 not reachable, 690 out of range; anchors from nowhere 45; street-facing unreached 0 (21 with no sidewalk spot
+in range, 7 with no wall on a street); the chain unchanged. The game's picker: 24415 of 24459 picked dead on, 0
+disagreements dead on, 0 of 97836 aimed off.
+
 Every roof row and every anchor row (`in_range`, `seen`, `clear`, `reach`, roof) is identical; the only differences
 in the JSON are the anchor names (`BP_GrappleAnchor_C_266` in the game, `City_Anchor_266` from the data, same
 number) and the picker fields. Two things had to be right for that:
