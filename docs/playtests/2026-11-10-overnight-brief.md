@@ -17,6 +17,20 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Thugs and Clint have real bodies; Lucky has a stand-in.** Street thugs, the heavy and Clint
+  are drawn as Quaternius's CC0 base male, retargeted every frame from the mannequins that still
+  run every clip, hit contact and ragdoll underneath. Thugs wear a dark red tracksuit with white
+  stripes and trainers, the heavy adds the black vest, ski mask and boots, and Clint is in black:
+  a sleeveless vest with a small purple chevron, a forearm guard, a belt, trousers and dark boots,
+  brown hair and stubble. The clothes are painted by a material, so the cloth is flat and matte
+  over the muscles. Lucky is a golden-tinted pug standing in for the retriever (no retriever
+  mesh is on disk); swapping the file is one line in `import_bodies.py`, and nothing uses him
+  yet. The archer, elves, reindeer, Santa and Tomas keep their mannequins. The packs stay
+  outside the repo; a clone without them shows the mannequins. Shots in
+  `Saved/Screenshots/Bodies/`. **Rough:** the pack's free edition has only the Superhero male,
+  so the silhouette is still broad-shouldered; feet keep their toe shapes under the shoes;
+  hair is painted, not modelled; there is still no get-up clip. **Not seen on screen:** the
+  bodies at night, in a full fight, or in the interiors.
 - **Every street-facing roof can be grappled from the sidewalk.** `Tools\traversal-audit.ps1`
   now exits 0. Of the 14 that failed, 6 narrow tenements were the Python reach model
   disagreeing with the game (it checked a line where the game sweeps Kate's capsule); the
@@ -34,9 +48,9 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   the blow's weight, and a knocked-out thug is thrown from the struck bone and falls as a
   ragdoll. Parry, dodge, guard and tokens are unchanged. 583 tests pass; all 13 laps
   passed first try; frame cost about 0.2 ms. Shots in `Saved/Screenshots/Kate/`
-  (`punch_contact`, `hit_reaction`, `knockout_ragdoll`, `knockout_settled`). **Your call:**
-  Tomas went from 680 to 820 health because landing blows shortened his fight under the
-  lap's floor; Santa is 640 and lasts 43 s. Rough: the white hit flash hides the fist on
+  (`punch_contact`, `hit_reaction`, `knockout_ragdoll`, `knockout_settled`). Tomas stays
+  at 820 health (it was 680; landing blows had shortened his fight under the lap's floor);
+  Santa is 640 and lasts 43 s. Rough: the white hit flash hides the fist on
   the body, no get-up clip, only Kate's light chain and roundhouse were checked by eye.
   **Feel check:** does the warp ever look like sliding? Is the hit-stop too much?
 - **Combat difficulty pass (your note on multiple attackers).** Up to two melee thugs
