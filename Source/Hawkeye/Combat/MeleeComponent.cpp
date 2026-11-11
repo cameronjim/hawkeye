@@ -8,8 +8,10 @@
 #include "Combat/AnimNotifyState_HitWindow.h"
 #include "Combat/CombatAnimPlayback.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/HitReactionComponent.h"
 #include "Combat/MeleeRules.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "MotionWarpingComponent.h"
 #include "GameFramework/Character.h"
@@ -52,6 +54,11 @@ bool UMeleeComponent::StartAttack(const FHawkeyeMeleeAttack& Attack)
 	PendingDirection = FVector::ZeroVector;
 	SwingTarget = PendingTarget;
 	PendingTarget = nullptr;
+	ContactPlan = FHawkeyeContactPlan();
+	bContactWhiff = false;
+	bApproachDone = false;
+	bLimbSweep = false;
+	LastLimbPoints.Reset();
 	Phase = EMeleePhase::Windup;
 	PhaseRemaining = Attack.WindupSeconds;
 	SwingStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
@@ -197,7 +204,7 @@ UMotionWarpingComponent* UMeleeComponent::FindOrAddMotionWarping() const
 	return Created;
 }
 
-void UMeleeComponent::UpdateWarpTarget() const
+void UMeleeComponent::UpdateWarpTarget()
 {
 	const AActor* Owner = GetOwner();
 	if (!bClipMovesOwner || !Owner)
@@ -210,24 +217,269 @@ void UMeleeComponent::UpdateWarpTarget() const
 		return;
 	}
 	const AActor* Target = SwingTarget.Get();
-	if (!Target)
+	if (!Target || bContactWhiff)
 	{
 		Warp->RemoveWarpTarget(WarpTargetName);
 		return;
 	}
-	FVector Toward = (Target->GetActorLocation() - Owner->GetActorLocation()).GetSafeNormal2D();
-	if (Toward.IsNearlyZero())
+	// The root lands where the striking limb meets his chosen region (its contact distance from that bone), turned onto
+	// it; inside that distance it only turns her. Out of the caps the clip plays its own motion and whiffs.
+	const FHawkeyeContactPlan Plan = PlanCurrentContact();
+	ContactPlan = Plan;
+	if (!Plan.bReachable)
 	{
-		Toward = GetSwingDirection();
+		MarkContactWhiff(TEXT("warp"));
+		Warp->RemoveWarpTarget(WarpTargetName);
+		return;
 	}
-	FVector Stand = Target->GetActorLocation() - Toward * WarpStandOffDistance;
-	if (bAssistSwings && FVector::Dist2D(Target->GetActorLocation(), Owner->GetActorLocation()) <= WarpStandOffDistance)
+	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(WarpTargetName, Plan.StandPoint, Plan.Facing.Rotation());
+}
+
+FVector UMeleeComponent::ComputeContactPoint(const AActor& Target, const FHawkeyeStrikeContact& InContact) const
+{
+	const AThugCharacter* Thug = Cast<AThugCharacter>(&Target);
+	const bool bDown = Thug && (Thug->IsKnockedDown() || Thug->IsLimp());
+	const EHawkeyeContactRegion Region = UHawkeyeHitContactRules::SelectContactRegion(InContact.Region, bDown);
+	const ACharacter* Character = Cast<ACharacter>(&Target);
+	const USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	if (bDown || !Mesh || !Mesh->GetSkeletalMeshAsset())
 	{
-		// Already inside the stand-off: the clip turns her to him but does not back her off.
-		Stand = Owner->GetActorLocation();
+		return Target.GetActorLocation();
 	}
-	Stand.Z = Owner->GetActorLocation().Z;
-	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(WarpTargetName, Stand, Toward.Rotation());
+	const FName Bone = UHawkeyeHitContactRules::SelectRegionBone(Region,
+		[Mesh](FName Name) { return Mesh->GetBoneIndex(Name) != INDEX_NONE; });
+	return Bone.IsNone() ? Target.GetActorLocation() : Mesh->GetBoneLocation(Bone);
+}
+
+FHawkeyeContactPlan UMeleeComponent::PlanCurrentContact() const
+{
+	const AActor* Owner = GetOwner();
+	const AActor* Target = SwingTarget.Get();
+	if (!Owner || !Target)
+	{
+		return FHawkeyeContactPlan();
+	}
+	// A bigger body (a boss drawn 1.15 times a thug) lands its blow from further off.
+	const float Scale = FMath::Max(Owner->GetActorScale3D().X, 0.1f);
+	const FHawkeyeStrikeContact& C = CurrentAttack.Contact;
+	return UHawkeyeHitContactRules::PlanContact(Owner->GetActorLocation(), Owner->GetActorForwardVector(),
+		ComputeContactPoint(*Target, C), C.ContactDistance * Scale, C.MaxSlide, C.MaxTurnDegrees);
+}
+
+void UMeleeComponent::MarkContactWhiff(const TCHAR* Where)
+{
+	if (bContactWhiff)
+	{
+		return;
+	}
+	bContactWhiff = true;
+	++ContactWhiffCount;
+	UE_LOG(LogHawkeye, Log, TEXT("%s: %s %s refused: %s (a %.0f cm slide, %.0f degrees round, caps %.0f cm and %.0f); it whiffs."),
+		*GetNameSafe(GetOwner()), *CurrentAttack.Name.ToString(), Where, *ContactPlan.WhiffReason.ToString(), ContactPlan.Slide,
+		ContactPlan.TurnDegrees, CurrentAttack.Contact.MaxSlide, CurrentAttack.Contact.MaxTurnDegrees);
+}
+
+void UMeleeComponent::UpdateApproach()
+{
+	if (bApproachDone || Phase != EMeleePhase::Windup || bAssistSwings || bClipMovesOwner || CurrentAttack.LungeDistance > 0.f
+		|| !SwingTarget.IsValid() || PhaseRemaining > CurrentAttack.Contact.ApproachSeconds)
+	{
+		return;
+	}
+	bApproachDone = true;
+	ContactPlan = PlanCurrentContact();
+	if (!ContactPlan.bReachable)
+	{
+		// She is gone (a dodge, a step back): no lunge after her, the swing goes through the air.
+		MarkContactWhiff(TEXT("slide"));
+		return;
+	}
+	ACharacter* Character = Cast<ACharacter>(GetOwner());
+	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	const float Seconds = FMath::Max(FMath::Min(PhaseRemaining, CurrentAttack.Contact.ApproachSeconds), 0.02f);
+	if (!Movement || ContactPlan.Slide < 1.f || !Movement->IsMovingOnGround())
+	{
+		return;
+	}
+	// A root motion force like the lunge: exactly the slide, ending on the hit, stopping dead; her capsule stops it short.
+	TSharedPtr<FRootMotionSource_ConstantForce> Slide = MakeShared<FRootMotionSource_ConstantForce>();
+	Slide->InstanceName = FName(TEXT("MeleeContactSlide"));
+	Slide->AccumulateMode = ERootMotionAccumulateMode::Override;
+	Slide->Priority = 4;
+	Slide->Force = ContactPlan.Facing * (ContactPlan.Slide / Seconds);
+	Slide->Duration = Seconds;
+	Slide->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
+	Slide->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
+	Movement->ApplyRootMotionSource(Slide);
+	UE_LOG(LogHawkeye, Verbose, TEXT("%s: %s slides %.0f cm into contact over %.2f s."), *GetNameSafe(GetOwner()),
+		*CurrentAttack.Name.ToString(), ContactPlan.Slide, Seconds);
+}
+
+bool UMeleeComponent::GatherStrikePoints(TArray<FVector>& OutPoints) const
+{
+	OutPoints.Reset();
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	if (!Mesh || !Mesh->GetSkeletalMeshAsset())
+	{
+		return false;
+	}
+	for (const FName Bone : UHawkeyeHitContactRules::LimbBones(CurrentAttack.Contact.Limbs))
+	{
+		if (Mesh->GetBoneIndex(Bone) != INDEX_NONE)
+		{
+			OutPoints.Add(Mesh->GetBoneLocation(Bone));
+		}
+	}
+	// A held weapon sweeps along its length: its middle and its far end, beyond the hand.
+	const AThugCharacter* Thug = Cast<AThugCharacter>(GetOwner());
+	const UStaticMeshComponent* Held = Thug ? Thug->GetHeldWeaponComponent() : nullptr;
+	if (Held && Held->IsVisible() && CurrentAttack.Contact.Limbs != EHawkeyeStrikeLimb::Feet && OutPoints.Num() > 0)
+	{
+		const FVector Hand = OutPoints[0];
+		const FVector Middle = Held->Bounds.Origin;
+		const FVector Out = (Middle - Hand).GetSafeNormal();
+		OutPoints.Add(Middle);
+		OutPoints.Add(Middle + Out * FMath::Max(Held->Bounds.SphereRadius * 0.8f, 10.f));
+	}
+	return OutPoints.Num() > 0;
+}
+
+bool UMeleeComponent::IsStrikeCandidate(const AActor* Candidate) const
+{
+	if (!Candidate || Candidate == GetOwner() || (!IgnoreTag.IsNone() && Candidate->ActorHasTag(IgnoreTag)))
+	{
+		return false;
+	}
+	const UHealthComponent* Health = Candidate->FindComponentByClass<UHealthComponent>();
+	return Health && Health->IsAlive();
+}
+
+AActor* UMeleeComponent::FindTargetByLimbs(FVector& OutPoint, FVector& OutVelocity)
+{
+	AActor* Owner = GetOwner();
+	UWorld* World = GetWorld();
+	TArray<FVector> Points;
+	if (!Owner || !World || !GatherStrikePoints(Points))
+	{
+		return nullptr;
+	}
+	const double Now = World->GetTimeSeconds();
+	const float Dt = FMath::Max(static_cast<float>(Now - LastLimbTime), 1.f / 120.f);
+	const bool bHaveLast = LastLimbPoints.Num() == Points.Num();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeMeleeLimbs), /*bTraceComplex=*/false, Owner);
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_Pawn);
+	const float Radius = CurrentAttack.Contact.StrikeRadius * FMath::Max(Owner->GetActorScale3D().X, 0.1f);
+
+	// The limb nearest the target goes first, so a hit names the fist that threw it.
+	const AActor* Aim = SwingTarget.Get();
+	TArray<int32> Order;
+	for (int32 Index = 0; Index < Points.Num(); ++Index)
+	{
+		Order.Add(Index);
+	}
+	if (Aim)
+	{
+		const FVector At = Aim->GetActorLocation();
+		Order.Sort([&Points, &At](int32 A, int32 B) { return FVector::DistSquared(Points[A], At) < FVector::DistSquared(Points[B], At); });
+	}
+
+	AActor* Found = nullptr;
+	for (const int32 Index : Order)
+	{
+		const FVector Start = bHaveLast ? LastLimbPoints[Index] : Points[Index];
+		const FVector End = Points[Index];
+		TArray<FHitResult> Hits;
+		World->SweepMultiByObjectType(Hits, Start, End + (Start.Equals(End) ? FVector(0.f, 0.f, 0.1f) : FVector::ZeroVector),
+			FQuat::Identity, Objects, FCollisionShape::MakeSphere(Radius), Params);
+		for (const FHitResult& Hit : Hits)
+		{
+			AActor* Candidate = Hit.GetActor();
+			// The body, not the capsule round it (34 cm of air about a 15 cm torso): a hit on the capsule counts only for
+			// someone with no physics bodies to meet.
+			const ACharacter* Struck = Cast<ACharacter>(Candidate);
+			const USkeletalMeshComponent* Body = Struck ? Struck->GetMesh() : nullptr;
+			// (A body on the floor in a ragdoll is no longer a pawn to the query: there the capsule still counts.)
+			const bool bHasBody = Body && Body->GetPhysicsAsset() && Body->Bodies.Num() > 0 && !Body->IsSimulatingPhysics()
+				&& Body->GetCollisionObjectType() == ECC_Pawn && Body->GetCollisionEnabled() != ECollisionEnabled::NoCollision;
+			if (bHasBody && Hit.GetComponent() != Body)
+			{
+				continue;
+			}
+			if (IsStrikeCandidate(Candidate))
+			{
+				Found = Candidate;
+				OutPoint = Hit.bStartPenetrating ? End : FVector(Hit.ImpactPoint);
+				OutVelocity = (End - Start) / Dt;
+				break;
+			}
+		}
+		if (Found)
+		{
+			break;
+		}
+	}
+	LastLimbPoints = Points;
+	LastLimbTime = Now;
+	return Found;
+}
+
+FHawkeyeStrikeImpact UMeleeComponent::BuildImpact(const AActor& Target, const FVector* LimbPoint, const FVector& LimbVelocity) const
+{
+	FHawkeyeStrikeImpact Impact;
+	Impact.bValid = true;
+	Impact.Source = EHawkeyeImpactSource::Strike;
+	Impact.Weight = CurrentAttack.Contact.Weight;
+	const AActor* Owner = GetOwner();
+	const FVector From = Owner ? Owner->GetActorLocation() : Target.GetActorLocation() - GetSwingDirection() * 100.f;
+	Impact.Direction = UHawkeyeHitContactRules::ComputeStrikeDirection(LimbVelocity, Target.GetActorLocation() - From, 150.f);
+	if (LimbPoint)
+	{
+		Impact.Point = *LimbPoint;
+		return Impact;
+	}
+	// The capsule's sweep found him: the blow lands on the front of his body toward the striker, at the height of the
+	// striking limb nearest him (a jab at his face, a kick at his ribs), else at the region the attack aims at.
+	TArray<FVector> Points;
+	float Radius = 0.f;
+	float HalfHeight = 0.f;
+	Target.GetSimpleCollisionCylinder(Radius, HalfHeight);
+	FVector Aim = ComputeContactPoint(Target, CurrentAttack.Contact);
+	if (GatherStrikePoints(Points))
+	{
+		const int32 Nearest = UHawkeyeHitContactRules::PickStrikeLimb(Points, Target.GetActorLocation());
+		if (Points.IsValidIndex(Nearest))
+		{
+			Aim.Z = FMath::Clamp(Points[Nearest].Z, Target.GetActorLocation().Z - HalfHeight * 0.6f,
+				Target.GetActorLocation().Z + HalfHeight * 0.85f);
+		}
+	}
+	const FVector Toward = (From - Target.GetActorLocation()).GetSafeNormal2D();
+	Impact.Point = FVector(Target.GetActorLocation().X, Target.GetActorLocation().Y, Aim.Z) + Toward * Radius * 0.5f;
+	return Impact;
+}
+
+void UMeleeComponent::DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& Impact, bool bTargetAlive)
+{
+	AActor* Owner = GetOwner();
+	UHitReactionComponent* Mine = Owner ? Owner->FindComponentByClass<UHitReactionComponent>() : nullptr;
+	UHitReactionComponent* Theirs = Target.FindComponentByClass<UHitReactionComponent>();
+	// Both bodies hold a few frames (their own time only: the world, the tokens and the boss's clock run on), except
+	// anyone winding up a swing, whose telegraph is a promise (a boss swinging through a light).
+	if (Mine && UHawkeyeHitContactRules::ShouldHitStop(true, false))
+	{
+		Mine->BeginHitStop(UHawkeyeHitContactRules::ComputeHitStopSeconds(Impact.Weight, Mine->HitStop));
+	}
+	const UMeleeComponent* TheirMelee = Target.FindComponentByClass<UMeleeComponent>();
+	if (Theirs && UHawkeyeHitContactRules::ShouldHitStop(bTargetAlive, TheirMelee && TheirMelee->IsWindingUp()))
+	{
+		Theirs->BeginHitStop(UHawkeyeHitContactRules::ComputeHitStopSeconds(Impact.Weight, Theirs->HitStop));
+	}
+	if (Theirs && bTargetAlive)
+	{
+		Theirs->PlayHitReaction(Impact);
+	}
 }
 
 void UMeleeComponent::ResetClipState()
@@ -436,6 +688,17 @@ void UMeleeComponent::AdvanceAttack(float DeltaSeconds)
 	{
 		UpdateWarpTarget();
 	}
+	UpdateApproach();
+	// A clip-timed swing's limbs are followed through the wind-up, so the hit window's first sweep starts where they were.
+	if (bHitFromNotify && Phase == EMeleePhase::Windup && GetWorld())
+	{
+		TArray<FVector> Points;
+		if (GatherStrikePoints(Points))
+		{
+			LastLimbPoints = MoveTemp(Points);
+			LastLimbTime = GetWorld()->GetTimeSeconds();
+		}
+	}
 	if (AdvanceClipSwing(DeltaSeconds))
 	{
 		return;
@@ -520,7 +783,8 @@ AActor* UMeleeComponent::FindForgivenTarget() const
 {
 	AActor* Target = SwingTarget.Get();
 	const AActor* Owner = GetOwner();
-	if (!bAssistSwings || !Target || !Owner || Target == Owner || (!IgnoreTag.IsNone() && Target->ActorHasTag(IgnoreTag)))
+	// Out of the warp's caps the swing whiffs honestly: nothing forgives it.
+	if (!bAssistSwings || bContactWhiff || !Target || !Owner || Target == Owner || (!IgnoreTag.IsNone() && Target->ActorHasTag(IgnoreTag)))
 	{
 		return nullptr;
 	}
@@ -539,7 +803,14 @@ AActor* UMeleeComponent::FindForgivenTarget() const
 bool UMeleeComponent::ResolveSweep()
 {
 	AActor* Owner = GetOwner();
-	AActor* Target = FindTarget(CurrentAttack);
+	// A clip's swing is found by its striking limbs across the hit window (a fist meets the body or it does not); the
+	// procedural swing (no clip, no bones) keeps the sweep from the capsule.
+	FVector LimbPoint = FVector::ZeroVector;
+	FVector LimbVelocity = FVector::ZeroVector;
+	TArray<FVector> Probe;
+	bLimbSweep = bHitFromNotify && GatherStrikePoints(Probe);
+	AActor* Target = bLimbSweep ? FindTargetByLimbs(LimbPoint, LimbVelocity) : FindTarget(CurrentAttack);
+	const bool bLimbHit = bLimbSweep && Target != nullptr;
 	if (!Target)
 	{
 		Target = FindForgivenTarget();
@@ -568,9 +839,21 @@ bool UMeleeComponent::ResolveSweep()
 		return true;
 	}
 	const bool bKnockdown = CurrentAttack.bKnockdown && Thug;
+	// The struck body hears of the blow before the damage, so a death it causes throws the ragdoll from where it landed
+	// and a stagger plays the reaction for the side it came from.
+	const FHawkeyeStrikeImpact Impact = BuildImpact(*Target, bLimbHit ? &LimbPoint : nullptr, LimbVelocity);
+	UHitReactionComponent* TargetReaction = Target->FindComponentByClass<UHitReactionComponent>();
+	if (TargetReaction)
+	{
+		TargetReaction->SetPendingImpact(Impact);
+	}
 	const float Dealt = Health->ApplyMeleeDamage(CurrentAttack.Damage, Owner, CurrentAttack.bStagger && !bKnockdown);
 	if (Dealt <= 0.f)
 	{
+		if (TargetReaction)
+		{
+			TargetReaction->ClearPendingImpact();
+		}
 		UE_LOG(LogHawkeye, Log, TEXT("%s: %s swing on %s did nothing (invulnerable or dead)."),
 			*GetNameSafe(Owner), *CurrentAttack.Name.ToString(), *GetNameSafe(Target));
 		OnAttackMissed.Broadcast(CurrentAttack.Name);
@@ -585,12 +868,21 @@ bool UMeleeComponent::ResolveSweep()
 	{
 		ApplyKnockback(Target, CurrentAttack);
 	}
+	LastImpact = Impact;
+	DeliverImpact(*Target, Impact, Health->IsAlive());
+	if (TargetReaction)
+	{
+		TargetReaction->ClearPendingImpact();
+	}
 
 	const bool bHeavySound = CurrentAttack.bKnockdown && !HeavyHitSound.IsNull();
-	UHawkeyeAudioSubsystem::PlayAt(this, bHeavySound ? HeavyHitSound : HitSound, Target->GetActorLocation(),
+	UHawkeyeAudioSubsystem::PlayAt(this, bHeavySound ? HeavyHitSound : HitSound, Impact.Point,
 		bHeavySound ? TEXT("melee heavy hit") : TEXT("melee hit"));
-	UE_LOG(LogHawkeye, Log, TEXT("%s: %s swing hit %s for %.1f (health %.1f)."),
-		*GetNameSafe(Owner), *CurrentAttack.Name.ToString(), *GetNameSafe(Target), Dealt, Health->GetCurrentHealth());
+	UE_LOG(LogHawkeye, Log, TEXT("%s: %s swing hit %s for %.1f (health %.1f), %s at %s%s."),
+		*GetNameSafe(Owner), *CurrentAttack.Name.ToString(), *GetNameSafe(Target), Dealt, Health->GetCurrentHealth(),
+		bLimbHit ? TEXT("its limb met him") : TEXT("the capsule sweep"),
+		*FString::Printf(TEXT("%.0f cm up"), Impact.Point.Z - Target->GetActorLocation().Z),
+		Owner ? *FString::Printf(TEXT(", %.0f cm apart"), FVector::Dist2D(Owner->GetActorLocation(), Target->GetActorLocation())) : TEXT(""));
 	OnAttackLanded.Broadcast(Target, Dealt, CurrentAttack.Name);
 	return true;
 }
@@ -600,16 +892,28 @@ void UMeleeComponent::ApplyLunge(const FHawkeyeMeleeAttack& Attack, float HitDel
 	float Distance = Attack.LungeDistance;
 	float Seconds = Attack.LungeSeconds;
 	const AActor* Target = SwingTarget.Get();
-	if (bAssistSwings && Target && GetOwner())
+	if (Target && GetOwner())
 	{
-		// Close the gap: the step ends WarpStandOffDistance short of where he stands at the press, and is over
-		// a little before the hit so the blow comes from the end of it.
-		const float ToTarget = FVector::Dist2D(Target->GetActorLocation(), GetOwner()->GetActorLocation());
-		Distance = UHawkeyeMeleeRules::ComputeGapCloseDistance(ToTarget, WarpStandOffDistance, Attack.LungeDistance,
-			AssistMaxCloseDistance);
-		if (Distance > Attack.LungeDistance + KINDA_SMALL_NUMBER)
+		ContactPlan = PlanCurrentContact();
+		if (!ContactPlan.bReachable)
 		{
-			Seconds = FMath::Max(Attack.LungeSeconds, 0.8f * HitDelaySeconds);
+			// Out of the caps: her own step, through the air.
+			MarkContactWhiff(TEXT("lunge"));
+		}
+		else if (bAssistSwings)
+		{
+			// Close the gap: the step ends at the attack's contact distance from the region it aims at (the plan's
+			// slide), and is over a little before the hit so the blow comes from the end of it.
+			Distance = FMath::Max(Attack.LungeDistance, ContactPlan.Slide);
+			if (Distance > Attack.LungeDistance + KINDA_SMALL_NUMBER)
+			{
+				Seconds = FMath::Max(Attack.LungeSeconds, 0.8f * HitDelaySeconds);
+			}
+		}
+		else if (Attack.LungeDistance > 0.f)
+		{
+			// A boss's lunge stops at the contact distance instead of running on into her.
+			Distance = FMath::Min(Attack.LungeDistance, ContactPlan.Slide);
 		}
 	}
 	LastLungeDistance = Distance;

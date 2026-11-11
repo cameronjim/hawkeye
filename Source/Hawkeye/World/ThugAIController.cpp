@@ -1884,6 +1884,8 @@ bool AThugAIController::StartSwing(const FHawkeyeTokenGrant& Token, float Distan
 	RingFidget.Reset();
 	UE_LOG(LogHawkeye, Log, TEXT("%s: telegraphs a %s swing at %s from %.0f cm (%.1f s wind-up)."), *Thug->GetName(),
 		*Attack.Name.ToString(), *GetNameSafe(TargetActor), Distance, Attack.WindupSeconds);
+	// Aimed at her: the swing slides into contact over the end of the telegraph, or whiffs if she has gone.
+	Melee->SetNextAttackTarget(TargetActor);
 	const bool bStarted = Melee->StartAttack(Attack);
 	SwingsStarted += bStarted ? 1 : 0;
 	return bStarted;

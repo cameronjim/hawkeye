@@ -70,6 +70,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arrow", meta = (ClampMin = "0.0"))
 	float Damage = 40.f;
 
+	/**
+	 * How hard it hits a body, 0 to 1: the struck body's physical reaction and, when it kills, the ragdoll's throw along
+	 * the arrow (an arrow throws less than a strike of the same weight: FHawkeyeKnockoutTuning::ArrowScale).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arrow", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ImpactWeight = 0.5f;
+
 	/** Most the quiver carries. Pickups and recovery never push the count past it. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Arrow", meta = (ClampMin = "1"))
 	int32 Cap = 30;

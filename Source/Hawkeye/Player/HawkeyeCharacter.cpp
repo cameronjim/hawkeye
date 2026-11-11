@@ -15,6 +15,8 @@
 #include "Audio/HawkeyeAudioSubsystem.h"
 #include "Components/AudioComponent.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/HitContactRules.h"
+#include "Combat/HitReactionComponent.h"
 #include "Combat/MeleeComponent.h"
 #include "Combat/TakedownComponent.h"
 #include "Combat/WeaponComponent.h"
@@ -168,9 +170,21 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	LightAttack.bStagger = true;
 	LightAttack.LungeDistance = 20.f;
 	LightAttack.AnimRole = ECombatAnimRole::Light1;
+	// Contact (gameplay-semantics.md, "Contact, reaction and knockout"): her strike clips are warped so the fist lands on
+	// his face; the slide cap covers the whole assist range (350 cm less the contact), and she turns any way to him.
+	LightAttack.Contact.ContactDistance = 66.f;
+	LightAttack.Contact.Region = EHawkeyeContactRegion::Head;
+	LightAttack.Contact.MaxSlide = 290.f;
+	LightAttack.Contact.MaxTurnDegrees = 180.f;
+	LightAttack.Contact.Limbs = EHawkeyeStrikeLimb::Any;
+	LightAttack.Contact.Weight = 0.3f;
 	HeavyAttack = LightAttack;
 	HeavyAttack.Name = FName(TEXT("heavy"));
 	HeavyAttack.AnimRole = ECombatAnimRole::Heavy;
+	// The roundhouse: the foot meets his ribs from further out.
+	HeavyAttack.Contact.ContactDistance = 88.f;
+	HeavyAttack.Contact.Region = EHawkeyeContactRegion::Torso;
+	HeavyAttack.Contact.Weight = 1.f;
 	HeavyAttack.Damage = 35.f;
 	HeavyAttack.WindupSeconds = 0.6f;
 	HeavyAttack.RecoverSeconds = 0.3f;
@@ -183,6 +197,7 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	ComboFollowAttack.Name = FName(TEXT("light2"));
 	ComboFollowAttack.LungeDistance = 25.f;
 	ComboFollowAttack.AnimRole = ECombatAnimRole::Light2;
+	ComboFollowAttack.Contact.Weight = 0.35f;
 	ComboFinishAttack = LightAttack;
 	ComboFinishAttack.Name = FName(TEXT("light3"));
 	ComboFinishAttack.Damage = 25.f;
@@ -193,8 +208,12 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	ComboFinishAttack.LungeDistance = 35.f;
 	ComboFinishAttack.LungeSeconds = 0.12f;
 	ComboFinishAttack.AnimRole = ECombatAnimRole::Light3;
+	ComboFinishAttack.Contact.ContactDistance = 70.f;
+	ComboFinishAttack.Contact.Region = EHawkeyeContactRegion::Torso;
+	ComboFinishAttack.Contact.Weight = 0.55f;
 
 	FinisherComponent = CreateDefaultSubobject<UFinisherComponent>(TEXT("FinisherComponent"));
+	HitReactionComponent = CreateDefaultSubobject<UHitReactionComponent>(TEXT("HitReaction"));
 
 	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 	GrappleComponent = CreateDefaultSubobject<UGrappleComponent>(TEXT("GrappleComponent"));
@@ -1768,8 +1787,15 @@ void AHawkeyeCharacter::UpdateFightCamera(float DeltaSeconds)
 float AHawkeyeCharacter::GetCameraPunchOffset() const
 {
 	return CameraPunchElapsed < 0.f ? 0.f
-		: HawkeyeCombatReadability::ComputeCameraPunch(CameraPunchElapsed, HeavyCameraPunchSeconds, HeavyCameraPunchDistance,
+		: HawkeyeCombatReadability::ComputeCameraPunch(CameraPunchElapsed, HeavyCameraPunchSeconds, CameraKickDistance,
 			CameraShakeScale);
+}
+
+float AHawkeyeCharacter::GetMeleeHitStopSeconds(bool bHeavy) const
+{
+	const float Weight = bHeavy ? HeavyAttack.Contact.Weight : LightAttack.Contact.Weight;
+	return HitReactionComponent ? UHawkeyeHitContactRules::ComputeHitStopSeconds(Weight, HitReactionComponent->HitStop)
+		: UHawkeyeHitContactRules::ComputeHitStopSeconds(Weight, FHawkeyeHitStopTuning());
 }
 
 void AHawkeyeCharacter::SpawnMeleeSpark(const AActor* HitActor, bool bHeavy) const
@@ -1785,7 +1811,13 @@ void AHawkeyeCharacter::SpawnMeleeSpark(const AActor* HitActor, bool bHeavy) con
 	// The front of his body toward her, at the height of whichever fist or foot is nearest him (a jab at his
 	// face, a roundhouse at his ribs; 2026-09-29: always chest height hid it behind her head from her camera).
 	float Height = 35.f;
-	if (const USkeletalMeshComponent* Body = GetMesh())
+	if (MeleeComponent && MeleeComponent->GetLastImpact().bValid)
+	{
+		// Where the blow met him (the striking limb's sweep, or its height on his capsule).
+		Height = FMath::Clamp(MeleeComponent->GetLastImpact().Point.Z - HitActor->GetActorLocation().Z, -HalfHeight * 0.3f,
+			HalfHeight * 0.75f);
+	}
+	else if (const USkeletalMeshComponent* Body = GetMesh())
 	{
 		float Nearest = BIG_NUMBER;
 		for (const TCHAR* Bone : { TEXT("hand_r"), TEXT("hand_l"), TEXT("foot_r"), TEXT("foot_l") })
@@ -2571,11 +2603,13 @@ void AHawkeyeCharacter::HandleMeleeLanded(AActor* HitActor, float /*DamageDealt*
 	{
 		Combo.NotifyHit();
 	}
-	// Hit stop: the world nearly stops for two frames on a light, four on a heavy (with a small lens punch),
-	// so the contact reads; a small spark where the blow met him, under his own hit flash.
+	// The hit-stop holds her and him (the melee component starts it on both bodies, by the blow's weight); the lens
+	// kicks in by the same weight, and a small spark marks where the blow met him, under his own hit flash.
 	const bool bHeavy = !bSwingIsLight;
-	ApplyTimeWarp(GetMeleeHitStopSeconds(bHeavy), HitStopTimeDilation);
-	if (bHeavy && HeavyCameraPunchSeconds > 0.f)
+	const float Weight = MeleeComponent && MeleeComponent->GetLastImpact().bValid ? MeleeComponent->GetLastImpact().Weight
+		: (bHeavy ? 1.f : 0.3f);
+	CameraKickDistance = UHawkeyeHitContactRules::ComputeCameraKick(Weight, LightCameraKickDistance, HeavyCameraPunchDistance);
+	if (HeavyCameraPunchSeconds > 0.f && CameraKickDistance > 0.f)
 	{
 		CameraPunchElapsed = 0.f;
 	}
@@ -2974,8 +3008,12 @@ void AHawkeyeCharacter::HandleStaggered(UHealthComponent* /*Health*/, AActor* Da
 		Away = -GetActorForwardVector();
 	}
 	LaunchCharacter(Away * PlayerStaggerShove, true, false);
-	HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet,
-		UCombatAnimSet::HitRoleFor(UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away)));
+	// The reaction for the side the blow came from (its travel, when a strike or an arrow says), else from where he stood.
+	const FHawkeyeStrikeImpact* Blow = HitReactionComponent && HitReactionComponent->GetPendingImpact().bValid
+		? &HitReactionComponent->GetPendingImpact() : nullptr;
+	const EHawkeyeHitDirection Side = Blow ? UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow->Direction)
+		: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
+	HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, UCombatAnimSet::HitRoleFor(Side));
 	UE_LOG(LogHawkeye, Log, TEXT("%s: staggered by %s, health %.1f."), *GetNameSafe(this),
 		*GetNameSafe(DamageInstigator), HealthComponent->GetCurrentHealth());
 }
@@ -3566,10 +3604,8 @@ void AHawkeyeCharacter::EndRoll()
 	bRollOwnsCrouch = false;
 	LandingState = EHawkeyeLanding::None;
 	LandingElapsed = 0.f;
-	if (FollowCamera)
-	{
-		FollowCamera->SetRelativeRotation(FRotator::ZeroRotator);
-	}
+	// The lens's pitch is the camera update's (the roll's dip, eased back by GetLandingCameraPitch, less the fight camera's
+	// tip): zeroing it here popped it 4 degrees up for a frame at the end of every roll in a fight.
 	UpdateMaxWalkSpeed();
 }
 

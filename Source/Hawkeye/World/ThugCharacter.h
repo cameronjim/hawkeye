@@ -16,6 +16,7 @@ class UAnimSequence;
 class UBowComponent;
 class UEnvQuery;
 class UHealthComponent;
+class UHitReactionComponent;
 class UPointLightComponent;
 class UNiagaraSystem;
 class USoundBase;
@@ -81,6 +82,9 @@ public:
 	/** The swing the Fists and Bat thugs use. */
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	UMeleeComponent* GetMeleeComponent() const { return MeleeComponent; }
+
+	/** The hit-stop, the physical reaction to a blow and the knockout's throw and settle. */
+	UHitReactionComponent* GetHitReactionComponent() const { return HitReactionComponent; }
 
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	EThugAlertState GetAlertState() const { return AlertState; }
@@ -624,6 +628,13 @@ public:
 	/** Plays ClipRole's clip on him, at rate 1 or fitted to FitToSeconds; false when there is none that plays. */
 	bool PlayCombatClip(ECombatAnimRole ClipRole, float FitToSeconds = 0.f);
 
+	/** True while any montage plays on him (a swing, a reaction, the finisher's victim, a knockdown). */
+	bool IsAnyCombatClipPlaying() const;
+
+	/** How hard a takedown from behind pushes his body over (the knockout's weight, 0 to 1). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float TakedownImpactWeight = 0.15f;
+
 	/** True while he is down in (or getting up through) his knockdown clip rather than the ragdoll. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Animation")
 	bool IsKnockdownFromClip() const { return bKnockdownClip || bGetUpFromClip; }
@@ -835,6 +846,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug|Components")
 	TObjectPtr<UMeleeComponent> MeleeComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug|Components")
+	TObjectPtr<UHitReactionComponent> HitReactionComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug|Components")
 	TObjectPtr<UBowComponent> BowComponent;

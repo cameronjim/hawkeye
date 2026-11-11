@@ -12,6 +12,8 @@
 #include "Combat/CombatAnimPlayback.h"
 #include "Combat/CombatAnimSet.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/HitContactRules.h"
+#include "Combat/HitReactionComponent.h"
 #include "Combat/MeleeComponent.h"
 #include "Boss/BossRules.h"
 #include "Combat/MeleeRules.h"
@@ -66,6 +68,8 @@ AThugCharacter::AThugCharacter()
 	// His clips stretch so the hit still lands at the end of the telegraph: the parry and dodge windows hold.
 	MeleeComponent->bFitClipToWindup = true;
 
+	HitReactionComponent = CreateDefaultSubobject<UHitReactionComponent>(TEXT("HitReaction"));
+
 	// The wind-up is the telegraph and the dodge window: long enough to read, not so long it
 	// stops being a threat. Recovery is what leaves room to hit back.
 	FistsAttack.Name = FName(TEXT("fists"));
@@ -76,12 +80,24 @@ AThugCharacter::AThugCharacter()
 	FistsAttack.Radius = 35.f;
 	FistsAttack.bStagger = true;
 	FistsAttack.AnimRole = ECombatAnimRole::Light1;
+	// Contact (gameplay-semantics.md, "Contact, reaction and knockout"): he slides in over the end of his telegraph so
+	// his fist meets her face; a dodge or a step back past 110 cm of slide and he swings at the air.
+	FistsAttack.Contact.ContactDistance = 72.f;
+	FistsAttack.Contact.Region = EHawkeyeContactRegion::Head;
+	FistsAttack.Contact.MaxSlide = 110.f;
+	FistsAttack.Contact.MaxTurnDegrees = 75.f;
+	FistsAttack.Contact.Limbs = EHawkeyeStrikeLimb::Hands;
+	FistsAttack.Contact.Weight = 0.4f;
 
 	BatAttack = FistsAttack;
 	BatAttack.Name = FName(TEXT("bat"));
 	BatAttack.AnimRole = ECombatAnimRole::Heavy;
 	BatAttack.Damage = 25.f;
 	BatAttack.Range = 140.f;
+	BatAttack.Contact.ContactDistance = 100.f;
+	BatAttack.Contact.Region = EHawkeyeContactRegion::Torso;
+	BatAttack.Contact.Limbs = EHawkeyeStrikeLimb::Weapon;
+	BatAttack.Contact.Weight = 0.65f;
 
 	// The heavy: a long, glowing telegraph for the bash (dodge it or eat 250 cm of shove) and a slower
 	// bat than the street thugs'. Neither is fast; he is dangerous because he does not flinch.
@@ -95,12 +111,17 @@ AThugCharacter::AThugCharacter()
 	ShieldBashAttack.Radius = 45.f;
 	ShieldBashAttack.KnockbackDistance = 250.f;
 	ShieldBashAttack.KnockbackSeconds = 0.35f;
+	ShieldBashAttack.Contact.ContactDistance = 85.f;
+	ShieldBashAttack.Contact.Limbs = EHawkeyeStrikeLimb::Hands;
+	ShieldBashAttack.Contact.StrikeRadius = 35.f;
+	ShieldBashAttack.Contact.Weight = 0.8f;
 
 	HeavySwingAttack = BatAttack;
 	HeavySwingAttack.Name = FName(TEXT("heavy_bat"));
 	HeavySwingAttack.WindupSeconds = 1.f;
 	HeavySwingAttack.RecoverSeconds = 0.9f;
 	HeavySwingAttack.Range = 150.f;
+	HeavySwingAttack.Contact.Weight = 0.75f;
 
 	GetCapsuleComponent()->SetCapsuleSize(34.f, 96.f);
 
@@ -627,8 +648,14 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 			Away = -GetActorForwardVector();
 		}
 		LaunchCharacter(Away * HitShoveSpeed, true, false);
-		// The clip for the side it came from; the stagger and the shove are the same with or without one.
-		PlayCombatClip(UCombatAnimSet::HitRoleFor(UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away)));
+		// The clip for the side the blow came from (a hook from his left, a kick from behind); the stagger and the shove
+		// are the same with or without one.
+		const FHawkeyeStrikeImpact* Blow = HitReactionComponent && HitReactionComponent->GetPendingImpact().bValid
+			? &HitReactionComponent->GetPendingImpact() : nullptr;
+		const EHawkeyeHitDirection Side = Blow
+			? UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow->Direction)
+			: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
+		PlayCombatClip(UCombatAnimSet::HitRoleFor(Side));
 	}
 
 	AlertTo(HitBy);
@@ -666,8 +693,13 @@ void AThugCharacter::KnockdownFor(AActor* By, float Seconds, float LaunchSpeed)
 		return;
 	}
 
-	// Knocked over again while still getting up: the blend ends here and the ragdoll starts over.
+	// Knocked over again while still getting up: the blend ends here and the ragdoll starts over. A blow's physical
+	// reaction under way gives the bodies up to the knockdown.
 	FinishGetUp();
+	if (HitReactionComponent)
+	{
+		HitReactionComponent->CancelReaction();
+	}
 	bKnockedDown = true;
 	KnockdownRemaining = FMath::Max(Seconds, 0.f);
 	StaggerRemaining = 0.f;
@@ -1021,6 +1053,18 @@ bool AThugCharacter::PlayCombatClip(ECombatAnimRole ClipRole, float FitToSeconds
 	return !bLimp && HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, ClipRole, FitToSeconds) != nullptr;
 }
 
+bool AThugCharacter::IsAnyCombatClipPlaying() const
+{
+	const USkeletalMeshComponent* Body = GetMesh();
+	if (!Body)
+	{
+		return false;
+	}
+	const UAnimInstance* Main = Body->GetAnimInstance();
+	const UAnimInstance* Post = Body->GetPostProcessInstance();
+	return (Main && Main->IsAnyMontagePlaying()) || (Post && Post->IsAnyMontagePlaying());
+}
+
 bool AThugCharacter::PlayKnockdownClip()
 {
 	UAnimMontage* Montage = UCombatAnimSet::Resolve(CombatAnimSet, ECombatAnimRole::Knockdown);
@@ -1109,6 +1153,17 @@ bool AThugCharacter::CanBeTakenDown_Implementation(AActor* /*Attacker*/)
 
 void AThugCharacter::OnTakedown_Implementation(AActor* Attacker)
 {
+	// From behind: he goes down forward, away from her, softly (the knockout's throw at a light weight).
+	if (HitReactionComponent && Attacker)
+	{
+		FHawkeyeStrikeImpact Push;
+		Push.bValid = true;
+		Push.Source = EHawkeyeImpactSource::Strike;
+		Push.Weight = TakedownImpactWeight;
+		Push.Direction = (GetActorLocation() - Attacker->GetActorLocation()).GetSafeNormal2D();
+		Push.Point = GetActorLocation() + FVector(0.f, 0.f, 40.f);
+		HitReactionComponent->SetPendingImpact(Push);
+	}
 	GoLimp(Attacker);
 	DropLoot();
 
@@ -1254,6 +1309,8 @@ void AThugCharacter::GoLimp(AActor* Killer)
 		ShieldComponent->SetUsingAbsoluteRotation(false);
 		ShieldComponent->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepWorldTransform, FName(TEXT("lowerarm_l")));
 	}
+	// A clip playing as he dies (a finisher's victim, a knockdown) hands over to the ragdoll gradually.
+	const bool bWasInClip = bKnockdownClip || IsAnyCombatClipPlaying();
 	bKnockedDown = false;
 	FinishGetUp();
 
@@ -1284,6 +1341,15 @@ void AThugCharacter::GoLimp(AActor* Killer)
 		{
 			UE_LOG(LogHawkeye, Warning, TEXT("%s: went down by ragdoll (physics asset %s)."),
 				*GetName(), *GetNameSafe(SkeletalMesh->GetPhysicsAsset()));
+			// The Ragdoll profile already lets Kate walk through him (it ignores Pawn); the camera's probe does too, so a
+			// body at her feet never pulls the lens in.
+			SkeletalMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+			// Thrown from where the blow landed, then asleep once still (gameplay-semantics.md, "Contact, reaction and
+			// knockout"). Out of a clip (a finisher's victim, a knockdown) it blends from the clip's pose.
+			if (HitReactionComponent)
+			{
+				HitReactionComponent->BeginKnockout(SkeletalMesh, bWasInClip);
+			}
 
 			// The corpse stays where it lands; nothing should ever try to move the actor again.
 			SetActorTickEnabled(false);

@@ -11,6 +11,7 @@
 #include "Combat/BowComponent.h"
 #include "Combat/BowDefinition.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/HitReactionComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
@@ -480,13 +481,34 @@ void AArrowProjectile::DamageVictim(const FHitResult& Hit, const FVector& Direct
 
 	AActor* ShooterActor = Shooter.Get();
 	const APawn* ShooterPawn = Cast<APawn>(ShooterActor);
+	// The body hears where the arrow went in before the damage: a kill throws the ragdoll along the arrow from that bone.
+	UHitReactionComponent* Reaction = Victim->FindComponentByClass<UHitReactionComponent>();
+	FHawkeyeStrikeImpact Impact;
+	Impact.bValid = true;
+	Impact.Source = EHawkeyeImpactSource::Arrow;
+	Impact.Direction = Direction;
+	Impact.Bone = Bone;
+	Impact.Point = FVector(Hit.ImpactPoint);
+	Impact.Weight = Arrow ? Arrow->ImpactWeight : 0.5f;
+	if (Reaction)
+	{
+		Reaction->SetPendingImpact(Impact);
+	}
 	UGameplayStatics::ApplyPointDamage(Victim, Dealt, Direction, Hit,
 		ShooterPawn ? ShooterPawn->GetController() : nullptr, ShooterActor ? ShooterActor : this, nullptr);
 
-	// A surviving victim flinches through the same path a punch uses.
+	// A surviving victim flinches through the same path a punch uses, and the bone it went into gives.
 	if (Health->IsAlive())
 	{
 		Health->Stagger(ShooterActor);
+		if (Reaction)
+		{
+			Reaction->PlayHitReaction(Impact);
+		}
+	}
+	if (Reaction)
+	{
+		Reaction->ClearPendingImpact();
 	}
 
 	UE_LOG(LogHawkeye, Log, TEXT("%s: %s hit %s (bone %s) for %.1f%s, health now %.1f."), *GetNameSafe(ShooterActor),

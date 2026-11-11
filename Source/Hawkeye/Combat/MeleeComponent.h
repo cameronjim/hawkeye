@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Combat/CombatAnimSet.h"
+#include "Combat/HitContactRules.h"
 #include "MeleeComponent.generated.h"
 
 class UAnimInstance;
@@ -78,6 +79,14 @@ struct HAWKEYE_API FHawkeyeMeleeAttack
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee")
 	bool bUnblockable = false;
+
+	/**
+	 * How it meets the body: the contact distance and region the warp or slide aims for, their caps (past them it
+	 * whiffs), the limbs that sweep for the body over the hit window, and its weight (gameplay-semantics.md, "Contact,
+	 * reaction and knockout").
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Contact")
+	FHawkeyeStrikeContact Contact;
 
 	/** Seconds from the start of the swing until another can start. */
 	float GetTotalSeconds() const { return WindupSeconds + RecoverSeconds; }
@@ -304,10 +313,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Assist")
 	bool bAssistSwings = false;
 
-	/** The longest the gap-closing step goes, cm (the assist's 350 cm less the stand-off). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Assist", meta = (ClampMin = "0.0"))
-	float AssistMaxCloseDistance = 260.f;
-
 	/** A target picked at the press is still hit this far past the attack's reach (Range + Radius). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Assist", meta = (ClampMin = "1.0"))
 	float AssistReachScale = 1.3f;
@@ -328,13 +333,36 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Melee|Assist")
 	int32 GetForgivenHitCount() const { return ForgivenHitCount; }
 
+	/** The current (or last) swing's contact plan: where it stands to land and whether it can. */
+	const FHawkeyeContactPlan& GetContactPlan() const { return ContactPlan; }
+
+	/** The current (or last) swing was out of its warp or slide caps: it whiffs, no forgiveness. */
+	UFUNCTION(BlueprintPure, Category = "Melee|Contact")
+	bool IsContactWhiff() const { return bContactWhiff; }
+
+	/** Swings that whiffed for being out of their caps. */
+	UFUNCTION(BlueprintPure, Category = "Melee|Contact")
+	int32 GetContactWhiffCount() const { return ContactWhiffCount; }
+
+	/** The last blow that landed: where, which way, how hard. */
+	const FHawkeyeStrikeImpact& GetLastImpact() const { return LastImpact; }
+
+	/** True when the current swing's hit is found by its limbs' sweep (a clip times it), not the sweep from the capsule. */
+	UFUNCTION(BlueprintPure, Category = "Melee|Contact")
+	bool IsLimbSweep() const { return bLimbSweep; }
+
+	/**
+	 * The point on Target a swing of Contact aims at: the region's bone (head, spine, thigh) on his mesh, or his capsule
+	 * centre when he is down or has no such bone.
+	 */
+	FVector ComputeContactPoint(const AActor& Target, const FHawkeyeStrikeContact& InContact) const;
+
+	/** The plan for the current swing on its target from where the owner is now, scaled by the owner's size. */
+	FHawkeyeContactPlan PlanCurrentContact() const;
+
 	/** The motion warping target a strike clip is warped to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Melee|Animation")
 	FName WarpTargetName = FName(TEXT("CombatTarget"));
-
-	/** The warp target stands this far short of the target, toward the owner, cm. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Melee|Animation", meta = (ClampMin = "0.0"))
-	float WarpStandOffDistance = 90.f;
 
 	/**
 	 * Fit each clip so its ANS_HitWindow opens at the attack's WindupSeconds, so the telegraph keeps its
@@ -376,7 +404,7 @@ protected:
 	UAnimMontage* PickSwingVariant(const FHawkeyeMeleeAttack& Attack);
 
 	/** Points the owner's motion warping at the swing's target (or clears it) for a root-motion clip. */
-	void UpdateWarpTarget() const;
+	void UpdateWarpTarget();
 
 	/** The owner's motion warping component, made on first use when it has none. */
 	UMotionWarpingComponent* FindOrAddMotionWarping() const;
@@ -404,6 +432,30 @@ protected:
 
 	/** The assist target when the sweep missed him but the forgiveness still reaches him, else null. */
 	AActor* FindForgivenTarget() const;
+
+	/** An in-place swing's slide to its contact distance over the end of the wind-up (thugs: no lunge, no warp). */
+	void UpdateApproach();
+
+	/** Marks the swing a whiff (out of its caps), once, with the plan's reason in the log. */
+	void MarkContactWhiff(const TCHAR* Where);
+
+	/** Where the striking limbs (and a held weapon's length) are now. False when the owner has no such bones. */
+	bool GatherStrikePoints(TArray<FVector>& OutPoints) const;
+
+	/**
+	 * The first living pawn the limbs' spheres meet between their last places and now; OutPoint where, OutVelocity the
+	 * striking limb's motion. Updates the last places.
+	 */
+	AActor* FindTargetByLimbs(FVector& OutPoint, FVector& OutVelocity);
+
+	/** A candidate the swing may hurt: alive, with health, not the owner, not IgnoreTag. */
+	bool IsStrikeCandidate(const AActor* Candidate) const;
+
+	/** What the landed blow is: the contact point, its direction, its weight. */
+	FHawkeyeStrikeImpact BuildImpact(const AActor& Target, const FVector* LimbPoint, const FVector& LimbVelocity) const;
+
+	/** The hit-stop on both parties and the struck body's reaction, after the damage. */
+	void DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& Impact, bool bTargetAlive);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Melee")
 	EMeleePhase Phase = EMeleePhase::Idle;
@@ -472,4 +524,15 @@ protected:
 
 	/** Counts swings, so a cut montage's end event is not taken for the swing that cut it. */
 	int32 SwingSerial = 0;
+
+	FHawkeyeContactPlan ContactPlan;
+	bool bContactWhiff = false;
+	bool bApproachDone = false;
+	int32 ContactWhiffCount = 0;
+	bool bLimbSweep = false;
+	FHawkeyeStrikeImpact LastImpact;
+
+	/** The striking limbs' places at the last tick, for the sweep across the hit window. */
+	TArray<FVector> LastLimbPoints;
+	double LastLimbTime = 0.0;
 };

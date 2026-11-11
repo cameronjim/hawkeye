@@ -24,6 +24,7 @@ class UInputAction;
 class USpringArmComponent;
 class UInputMappingContext;
 class UHealthComponent;
+class UHitReactionComponent;
 class UInteractionComponent;
 class UGrappleComponent;
 class UHawkeyeMovementComponent;
@@ -604,9 +605,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Camera")
 	float GetCameraPunchOffset() const;
 
-	/** The hit stop a landed swing gives, real seconds: HitStopSeconds for a light, HeavyHitStopSeconds for a heavy. */
-	UFUNCTION(BlueprintPure, Category = "Hawkeye|Melee")
-	float GetMeleeHitStopSeconds(bool bHeavy) const { return bHeavy ? HeavyHitStopSeconds : HitStopSeconds; }
+	/** The hit-stop her landed light (the chain's first) or heavy gives both bodies, world seconds (by its weight). */
+	float GetMeleeHitStopSeconds(bool bHeavy) const;
+
+	/** The hit-stop, the physical reaction to a blow (on the body people see) and the knockout's throw. */
+	UHitReactionComponent* GetHitReactionComponent() const { return HitReactionComponent; }
 
 	/** F when no takedown is valid: the finisher on a staggered or knocked-down thug (UFinisherComponent). */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Melee")
@@ -1202,6 +1205,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hawkeye|Components")
 	TObjectPtr<UMeleeComponent> MeleeComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UHitReactionComponent> HitReactionComponent;
+
 	/** Vault, mantle, ledge grab; auto while sprinting, on the jump key at any speed. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hawkeye|Components")
 	TObjectPtr<UParkourComponent> ParkourComponent;
@@ -1401,20 +1407,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee|Assist", meta = (ClampMin = "0.0"))
 	float MeleeAssistTrackDegreesPerSecond = 720.f;
 
-	/** Real seconds the world is slowed when one of her strikes lands. Two frames at 60. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
-	float HitStopSeconds = 0.033f;
-
+	/**
+	 * The world's dilation for the parry's and the perfect dodge's stop (a landed strike's hit-stop is the two bodies'
+	 * own, UHitReactionComponent).
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.01", ClampMax = "1.0"))
 	float HitStopTimeDilation = 0.1f;
 
-	/** Real seconds of hit stop when a heavy lands: four frames at 60, as the parry. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
-	float HeavyHitStopSeconds = 0.067f;
-
-	/** A landed heavy pushes the lens this far in toward her and back, cm (times the camera shake scale). */
+	/** A landed blow of weight 1 (her heavy) pushes the lens this far in toward her and back, cm (times the camera shake scale). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
 	float HeavyCameraPunchDistance = 2.5f;
+
+	/** The same at weight 0; between the two by the blow's weight. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
+	float LightCameraKickDistance = 0.8f;
 
 	/** Real seconds the punch takes, in and back. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
@@ -2166,6 +2172,9 @@ private:
 
 	/** Real seconds into the heavy's camera punch; below 0 when none is running. */
 	float CameraPunchElapsed = -1.f;
+
+	/** How far the current kick pushes the lens, cm, by the blow's weight. */
+	float CameraKickDistance = 0.f;
 
 	/** The fight is recounted this often, s. */
 	static constexpr float FightRecountSeconds = 0.1f;
