@@ -680,6 +680,12 @@ def _axes(yaw, pitch, roll=0.0):
     return x, y, z
 
 
+def string_envelope(params):
+    """cm round a string's points its wire and the bulbs hanging under it reach: the wire's radius plus the bulbs'
+    drop and size (a little more than they reach under it, the same all round)."""
+    return params.get("radius", 2.0) + params.get("bulb_drop", 0.0) + params.get("bulb_size", 0.0)
+
+
 def record_volumes(rec, grow=0.0):
     """The record's space as prisms (ring, z0, z1): its rotated box's footprint hull and height range for box,
     cylinder and sphere (conservative for the round ones), a box round each segment of an open spline, and the
@@ -691,7 +697,7 @@ def record_volumes(rec, grow=0.0):
             ring = [(q[0], q[1]) for q in pts]
             z = rec["position"][2]
             return [(_grow_ring(ring, grow) if grow else ring, z - grow, z + p["thickness"] + grow)]
-        r = p.get("radius", 2.0) + grow
+        r = string_envelope(p) + grow
         out = []
         for a, b in zip(pts, pts[1:]):
             half = _dist2(a, b) * 0.5
@@ -803,7 +809,7 @@ def clears_street(rec):
     pavement) at every point; every other kind passes."""
     if rec["kind"] != "string_light":
         return True
-    lowest = min(p[2] for p in rec["params"]["points"]) - rec["params"].get("radius", 2.0)
+    lowest = min(p[2] for p in rec["params"]["points"]) - string_envelope(rec["params"])
     return lowest - SIDEWALK_TOP >= STRING_LIGHT_CLEARANCE
 
 
@@ -862,11 +868,16 @@ def violations(rec, scene, lines=None):
 # the plan
 # ======================================================================================================================
 
-# windows
-WINDOW_BAY = 180.0              # cm between window centres along a facade
+# windows: on the window grid M_Facade paints (_materials.BAY_PITCH, FLOOR_PITCH, WINDOW_W/H/SILL,
+# UPPER_FLOORS_FROM, CORNICE_FROM_TOP), so a lit card covers a painted window exactly. The material's horizontal
+# coordinate is world y * nx - x * ny on a wall whose outward normal is (nx, ny), windows centred on half bays;
+# storeys are world z in FLOOR_PITCH steps.
+WINDOW_BAY = 160.0              # cm between window centres along a facade (_materials.BAY_PITCH)
 WINDOW_END = 90.0               # cm from either end of a wall to the first window's middle
-WINDOW_SIZE = (2.0, 100.0, 150.0)   # out, along, up
-WINDOW_SILL = 90.0              # cm over the floor
+WINDOW_SIZE = (2.0, 110.0, 150.0)   # out, along, up (_materials.WINDOW_W, WINDOW_H)
+WINDOW_SILL = 95.0              # cm over the storey line (_materials.WINDOW_SILL)
+WINDOW_UPPER_FROM = 420.0       # world z the painted upper floors start at (_materials.UPPER_FLOORS_FROM)
+WINDOW_TOP_CLEAR = 185.0        # cm under the top of the wall the painted windows stop (CORNICE_FROM_TOP[1] + 20)
 WINDOW_OUT = 1.5                # cm from the wall to the card's middle
 LIT_SHARE = 0.35                # of windows lit
 CANDLE_SHARE = 0.3              # of lit windows with a candle
@@ -904,8 +915,11 @@ STRING_HEIGHTS = (720.0, 780.0, 840.0, 660.0)   # attach heights over the ground
 STRING_REACH = 5000.0           # cm, the longest span
 STRING_SAG = 0.025              # of the span
 STRING_MIN_SAG = 30.0
-STRING_OFF_WALL = 5.0
+STRING_OFF_WALL = 20.0          # cm out from each wall the string is hooked: clear of the wall with its bulbs
+                                # (string_envelope), so the far building does not count as an overlap
 STRING_RADIUS = 2.0
+STRING_BULB_DROP = 6.0          # cm a bulb's middle hangs under the wire
+STRING_BULB_SIZE = 9.0          # cm across a bulb (bigger than a real C9, so a string reads across the street)
 STRING_POINTS = 9
 STRING_TOP_CLEAR = 100.0        # cm the attach stays under either building's roof
 # snow banks
@@ -1100,22 +1114,36 @@ def _facade_box(ctx, kind, f, along, out, z, size, rid, params=None):
     return make_record(kind, rid, (p[0], p[1], z), size, yaw=_yaw(f["n"]), host=f["osm"], params=params)
 
 
+def window_alongs(f):
+    """cm along the frontage of every painted window's middle (M_Facade's grid), WINDOW_END clear of either end."""
+    nx, ny = f["n"]
+    u0 = f["a"][1] * nx - f["a"][0] * ny
+    rate = f["u"][1] * nx - f["u"][0] * ny          # +1 or -1: how the material's coordinate runs along the wall
+    lo, hi = sorted((u0, u0 + rate * f["length"]))
+    out = []
+    j = int(math.floor((lo - WINDOW_BAY * 0.5) / WINDOW_BAY))
+    while j * WINDOW_BAY + WINDOW_BAY * 0.5 <= hi:
+        along = (j * WINDOW_BAY + WINDOW_BAY * 0.5 - u0) * rate
+        if WINDOW_END <= along <= f["length"] - WINDOW_END:
+            out.append(along)
+        j += 1
+    return sorted(out)
+
+
 def _plan_windows(ctx):
     out = []
     for f in ctx.frontages:
-        count = int((f["length"] - 2.0 * WINDOW_END) // WINDOW_BAY) + 1
-        if f["length"] < 2.0 * WINDOW_END:
-            continue
-        start = (f["length"] - (count - 1) * WINDOW_BAY) * 0.5
+        alongs = window_alongs(f)
         floor = 1
-        ground = _ground(f)
-        while floor * FLOOR + WINDOW_SILL + WINDOW_SIZE[2] <= f["height"] - 60.0:
-            for k in range(count):
-                along = start + k * WINDOW_BAY
+        while floor * FLOOR + WINDOW_SILL + WINDOW_SIZE[2] <= f["top"] - WINDOW_TOP_CLEAR:
+            if floor * FLOOR + WINDOW_SILL < WINDOW_UPPER_FROM:
+                floor += 1
+                continue
+            for k, along in enumerate(alongs):
                 rid = ctx.rid("window_light", f["osm"], "e{0}".format(f["edge"]), "f{0}".format(floor), "w{0}".format(k))
                 if stable_hash(rid, "lit") >= LIT_SHARE:
                     continue
-                sill = ground + floor * FLOOR + WINDOW_SILL
+                sill = floor * FLOOR + WINDOW_SILL
                 rec = _facade_box(ctx, "window_light", f, along, WINDOW_OUT, sill + WINDOW_SIZE[2] * 0.5, WINDOW_SIZE, rid,
                                   {"floor": floor, "warmth": _r(0.6 + 0.4 * stable_hash(rid, "warm"), 3)})
                 if not ctx.check(rec):
@@ -1298,7 +1326,7 @@ def _string_light(ctx, f, along, ground, z, far, far_b, rid):
     return make_record("string_light", rid, mid, yaw=_yaw(f["n"]), host=f["osm"],
                        params={"points": [[_r(x), _r(y), _r(zz)] for x, y, zz in pts], "radius": STRING_RADIUS,
                                "sag": _r(sag), "span": _r(span), "far_host": far_b["id"], "bulb_spacing": 30.0,
-                               "palette": "warm_multi"})
+                               "bulb_drop": STRING_BULB_DROP, "bulb_size": STRING_BULB_SIZE, "palette": "warm_multi"})
 
 
 def _plan_string_lights(ctx):
