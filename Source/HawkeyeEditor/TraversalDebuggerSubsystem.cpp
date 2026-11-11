@@ -367,7 +367,7 @@ void UTraversalDebuggerSubsystem::DrawUnreachedRoofs(ULineBatchComponent& Lines)
 		{
 			DrawRoofOutline(Lines, Row.Roof, UnreachedColor);
 		}
-		else if (Row.Reach == EGrappleRoofReach::NoStreetInRange)
+		else if (Row.Reach == EGrappleRoofReach::NoStreetInRange || Row.Reach == EGrappleRoofReach::NoStreetWall)
 		{
 			DrawRoofOutline(Lines, Row.Roof, NoStreetColor);
 		}

@@ -27,6 +27,10 @@ struct HAWKEYE_API FGrappleAuditRoofRow
 	int32 FromFineStreet = 0;
 	int32 Neighbours = 0;
 	int32 NeighboursReaching = 0;
+	/** Walls facing a street in the open (FGrappleReachQuery::CountStreetWalls); 0 inside a block or behind buildings. */
+	int32 StreetWalls = 0;
+	/** Roofs touching this one within the walkable rise (walked or mantled onto). */
+	int32 Walkable = 0;
 	EGrappleRoofReach Reach = EGrappleRoofReach::NoAnchors;
 	/** Why no 2.5 m spot reaches it ("view blocked by its own building x12, ..."), empty when reached. */
 	FString Why;
@@ -68,6 +72,12 @@ struct HAWKEYE_API FGrappleAuditReport
 	TArray<FGrappleAuditAnchorRow> AnchorRows;
 	/** Indices into Roofs of the street-facing roofs no sidewalk spot reaches. */
 	TArray<int32> StreetFacingUnreached;
+	/**
+	 * The anchored roofs the street does not reach that are not street-facing, each with its class (no sidewalk spot in
+	 * range, or no wall on a street) and how it is reached instead (from another roof's spots, walked onto, or not):
+	 * listed, never failed.
+	 */
+	TArray<FString> RoofsOffTheStreet;
 	/** A chain objective's roof the street or the objective before cannot reach. */
 	bool bObjectiveChainBroken = false;
 	TArray<FString> Errors;

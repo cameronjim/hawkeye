@@ -152,6 +152,14 @@ struct HAWKEYE_API FGrappleReachQuery
 		const FGrappleReachRules& Rules, const FGrappleAuditSettings& Settings,
 		TFunctionRef<EStand(const FVector2D& Point, FVector& OutFloor)> FloorAt, TArray<FVector>& OutCentres);
 
+	/**
+	 * How many of roof R's walls face a street in the open (FGrappleAuditSettings' StreetWall* rules; generate_city's
+	 * _reach._street_edges, where the reach model puts a roof's street anchor): 0 for a roof inside its block or behind
+	 * buildings as tall, which the street is not expected to reach.
+	 */
+	static int32 CountStreetWalls(const TArray<FGrappleReachRoof>& Roofs, int32 R, const TArray<FGrappleReachStreet>& Streets,
+		const FGrappleAuditSettings& Settings);
+
 	// --- Roofs the street cannot reach -----------------------------------------------------------
 
 	/**

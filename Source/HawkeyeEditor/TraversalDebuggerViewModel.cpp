@@ -61,7 +61,7 @@ TArray<FTraversalDebuggerRow> FTraversalDebuggerViewModel::MakeRoofRows(const FG
 		return Rows;
 	}
 	// Street-facing first: those are the ones the gate fails on.
-	for (const EGrappleRoofReach Wanted : { EGrappleRoofReach::Unreached, EGrappleRoofReach::NoStreetInRange })
+	for (const EGrappleRoofReach Wanted : { EGrappleRoofReach::Unreached, EGrappleRoofReach::NoStreetWall, EGrappleRoofReach::NoStreetInRange })
 	{
 		for (const FGrappleAuditRoofRow& Roof : Report->Roofs)
 		{

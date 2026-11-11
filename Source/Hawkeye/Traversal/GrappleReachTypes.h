@@ -165,6 +165,19 @@ struct HAWKEYE_API FGrappleAuditSettings
 	/** A fire escape belongs to the roof whose outline is nearest within this, cm. */
 	float EscapeRoofGap = 250.f;
 
+	/**
+	 * A street wall (generate_city's _reach._street_edges, what the reach model places a roof's street anchor on): an
+	 * edge at least StreetWallMinEdge long whose middle is within the carriageway's half width plus StreetWallRoadReach
+	 * of a street line, its outward normal within acos(StreetWallFacing) of it, and not covered: at most one of the
+	 * points StreetWallProbeOut out from its quarter, middle and three-quarter marks is inside a building whose walls
+	 * stand within StreetWallCoverDrop of this one's. A roof with none is inside its block or behind buildings.
+	 */
+	float StreetWallMinEdge = 300.f;
+	float StreetWallRoadReach = 1200.f;
+	float StreetWallFacing = 0.5f;
+	float StreetWallProbeOut = 150.f;
+	float StreetWallCoverDrop = 100.f;
+
 	/** The top of a roof's walls: its height plus the parapet where it has one, cm. */
 	float RoofTopZ(float HeightM) const { return HeightM * 100.f + (HeightM >= ParapetMinHeightM ? ParapetHeight : 0.f); }
 	bool IsAnchored(float HeightM) const { return HeightM > AnchoredHeightM; }
@@ -204,6 +217,11 @@ enum class EGrappleRoofReach : uint8
 	NoAnchors,
 	/** No sidewalk spot is within the grapple's range of any of its anchors (too tall, or inside its block). */
 	NoStreetInRange,
+	/**
+	 * A sidewalk spot is in range, but no wall of it faces a street in the open (FGrappleReachQuery::CountStreetWalls):
+	 * it stands inside its block or behind a building as tall, and is reached from the roofs round it, not the street.
+	 */
+	NoStreetWall,
 	/** Street-facing (a sidewalk spot is in range) but no spot reaches any anchor: the audit's failure. */
 	Unreached,
 };

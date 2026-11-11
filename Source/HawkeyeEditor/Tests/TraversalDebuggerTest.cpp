@@ -117,7 +117,7 @@ bool FHawkeyeTraversalDebuggerViewModelTest::RunTest(const FString& Parameters)
 	FGrappleAuditReport Report;
 	Report.Summary = TEXT("the summary");
 	for (const EGrappleRoofReach Reach : { EGrappleRoofReach::Reached, EGrappleRoofReach::NoStreetInRange, EGrappleRoofReach::Unreached,
-			 EGrappleRoofReach::NoAnchors })
+			 EGrappleRoofReach::NoAnchors, EGrappleRoofReach::NoStreetWall })
 	{
 		FGrappleAuditRoofRow& Row = Report.Roofs.AddDefaulted_GetRef();
 		Row.Roof = Report.Roofs.Num() - 1;
@@ -126,12 +126,14 @@ bool FHawkeyeTraversalDebuggerViewModelTest::RunTest(const FString& Parameters)
 	}
 	Report.Roofs[2].Why = TEXT("view blocked by a building x3");
 	const TArray<FTraversalDebuggerRow> RoofRows = FTraversalDebuggerViewModel::MakeRoofRows(&Report);
-	if (TestEqual(TEXT("Only unreached and out-of-range roofs are listed"), RoofRows.Num(), 2))
+	if (TestEqual(TEXT("Only unreached, inside-the-block and out-of-range roofs are listed"), RoofRows.Num(), 3))
 	{
 		TestEqual(TEXT("The street-facing one (the gate's) first"), RoofRows[0].Roof, 2);
 		TestTrue(TEXT("with its reason"), RoofRows[0].Label.EndsWith(TEXT(": view blocked by a building x3")));
-		TestEqual(TEXT("then the one with no sidewalk in range"), RoofRows[1].Roof, 1);
-		TestTrue(TEXT("named by its reach when there is no reason"), RoofRows[1].Label.EndsWith(TEXT(": no sidewalk spot in range")));
+		TestEqual(TEXT("then the one with no wall on a street"), RoofRows[1].Roof, 4);
+		TestTrue(TEXT("named by its reach"), RoofRows[1].Label.Contains(TEXT("no wall on a street")));
+		TestEqual(TEXT("then the one with no sidewalk in range"), RoofRows[2].Roof, 1);
+		TestTrue(TEXT("named by its reach when there is no reason"), RoofRows[2].Label.EndsWith(TEXT(": no sidewalk spot in range")));
 	}
 	TestEqual(TEXT("No report, no roof rows"), FTraversalDebuggerViewModel::MakeRoofRows(nullptr).Num(), 0);
 	TestEqual(TEXT("Summary is the report's"), FTraversalDebuggerViewModel::MakeSummaryText(&Report), FString(TEXT("the summary")));

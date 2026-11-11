@@ -460,6 +460,90 @@ bool FHawkeyeGrappleReachAuditReportTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleReachStreetWallsTest, "Hawkeye.Grapple.Reach.StreetWalls",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeGrappleReachStreetWallsTest::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeGrappleReachQueryTest;
+	// generate_city's _reach._street_edges, which the audit now shares: a 12 m street along Y = 0.
+	const FGrappleAuditSettings Settings;
+	FGrappleReachStreet Street;
+	Street.Points = { FVector2D(-2000.0, 0.0), FVector2D(9000.0, 0.0) };
+	const TArray<FGrappleReachStreet> Streets = { Street };
+	TArray<FGrappleReachRoof> Roofs;
+	Roofs.Add(Square(TEXT("front"), FVector2D(0.0, 1000.0), 1000.0, 12.f));        // 0 its south wall faces the street
+	Roofs.Add(Square(TEXT("court"), FVector2D(0.0, 2100.0), 1000.0, 12.f));        // 1 behind front: covered and 21 m off
+	Roofs.Add(Square(TEXT("shed"), FVector2D(2000.0, 700.0), 1000.0, 3.f));        // 2 low, in front of the next
+	Roofs.Add(Square(TEXT("over_shed"), FVector2D(2000.0, 1750.0), 1000.0, 12.f)); // 3 9 m over a shed: still faces it
+	Roofs.Add(Square(TEXT("tall"), FVector2D(4000.0, 700.0), 1000.0, 20.f));       // 4 a taller one in front of the next
+	Roofs.Add(Square(TEXT("hidden"), FVector2D(4000.0, 1750.0), 1000.0, 12.f));    // 5 covered by it
+	Roofs.Add(Square(TEXT("far"), FVector2D(6000.0, 2000.0), 1000.0, 12.f));       // 6 nothing in front, 14 m past the kerb
+
+	TestEqual(TEXT("A wall on the street"), FGrappleReachQuery::CountStreetWalls(Roofs, 0, Streets, Settings), 1);
+	TestEqual(TEXT("Behind a building as tall: none"), FGrappleReachQuery::CountStreetWalls(Roofs, 1, Streets, Settings), 0);
+	TestEqual(TEXT("A low shed in front does not hide it"), FGrappleReachQuery::CountStreetWalls(Roofs, 3, Streets, Settings), 1);
+	TestEqual(TEXT("A taller one in front does"), FGrappleReachQuery::CountStreetWalls(Roofs, 5, Streets, Settings), 0);
+	TestEqual(TEXT("Too far past the kerb: none"), FGrappleReachQuery::CountStreetWalls(Roofs, 6, Streets, Settings), 0);
+	TestEqual(TEXT("No such roof"), FGrappleReachQuery::CountStreetWalls(Roofs, 99, Streets, Settings), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleReachAuditOffTheStreetTest, "Hawkeye.Grapple.Reach.AuditRoofsOffTheStreet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeGrappleReachAuditOffTheStreetTest::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeGrappleReachQueryTest;
+	// A roof inside its block, right behind a street-front roof of its height, with a sidewalk spot in range of its anchor
+	// and nothing seeing it: not street-facing, so listed with how it is reached instead (walked onto), never failed.
+	FGrappleReachScene Scene;
+	Scene.Roofs.Add(Square(TEXT("front"), FVector2D(500.0, 1000.0), 1000.0, 12.f));
+	Scene.Roofs.Add(Square(TEXT("court"), FVector2D(500.0, 2100.0), 1000.0, 12.f));
+	Scene.RoofByOsm.Add(TEXT("front"), 0);
+	Scene.RoofByOsm.Add(TEXT("court"), 1);
+	Scene.Anchors.Add(Anchor(FVector(1000.f, 1000.f, 1220.f), 0));
+	Scene.Anchors.Add(Anchor(FVector(1000.f, 2150.f, 1220.f), 1));
+	FGrappleReachStreet Street;
+	Street.Points = { FVector2D(-1000.0, 0.0), FVector2D(3000.0, 0.0) };
+	Scene.Streets.Add(Street);
+	Scene.Bounds = FBox2D(FVector2D(-10000.0, -10000.0), FVector2D(10000.0, 10000.0));
+
+	FGrappleAuditInputs Inputs;
+	Inputs.Scene = &Scene;
+	Inputs.Profile.Lens = Eye();
+	Inputs.Oracle = Oracle({ TEXT("Anchor_1") });
+	Inputs.SidewalkFloor = [](const FVector2D& Point, FVector& OutFloor)
+	{
+		OutFloor = FVector(Point.X, Point.Y, 15.f);
+		return FGrappleReachQuery::EStand::Stand;
+	};
+	Inputs.RoofTop = [&Scene](const FVector2D& Point, int32 Roof, FVector& OutTop)
+	{
+		OutTop = FVector(Point.X, Point.Y, Scene.Roofs[Roof].HeightM * 100.f);
+		return FGrappleReachQuery::IsInsideRing(Point, Scene.Roofs[Roof].Ring);
+	};
+	const FGrappleAuditReport Report = FGrappleAudit::Run(Inputs);
+
+	if (TestEqual(TEXT("Both roofs are anchored rows"), Report.Roofs.Num(), 2))
+	{
+		TestEqual(TEXT("The front one is reached"), LexToString(Report.Roofs[0].Reach), LexToString(EGrappleRoofReach::Reached));
+		TestTrue(TEXT("The court one has a sidewalk spot in range"), Report.Roofs[1].StreetSpotsInRange + Report.Roofs[1].FineSpotsInRange > 0);
+		TestEqual(TEXT("but no wall on a street"), Report.Roofs[1].StreetWalls, 0);
+		TestEqual(TEXT("so it is classed so"), LexToString(Report.Roofs[1].Reach), LexToString(EGrappleRoofReach::NoStreetWall));
+	}
+	TestEqual(TEXT("Nothing street-facing is unreached"), Report.StreetFacingUnreached.Num(), 0);
+	TestEqual(TEXT("The gate passes with no allow list"), Report.FindGateFailures({}).Num(), 0);
+	if (TestEqual(TEXT("It is listed off the street"), Report.RoofsOffTheStreet.Num(), 1))
+	{
+		TestTrue(TEXT("with its class"), Report.RoofsOffTheStreet[0].Contains(TEXT("no wall on a street")));
+		TestTrue(TEXT("and how it is reached instead"), Report.RoofsOffTheStreet[0].Contains(TEXT("walked onto from 1 roofs")));
+	}
+	TestTrue(TEXT("The JSON lists it"), Report.ToJson().Contains(TEXT("\"roofs_off_the_street\"")));
+	TestTrue(TEXT("The summary counts it"), Report.Summary.Contains(TEXT("1 with no wall on a street")));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleReachAuditChainTest, "Hawkeye.Grapple.Reach.AuditPickerAndStreetLinks",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

@@ -462,10 +462,20 @@ namespace HawkeyeGrappleAuditRun
 			{
 				Report.RoofsNoRoof.Add(RoofLabel);
 			}
+			Row.StreetWalls = FGrappleReachQuery::CountStreetWalls(Scene.Roofs, R, Scene.Streets, Settings);
+			Row.Walkable = Walkable.IsValidIndex(R) ? Walkable[R].Num() : 0;
 			Row.Reach = ClassifyRow(Row);
 			if (Row.Reach == EGrappleRoofReach::Unreached)
 			{
 				Report.StreetFacingUnreached.Add(Report.Roofs.Num());
+			}
+			else if (Row.Reach == EGrappleRoofReach::NoStreetInRange || Row.Reach == EGrappleRoofReach::NoStreetWall)
+			{
+				const FString Instead = Row.FromRoofs > 0
+					? FString::Printf(TEXT("reached from other roofs (%d anchors)"), Row.FromRoofs)
+					: (Row.Walkable > 0 ? FString::Printf(TEXT("walked onto from %d roofs it touches"), Row.Walkable)
+						: FString(TEXT("NOT reached from another roof either")));
+				Report.RoofsOffTheStreet.Add(FString::Printf(TEXT("%s: %s; %s"), *RoofLabel, LexToString(Row.Reach), *Instead));
 			}
 			TallyNeighbours(R, RoofSpotsOf);
 			Report.Roofs.Add(MoveTemp(Row));
@@ -481,7 +491,13 @@ namespace HawkeyeGrappleAuditRun
 			{
 				return EGrappleRoofReach::Reached;
 			}
-			return Row.StreetSpotsInRange > 0 || Row.FineSpotsInRange > 0 ? EGrappleRoofReach::Unreached : EGrappleRoofReach::NoStreetInRange;
+			if (Row.StreetSpotsInRange == 0 && Row.FineSpotsInRange == 0)
+			{
+				return EGrappleRoofReach::NoStreetInRange;
+			}
+			// In range of the pavement, but every wall is inside the block or behind a building as tall: the generator
+			// places no street anchor there (the same street-wall rule), so the street is not expected to reach it.
+			return Row.StreetWalls > 0 ? EGrappleRoofReach::Unreached : EGrappleRoofReach::NoStreetWall;
 		}
 
 		void TallyNeighbours(int32 R, const TArray<TArray<FVector>>& RoofSpotsOf)
@@ -618,17 +634,25 @@ namespace HawkeyeGrappleAuditRun
 			const FString NeverPicked = Report.bPickerChecked
 				? FString::Printf(TEXT(", %d reachable but never picked"), Report.AnchorsNeverPicked.Num())
 				: FString(TEXT("; picker not checked (no character)"));
+			int32 OutOfRange = 0;
+			int32 NoWall = 0;
+			for (const FGrappleAuditRoofRow& Row : Report.Roofs)
+			{
+				OutOfRange += Row.Reach == EGrappleRoofReach::NoStreetInRange ? 1 : 0;
+				NoWall += Row.Reach == EGrappleRoofReach::NoStreetWall ? 1 : 0;
+			}
 			Report.Summary = FString::Printf(
 				TEXT("%d anchors (%d on no roof), %d roofs over %.0f m (%d with anchors); %d spots (%d street, %d roof); %lld spot-anchor pairs in range, ")
 				TEXT("%lld seen, %lld zip-clear, %lld reachable%s; %d roofs with no anchor reachable from the street ")
 				TEXT("(%d with a street spot in range or no anchors; %d reached from none of the 2.5 m spots either), %d with none from another roof; ")
 				TEXT("neighbour pairs %d, %d not reachable (%d more out of range); %d anchors reachable from nowhere%s; ")
-				TEXT("%d street-facing roofs unreached; profile %s; %.1f s"),
+				TEXT("%d street-facing roofs unreached; not street-facing: %d with no sidewalk spot in range, %d with no wall on a street; ")
+				TEXT("profile %s; %.1f s"),
 				Scene.Anchors.Num(), Homeless, AnchoredRoofs, Settings.AnchoredHeightM, RoofsWithAnchors, Spots.Num(), Report.StreetSpotCount,
 				Report.RoofSpotCount, Pairs, SeenPairs, ClearPairs, ReachPairs, *Picked, Report.RoofsNoStreet.Num(),
 				Report.RoofsNoStreetWithSpotInRange.Num(), Report.RoofsNoStreetAtFineStep.Num(), Report.RoofsNoRoof.Num(), NeighbourPairs,
 				NeighbourPairsMissing, NeighbourPairsOutOfRange, Report.AnchorsNeverReachable.Num(), *NeverPicked,
-				Report.StreetFacingUnreached.Num(), *Inputs.Profile.Source, Report.Seconds);
+				Report.StreetFacingUnreached.Num(), OutOfRange, NoWall, *Inputs.Profile.Source, Report.Seconds);
 
 			if (Report.bPickerChecked)
 			{
@@ -694,9 +718,10 @@ FString FGrappleAuditReport::ToJson() const
 	for (const FGrappleAuditRoofRow& Row : Roofs)
 	{
 		RoofRows.Add(FString::Printf(TEXT("{\"osm\": \"%s\", \"actor\": \"%s\", \"height_m\": %.1f, \"anchors\": %d, \"from_street\": %d, ")
-			TEXT("\"from_roofs\": %d, \"street_spots_in_range\": %d, \"neighbours\": %d, \"neighbours_reaching\": %d}"),
+			TEXT("\"from_roofs\": %d, \"street_spots_in_range\": %d, \"neighbours\": %d, \"neighbours_reaching\": %d, \"street_walls\": %d, ")
+			TEXT("\"reach\": \"%s\"}"),
 			*Row.OsmId, *Row.ActorName, Row.HeightM, Row.Anchors, Row.FromStreet, Row.FromRoofs, Row.StreetSpotsInRange, Row.Neighbours,
-			Row.NeighboursReaching));
+			Row.NeighboursReaching, Row.StreetWalls, LexToString(Row.Reach)));
 	}
 	TArray<FString> AnchorLines;
 	for (const FGrappleAuditAnchorRow& Row : AnchorRows)
@@ -714,11 +739,11 @@ FString FGrappleAuditReport::ToJson() const
 		TEXT("  \"roofs_no_street\": %s,\n  \"roofs_no_street_with_spot_in_range\": %s,\n  \"roofs_no_street_at_2_5_m\": %s,\n")
 		TEXT("  \"roofs_no_roof\": %s,\n")
 		TEXT("  \"neighbour_pairs_missing\": %s,\n  \"anchors_never_reachable\": %s,\n  \"anchors_never_picked\": %s,\n")
-		TEXT("  \"street_facing_unreached\": %s,\n  \"roofs\": [\n    %s\n  ],\n  \"anchors\": [\n    %s\n  ]\n}\n"),
+		TEXT("  \"street_facing_unreached\": %s,\n  \"roofs_off_the_street\": %s,\n  \"roofs\": [\n    %s\n  ],\n  \"anchors\": [\n    %s\n  ]\n}\n"),
 		*Summary.ReplaceCharWithEscapedChar(), *JsonList(Objectives), *JsonList(PickerMisses), *JsonList(RoofsNoStreet),
 		*JsonList(RoofsNoStreetWithSpotInRange), *JsonList(RoofsNoStreetAtFineStep), *JsonList(RoofsNoRoof), *JsonList(NeighbourPairsMissing),
-		*JsonList(AnchorsNeverReachable), *JsonList(AnchorsNeverPicked), *JsonList(Gate), *FString::Join(RoofRows, TEXT(",\n    ")),
-		*FString::Join(AnchorLines, TEXT(",\n    ")));
+		*JsonList(AnchorsNeverReachable), *JsonList(AnchorsNeverPicked), *JsonList(Gate), *JsonList(RoofsOffTheStreet),
+		*FString::Join(RoofRows, TEXT(",\n    ")), *FString::Join(AnchorLines, TEXT(",\n    ")));
 }
 
 bool FGrappleAuditReport::WriteJson(const FString& Path) const

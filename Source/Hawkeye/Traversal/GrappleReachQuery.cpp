@@ -45,6 +45,8 @@ const TCHAR* LexToString(EGrappleRoofReach Reach)
 		return TEXT("no anchors");
 	case EGrappleRoofReach::NoStreetInRange:
 		return TEXT("no sidewalk spot in range");
+	case EGrappleRoofReach::NoStreetWall:
+		return TEXT("no wall on a street (inside its block or behind buildings)");
 	case EGrappleRoofReach::Unreached:
 		return TEXT("street-facing, no anchor reachable");
 	}
@@ -600,6 +602,80 @@ void FGrappleReachQuery::GatherSidewalkSpots(const TArray<FGrappleReachStreet>& 
 			Carry = T - Length;
 		}
 	}
+}
+
+int32 FGrappleReachQuery::CountStreetWalls(const TArray<FGrappleReachRoof>& Roofs, int32 R, const TArray<FGrappleReachStreet>& Streets,
+	const FGrappleAuditSettings& Settings)
+{
+	if (!Roofs.IsValidIndex(R))
+	{
+		return 0;
+	}
+	const FGrappleReachRoof& Roof = Roofs[R];
+	FVector2D Centroid;
+	float Winding = 1.f;
+	if (!RingCentroid(Roof.Ring, Centroid, Winding))
+	{
+		return 0;
+	}
+	const float Top = Settings.RoofTopZ(Roof.HeightM);
+	auto IsCovered = [&](const FVector2D& Point)
+	{
+		for (const FGrappleReachRoof& Other : Roofs)
+		{
+			if (Other.Box.IsInside(Point) && Settings.RoofTopZ(Other.HeightM) >= Top - Settings.StreetWallCoverDrop
+				&& IsInsideRing(Point, Other.Ring))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	int32 Walls = 0;
+	for (int32 E = 0; E < Roof.Ring.Num(); ++E)
+	{
+		const FVector2D& A = Roof.Ring[E];
+		const FVector2D& B = Roof.Ring[(E + 1) % Roof.Ring.Num()];
+		const double Length = FVector2D::Distance(A, B);
+		if (Length < Settings.StreetWallMinEdge)
+		{
+			continue;
+		}
+		const FVector2D Along = (B - A) / Length;
+		// Counter-clockwise in X east / Y south the inside is to the left: out is to the right.
+		const FVector2D Out = FVector2D(Along.Y, -Along.X) * Winding;
+		int32 Covered = 0;
+		for (const double T : { 0.25, 0.5, 0.75 })
+		{
+			Covered += IsCovered(A + Along * (Length * T) + Out * Settings.StreetWallProbeOut) ? 1 : 0;
+		}
+		if (Covered >= 2)
+		{
+			continue;
+		}
+		const FVector2D Middle = (A + B) * 0.5;
+		bool bFacesStreet = false;
+		for (const FGrappleReachStreet& Street : Streets)
+		{
+			for (int32 I = 0; I + 1 < Street.Points.Num() && !bFacesStreet; ++I)
+			{
+				const FVector2D& P = Street.Points[I];
+				const FVector2D PQ = Street.Points[I + 1] - P;
+				const double LengthSquared = PQ.SizeSquared();
+				const double T = LengthSquared > 0.0 ? FMath::Clamp(FVector2D::DotProduct(Middle - P, PQ) / LengthSquared, 0.0, 1.0) : 0.0;
+				const FVector2D ToRoad = P + PQ * T - Middle;
+				const double Distance = ToRoad.Size();
+				bFacesStreet = Distance >= 1.0 && Distance <= Street.WidthM * 50.0 + Settings.StreetWallRoadReach
+					&& FVector2D::DotProduct(ToRoad, Out) / Distance >= Settings.StreetWallFacing;
+			}
+			if (bFacesStreet)
+			{
+				break;
+			}
+		}
+		Walls += bFacesStreet ? 1 : 0;
+	}
+	return Walls;
 }
 
 // --- Roofs the street cannot reach ---------------------------------------------------------------
