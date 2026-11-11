@@ -506,13 +506,22 @@ The second module, `HawkeyeEditor` (Editor, Default loading phase), and the runt
   spots, neighbours, chains, sidewalk sampling, roofs the street cannot reach. The world comes in through
   `FGrappleReachOracle`. `GrappleReachDefaults` holds the grapple's numbers; `UGrappleComponent`'s defaults come from
   it and the component calls the query for the shared math (`ChoosePick`, `IsOnScreen`, the release point).
-- `FGrappleReachWorld` (runtime): a profile from a pawn's class default, a scene from `DA_EastVillage_CityProps`, the map
-  data and the `CityBuilding` actors, and an oracle with the component's traces. `FGrappleAudit` runs
-  `Hawkeye.Grapple.Audit`'s passes over them and writes `grapple_audit.json`.
-- `UTraversalDebuggerSubsystem` and `STraversalDebuggerPanel` (editor): the Tools > Hawkeye > Traversal Debugger tab.
-  Layers drawn into the editor world's persistent line batcher, reach from the camera or the selection, the audit.
-- `UHawkeyeTraversalAuditCommandlet` (editor): `-run=HawkeyeTraversalAudit -map=...`, the audit headless; exits 1 when a
-  street-facing roof is unreachable. Both editor surfaces go through `FTraversalAuditRunner`.
+- `FGrappleReachWorld` (runtime): a profile from a pawn, a scene either from `DA_EastVillage_CityProps`, the map data and
+  the `CityBuilding` actors (editor world) or from the actors a game world spawned, and an oracle with the component's
+  traces. `FlushPendingPhysicsState` gives an unticked world (a commandlet's) its collision before any trace.
+- `FGrappleAudit` (runtime): the grapple audit over a scene and an oracle, with an optional picker hook; the report,
+  `grapple_audit.json` and the gate. `Hawkeye.Grapple.Audit` is this with Kate's own traces and picker plugged in; the
+  commandlet's run of it on the district matches the test's to the anchor.
+- `UTraversalDebuggerSubsystem`, `FTraversalDebuggerViewModel` and `STraversalDebuggerPanel` (editor): the Tools > Hawkeye >
+  Traversal Debugger tab. The subsystem holds the state and draws into the editor world's persistent line batcher;
+  the view model turns it into rows and text with no Slate (tested headless); the panel lays them out.
+- `UHawkeyeTraversalAuditCommandlet` (editor): `-run=HawkeyeTraversalAudit -map=...` (`Tools\traversal-audit.ps1`), the
+  audit headless; exits 1 when a street-facing roof is unreachable or the chain breaks, 2 when it cannot run. Both
+  editor surfaces go through `FTraversalAuditRunner`.
+- The boundary: `HawkeyeEditor` depends on `Hawkeye`, never the other way. It is typed `Editor` in the .uproject and
+  named only in `HawkeyeEditor.Target.cs`, so the game target never builds it. Anything with rules goes in
+  `Source/Hawkeye/Traversal`, where the game and the tests can use it; the editor module is UI, editor-world plumbing
+  and the command line.
 
 ### Tools (`Tools/`)
 Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.

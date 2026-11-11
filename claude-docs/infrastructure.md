@@ -274,6 +274,11 @@ Facts that matter:
   range and 5 are inside their blocks); roof pairs across a gap not reaching each other 991 / 519 of about
   3,500 in range; anchors no spot reaches 31 / 54 (corners on back yards and shared walls; the spots are a sample); the
   reach_roof roof reachable from the street by 0 / 1 anchors, find_arrow 1 / 2.
+- Since 2026-11-10 the audit's code is `FGrappleAudit` (`Source/Hawkeye/Traversal`), and the same audit runs with no game
+  world: `.\Tools\traversal-audit.ps1` (the `HawkeyeTraversalAudit` commandlet, `-nullrhi`, about 40 s) writes
+  `Saved/Automation/traversal_audit.json` and fails on a street-facing roof nothing reaches. On the district it matches
+  the test anchor for anchor (2457 anchors, 24420 reachable pairs, 92 / 34 roofs, 519 pairs); 14 street-facing roofs
+  have no allow-file entry yet, so it exits 1. Details: `tools-traversal-debugger.md`.
 - World Partition is off for the single block. Stage 3 turns it on.
 - The world map's data, `/Game/City/EastVillage/DA_EastVillage_Map` (`UCityMapData`), is written by
   the same run (`ensure_city_map`): every footprint and the park cleaned to a few points (edges
