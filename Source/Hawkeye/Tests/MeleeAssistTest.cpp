@@ -124,13 +124,13 @@ bool FHawkeyeMeleeAssistCloses::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Her swings are assisted"), Melee->bAssistSwings);
 	TestTrue(TEXT("The light starts"), Kate->StartLightAttack());
 	TestEqual(TEXT("Her sweep is 60 cm"), Melee->GetCurrentAttack().Radius, 60.f);
-	TestEqual(TEXT("The step closes to 90 cm short of him (210)"), Melee->GetLastLungeDistance(), 210.f, 0.5f);
+	TestEqual(TEXT("The step closes to her light's 66 cm contact distance from him (234)"), Melee->GetLastLungeDistance(), 234.f, 0.5f);
 	Melee->AdvanceAttack(1.f);
 
 	// Close in, the lunge is the attack's own.
-	Thug->SetActorLocation(FVector(100.f, 0.f, 0.f));
+	Thug->SetActorLocation(FVector(80.f, 0.f, 0.f));
 	TestTrue(TEXT("Another light"), Kate->StartLightAttack());
-	TestEqual(TEXT("At 100 cm she steps only her own 20 (or the chain's)"), Melee->GetLastLungeDistance(),
+	TestEqual(TEXT("At 80 cm (14 from her 66 contact) she steps only her own 20 (or the chain's)"), Melee->GetLastLungeDistance(),
 		Melee->GetCurrentAttack().LungeDistance, 0.5f);
 	Melee->AdvanceAttack(1.f);
 
