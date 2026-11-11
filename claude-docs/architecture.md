@@ -202,6 +202,19 @@ Rules: `gameplay-semantics.md`, "Flashback".
   ledges nearest first within a frame budget, so the map does not carry thousands of saved actors.
   `AFireEscapeLanding` is one landing's collision; `AGrappleAnchor` is what an arrow bites.
   `UCityMapData` (`DA_EastVillage_Map`) is the flat map the world map draws.
+- December dressing (one hero block, `blk_R3363343`: Avenue B to C, E 9th to 10th), no C++ of its own. Three layers:
+  `Tools/Editor/_dressing.py` plans records from the district data under the traversal constraints (anchor lines,
+  keep-outs, fire escapes, ledges, props, street clearance; pure, tested in `test_dressing.py`);
+  `write_dressing_plan.py` commits the plan as `Tools/Data/dressing/<block>.json` (the test fails when it is stale);
+  `_dressing_kit.py` (pure) turns records into instance groups, one per mesh and material (wires, four bulb colours,
+  wreaths and bows, three window warmths, candles and flames, roof/parapet/kerb/car snow, tree stand, trees, steam
+  stacks, awnings, signs); `_dressing_build.py` (editor) builds the kit meshes and materials under
+  `/Game/City/EastVillage/Dressing` and `M_DressGlow`, and generate_city appends the groups to
+  `DA_EastVillage_CityProps` as `Dress_*` clutter groups, so `ACityLedgeSpawner` draws the block as one hierarchical
+  instanced mesh per group (no collision on the navmesh; collision only on banks, the stand, trees and stacks). The
+  bulbs and windows are emissive, not lights; a handful of `City_DressLight_` point lights (no shadows) give colour
+  on the street. `City_DressShot_` cameras are what `Hawkeye.Screenshot.Dressing` looks through. The dressing is
+  not touched by `UTimeOfDaySubsystem`: it glows by day too. Details, schema and tunables: `december-dressing.md`.
 - Interiors: `AInteriorEntrance` and `AInteriorExit` (both `AInteriorPortal`) travel between the
   district and an `L_Int_*` map through `UHawkeyeSaveSubsystem`. `Tools/Editor/generate_interior.py`
   builds the maps from layouts in `Tools/Interiors/`. Rules: "Interiors".
