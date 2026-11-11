@@ -4,6 +4,7 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
+#include "TraversalDebuggerViewModel.h"
 
 class ITableRow;
 class STableViewBase;
@@ -13,7 +14,8 @@ enum class ETraversalDebugLayer : uint8;
 /**
  * The traversal debugger's tab: layer toggles, "reach from here", the audit buttons, a summary, and two lists with a
  * focus button per row (the anchors checked from the last spot, the roofs the street cannot reach). All state is in
- * UTraversalDebuggerSubsystem; this widget rebuilds its rows when the subsystem says something changed.
+ * UTraversalDebuggerSubsystem and every row's text, colour and order comes from FTraversalDebuggerViewModel; this
+ * widget only lays them out, rebuilding its rows when the subsystem says something changed.
  */
 class STraversalDebuggerPanel : public SCompoundWidget
 {
@@ -24,16 +26,12 @@ public:
 	void Construct(const FArguments& InArgs);
 	virtual ~STraversalDebuggerPanel() override;
 
+	/** The rows the two lists show now (Hawkeye.Editor.TraversalDebugger checks them against the view model). */
+	int32 GetReachRowCount() const { return ReachRows.Num(); }
+	int32 GetRoofRowCount() const { return RoofRows.Num(); }
+
 private:
-	/** One list row: a roof or an anchor of the subsystem's scene, and how to show it. */
-	struct FRow
-	{
-		int32 Roof = INDEX_NONE;
-		int32 Anchor = INDEX_NONE;
-		FText Label;
-		FLinearColor Color = FLinearColor::White;
-	};
-	using FRowPtr = TSharedPtr<FRow>;
+	using FRowPtr = TSharedPtr<FTraversalDebuggerRow>;
 
 	static UTraversalDebuggerSubsystem* GetSubsystem();
 

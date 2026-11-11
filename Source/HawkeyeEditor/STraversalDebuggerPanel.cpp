@@ -13,26 +13,6 @@
 
 #define LOCTEXT_NAMESPACE "TraversalDebugger"
 
-namespace HawkeyeTraversalPanel
-{
-	static FLinearColor ColorOf(EGrappleReachVerdict Verdict)
-	{
-		switch (Verdict)
-		{
-		case EGrappleReachVerdict::Reachable:
-			return FLinearColor(0.3f, 1.f, 0.4f);
-		case EGrappleReachVerdict::TooSteep:
-			return FLinearColor(1.f, 1.f, 0.3f);
-		case EGrappleReachVerdict::SightBlocked:
-			return FLinearColor(1.f, 0.6f, 0.2f);
-		case EGrappleReachVerdict::ZipBlocked:
-			return FLinearColor(1.f, 0.3f, 0.3f);
-		default:
-			return FLinearColor(0.7f, 0.7f, 0.7f);
-		}
-	}
-}
-
 void STraversalDebuggerPanel::Construct(const FArguments& InArgs)
 {
 	if (UTraversalDebuggerSubsystem* Subsystem = GetSubsystem())
@@ -216,7 +196,7 @@ TSharedRef<ITableRow> STraversalDebuggerPanel::MakeRow(FRowPtr Item, const TShar
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(Item.IsValid() ? Item->Label : FText::GetEmpty())
+				.Text(Item.IsValid() ? FText::FromString(Item->Label) : FText::GetEmpty())
 				.ColorAndOpacity(FSlateColor(Item.IsValid() ? Item->Color : FLinearColor::White))
 			]
 		];
@@ -244,22 +224,9 @@ void STraversalDebuggerPanel::RebuildReachRows()
 	{
 		return;
 	}
-	const FGrappleReachScene& Scene = Subsystem->GetScene();
-	for (const FGrappleReachEvaluation& Result : Subsystem->GetReachResults())
+	for (const FTraversalDebuggerRow& Row : FTraversalDebuggerViewModel::MakeReachRows(Subsystem->GetScene(), Subsystem->GetReachResults()))
 	{
-		if (!Scene.Anchors.IsValidIndex(Result.Anchor))
-		{
-			continue;
-		}
-		const FGrappleReachAnchor& Anchor = Scene.Anchors[Result.Anchor];
-		const FString Roof = Scene.Roofs.IsValidIndex(Anchor.Roof) ? Scene.Roofs[Anchor.Roof].OsmId : FString(TEXT("no roof"));
-		const FString Blocker = Result.Blocker.Name.IsEmpty() ? FString() : FString::Printf(TEXT(" (%s)"), *Result.Blocker.Name);
-		FRowPtr Row = MakeShared<FRow>();
-		Row->Anchor = Result.Anchor;
-		Row->Label = FText::FromString(FString::Printf(TEXT("%s on %s, %.0f m, %.1f deg: %s%s"), *Anchor.Name, *Roof, Result.Distance / 100.f,
-			Result.AngleDegrees, LexToString(Result.Verdict), *Blocker));
-		Row->Color = HawkeyeTraversalPanel::ColorOf(Result.Verdict);
-		ReachRows.Add(Row);
+		ReachRows.Add(MakeShared<FTraversalDebuggerRow>(Row));
 	}
 }
 
@@ -267,46 +234,22 @@ void STraversalDebuggerPanel::RebuildRoofRows()
 {
 	RoofRows.Reset();
 	const UTraversalDebuggerSubsystem* Subsystem = GetSubsystem();
-	const FGrappleAuditReport* Report = Subsystem ? Subsystem->GetAuditReport() : nullptr;
-	if (!Report)
+	for (const FTraversalDebuggerRow& Row : FTraversalDebuggerViewModel::MakeRoofRows(Subsystem ? Subsystem->GetAuditReport() : nullptr))
 	{
-		return;
+		RoofRows.Add(MakeShared<FTraversalDebuggerRow>(Row));
 	}
-	for (const FGrappleAuditRoofRow& Roof : Report->Roofs)
-	{
-		if (Roof.Reach != EGrappleRoofReach::Unreached && Roof.Reach != EGrappleRoofReach::NoStreetInRange)
-		{
-			continue;
-		}
-		FRowPtr Row = MakeShared<FRow>();
-		Row->Roof = Roof.Roof;
-		Row->Label = FText::FromString(FString::Printf(TEXT("%s (%s, %.1f m, %d anchors, %d street spots in range): %s"), *Roof.OsmId,
-			*Roof.ActorName, Roof.HeightM, Roof.Anchors, Roof.StreetSpotsInRange + Roof.FineSpotsInRange,
-			Roof.Why.IsEmpty() ? LexToString(Roof.Reach) : *Roof.Why));
-		Row->Color = Roof.Reach == EGrappleRoofReach::Unreached ? FLinearColor(1.f, 0.35f, 0.35f) : FLinearColor(0.8f, 0.5f, 1.f);
-		RoofRows.Add(Row);
-	}
-	// Street-facing first: those are the ones the gate fails on.
-	RoofRows.StableSort([](const FRowPtr& A, const FRowPtr& B) { return A->Color.R > B->Color.R; });
 }
 
 FText STraversalDebuggerPanel::GetStatusText() const
 {
 	const UTraversalDebuggerSubsystem* Subsystem = GetSubsystem();
-	if (!Subsystem)
-	{
-		return LOCTEXT("NoSubsystem", "The traversal debugger subsystem is not running.");
-	}
-	return Subsystem->GetStatus().IsEmpty()
-		? LOCTEXT("Idle", "Open the district and press Refresh scene, Reach from camera or Run audit.")
-		: FText::FromString(Subsystem->GetStatus());
+	return FText::FromString(FTraversalDebuggerViewModel::MakeStatusText(Subsystem != nullptr, Subsystem ? Subsystem->GetStatus() : FString()));
 }
 
 FText STraversalDebuggerPanel::GetSummaryText() const
 {
 	const UTraversalDebuggerSubsystem* Subsystem = GetSubsystem();
-	const FGrappleAuditReport* Report = Subsystem ? Subsystem->GetAuditReport() : nullptr;
-	return Report ? FText::FromString(Report->Summary) : FText::GetEmpty();
+	return FText::FromString(FTraversalDebuggerViewModel::MakeSummaryText(Subsystem ? Subsystem->GetAuditReport() : nullptr));
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -8,6 +8,7 @@
 #include "LevelEditorViewport.h"
 #include "Selection.h"
 #include "TraversalAuditRunner.h"
+#include "TraversalDebuggerViewModel.h"
 #include "World/FireEscapeLanding.h"
 
 namespace HawkeyeTraversalDebugger
@@ -195,14 +196,7 @@ bool UTraversalDebuggerSubsystem::ReachFrom(const FVector& Point, const FString&
 	const FGrappleReachOracle Oracle = FGrappleReachWorld::MakeOracle(World, Profile, &Scene);
 	TArray<FGrappleReachEvaluation> All;
 	FGrappleReachQuery::EvaluateAll(Profile.Rules, Profile.Lens, Oracle, ReachSpot, Scene.Anchors, All);
-	ReachResults = All.FilterByPredicate([](const FGrappleReachEvaluation& Result)
-	{
-		return Result.Verdict != EGrappleReachVerdict::TooFar && Result.Verdict != EGrappleReachVerdict::SameRoof;
-	});
-	ReachResults.StableSort([](const FGrappleReachEvaluation& A, const FGrappleReachEvaluation& B)
-	{
-		return A.Verdict != B.Verdict ? A.Verdict < B.Verdict : A.Distance < B.Distance;
-	});
+	ReachResults = FTraversalDebuggerViewModel::SelectReachResults(All);
 	bHasReach = true;
 	const int32 Reachable = ReachResults.FilterByPredicate([](const FGrappleReachEvaluation& Result)
 	{
