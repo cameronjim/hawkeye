@@ -368,6 +368,67 @@ def check_thug_presentation():
             fail("BP_Thug.Mesh slot {0} is {1}, expected {2}".format(slot, name_of(material), wanted))
 
 
+BODY_WEARERS = [("/Game/Blueprints/AI", "BP_Thug"), ("/Game/Blueprints/AI", "BP_Thug_Heavy"),
+                ("/Game/Blueprints/Player", "BP_Clint")]
+BODY_KEEP_MANNEQUIN = [("/Game/Blueprints/AI", "BP_Thug_Elf"), ("/Game/Blueprints/AI", "BP_Thug_Reindeer"),
+                       ("/Game/Blueprints/Bosses", "BP_Archer"), ("/Game/Blueprints/Bosses", "BP_Boss_Santa"),
+                       ("/Game/Blueprints/Bosses", "BP_Boss_Tomas"), ("/Game/Blueprints/Bosses", "BP_Thug_CandyCane")]
+
+
+def _soft_path(value):
+    """Package path a soft reference names (Python reads it as the object, or None while not loaded), or ""."""
+    if value is None:
+        return ""
+    for getter in ("get_path_name", "export_text"):
+        method = getattr(value, getter, None)
+        if method is not None:
+            try:
+                return str(method()).split(".")[0]
+            except Exception:  # noqa: BLE001
+                pass
+    return str(value).split(".")[0]
+
+
+def check_bodies():
+    """Which body each wearer shows: the Quaternius body (import_bodies.py) when it is on disk, else the mannequin.
+    Either is a pass; a clone without the packs reports the fallback. A body that is on disk must be complete."""
+    say("---- bodies ----")
+    for path, name in BODY_WEARERS:
+        cdo = _default_object(path, name)
+        if cdo is None:
+            fail(name + "_C")
+            continue
+        look = prop(cdo, "body_look")
+        mesh = _soft_path(prop(look, "mesh")) if look is not None else ""
+        anim = _soft_path(prop(look, "anim_class")) if look is not None else ""
+        materials = [_soft_path(x) for x in list(prop(look, "materials") or [])] if look is not None else []
+        if not mesh:
+            say("  {0}: no body look named; the mannequin is drawn".format(name))
+            continue
+        if not c.exists(mesh) or not c.exists(anim.rsplit("_C", 1)[0] if anim.endswith("_C") else anim):
+            say("  {0}: body look {1} named but not on disk; the mannequin is drawn (run Tools\\create-content.ps1 with "
+                "the asset packs)".format(name, mesh))
+            continue
+        missing = [x for x in materials if x and not c.exists(x)]
+        say("  {0}: body look {1} in use, AnimBP {2}, {3} materials".format(name, mesh, anim, len(materials)))
+        if missing:
+            fail("{0}'s body look names materials not on disk: {1}".format(name, ", ".join(missing)))
+        for material_path in materials:
+            base = base_material(c.load_or_none(material_path)) if material_path and c.exists(material_path) else None
+            if base is not None and not bool(prop(base, "used_with_skeletal_mesh")):
+                fail("{0}'s body material {1} has no SkeletalMesh usage flag".format(name, material_path))
+    for path, name in BODY_KEEP_MANNEQUIN:
+        cdo = _default_object(path, name)
+        look = prop(cdo, "body_look") if cdo is not None else None
+        mesh = _soft_path(prop(look, "mesh")) if look is not None else ""
+        say("  {0}: {1}".format(name, "body look " + mesh if mesh else "its own mannequin"))
+        if mesh:
+            fail("{0} wears {1}; it should keep its own mannequin colours".format(name, mesh))
+    lucky = "/Game/Characters/Lucky/SK_Lucky"
+    say("  Lucky: {0}".format("SK_Lucky on disk (no Lucky actor uses it yet)" if c.exists(lucky)
+                              else "no SK_Lucky (the animals pack is not imported); nothing uses it yet"))
+
+
 def check_third_person():
     """The placeholder third-person player: a visible mannequin under a spring arm, no viewmodel."""
     say("---- third-person player ----")
@@ -1138,6 +1199,7 @@ def main():
     check_blueprints()
     check_world_blueprints()
     check_thug_presentation()
+    check_bodies()
     check_third_person()
     check_kate()
     check_partner()
