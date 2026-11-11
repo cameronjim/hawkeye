@@ -13,6 +13,16 @@
 				"CoreUObject",
 				"UMG"
 			]
+		},
+		{
+			"Name": "HawkeyeEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"UnrealEd"
+			]
 		}
 	],
 	"Plugins": [

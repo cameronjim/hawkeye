@@ -498,6 +498,22 @@ in `WBP_*`; behaviour in the C++ parent.
   switches (`bOutdoorWeather`, `bInteriorCamera`, `bBuildNavigationAtStart`). It also builds the navmesh
   at start, because the generated maps ship with none.
 
+### Traversal debugger (`Source/Hawkeye/Traversal`, `Source/HawkeyeEditor`)
+The second module, `HawkeyeEditor` (Editor, Default loading phase), and the runtime code it stands on. Full write-up:
+`tools-traversal-debugger.md`.
+- `FGrappleReachQuery` (runtime, pure): the grapple's reach rules with no world: range, cone, screen, the predicted
+  lens, the zip's launch and release point, a verdict per anchor from a standing point (`EGrappleReachVerdict`), roof
+  spots, neighbours, chains, sidewalk sampling, roofs the street cannot reach. The world comes in through
+  `FGrappleReachOracle`. `GrappleReachDefaults` holds the grapple's numbers; `UGrappleComponent`'s defaults come from
+  it and the component calls the query for the shared math (`ChoosePick`, `IsOnScreen`, the release point).
+- `FGrappleReachWorld` (runtime): a profile from a pawn's class default, a scene from `DA_EastVillage_CityProps`, the map
+  data and the `CityBuilding` actors, and an oracle with the component's traces. `FGrappleAudit` runs
+  `Hawkeye.Grapple.Audit`'s passes over them and writes `grapple_audit.json`.
+- `UTraversalDebuggerSubsystem` and `STraversalDebuggerPanel` (editor): the Tools > Hawkeye > Traversal Debugger tab.
+  Layers drawn into the editor world's persistent line batcher, reach from the camera or the selection, the audit.
+- `UHawkeyeTraversalAuditCommandlet` (editor): `-run=HawkeyeTraversalAudit -map=...`, the audit headless; exits 1 when a
+  street-facing roof is unreachable. Both editor surfaces go through `FTraversalAuditRunner`.
+
 ### Tools (`Tools/`)
 Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
 - `Tools/Editor/create_all.py` runs the `create_*.py` and `import_*.py` scripts in dependency order
