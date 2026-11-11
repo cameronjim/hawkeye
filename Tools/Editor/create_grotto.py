@@ -82,7 +82,7 @@ LIGHT_RADIUS = 650.0
 
 # --- Santa (numbers on Normal; gameplay-semantics.md, "Chapter 3's boss") --------------------------------------
 BOSS_DISPLAY = "Santa"
-MAX_HEALTH = 560.0     # 320 until 2026-11-10's difficulty pass: he went down in 25 s, a thug with a hat
+MAX_HEALTH = 640.0     # 560 until 2026-11-11 (41-43 s of fighting, under the 45-70 s target); 320 before the 2026-11-10 pass (25 s)
 BODY_SCALE = 1.15
 # (name, damage, wind-up, recovery, range, knockback, lunge, unblockable): two sack swings he telegraphs, then a slam
 # over his head that has to be dodged.
