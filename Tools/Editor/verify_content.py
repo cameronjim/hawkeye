@@ -368,6 +368,7 @@ def check_thug_presentation():
             fail("BP_Thug.Mesh slot {0} is {1}, expected {2}".format(slot, name_of(material), wanted))
 
 
+BODY_MESH = "/Game/Characters/Bodies/SK_Body_Male"
 BODY_WEARERS = [("/Game/Blueprints/AI", "BP_Thug"), ("/Game/Blueprints/AI", "BP_Thug_Heavy"),
                 ("/Game/Blueprints/Player", "BP_Clint")]
 BODY_KEEP_MANNEQUIN = [("/Game/Blueprints/AI", "BP_Thug_Elf"), ("/Game/Blueprints/AI", "BP_Thug_Reindeer"),
@@ -393,6 +394,14 @@ def check_bodies():
     """Which body each wearer shows: the Quaternius body (import_bodies.py) when it is on disk, else the mannequin.
     Either is a pass; a clone without the packs reports the fallback. A body that is on disk must be complete."""
     say("---- bodies ----")
+    lucky = "/Game/Characters/Lucky/SK_Lucky"
+    say("  Lucky: {0}".format("SK_Lucky on disk, a stand-in pug (no Lucky actor uses it yet)" if c.exists(lucky)
+                              else "no SK_Lucky (the animals pack is not imported); nothing uses it yet"))
+    if not c.exists(BODY_MESH):
+        # A clone without the packs. Reading the soft references would try to load them; the mannequins are drawn.
+        say("  {0} is not on disk: BP_Thug, BP_Thug_Heavy and BP_Clint draw their mannequins (run "
+            "Tools\\create-content.ps1 with the asset packs for the bodies)".format(BODY_MESH))
+        return
     for path, name in BODY_WEARERS:
         cdo = _default_object(path, name)
         if cdo is None:
@@ -424,9 +433,6 @@ def check_bodies():
         say("  {0}: {1}".format(name, "body look " + mesh if mesh else "its own mannequin"))
         if mesh:
             fail("{0} wears {1}; it should keep its own mannequin colours".format(name, mesh))
-    lucky = "/Game/Characters/Lucky/SK_Lucky"
-    say("  Lucky: {0}".format("SK_Lucky on disk (no Lucky actor uses it yet)" if c.exists(lucky)
-                              else "no SK_Lucky (the animals pack is not imported); nothing uses it yet"))
 
 
 def check_third_person():
