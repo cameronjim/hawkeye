@@ -17,6 +17,16 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Every street-facing roof can be grappled from the sidewalk.** `Tools\traversal-audit.ps1`
+  now exits 0. Of the 14 that failed, 6 narrow tenements were the Python reach model
+  disagreeing with the game (it checked a line where the game sweeps Kate's capsule); the
+  model now matches the game and wrong "reachable" calls fell from 165 to 1. 7 roofs have
+  no wall on a street and are reached from other roofs; the audit lists them without
+  failing. 4 fire escapes that blocked the only street anchor were dropped. 585 tests
+  pass; all 13 laps passed in one set. **Not seen on screen:** the 4 tenements without a
+  fire escape, and the hero block, which lost 2 string lights and 2 window lights. Three
+  tenements are reachable only from a narrow stretch of sidewalk. The 65.5 m tower on
+  Avenue B (W250264805) can't be reached from anywhere.
 - **Hits make contact, bodies react, knockouts ragdoll.** Every swing is moved so the fist,
   foot or bat lands on a body region (head, torso, thigh); out of reach it whiffs. A hit
   is a sweep of the striking limb against the target's physics bodies. The struck body
