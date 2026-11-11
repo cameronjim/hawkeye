@@ -443,7 +443,8 @@ class HeroBlockTest(unittest.TestCase):
         self.assertTrue(os.path.exists(path), "run python -B Tools/Editor/write_dressing_plan.py")
         with io.open(path, "r", encoding="utf-8", newline="") as f:
             committed = f.read()
-        self.assertEqual(committed, dr.plan_json(self.plan),
+        # The line end may be CRLF in a Windows checkout (core.autocrlf); the record bytes may not differ.
+        self.assertEqual(committed.rstrip("\r\n"), dr.plan_json(self.plan).rstrip("\n"),
                          "Tools/Data/dressing is stale; run python -B Tools/Editor/write_dressing_plan.py")
 
     def test_the_kit_draws_the_block_in_a_few_dozen_instanced_meshes(self):
