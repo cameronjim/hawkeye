@@ -23,6 +23,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 #include "Misc/AutomationTest.h"
@@ -75,6 +76,9 @@
  *                     one holding her melee token (stepping in or swinging), the others waiting on the ring 300 cm
  *                     out, spread round her and facing her; the report gives each one's distance, bearing, facing
  *                     and speed (gameplay-semantics.md, "Attack tokens")
+ *   token_pair.png    the same four with hawkeye.DebugTokens 1, the moment two hold her melee token at once (Normal
+ *                     shares two among four): two red lines from opposite sides, the others grey on the ring; no pair
+ *                     within 15 s fails it
  *   knockdown_dust.png her own camera, 0.2 s (world time) after the thud of a bat thug her heavy knocked down
  *                     (1.5 s after he goes over): NS_KnockdownDust off the ground under his pelvis (no knockdown
  *                     or no puff fails it); the report then says when his pelvis really reached the ground
@@ -824,6 +828,11 @@ bool FHawkeyeMeleeShot::Update()
 
 	case EShot::Cleanup:
 		UnhookSpark(World);
+		// token_pair.png turned the token lines on.
+		if (IConsoleVariable* Debug = IConsoleManager::Get().FindConsoleVariable(TEXT("hawkeye.DebugTokens")))
+		{
+			Debug->Set(0, ECVF_SetByCode);
+		}
 		if (UHawkeyeVfxSubsystem* Vfx = UHawkeyeVfxSubsystem::Find(World))
 		{
 			Vfx->OnRequested.Remove(DustHook);
@@ -1307,6 +1316,63 @@ private:
 };
 
 /**
+ * token_pair.png: turns hawkeye.DebugTokens on and waits (real seconds, at most Timeout) until two attackers hold Kate's
+ * melee token at once, then slows the world to a crawl for the capture and reports where each holder stands round her.
+ */
+class FHawkeyeMeleeWaitForTokenPair : public IAutomationLatentCommand
+{
+public:
+	FHawkeyeMeleeWaitForTokenPair(FAutomationTestBase* InTest, float InTimeout) : Test(InTest), Timeout(InTimeout) {}
+
+	virtual bool Update() override
+	{
+		using namespace HawkeyeMeleeShots;
+		UWorld* World = FindWorld();
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		AHawkeyeCharacter* Kate = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
+		const UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(World);
+		if (!World || !Kate || !Tokens)
+		{
+			return true;
+		}
+		if (IConsoleVariable* Debug = IConsoleManager::Get().FindConsoleVariable(TEXT("hawkeye.DebugTokens")))
+		{
+			Debug->Set(1, ECVF_SetByCode);
+		}
+		const double Now = FPlatformTime::Seconds();
+		if (Start < 0.0)
+		{
+			Start = Now;
+		}
+		const FHawkeyeTokenBudgetView View = Tokens->GetBudgetView(Kate, EHawkeyeAttackKind::Melee);
+		if (View.Holders.Num() < 2 && Now - Start < Timeout)
+		{
+			return false;
+		}
+		SetCrawl(World, true);
+		if (View.Holders.Num() < 2)
+		{
+			Test->AddError(FString::Printf(TEXT("token_pair.png: never two melee holders at once within %.0f s."), Timeout));
+			return true;
+		}
+		TArray<FString> Where;
+		for (const AActor* Holder : View.Holders)
+		{
+			const FVector To = Holder->GetActorLocation() - Kate->GetActorLocation();
+			Where.Add(FString::Printf(TEXT("%s at %.0f cm, bearing %.0f deg"), *Holder->GetName(), To.Size2D(), To.Rotation().Yaw));
+		}
+		Test->AddInfo(FString::Printf(TEXT("token_pair.png: %d of %d holding after %.1f s (%s); %d in line, %d cooling."),
+			View.Holders.Num(), View.Budget, Now - Start, *FString::Join(Where, TEXT("; ")), View.Waiters.Num(), View.Idle.Num()));
+		return true;
+	}
+
+private:
+	FAutomationTestBase* Test;
+	float Timeout;
+	double Start = -1.0;
+};
+
+/**
  * Waits for the foe to be knocked down, then Delay seconds of world time more, and slows the world to a crawl
  * for the capture. Reports the thud and the dust; neither, or no knockdown within Timeout (real), fails it.
  */
@@ -1593,11 +1659,14 @@ void HawkeyeAddMeleeShots(FAutomationTestBase* Test)
 	Shot(EShot::Uncrawl, 0.f);
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeTrackFall(Test, 2.f));
 
-	// Four thugs come at her from 7 m: one at a time swings, the rest wait their turn on the ring.
+	// Four thugs come at her from 7 m: two at a time swing (from different sides), the rest wait on the ring.
 	Shot(EShot::TokenRingSetup, 5.f);
 	Shot(EShot::Crawl, 0.05f);
 	Wait(TEXT("token_ring.png"), 0.f);
 	Take(TEXT("token_ring.png"));
+	Shot(EShot::Uncrawl, 0.f);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeWaitForTokenPair(Test, 15.f));
+	Take(TEXT("token_pair.png"));
 	Shot(EShot::Uncrawl, 0.f);
 
 	Shot(EShot::Cleanup, 0.5f);
