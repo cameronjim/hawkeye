@@ -123,6 +123,12 @@ public:
 	/** A holder or waiter who has not asked for this long is dropped (he stopped thinking), seconds. */
 	static constexpr float LeaseSeconds = 0.75f;
 
+	/**
+	 * An attacker who asked within this long is in the group a budget is scaled to, in line or not (staggered, backing
+	 * off, knocked down for a moment), seconds. A dead one is out at once.
+	 */
+	static constexpr float RosterSeconds = 3.f;
+
 	/** Nobody holds a token longer than this, asking or not: the longest attack (a held draw) is under 5 s. */
 	static constexpr float MaxHoldSeconds = 6.f;
 };

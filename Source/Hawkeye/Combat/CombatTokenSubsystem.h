@@ -139,6 +139,11 @@ private:
 		double LastReleaseSeconds = -1.0e9;
 		/** When each attacker was last granted here: who just attacked goes to the back. Kept past his entry. */
 		TMap<TObjectKey<AActor>, double> LastGrantSeconds;
+		/**
+		 * Everyone who asked here lately, and when: the group the budget is scaled to. A thug staggered or backing off
+		 * has left the line but is still in the fight, so he still counts until he has not asked for RosterSeconds.
+		 */
+		TMap<TWeakObjectPtr<AActor>, double> Roster;
 	};
 
 	/** An attack booked to land on a target. */

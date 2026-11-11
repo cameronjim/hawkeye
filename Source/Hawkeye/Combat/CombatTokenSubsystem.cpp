@@ -1,6 +1,7 @@
 #include "Combat/CombatTokenSubsystem.h"
 
 #include "Hawkeye.h"
+#include "Combat/HealthComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
@@ -58,7 +59,14 @@ int32 UCombatTokenSubsystem::GetBudgetSize(EHawkeyeAttackKind Kind) const
 
 int32 UCombatTokenSubsystem::GetGroupBudget(const FBudget& Budget, EHawkeyeAttackKind Kind) const
 {
-	const int32 Attackers = Budget.Entries.FilterByPredicate([](const FEntry& Each) { return Each.Attacker.IsValid(); }).Num();
+	const double Now = GetNowSeconds();
+	int32 Attackers = 0;
+	for (const TPair<TWeakObjectPtr<AActor>, double>& Seen : Budget.Roster)
+	{
+		const AActor* Attacker = Seen.Key.Get();
+		const UHealthComponent* Health = Attacker ? Attacker->FindComponentByClass<UHealthComponent>() : nullptr;
+		Attackers += Attacker && !(Health && Health->IsDead()) && Now - Seen.Value <= UHawkeyeCombatTokenRules::RosterSeconds ? 1 : 0;
+	}
 	return UHawkeyeCombatTokenRules::ScaleBudgetForGroup(
 		GetBudgetSize(Kind), Attackers, UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::TokenGroupShare));
 }
@@ -154,6 +162,14 @@ FHawkeyeTokenGrant UCombatTokenSubsystem::RequestToken(
 	}
 	FEntry& Entry = Budget.Entries[Index];
 	Entry.LastAskSeconds = Now;
+	Budget.Roster.Add(Attacker, Now);
+	for (auto It = Budget.Roster.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid() || Now - It.Value() > UHawkeyeCombatTokenRules::RosterSeconds)
+		{
+			It.RemoveCurrent();
+		}
+	}
 	if (!bReady && !Entry.bHolding)
 	{
 		Entry.WaitSinceSeconds = -1.0;
