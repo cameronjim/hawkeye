@@ -10,6 +10,8 @@
 #include "Combat/CombatTokenSubsystem.h"
 #include "Combat/FinisherComponent.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/HitReactionComponent.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Combat/MeleeComponent.h"
 #include "Combat/MeleeRules.h"
 #include "Components/CapsuleComponent.h"
@@ -125,6 +127,10 @@ namespace HawkeyeMeleeShots
 		KnockSetup,
 		KnockHeavy,
 		TokenRingSetup,
+		ContactSetup,
+		ContactSwing,
+		KnockoutSetup,
+		KnockoutSwing,
 		Crawl,
 		Uncrawl,
 		Cleanup,
@@ -422,6 +428,59 @@ namespace HawkeyeMeleeShots
 		}
 		const float Feet = Character->GetActorLocation().Z - Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 		return Body->GetBoneLocation(TEXT("pelvis")).Z - Feet;
+	}
+
+	/** punch_contact.png and the knockout: his health before her swing, the world time it landed (or he died), where he stood. */
+	static float ContactHealthBefore = 0.f;
+	static double ContactLandedWorld = -1.0;
+	static FVector ContactFeet = FVector::ZeroVector;
+
+	/** The nearest of her driver's fists and feet to any of his physics bodies' bones, cm; the pair in OutWhat. */
+	static float NearestLimbToBody(const AHawkeyeCharacter* Kate, const AThugCharacter* Thug, FString& OutWhat)
+	{
+		const USkeletalMeshComponent* Hers = Kate ? Kate->GetMesh() : nullptr;
+		const USkeletalMeshComponent* His = Thug ? Thug->GetMesh() : nullptr;
+		float Best = BIG_NUMBER;
+		if (!Hers || !His)
+		{
+			return Best;
+		}
+		for (const TCHAR* Limb : { TEXT("hand_r"), TEXT("hand_l"), TEXT("foot_r"), TEXT("foot_l") })
+		{
+			if (Hers->GetBoneIndex(Limb) == INDEX_NONE)
+			{
+				continue;
+			}
+			const FVector At = Hers->GetBoneLocation(Limb);
+			for (const FBodyInstance* Body : His->Bodies)
+			{
+				if (!Body || !Body->BodySetup.IsValid())
+				{
+					continue;
+				}
+				const FName Bone = Body->BodySetup->BoneName;
+				const float Distance = FVector::Dist(At, His->GetBoneLocation(Bone));
+				if (Distance < Best)
+				{
+					Best = Distance;
+					OutWhat = FString::Printf(TEXT("her %s to his %s"), Limb, *Bone.ToString());
+				}
+			}
+		}
+		return Best;
+	}
+
+	/** His pelvis over the ground under it, cm (or -1 when there is no pelvis or ground). */
+	static float PelvisOverGround(UWorld* World, const AThugCharacter* Thug)
+	{
+		const USkeletalMeshComponent* His = Thug ? Thug->GetMesh() : nullptr;
+		if (!His || His->GetBoneIndex(TEXT("pelvis")) == INDEX_NONE)
+		{
+			return -1.f;
+		}
+		const FVector Pelvis = His->GetBoneLocation(TEXT("pelvis"));
+		FVector Floor;
+		return Ground(World, Pelvis, Pelvis.Z + 30.f, { Thug }, Floor) ? Pelvis.Z - Floor.Z : -1.f;
 	}
 
 	/** Side on to her, like strike_pose.png, centred Ahead cm in front of her, the lens Back cm out. */
@@ -777,6 +836,46 @@ bool FHawkeyeMeleeShot::Update()
 		if (!Kate->StartHeavyAttack())
 		{
 			Test->AddError(TEXT("knockdown_dust.png: her heavy did not start."));
+		}
+		break;
+
+	case EShot::ContactSetup:
+	case EShot::KnockoutSetup:
+	{
+		const bool bKnockout = static_cast<EShot>(Shot) == EShot::KnockoutSetup;
+		const TCHAR* Label = bKnockout ? TEXT("knockout_ragdoll.png") : TEXT("punch_contact.png");
+		// 170 cm off: the warp closes it to the contact distance. Fists, so nothing in his hands hides the blow.
+		if (!FaceOff(World, Kate, 170.f, 0.f, EThugWeapon::Fists) || !Foe.IsValid())
+		{
+			Test->AddWarning(FString::Printf(TEXT("%s: could not stand a thug in front of her."), Label));
+			break;
+		}
+		PC->SetControlRotation(FRotator(-10.f, Kate->GetActorRotation().Yaw, 0.f));
+		ContactFeet = Foe->GetActorLocation() - FVector(0.f, 0.f, Foe->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		if (bKnockout)
+		{
+			// One blow from down: her heavy finishes him.
+			UHealthComponent* Health = Foe->GetHealthComponent();
+			Health->ApplyDamage(Health->GetCurrentHealth() - 10.f, nullptr);
+			const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
+			const FVector Mid = Kate->GetActorLocation() + Along * 200.f;
+			Frame(World, PC, Mid + Side * 520.f + FVector(0.f, 0.f, 60.f), Mid - FVector(0.f, 0.f, 40.f), 55.f);
+		}
+		else
+		{
+			// Side on, close: her fist and his face fill the frame where the warp brings them together.
+			FrameSideOn(World, PC, Kate, 140.f, 300.f);
+		}
+		break;
+	}
+
+	case EShot::ContactSwing:
+	case EShot::KnockoutSwing:
+		ContactLandedWorld = -1.0;
+		ContactHealthBefore = Thug ? Thug->GetHealthComponent()->GetCurrentHealth() : 0.f;
+		if (!(static_cast<EShot>(Shot) == EShot::KnockoutSwing ? Kate->StartHeavyAttack() : Kate->StartLightAttack()))
+		{
+			Test->AddError(TEXT("contact shots: her swing did not start."));
 		}
 		break;
 
@@ -1494,6 +1593,186 @@ private:
 	float Lowest = BIG_NUMBER;
 };
 
+/**
+ * The contact shots: waits (up to Timeout real seconds) for her blow to land on the foe (his health drops, or with bDeath
+ * he goes limp), then until AfterSeconds of world time have passed since, and stops time there for the capture. Reports
+ * what the picture is meant to show: the fist on his body, his reaction mid-recovery, his ragdoll falling.
+ */
+class FHawkeyeContactFreeze : public IAutomationLatentCommand
+{
+public:
+	FHawkeyeContactFreeze(FAutomationTestBase* InTest, FString InLabel, float InAfterSeconds, float InTimeout, bool bInDeath)
+		: Test(InTest), Label(MoveTemp(InLabel)), AfterSeconds(InAfterSeconds), Timeout(InTimeout), bDeath(bInDeath) {}
+
+	virtual bool Update() override
+	{
+		using namespace HawkeyeMeleeShots;
+		UWorld* World = FindWorld();
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		AHawkeyeCharacter* Kate = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
+		AThugCharacter* Thug = Foe.Get();
+		if (!World || !Kate || !Thug)
+		{
+			Test->AddError(FString::Printf(TEXT("%s: no world, no Kate or no foe."), *Label));
+			return true;
+		}
+		const double Now = FPlatformTime::Seconds();
+		if (Start < 0.0)
+		{
+			Start = Now;
+		}
+		if (ContactLandedWorld < 0.0)
+		{
+			const bool bLanded = bDeath ? Thug->IsLimp() : Thug->GetHealthComponent()->GetCurrentHealth() < ContactHealthBefore;
+			if (bLanded)
+			{
+				ContactLandedWorld = World->GetTimeSeconds();
+			}
+			else if (Now - Start < Timeout)
+			{
+				return false;
+			}
+			else
+			{
+				SetCrawl(World, true);
+				Test->AddError(FString::Printf(TEXT("%s: her blow never landed within %.1f s (%s)."), *Label, Timeout,
+					Kate->GetMeleeComponent()->IsContactWhiff() ? TEXT("a whiff: out of the caps") : TEXT("the limbs never met him")));
+				return true;
+			}
+		}
+		if (World->GetTimeSeconds() - ContactLandedWorld < AfterSeconds - KINDA_SMALL_NUMBER && Now - Start < Timeout + 2.0)
+		{
+			return false;
+		}
+		// A ragdoll is held at the crawl, not stopped: a near-zero step (0.0001) blew the solver up and threw the body
+		// over the roofs once time came back.
+		UGameplayStatics::SetGlobalTimeDilation(World, bDeath ? CrawlDilation : StoppedDilation);
+		Report(World, Kate, Thug);
+		return true;
+	}
+
+private:
+	void Report(UWorld* World, AHawkeyeCharacter* Kate, AThugCharacter* Thug) const
+	{
+		using namespace HawkeyeMeleeShots;
+		const UMeleeComponent* Hers = Kate->GetMeleeComponent();
+		const UHitReactionComponent* His = Thug->GetHitReactionComponent();
+		FString Pair;
+		const float Nearest = NearestLimbToBody(Kate, Thug, Pair);
+		const FHawkeyeStrikeImpact& Impact = Hers->GetLastImpact();
+		const FString Common = FString::Printf(TEXT("%.3f s (world) after it landed; %.0f cm apart (capsules); the blow %s, "
+			"weight %.2f, at %.0f cm over his feet; her contact plan: slide %.0f cm, %.0f degrees, %s"),
+			World->GetTimeSeconds() - ContactLandedWorld, FVector::Dist2D(Kate->GetActorLocation(), Thug->GetActorLocation()),
+			Hers->IsLimbSweep() ? TEXT("met by her limb's sweep") : TEXT("found by the capsule sweep"), Impact.Weight,
+			Impact.Point.Z - ContactFeet.Z, Hers->GetContactPlan().Slide, Hers->GetContactPlan().TurnDegrees,
+			Hers->IsContactWhiff() ? TEXT("a whiff") : TEXT("in reach"));
+		if (Label == TEXT("punch_contact.png"))
+		{
+			Test->AddInfo(FString::Printf(TEXT("%s: %s; nearest limb to his body %.0f cm (%s); her hit-stop %d, his %d."), *Label,
+				*Common, Nearest, *Pair, Kate->GetHitReactionComponent()->IsHitStopped() ? 1 : 0, His && His->IsHitStopped() ? 1 : 0));
+			// A fist on a body is within a body's half-width of that bone's centre line.
+			if (Nearest > 35.f)
+			{
+				Test->AddError(FString::Printf(TEXT("%s: her nearest fist or foot is %.0f cm from his nearest body bone (%s): not on him."),
+					*Label, Nearest, *Pair));
+			}
+		}
+		else if (Label == TEXT("hit_reaction.png"))
+		{
+			Test->AddInfo(FString::Printf(TEXT("%s: %s; his reaction %s on %s, physics blend %.2f, reactions %d, staggered %.2f s."),
+				*Label, *Common, His && His->IsReacting() ? TEXT("under way") : TEXT("not running"),
+				His ? *His->GetReactionBone().ToString() : TEXT("-"), His ? His->GetReactionBlend() : 0.f,
+				His ? His->GetReactionCount() : 0, Thug->GetStaggerRemaining()));
+			if (!His || His->GetReactionCount() == 0)
+			{
+				Test->AddError(FString::Printf(TEXT("%s: no physical reaction was started on him."), *Label));
+			}
+		}
+		else
+		{
+			const USkeletalMeshComponent* Body = Thug->GetMesh();
+			const FVector Pelvis = Body && Body->GetBoneIndex(TEXT("pelvis")) != INDEX_NONE ? Body->GetBoneLocation(TEXT("pelvis"))
+				: Thug->GetActorLocation();
+			Test->AddInfo(FString::Printf(TEXT("%s: %s; ragdoll %d, pelvis %.0f cm over the ground, %.0f cm from where he stood; ")
+				TEXT("thrown: bone %.0f cm/s, body %.0f cm/s; settled %d after %.2f s."), *Label, *Common, Thug->IsRagdolling() ? 1 : 0,
+				PelvisOverGround(World, Thug), FVector::Dist2D(Pelvis, ContactFeet),
+				His ? His->GetKnockoutBoneVelocity().Size() : 0.f, His ? His->GetKnockoutBodyVelocity().Size() : 0.f,
+				His && His->IsKnockoutSettled() ? 1 : 0, His ? His->GetKnockoutElapsed() : 0.f));
+			if (!Thug->IsRagdolling())
+			{
+				Test->AddError(FString::Printf(TEXT("%s: he is not a ragdoll."), *Label));
+			}
+		}
+	}
+
+	FAutomationTestBase* Test;
+	FString Label;
+	float AfterSeconds;
+	float Timeout;
+	bool bDeath;
+	double Start = -1.0;
+};
+
+/** knockout_settled.png: waits for the knocked-out body to settle (asleep), frames it and checks it lies like a person. */
+class FHawkeyeContactSettled : public IAutomationLatentCommand
+{
+public:
+	FHawkeyeContactSettled(FAutomationTestBase* InTest, float InTimeout) : Test(InTest), Timeout(InTimeout) {}
+
+	virtual bool Update() override
+	{
+		using namespace HawkeyeMeleeShots;
+		UWorld* World = FindWorld();
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		AThugCharacter* Thug = Foe.Get();
+		const UHitReactionComponent* His = Thug ? Thug->GetHitReactionComponent() : nullptr;
+		if (!World || !PC || !Thug || !His)
+		{
+			Test->AddError(TEXT("knockout_settled.png: no world or no foe."));
+			return true;
+		}
+		const double Now = FPlatformTime::Seconds();
+		if (Start < 0.0)
+		{
+			Start = Now;
+		}
+		if (!His->IsKnockoutSettled() && Now - Start < Timeout)
+		{
+			return false;
+		}
+		const USkeletalMeshComponent* Body = Thug->GetMesh();
+		const FVector Pelvis = Body && Body->GetBoneIndex(TEXT("pelvis")) != INDEX_NONE ? Body->GetBoneLocation(TEXT("pelvis"))
+			: Thug->GetActorLocation();
+		const FVector Head = Body && Body->GetBoneIndex(TEXT("head")) != INDEX_NONE ? Body->GetBoneLocation(TEXT("head")) : Pelvis;
+		const float Over = PelvisOverGround(World, Thug);
+		const float Moved = FVector::Dist2D(Pelvis, ContactFeet);
+		Test->AddInfo(FString::Printf(TEXT("knockout_settled.png: settled %d after %.2f s (world); pelvis %.0f cm over the ground, ")
+			TEXT("head %.0f cm over the pelvis, %.0f cm from where he stood; ragdoll %d."), His->IsKnockoutSettled() ? 1 : 0,
+			His->GetKnockoutElapsed(), Over, Head.Z - Pelvis.Z, Moved, Thug->IsRagdolling() ? 1 : 0));
+		if (!His->IsKnockoutSettled())
+		{
+			Test->AddError(FString::Printf(TEXT("knockout_settled.png: the body never settled within %.1f s."), Timeout));
+		}
+		if (Moved > 400.f)
+		{
+			Test->AddError(FString::Printf(TEXT("knockout_settled.png: the body flew %.0f cm: an explosion, not a fall."), Moved));
+		}
+		if (Over > 45.f)
+		{
+			Test->AddError(FString::Printf(TEXT("knockout_settled.png: his pelvis rests %.0f cm off the ground: not lying down."), Over));
+		}
+		// Three-quarters from above, on the body where it lies.
+		const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
+		Frame(World, PC, Pelvis + Side * 300.f - Along * 120.f + FVector(0.f, 0.f, 230.f), Pelvis, 50.f);
+		return true;
+	}
+
+private:
+	FAutomationTestBase* Test;
+	float Timeout;
+	double Start = -1.0;
+};
+
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(FHawkeyeMeleeTakeShot, FAutomationTestBase*, Test, FString, FileName);
 
 bool FHawkeyeMeleeTakeShot::Update()
@@ -1519,6 +1798,59 @@ bool FHawkeyeMeleeTakeShot::Update()
 	}
 	HawkeyeShots::Request(Test, HawkeyeMeleeShots::ShotPath(FileName), /*bShowUI=*/true);
 	return true;
+}
+
+/**
+ * The contact shots (gameplay-semantics.md, "Contact, reaction and knockout"), on the melee pass's street:
+ *
+ *   punch_contact.png  side on, close, a light at a fists thug 170 cm off, time stopped the frame it lands: the warp has
+ *                      closed the gap and her fist is on his face (her nearest fist or foot more than 35 cm from his
+ *                      nearest body's bone fails it)
+ *   hit_reaction.png   the same, 0.12 s (world) later: past the hit-stop, his upper body thrown back by the impulse and
+ *                      blending back to his reaction clip (no physical reaction started fails it)
+ *   knockout_ragdoll.png wide, side on, 0.3 s after her heavy kills a thug at 10 health: the ragdoll falling away from
+ *                      the kick (not a ragdoll fails it)
+ *   knockout_settled.png from above, once the body has settled (asleep): lying on the ground where the kick put him
+ *                      (more than 400 cm from where he stood, the pelvis more than 45 cm up, or never settling, fails it)
+ */
+static void HawkeyeAddContactShots(FAutomationTestBase* Test)
+{
+	using EShot = HawkeyeMeleeShots::EShot;
+	auto Shot = [Test](EShot Which, float Wait)
+	{
+		ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeShot(Test, static_cast<uint8>(Which)));
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(Wait));
+	};
+	auto Take = [Test](const TCHAR* File)
+	{
+		ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeTakeShot(Test, FString(File)));
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.4f));
+	};
+	Shot(EShot::ContactSetup, 1.2f);
+	Shot(EShot::ContactSwing, 0.f);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeContactFreeze(Test, TEXT("punch_contact.png"), 0.f, 2.f, false));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.1f));
+	Take(TEXT("punch_contact.png"));
+	Shot(EShot::Uncrawl, 1.5f);
+	// A second light the same way, run on until 0.12 s (world) after it lands: past the hit-stop, into the reaction.
+	Shot(EShot::ContactSetup, 1.2f);
+	Shot(EShot::ContactSwing, 0.f);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeContactFreeze(Test, TEXT("hit_reaction.png"), 0.12f, 2.f, false));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.1f));
+	Take(TEXT("hit_reaction.png"));
+	Shot(EShot::Uncrawl, 1.5f);
+
+	Shot(EShot::KnockoutSetup, 1.2f);
+	Shot(EShot::KnockoutSwing, 0.f);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeContactFreeze(Test, TEXT("knockout_ragdoll.png"), 0.f, 3.f, true));
+	Shot(EShot::Uncrawl, 0.f);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeContactFreeze(Test, TEXT("knockout_ragdoll.png"), 0.3f, 3.f, true));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.1f));
+	Take(TEXT("knockout_ragdoll.png"));
+	Shot(EShot::Uncrawl, 0.f);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeContactSettled(Test, 6.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.3f));
+	Take(TEXT("knockout_settled.png"));
 }
 
 void HawkeyeAddMeleeShots(FAutomationTestBase* Test)
@@ -1669,7 +2001,30 @@ void HawkeyeAddMeleeShots(FAutomationTestBase* Test)
 	Take(TEXT("token_pair.png"));
 	Shot(EShot::Uncrawl, 0.f);
 
+	HawkeyeAddContactShots(Test);
+
 	Shot(EShot::Cleanup, 0.5f);
+}
+
+/** The contact shots on their own (punch_contact, hit_reaction, knockout_ragdoll, knockout_settled), for tuning. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotContact, "Hawkeye.Screenshot.Contact",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeScreenshotContact::RunTest(const FString& Parameters)
+{
+	if (!FApp::CanEverRender())
+	{
+		AddInfo(TEXT("No RHI: skipping the contact screenshots."));
+		return true;
+	}
+	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(6.f));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeShot(this, static_cast<uint8>(HawkeyeMeleeShots::EShot::Setup)));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.3f));
+	HawkeyeAddContactShots(this);
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeMeleeShot(this, static_cast<uint8>(HawkeyeMeleeShots::EShot::Cleanup)));
+	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(this));
+	return true;
 }
 
 /** The melee shots on their own, for tuning without the whole Kate pass. */
