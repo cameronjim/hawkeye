@@ -1722,6 +1722,15 @@ group pass lets several come at once, Spider-Man style, and keeps every blow ans
   or 4 times, every swing from behind her winding up for 1.0 s. `token_ring.png` (`Hawkeye.Screenshot.Melee`):
   four who came at her from 7 m, after 5 s two in front 233 cm out and two behind 366 cm out, all standing,
   each facing her.
+- Measured after the group pass (standalone, Normal, 2026-11-11, the laps' own fight records; before is the same lap
+  on main the day before): chapter 2's crew of five 15.0 s / 0 hits / 1 dodge / 2 parries (bot counts) before, 9.8 to
+  14.5 s / 0 to 1 hits / 0 to 2 dodges / 4 to 5 parries after, two melee holders at once (0.9 s of it); the four
+  seen elves two at once for 1.6 s, 3 hits; Tomas's crew two at once for 1.5 s, 1 hit, 7 parries; Santa 25.2 s before,
+  41 to 43 s after (50 s while bosses still fidgeted); Tomas's phase 87 s before, 105 s after, 12 winded windows (10).
+  Headless, four fists thugs round a still Kate for 30 s: two swinging at once on Normal and Hard, never closer than
+  90 degrees nor 0.45 / 0.35 s apart at impact, 6 to 10 swings each (3 or 4 before). The bot still clears every fight;
+  the ones with two melee thugs or fewer (the mugging, robbery, rooftop, the street pair and heavy) cost it nothing, by
+  the group rule.
 
 ## Side challenges (built 2026-09-27; names are placeholders)
 - `AChallengeStart` pedestals (purple-lit, E to start) and one `UChallengeDefinition` per
