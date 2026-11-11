@@ -139,6 +139,8 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	HealthComponent->bRegenerates = true;
 	HealthComponent->RegenDelay = UDifficultySubsystem::GetTableValue(EHawkeyeDifficulty::Normal, EDifficultyStat::RegenDelaySeconds);
 	HealthComponent->RegenPerSecond = 10.f;
+	// After a hit lands, a moment before the next can (gameplay-semantics.md, "Attack tokens"): never a stunlock.
+	HealthComponent->HitGraceSeconds = UDifficultySubsystem::GetTableValue(EHawkeyeDifficulty::Normal, EDifficultyStat::HitGraceSeconds);
 	TakedownComponent = CreateDefaultSubobject<UTakedownComponent>(TEXT("TakedownComponent"));
 	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 	NoiseEmitter = CreateDefaultSubobject<UPawnNoiseEmitterComponent>(TEXT("NoiseEmitter"));
@@ -1201,6 +1203,7 @@ void AHawkeyeCharacter::ApplySettings(const FHawkeyeSettings& NewSettings)
 	if (HealthComponent)
 	{
 		HealthComponent->RegenDelay = UDifficultySubsystem::GetTableValue(Difficulty, EDifficultyStat::RegenDelaySeconds);
+		HealthComponent->HitGraceSeconds = UDifficultySubsystem::GetTableValue(Difficulty, EDifficultyStat::HitGraceSeconds);
 	}
 	if (InventoryComponent)
 	{
@@ -2860,6 +2863,7 @@ bool AHawkeyeCharacter::TryDodge(FVector WorldDirection)
 	DodgeInvulnerableRemaining = DodgeInvulnerableSeconds;
 	DodgeCooldownRemaining = DodgeCooldownSeconds;
 	bLightBuffered = false;
+	++DodgeCount;
 
 	// Locked on, she keeps her eyes on him while the dash goes where the stick says.
 	const AActor* Facing = FindSoftLockTarget();
@@ -2981,6 +2985,8 @@ void AHawkeyeCharacter::HandleHealthChanged(UHealthComponent* /*Health*/, float 
 	// Someone else hurting her shakes the camera and leans her away; a fall does not (it has the landing dip).
 	if (Delta < 0.f && DamageInstigator && DamageInstigator != this)
 	{
+		++HitsTakenCount;
+		DamageTakenTotal -= Delta;
 		PlayImpactShake(HitShakeSeconds, HitShakeAmplitude);
 		const EHawkeyeHitDirection Side = UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(),
 			DamageInstigator->GetActorLocation() - GetActorLocation());

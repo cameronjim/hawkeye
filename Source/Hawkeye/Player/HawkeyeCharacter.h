@@ -661,6 +661,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Dodge")
 	int32 GetPerfectDodgeCount() const { return PerfectDodgeCount; }
 
+	/** Dodges started, every one, this life of the pawn (the laps' pressure count). */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Dodge")
+	int32 GetDodgeCount() const { return DodgeCount; }
+
+	/** Hits from someone else that took health, and the health they took, this life of the pawn. */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Health")
+	int32 GetHitsTakenCount() const { return HitsTakenCount; }
+
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Health")
+	float GetDamageTakenTotal() const { return DamageTakenTotal; }
+
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Melee")
 	bool IsMeleeAttacking() const;
 
@@ -2113,6 +2124,9 @@ private:
 
 	int32 ParryCount = 0;
 	int32 PerfectDodgeCount = 0;
+	int32 DodgeCount = 0;
+	int32 HitsTakenCount = 0;
+	float DamageTakenTotal = 0.f;
 
 	/** A Ctrl press while moving, waiting to find out whether it is a tap (dodge) or a hold (crouch). */
 	bool bCrouchTapPending = false;

@@ -64,6 +64,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0.0"))
 	float IncomingDamageScale = 1.f;
 
+	/**
+	 * The post-hit grace (gameplay-semantics.md, "Attack tokens"): after a hit from someone else lands, nothing else
+	 * from anyone else lands for this long, seconds, so blows that arrive together cost one hit, never a chain. Kate's
+	 * comes from the difficulty (0.8 / 0.6 / 0.45); 0, everyone else's, is none. Damage she does to herself and
+	 * damage with no instigator (a fall) neither start it nor are held off by it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Health", meta = (ClampMin = "0.0"))
+	float HitGraceSeconds = 0.f;
+
+	/** The grace rule: a hit at NowSeconds is held off when one landed (LastHitSeconds, below 0 for none) within GraceSeconds. */
+	static bool IsWithinHitGrace(double NowSeconds, double LastHitSeconds, float GraceSeconds);
+
+	/** True while a hit from someone else would be held off by the grace. */
+	UFUNCTION(BlueprintPure, Category = "Health")
+	bool IsInHitGrace() const;
+
 	/** Applies DamageAmount times IncomingDamageScale. Returns the damage actually taken (0 when invulnerable or dead). */
 	UFUNCTION(BlueprintCallable, Category = "Health")
 	float ApplyDamage(float DamageAmount, AActor* DamageInstigator = nullptr);
@@ -170,6 +186,12 @@ protected:
 
 	/** Seconds since damage last landed; counted by AdvanceRegen. */
 	float SecondsSinceDamage = 0.f;
+
+	/** World seconds a hit from someone else last landed; below 0 for never. */
+	double LastHitSeconds = -1.0;
+
+	/** The owner's world clock, or below 0 without a world. */
+	double GetWorldSeconds() const;
 
 	/** Set the first time health reaches 0; cleared only by Revive. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")

@@ -1,5 +1,6 @@
 #include "Combat/HealthComponent.h"
 
+#include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Controller.h"
 
@@ -48,10 +49,34 @@ void UHealthComponent::Stagger(AActor* DamageInstigator)
 	}
 }
 
+bool UHealthComponent::IsWithinHitGrace(double NowSeconds, double LastHitSeconds, float GraceSeconds)
+{
+	return GraceSeconds > 0.f && LastHitSeconds >= 0.0 && NowSeconds >= LastHitSeconds
+		&& NowSeconds - LastHitSeconds + UE_KINDA_SMALL_NUMBER < GraceSeconds;
+}
+
+double UHealthComponent::GetWorldSeconds() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimeSeconds() : -1.0;
+}
+
+bool UHealthComponent::IsInHitGrace() const
+{
+	const double Now = GetWorldSeconds();
+	return Now >= 0.0 && IsWithinHitGrace(Now, LastHitSeconds, HitGraceSeconds);
+}
+
 float UHealthComponent::ApplyDamage(float DamageAmount, AActor* DamageInstigator)
 {
 	DamageAmount *= FMath::Max(IncomingDamageScale, 0.f);
 	if (DamageAmount <= 0.f || bInvulnerable || bIsDead)
+	{
+		return 0.f;
+	}
+	// Someone else's hit: held off inside the grace of the last one, and starts a new grace when it lands.
+	const bool bFromOther = DamageInstigator && DamageInstigator != GetOwner();
+	if (bFromOther && HitGraceSeconds > 0.f && IsInHitGrace())
 	{
 		return 0.f;
 	}
@@ -67,6 +92,10 @@ float UHealthComponent::ApplyDamage(float DamageAmount, AActor* DamageInstigator
 		return 0.f;
 	}
 	SecondsSinceDamage = 0.f;
+	if (bFromOther)
+	{
+		LastHitSeconds = GetWorldSeconds();
+	}
 
 	// Death is latched before the change is broadcast so listeners (the boss phase component)
 	// already see IsDead() when they react to the hit that killed the actor.
@@ -121,6 +150,7 @@ void UHealthComponent::Revive(float NewHealth)
 	const float OldHealth = CurrentHealth;
 
 	bIsDead = false;
+	LastHitSeconds = -1.0;
 	CurrentHealth = FMath::Clamp(NewHealth, KINDA_SMALL_NUMBER, MaxHealth);
 
 	OnHealthChanged.Broadcast(this, CurrentHealth, CurrentHealth - OldHealth, nullptr);

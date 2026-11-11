@@ -75,6 +75,8 @@ bool FHawkeyeMeleeThugSweepStaggersPlayer::RunTest(const FString& Parameters)
 		TestTrue(TEXT("And staggers her"), Kate->IsStaggered());
 		Thug->GetMeleeComponent()->AdvanceAttack(Attack.RecoverSeconds);
 		TestFalse(TEXT("The swing is over after its recovery"), Thug->GetMeleeComponent()->IsAttacking());
+		// Past her post-hit grace before the next swing (gameplay-semantics.md, "Attack tokens").
+		TestWorld.AdvanceClock(1.f);
 	}
 	TestEqual(TEXT("One stagger per swing"), Listener->StaggeredCount, 2);
 
