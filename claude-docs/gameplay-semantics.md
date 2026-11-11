@@ -930,11 +930,13 @@ gone from the code, and so from this file. Every section below describes code th
   in the Santa phase is Tomas's "Oh, that's nice" line.
 
 ### Chapter 3's boss, Santa (`DA_Boss_CH03_Santa`; numbers on Normal; 2026-11-10)
-- In L_Int_Grotto's workshop (the arena's outline is the room, its floor at 0): 320 health, 1.15 times a thug,
+- In L_Int_Grotto's workshop (the arena's outline is the room, its floor at 0): 560 health (320 before the
+  2026-11-10 difficulty pass, when the scripted player beat him in 25 s), 1.15 times a thug,
   `BP_Boss_Santa` (BP_Thug in a red suit with white trim, a Santa hat and beard, a sack in his bat slot drawn at 0.85),
   no light riding on him (the workshop's tubes light him; a rim light washed his red out). One phase, "Santa" (`beat_santa`), fighting from the start: a sack swing (14,
   0.8 s wind-up, parryable), a second (14, 0.7 s), an overhead slam (20, 1.1 s, unblockable: dodge it, a 180 cm shove);
-  0.7 s between; winded after 3 for 3 s, 1.5 times damage winded, the finisher only then, 0.12 of his max; guard 0.35;
+  0.6 s between (0.7 before); winded after 4 (3 before) for 3 s, 1.5 times damage winded, the finisher only then, 0.08
+  of his max (0.12 before); guard 0.3 (0.35 before);
   walks at 340. Met at `open_vault` (her feet in the workshop): "Ho, ho- oh, no." (`seq_ch03_santa`, at most 20 s), then
   the fight; down: a 2 s beat on him, Kate's "You're a mall Santa..." (`seq_ch03_santa_down`), and `beat_santa`.
 
@@ -1650,35 +1652,62 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   holds Normal's sprint to 7 or fewer (about one in three) for both, Story at or under Normal, Hard
   at or over it, and a standing Kate hit at least 15 times by the archer.
 
-## Attack tokens (built 2026-11-10)
+## Attack tokens (built 2026-11-10; group pressure pass the same day)
 Rules in `Source/Hawkeye/Combat/CombatTokenRules.h` (pure, tested by `Hawkeye.Tokens.*`); the state is
-`UCombatTokenSubsystem`, one per world. Before, every thug swung and fired on his own clock, so four of them
-hit her at once from off screen.
+`UCombatTokenSubsystem`, one per world. Before tokens every thug swung and fired on his own clock, so four of them
+hit her at once from off screen. The first token pass then made them take polite turns (one swing at a time below
+Hard) and fights got easy: the chapter 2 crew of five went down in 15 s without a hit on the scripted player. The
+group pass lets several come at once, Spider-Man style, and keeps every blow answerable.
 - Each target (Kate, or Clint when a thug is fighting him) has two budgets, melee (fists, bat, the heavy's
   bash and swing) and ranged (a gunner's burst, an archer's draw): how many of her attackers may be
-  attacking at once. Melee 1 / 1 / 2 and ranged 1 / 1 / 2 at Story / Normal / Hard, so a swing and a shot
-  can overlap but two swings cannot below Hard.
+  attacking at once. Melee 1 / 2 / 3 and ranged 1 / 1 / 2 at Story / Normal / Hard, then scaled to the group:
+  at most `TokenGroupShare` (0.5 on all three) of the attackers on that budget, rounded up, never under 1
+  (`ScaleBudgetForGroup`). Two thugs share one token, three or four share two, Hard's three needs five or six.
+  Story stays one swing and one shot.
+- Two at once come from different sides: a second (or third) melee token goes only to a waiter standing at least
+  `MeleeSeparationDegrees` (90 / 60 / 45) round her from every melee holder (`IsSeparatedFromHolders`); the first in
+  line who qualifies is granted, the rest wait.
+- Blows land in a rhythm: every attack books when it will land (a swing's wind-up end, a burst's first shot, a draw's
+  release) and is pushed later, never earlier, until it is `ImpactIntervalSeconds` (0.6 / 0.45 / 0.35) clear of
+  every other blow booked on her, melee and ranged alike (`StaggerImpactDelay`, `UCombatTokenSubsystem::ScheduleImpact`).
+  So two swings, or a swing and a shot, are answered by two parries in time or one dodge out of reach; never both
+  at once. A broken or finished attack frees its booking.
+- After a hit from someone else lands on Kate nothing else from anyone else does for `HitGraceSeconds`
+  (0.8 / 0.6 / 0.45; `UHealthComponent::HitGraceSeconds`, 0 for everyone but her), longer than her 0.35 s stagger,
+  so no stunlock. Her own boomerang and a fall neither start it nor are held off.
 - A token is held from its grant until the attack is over: a melee thug's step in, telegraph, swing and
   recovery; a gunner's telegraph and burst; an archer's draw (a hold included) until he looses. After a
-  token is given back, that budget grants nothing for a gap of 0.9 / 0.6 / 0.4 s, so attacks come as a
-  sequence she can read rather than a chain.
+  token is given back, that budget grants nothing for a gap of 0.9 / 0.45 / 0.3 s.
 - Who gets it when several ask, in order: anyone who has waited 4 s (oldest first, so nobody starves);
   then anyone but the one who attacked last on that budget (he goes to the back); then whoever is on
   screen (within 50 degrees of where she looks: her camera, or the eyes of an AI target) before anyone
   off it; then the nearest (in 50 cm steps); then whoever has waited longest. An off-screen thug is granted
-  only when nobody on screen is asking or he is overdue, and his telegraph then lasts at least 1.2 / 1.0 /
-  0.8 s (a swing's wind-up, a burst's raised pistol, a draw), so a blow from behind never comes faster
-  than the warning.
+  only when nobody on screen is asking, he is overdue, or he is the one standing on the other side, and his
+  telegraph then lasts at least 1.2 / 1.0 / 0.8 s (a swing's wind-up, a burst's raised pistol, a draw).
+- The off-screen warning: a telegraph whose glyph over his head would be off the screen or behind the lens is drawn
+  round Kate instead, on an ellipse 0.16 of the screen's width and 0.24 of its height round her chest, on his side
+  as seen from above (ahead at the top, behind at the bottom), 1.2 times the telegraph glyph, the same red "!" or
+  yellow "!!" (`HawkeyeCombatReadability::IsOffScreen`, `ComputeOffScreenCuePosition`, drawn by the thug overhead
+  widget). It is the game's spider-sense.
 - Only an attacker ready to attack is granted (a melee thug within reach of his place on the ring, off his
   cooldown and not backing off; a gunner off his pause and not jammed; an archer past his gap with a line).
 - A melee thug without a token closes to a ring 300 cm round her and holds his place on it facing her;
   places are spread at least 40 degrees apart in the order the thugs stand round her, each moving as
-  little as he can (no random slots). Granted, he steps in and swings as before; if he has not started
-  his swing 1.5 s after the grant he gives it back. A gunner or archer without one holds his aim and waits.
+  little as he can. He is not parked there: every 1.0 to 2.2 s he either shifts 25 degrees to one side of his
+  place (the other side next time) or, a 0.35 chance, feints 120 cm in toward her and back out over 0.9 s
+  (`FHawkeyeRingFidget`, `AThugAIController::RingFidget`, data on the thug). A feint is no attack: no glyph, no
+  hit. Granted, he steps in and swings; if he has not started his swing 1.5 s after the grant he gives it
+  back. A gunner or archer without one holds his aim and waits.
+- Ranged pressure is what was there: a gunner's raised pistol (and the glyph inside 600 cm) or an archer's glint
+  says a shot is coming, a standing Kate is hit, a dodge or a turn makes it miss ("Ranged thug accuracy"), and the
+  impact booking keeps its first shot clear of any swing.
 - Tokens never leak: one is given back when the attack ends or is broken, and taken away on a stagger,
   a knockdown, putty or a bola, death, losing the target, leaving the attack, her going down, a
   challenge's calm, thinking off, or a new target. The budget holds attackers by weak reference, so a
   destroyed one simply goes; a holder who stops asking for 0.75 s, or has held one for 6 s, loses it.
+- `GetPressure` / `ResetPressure` count, per target, the most holders at once by kind and together, grants,
+  grants that overlapped another melee holder and blows pushed later; the laps record their own per-fight numbers
+  (testing.md, "Fight pressure").
 - Unchanged: the back-off after two swings, the cooldowns, the stand-off round a downed player (the
   same ring walk, 450 cm, orbiting), difficulty damage, squad alerts.
 - `hawkeye.DebugTokens 1` draws a red line from each holder to his target and a grey one from each
@@ -1730,8 +1759,10 @@ hit her at once from off screen.
   1.0; Story adds 2 to each trick arrow cap (never the grapple, which has no count). Added 2026-09-28 ("Ranged thug accuracy", "Bow aim
   assist"): ranged tracking lag 0.4 / 0.32 / 0.25 s; ranged cone scale 1.4 / 1.0 / 0.7; archer
   gap before the next draw 3.0-4.0 / 1.5-2.5 / 1.2-1.8 s; aim assist scale 1.25 / 1.0 / 0.5. Added
-  2026-11-10 ("Attack tokens"): melee tokens 1 / 1 / 2; ranged tokens 1 / 1 / 2; gap between tokens
-  0.9 / 0.6 / 0.4 s; an off-screen attacker's shortest telegraph 1.2 / 1.0 / 0.8 s.
+  2026-11-10 ("Attack tokens", the group pass): melee tokens 1 / 2 / 3; ranged tokens 1 / 1 / 2; group share
+  0.5 / 0.5 / 0.5; gap between tokens 0.9 / 0.45 / 0.3 s; an off-screen attacker's shortest telegraph 1.2 / 1.0 /
+  0.8 s; two melee attackers at once at least 90 / 60 / 45 degrees apart; blows at least 0.6 / 0.45 / 0.35 s apart;
+  Kate's post-hit grace 0.8 / 0.6 / 0.45 s.
   `-Difficulty=Story|Normal|Hard` on the
   command line overrides without saving. Every scripted fight is won on all three.
 - Accessibility, all persisted (settings version 5; 6 adds the time of day; 7 the aim assist; 8 the

@@ -16,10 +16,12 @@ a zip. You land running. Let go mid-line and you are thrown along your path. Vau
 mantles play animation warped to the ledge that was measured, so the body fits the wall.
 Start in `Source/Hawkeye/Player/HawkeyeMovementComponent.h`.
 
-**Combat.** Four thugs do NOT all swing at once. They take turns. An attack token decides
-who attacks, the rest hold a ring around her, and a swing from behind always winds up
-long enough to react to. The rules are pure functions with tests. Start in
-`Source/Hawkeye/Combat/CombatTokenRules.h`.
+**Combat.** Thugs come at Kate as a group, like Spider-Man's. Attack tokens decide who
+attacks: on Normal two of four can swing at once, but only from different sides, and
+their blows land at least 0.45 s apart, so two parries in rhythm or one dodge answers
+both. The rest circle and feint. A swing from behind winds up long and flashes a warning
+round her, and after a hit lands nothing else does for a moment, so no stunlocks. The
+rules are pure functions with tests. Start in `Source/Hawkeye/Combat/CombatTokenRules.h`.
 
 **The city.** The district is NOT hand-built. It is generated. A Python pipeline reads
 OpenStreetMap footprints and heights for the blocks around Tompkins Square Park and
