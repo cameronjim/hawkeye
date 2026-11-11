@@ -1,3 +1,4 @@
+#include "Hawkeye.h"
 #include "Boss/BossArenaHazard.h"
 #include "Boss/BossDefinition.h"
 #include "Boss/BossFightSubsystem.h"
@@ -309,6 +310,10 @@ private:
 	int32 BossFinishers = 0;
 	int32 Lures = 0;
 	int32 LastLureSweep = -1;
+	/** Each sweep: how close across its lane Tomas came while it swept, and his state then (the lure's log line). */
+	int32 TracedSweep = -1;
+	float SweepMinAcross = BIG_NUMBER;
+	FString SweepState;
 	int32 LastBeatsPlayed = 0;
 	bool bWasInBeat = false;
 	double DrawStart = 0.0;
@@ -488,6 +493,15 @@ bool FHawkeyeSocialClubLap::AvoidHazard(APlayerController* PC, AHawkeyeCharacter
 	{
 		return false;
 	}
+	// The sweep after a lure: she stands where the lure put her, clear of the strip, and lets it come past him. Fleeing on
+	// out to the wider margin dragged Tomas after her, out of the lane, and the lure caught nobody (11-10 and 11-11 fails).
+	if (Phase == EBossHazardPhase::Sweep && Hazard->GetState().Sweeps == LastLureSweep
+		&& FMath::Abs(Off) >= Hazard->GetTuning().HalfWidth + 35.f)
+	{
+		Move(PC, FVector2D::ZeroVector);
+		Sprint(PC, false);
+		return true;
+	}
 	// Out of the lane the short way.
 	const FVector Away = Across * (Off >= 0.f ? 1.f : -1.f);
 	if (bMeleeHeld)
@@ -599,8 +613,10 @@ bool FHawkeyeSocialClubLap::LureIntoLane(UWorld* World, APlayerController* PC, A
 	const UBossFightSubsystem* Fight = UBossFightSubsystem::Get(World);
 	const ABossArenaHazard* Hazard = Fight ? Fight->GetHazard() : nullptr;
 	const AThugCharacter* Tomas = Fight ? Fight->GetBoss() : nullptr;
+	// Lured until the sweep has caught him once (what the lap asserts); after that she fights him as before, so a working
+	// lure does not cut the fight under its 90 s floor (three or four catches did: 82 to 85 s).
 	if (!Hazard || !Hazard->IsLoose() || Hazard->IsPinned() || !Tomas || HawkeyeSocialLap::IsDown(Tomas) || Fight->IsWinded()
-		|| Hazard->GetState().Phase != EBossHazardPhase::Telegraph)
+		|| Fight->GetHazardBossHits() >= 1 || Hazard->GetState().Phase == EBossHazardPhase::Sweep)
 	{
 		return false;
 	}
@@ -635,8 +651,9 @@ bool FHawkeyeSocialClubLap::LureIntoLane(UWorld* World, APlayerController* PC, A
 	}
 	Sprint(PC, true);
 	Move(PC, HawkeyeSocialLap::MoveTowards((Spot - Kate->GetActorLocation()).GetSafeNormal2D(), PC->GetControlRotation().Yaw));
-	// One lure a telegraph.
-	if (Hazard->GetState().Sweeps != LastLureSweep)
+	// One lure a telegraph. She walks to her spot in the rest before it too: from across the roof the 1.5 s telegraph was
+	// not long enough to get there, and he followed her into the sweep's way out of the lane.
+	if (Hazard->GetState().Phase == EBossHazardPhase::Telegraph && Hazard->GetState().Sweeps != LastLureSweep)
 	{
 		LastLureSweep = Hazard->GetState().Sweeps;
 		++Lures;
@@ -680,6 +697,31 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 	if (UpdateDraw(World, PC, Kate, Now))
 	{
 		return;
+	}
+	// Where Tomas was across the lane while each sweep ran, logged when the next one starts (why a lure did or did not catch).
+	if (const ABossArenaHazard* Hazard = Phase.bHazardActive ? Fight->GetHazard() : nullptr; Hazard && Tomas && !IsDown(Tomas))
+	{
+		const FVector Lane = (Hazard->GetLaneEnd() - Hazard->GetLaneStart()).GetSafeNormal2D();
+		const FVector Mid = (Hazard->GetLaneStart() + Hazard->GetLaneEnd()) * 0.5f;
+		const float His = FMath::Abs(FVector::DotProduct(Tomas->GetActorLocation() - Mid, FVector::CrossProduct(FVector::UpVector, Lane)));
+		const int32 Sweep = Hazard->GetState().Sweeps;
+		if (Sweep != TracedSweep)
+		{
+			if (TracedSweep >= 0)
+			{
+				UE_LOG(LogHawkeye, Log, TEXT("Social club lap: sweep %d, Tomas came %.0f cm across from the lane's middle (half width %.0f); %s"),
+					TracedSweep, SweepMinAcross, Hazard->GetTuning().HalfWidth, *SweepState);
+			}
+			TracedSweep = Sweep;
+			SweepMinAcross = BIG_NUMBER;
+		}
+		if (Hazard->GetState().Phase == EBossHazardPhase::Sweep && His < SweepMinAcross)
+		{
+			SweepMinAcross = His;
+			SweepState = FString::Printf(TEXT("then winded %d, staggered %d, swinging %d, %.0f cm from Kate, %d lures"), Fight->IsWinded() ? 1 : 0,
+				Tomas->IsStaggered() ? 1 : 0, Tomas->GetMeleeComponent()->IsAttacking() ? 1 : 0,
+				FVector::Dist2D(Tomas->GetActorLocation(), Kate->GetActorLocation()), Lures);
+		}
 	}
 	if (Phase.bHazardActive && LureIntoLane(World, PC, Kate))
 	{
