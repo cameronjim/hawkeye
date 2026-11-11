@@ -54,8 +54,17 @@ bool FTraversalAuditRunner::Run(UWorld* World, const FOptions& Options, FGrapple
 		const FGrappleReachProfile Profile = MakeProfile(World, Options.PawnClassPath);
 		FGrappleAuditInputs Inputs = FGrappleAudit::MakeWorldInputs(World, OutScene, Profile);
 		Inputs.ObjectiveChain = Options.ObjectiveChain;
+		Inputs.StreetLinkObjectives = TSet<FString>(Options.StreetLinkObjectives);
 		OutReport = FGrappleAudit::Run(Inputs);
 		UE_LOG(LogHawkeyeEditor, Display, TEXT("Traversal audit: %s"), *OutReport.Summary);
+		// No sidewalk spot at all means the traces hit nothing (no collision in this world), not a district with no
+		// problems: an empty audit must never pass the gate.
+		if (OutReport.StreetSpotCount == 0 || OutReport.RoofSpotCount == 0)
+		{
+			OutError = FString::Printf(TEXT("the audit found %d sidewalk and %d roof spots: its traces hit nothing, so this world has no "
+				"collision to audit"), OutReport.StreetSpotCount, OutReport.RoofSpotCount);
+			bOk = false;
+		}
 	}
 
 	if (bSpawnHere && IsValid(Spawner))

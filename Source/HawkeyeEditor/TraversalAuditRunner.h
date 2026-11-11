@@ -20,6 +20,8 @@ struct FTraversalAuditRunner
 		FString PawnClassPath;
 		/** Objective ids whose roofs must chain, in order. */
 		TArray<FString> ObjectiveChain;
+		/** Chain objectives that may be reached down a fire escape and up from the street (FGrappleAuditInputs). */
+		TArray<FString> StreetLinkObjectives;
 	};
 
 	/** The profile of the pawn PawnClassPath names, else the map's player pawn, else AHawkeyeCharacter. */
