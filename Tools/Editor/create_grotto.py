@@ -82,17 +82,17 @@ LIGHT_RADIUS = 650.0
 
 # --- Santa (numbers on Normal; gameplay-semantics.md, "Chapter 3's boss") --------------------------------------
 BOSS_DISPLAY = "Santa"
-MAX_HEALTH = 320.0
+MAX_HEALTH = 560.0     # 320 until 2026-11-10's difficulty pass: he went down in 25 s, a thug with a hat
 BODY_SCALE = 1.15
 # (name, damage, wind-up, recovery, range, knockback, lunge, unblockable): two sack swings he telegraphs, then a slam
 # over his head that has to be dodged.
 COMBO = [("santa_sack", 14.0, 0.8, 0.5, 160.0, 0.0, 30.0, False),
          ("santa_sack_2", 14.0, 0.7, 0.5, 160.0, 0.0, 30.0, False),
          ("santa_slam", 20.0, 1.1, 0.8, 170.0, 180.0, 50.0, True)]
-MOVES = {"winded_after_swings": 3, "winded_seconds": 3.0, "winded_damage_scale": 1.5, "finisher_damage_fraction": 0.12,
-         "stagger_threshold": 40.0, "swing_cooldown_seconds": 0.7, "rush_speed": 340.0, "finisher_only_when_winded": True,
+MOVES = {"winded_after_swings": 4, "winded_seconds": 3.0, "winded_damage_scale": 1.5, "finisher_damage_fraction": 0.08,
+         "stagger_threshold": 40.0, "swing_cooldown_seconds": 0.6, "rush_speed": 340.0, "finisher_only_when_winded": True,
          "parry_stagger_seconds": 0.6}
-GUARD = 0.35
+GUARD = 0.3
 PRE_FIGHT_SEQUENCE = "seq_ch03_santa"
 AFTER_SEQUENCE = "seq_ch03_santa_down"
 MEET_OBJECTIVE = "open_vault"
