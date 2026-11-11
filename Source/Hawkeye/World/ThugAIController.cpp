@@ -1848,8 +1848,14 @@ void AThugAIController::WaitOnRing(float DeltaSeconds, float& RepathRemaining)
 	const float Slot = Tokens ? Tokens->GetRingSlotYaw(GetPawn(), TargetActor, MeleeRingSeparationDegrees)
 		: (-GetToTarget()).Rotation().Yaw;
 	// Not parked: a step to one side of his place, or a feint in and back (gameplay-semantics.md, "Attack tokens").
-	const EHawkeyeRingFidgetMove Move =
-		RingFidget.Advance(DeltaSeconds, FidgetStream.FRand(), FidgetStream.FRand(), FidgetStream.FRand());
+	if (!bFidgetOnRing)
+	{
+		RingFidget.Reset();
+		RingFidget.ConsumeSpotChanged();
+	}
+	const EHawkeyeRingFidgetMove Move = bFidgetOnRing
+		? RingFidget.Advance(DeltaSeconds, FidgetStream.FRand(), FidgetStream.FRand(), FidgetStream.FRand())
+		: EHawkeyeRingFidgetMove::None;
 	if (Move != EHawkeyeRingFidgetMove::None)
 	{
 		UE_LOG(LogHawkeye, Verbose, TEXT("%s: waiting on the ring, %s."), *GetNameSafe(GetPawn()),

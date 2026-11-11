@@ -486,6 +486,8 @@ AThugCharacter* UBossFightSubsystem::SpawnBoss()
 		// He does not step back after two swings: his combo ends winded instead.
 		Brain->MeleeSwingsBeforeBackOff = 1000;
 		Brain->RushSpeed = Definition->Moves.RushSpeed;
+		// A boss holds his ground between swings: the arena's lure (the hazard's lane) counts on where he waits.
+		Brain->bFidgetOnRing = false;
 	}
 	// The phases ride on his health; the component is added here so a boss needs no class of his own.
 	UBossPhaseComponent* Phases = NewObject<UBossPhaseComponent>(Him, TEXT("BossPhases"));

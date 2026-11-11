@@ -235,13 +235,20 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
 	float MeleeWaitRingDistance = 300.f;
 
-	/** Places on the waiting ring are at least this far apart round her, degrees. */
+	/**
+	 * Places on the waiting ring are at least this far apart round her, degrees: 70 (40 before the group pass), wider
+	 * than Normal's 60 degree separation between two attackers at once, so neighbours on the ring can both come.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0", ClampMax = "90.0"))
-	float MeleeRingSeparationDegrees = 40.f;
+	float MeleeRingSeparationDegrees = 70.f;
 
 	/** Waiting on the ring he does not stand parked: he shifts along it and feints in and out (ThugTypes.h). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee")
 	FHawkeyeRingFidget RingFidget;
+
+	/** Off for a boss (the fight sets it): he waits on his place, still, as he always did. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Melee")
+	bool bFidgetOnRing = true;
 
 	/** Granted a token, he gives it back if his swing has not started in this long (she ran), seconds. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
