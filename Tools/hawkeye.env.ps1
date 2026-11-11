@@ -15,11 +15,15 @@
 # Game Animation Sample (GASP) root, first existing hit wins:
 #   env var HAWKEYE_GASP_ROOT, Tools\local.json {"gaspRoot": "..."}, C:\Users\camer\code\GASP
 #
+# Asset packs root (the Quaternius CC0 packs Tools\Editor\import_bodies.py reads), first existing hit wins:
+#   env var HAWKEYE_ASSETS_ROOT, Tools\local.json {"assetsRoot": "..."}, C:\Users\camer\code\hawkeye-assets
+#
 # Written for Windows PowerShell 5.1 as well as PowerShell 7.
 
 $script:HawkeyeEngineVersion = "5.8"
 $script:HawkeyeDefaultEngineRoot = "C:\Program Files\Epic Games\UE_5.8"
 $script:HawkeyeDefaultGaspRoot = "C:\Users\camer\code\GASP"
+$script:HawkeyeDefaultAssetsRoot = "C:\Users\camer\code\hawkeye-assets"
 $script:HawkeyeToolsDir = $PSScriptRoot
 
 function Get-HawkeyeRepoRoot {
@@ -137,6 +141,25 @@ function Resolve-HawkeyeGaspRoot {
                [Environment]::NewLine + "Fix: create it from the Epic Launcher's Samples tab, then set HAWKEYE_GASP_ROOT or gaspRoot in Tools\local.json.")
     }
     # Not fatal for most scripts: hand back the highest-priority configured path; the importer reports it missing.
+    return $candidates[0][1]
+}
+
+function Resolve-HawkeyeAssetsRoot {
+    [CmdletBinding()]
+    param(
+        [string]$LocalJsonPath = (Join-Path $script:HawkeyeToolsDir "local.json"),
+        [string]$DefaultRoot = $script:HawkeyeDefaultAssetsRoot
+    )
+    $candidates = @()
+    if ($env:HAWKEYE_ASSETS_ROOT) { $candidates += , @("env HAWKEYE_ASSETS_ROOT", $env:HAWKEYE_ASSETS_ROOT) }
+    $cfg = Read-HawkeyeLocalConfig -Path $LocalJsonPath
+    if ($cfg -and $cfg.assetsRoot) { $candidates += , @("assetsRoot in $LocalJsonPath", [string]$cfg.assetsRoot) }
+    $candidates += , @("default path", $DefaultRoot)
+
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c[1] -PathType Container) { return $c[1] }
+    }
+    # Never fatal: without the packs import_bodies.py logs one line and the mannequins stay.
     return $candidates[0][1]
 }
 

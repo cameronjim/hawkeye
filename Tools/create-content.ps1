@@ -43,6 +43,8 @@ if ($Bright) { Write-Host "Bright preset requested (HAWKEYE_BRIGHT=1)." -Foregro
 $GaspRoot = Resolve-HawkeyeGaspRoot
 $env:HAWKEYE_GASP_ROOT = $GaspRoot
 $env:HAWKEYE_GASP_CONTENT = Join-Path $GaspRoot "Content"
+# The Quaternius packs Tools\Editor\import_bodies.py imports the thugs', Clint's and Lucky's bodies from.
+$env:HAWKEYE_ASSETS_ROOT = Resolve-HawkeyeAssetsRoot
 
 if ($Bright) { $env:HAWKEYE_BRIGHT = "1" }
 try {

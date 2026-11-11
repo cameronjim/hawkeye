@@ -32,6 +32,7 @@ $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("hawkeye-env-test-" + [guid]
 $regKey = "HKCU:\Software\HawkeyeEnvTest-" + [guid]::NewGuid().ToString("N")
 $savedUe = $env:HAWKEYE_UE_ROOT
 $savedGasp = $env:HAWKEYE_GASP_ROOT
+$savedAssets = $env:HAWKEYE_ASSETS_ROOT
 
 function New-FakeEngine($Name) {
     $root = Join-Path $tmp $Name
@@ -112,9 +113,21 @@ try {
         Resolve-HawkeyeGaspRoot -LocalJsonPath $noLocal -DefaultRoot (Join-Path $tmp "g-none") -Required
     }
     Assert-Equal "gasp not required returns first configured" (Join-Path $tmp "g-missing") (Resolve-HawkeyeGaspRoot -LocalJsonPath $noLocal -DefaultRoot (Join-Path $tmp "g-none"))
+
+    # Asset packs
+    $aEnv = Join-Path $tmp "a-env"; $aLocal = Join-Path $tmp "a-local"; $aDefault = Join-Path $tmp "a-default"
+    foreach ($a in $aEnv, $aLocal, $aDefault) { New-Item -ItemType Directory -Force -Path $a | Out-Null }
+    ConvertTo-Json @{ assetsRoot = $aLocal } | Set-Content -LiteralPath $localJson
+    $env:HAWKEYE_ASSETS_ROOT = $aEnv
+    Assert-Equal "assets env first" $aEnv (Resolve-HawkeyeAssetsRoot -LocalJsonPath $localJson -DefaultRoot $aDefault)
+    Remove-Item Env:\HAWKEYE_ASSETS_ROOT
+    Assert-Equal "assets local.json second" $aLocal (Resolve-HawkeyeAssetsRoot -LocalJsonPath $localJson -DefaultRoot $aDefault)
+    Assert-Equal "assets default third" $aDefault (Resolve-HawkeyeAssetsRoot -LocalJsonPath $noLocal -DefaultRoot $aDefault)
+    Assert-Equal "assets none returns the default" (Join-Path $tmp "a-none") (Resolve-HawkeyeAssetsRoot -LocalJsonPath $noLocal -DefaultRoot (Join-Path $tmp "a-none"))
 }
 finally {
     if ($null -eq $savedUe) { Remove-Item Env:\HAWKEYE_UE_ROOT -ErrorAction SilentlyContinue } else { $env:HAWKEYE_UE_ROOT = $savedUe }
+    if ($null -eq $savedAssets) { Remove-Item Env:\HAWKEYE_ASSETS_ROOT -ErrorAction SilentlyContinue } else { $env:HAWKEYE_ASSETS_ROOT = $savedAssets }
     if ($null -eq $savedGasp) { Remove-Item Env:\HAWKEYE_GASP_ROOT -ErrorAction SilentlyContinue } else { $env:HAWKEYE_GASP_ROOT = $savedGasp }
     if (Test-Path $regKey) { Remove-Item -Path $regKey -Recurse -Force }
     if (Test-Path $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
