@@ -13,6 +13,9 @@ record the new hash.
 """
 
 import hashlib
+import io
+import json
+import math
 import os
 import sys
 import unittest
@@ -20,10 +23,11 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import _dressing as dr  # noqa: E402
+import _dressing_kit as kit  # noqa: E402
 
 GOLDEN = {
     "hero_block": "blk_R3363343",
-    "hero_plan": "e15fe412e2392f76",
+    "hero_plan": "e546bc7c14c36f1f",   # windows on M_Facade's grid, strings' bulbs in their envelope (2026-11-10)
 }
 
 
@@ -213,6 +217,11 @@ class ConstraintTest(unittest.TestCase):
         self.assertTrue(dr.clears_street(light(720.0, 50.0)))
         self.assertFalse(dr.clears_street(light(600.0, 50.0)))
         self.assertTrue(dr.clears_street(_box("snow_bank", (0.0, 0.0, 15.0), (200.0, 90.0, 120.0))))
+        # The bulbs hanging under the wire count: a wire just clear on its own is too low with them.
+        bare = light(620.0, 50.0)
+        self.assertTrue(dr.clears_street(bare))
+        bare["params"].update(bulb_drop=dr.STRING_BULB_DROP, bulb_size=dr.STRING_BULB_SIZE)
+        self.assertFalse(dr.clears_street(bare))
 
     def test_density_caps(self):
         recs = [dr.make_record("steam_vent", "t/steam/{0}".format(k), (k * 100.0, 0.0, 100.0), (45.0, 45.0, 200.0))
@@ -315,6 +324,73 @@ class StreetPlanTest(unittest.TestCase):
             else:
                 self.assertTrue(all(s > 0.0 for s in rec["scale"]))
 
+    def test_windows_sit_on_the_facades_painted_grid(self):
+        windows = [r for r in self.records if r["kind"] == "window_light"]
+        self.assertTrue(windows)
+        for rec in windows:
+            nx, ny = math.cos(math.radians(rec["yaw"])), math.sin(math.radians(rec["yaw"]))
+            x, y, z = rec["position"]
+            # Back on the wall, M_Facade's horizontal coordinate is a half bay; the card spans its sill to its head.
+            u = (y - ny * dr.WINDOW_OUT) * nx - (x - nx * dr.WINDOW_OUT) * ny
+            off = (u - dr.WINDOW_BAY * 0.5) % dr.WINDOW_BAY
+            self.assertLess(min(off, dr.WINDOW_BAY - off), 0.5, rec["id"])
+            sill = z - dr.WINDOW_SIZE[2] * 0.5
+            self.assertAlmostEqual((sill - dr.WINDOW_SILL) % dr.FLOOR, 0.0, places=1, msg=rec["id"])
+            self.assertGreaterEqual(sill, dr.WINDOW_UPPER_FROM)
+
+    def doc(self):
+        return json.loads(dr.plan_json(self.plan))
+
+    def test_the_kit_draws_every_record(self):
+        groups = kit.instance_groups(self.doc())
+        self.assertTrue(set(groups) <= set(kit.GROUPS))
+        counts = self.plan["counts"]
+        strings = [r for r in self.records if r["kind"] == "string_light"]
+        self.assertEqual(len(groups["Dress_Wire"]), sum(len(r["params"]["points"]) - 1 for r in strings))
+        bulbs = sum(len(v) for k, v in groups.items() if k.startswith("Dress_Bulb_"))
+        self.assertGreater(bulbs, 20 * len(strings))
+        self.assertEqual(len(groups["Dress_Wreath"]), counts["wreath"])
+        self.assertEqual(len(groups["Dress_WreathBow"]), counts["wreath"])
+        self.assertEqual(sum(len(v) for k, v in groups.items() if k.startswith("Dress_Window_")), counts["window_light"])
+        self.assertEqual(len(groups["Dress_Candle"]), counts["window_candle"])
+        self.assertEqual(len(groups["Dress_CandleFlame"]), counts["window_candle"])
+        self.assertEqual(len(groups["Dress_RoofSnow"]), 1, "one mesh for every roof")
+        self.assertEqual(len(kit.roof_snow_outlines(self.doc())), counts["roof_snow"])
+        self.assertEqual(len(groups.get("Dress_SnowBank", [])) + len(groups.get("Dress_SnowBankDirty", [])),
+                         counts["snow_bank"])
+        self.assertEqual(len(groups["Dress_SteamStripe"]), 2 * counts["steam_vent"])
+        for instances in groups.values():
+            for inst in instances:
+                self.assertEqual(len(inst), 9)
+                self.assertTrue(all(s > 0.0 for s in inst[6:]))
+        self.assertEqual(kit.group_counts(self.doc()), {k: len(v) for k, v in groups.items()})
+
+    def test_bulbs_hang_inside_their_strings_envelope(self):
+        for rec in (r for r in self.records if r["kind"] == "string_light"):
+            one = kit.instance_groups({"block": "t", "records": [rec]})
+            env = dr.string_envelope(rec["params"])
+            pts = rec["params"]["points"]
+            lowest = min(p[2] for p in pts)
+            for key, instances in one.items():
+                if not key.startswith("Dress_Bulb_"):
+                    continue
+                for inst in instances:
+                    self.assertGreaterEqual(inst[2] - inst[8] * 50.0, lowest - env - 0.01, rec["id"])
+                    near = min(math.hypot(inst[0] - p[0], inst[1] - p[1]) for p in pts)
+                    self.assertLess(near, dr._dist2(pts[0], pts[1]), rec["id"])
+
+    def test_a_handful_of_real_lights_and_the_shot_cameras(self):
+        lights = kit.light_spots(self.doc())
+        self.assertTrue(1 <= len(lights) <= 4)
+        for _name, (_x, _y, z), _rgb, lumens, radius in lights:
+            self.assertGreater(z, 100.0)
+            self.assertLessEqual(lumens, 500.0)
+            self.assertLessEqual(radius, 1000.0)
+        names = [s[0] for s in kit.shot_cameras(self.doc())]
+        self.assertEqual(len(names), len(set(names)))
+        for name in ("street_lights", "street_back", "facade_wreaths", "tree_stand", "overview"):
+            self.assertIn(name, names)
+
 
 class HeroBlockTest(unittest.TestCase):
     """The hero block over the committed East Village data."""
@@ -361,6 +437,21 @@ class HeroBlockTest(unittest.TestCase):
     def test_ids_unique(self):
         ids = [r["id"] for r in self.plan["records"]]
         self.assertEqual(len(ids), len(set(ids)))
+
+    def test_the_committed_plan_is_the_planners(self):
+        path = kit.plan_path(self.block)
+        self.assertTrue(os.path.exists(path), "run python -B Tools/Editor/write_dressing_plan.py")
+        with io.open(path, "r", encoding="utf-8", newline="") as f:
+            committed = f.read()
+        self.assertEqual(committed, dr.plan_json(self.plan),
+                         "Tools/Data/dressing is stale; run python -B Tools/Editor/write_dressing_plan.py")
+
+    def test_the_kit_draws_the_block_in_a_few_dozen_instanced_meshes(self):
+        doc = json.loads(dr.plan_json(self.plan))
+        counts = kit.group_counts(doc)
+        self.assertLessEqual(len(counts), 30, "one instanced mesh per group")
+        self.assertGreater(sum(counts.values()), len(doc["records"]))
+        self.assertLessEqual(len(kit.light_spots(doc)), 4)
 
 
 if __name__ == "__main__":
