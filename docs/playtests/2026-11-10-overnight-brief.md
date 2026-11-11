@@ -17,6 +17,16 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **The hero block is dressed for December.** Avenue B to C, E 9th to 10th: ten strings of
+  coloured bulbs across the street, 22 lit wreaths, lit windows and candles, snow on
+  parapets, kerbs and cars, a tree stand with six trees. 1,012 planned records drawn as 25
+  instanced groups; frame time did not move (8.0 ms). All 13 laps passed first try, so
+  nothing blocks a route. Shots in `Saved/Screenshots/Dressing/`. Rough: the strings are
+  the only part that reads from a distance, wreaths are small rings, snow banks are dark
+  lumps outside the lamp pools, and it glows by day too (day was not looked at).
+- **No more hardcoded paths.** Scripts find the engine and the sample through
+  `Tools\hawkeye.env.ps1` (argument, `HAWKEYE_UE_ROOT`, `Tools\local.json`, registry,
+  launcher). A wrong path is an error with a fix line, not a silent fallback.
 - **Chapter 3 is The Grotto.** Act 1 now runs 1 → 2 → 3 → 4. Find the department store's
   grotto 208 m out, get through four elves unseen (being seen starts a fight, it does not
   fail you), open the workshop with the keypad, beat the mall Santa (a two-phase boss made
