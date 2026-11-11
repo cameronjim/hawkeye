@@ -239,6 +239,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0", ClampMax = "90.0"))
 	float MeleeRingSeparationDegrees = 40.f;
 
+	/** Waiting on the ring he does not stand parked: he shifts along it and feints in and out (ThugTypes.h). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee")
+	FHawkeyeRingFidget RingFidget;
+
 	/** Granted a token, he gives it back if his swing has not started in this long (she ran), seconds. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Melee", meta = (ClampMin = "0.0"))
 	float MeleeStepInMaxSeconds = 1.5f;
@@ -623,6 +627,9 @@ public:
 	/** Gives back his token, if he holds one, and leaves the queue. */
 	void ReleaseAttackToken();
 
+	/** His attack will land DesiredDelaySeconds from now: the delay to use, kept clear of other blows due on her. */
+	float ScheduleAttackImpact(float DesiredDelaySeconds);
+
 	/**
 	 * Walks to the spot SlotYaw round the target at Radius (re-pathing at most every RingRepathSeconds, counted in
 	 * RepathRemaining) and faces her: the stand-off's orbit and a melee thug waiting for a token.
@@ -859,6 +866,8 @@ private:
 	/** Ranged aim state. */
 	FHawkeyeTargetTrack TargetTrack;
 	FRandomStream AimStream;
+	/** The ring fidget's rolls: its own stream, so the ranged aim's sequence is the same as before. */
+	FRandomStream FidgetStream;
 	FTimerHandle TrackTimerHandle;
 	int32 ForcedMisses = 0;
 	float NextArcherGapSeconds = 0.f;

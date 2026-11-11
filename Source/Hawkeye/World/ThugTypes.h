@@ -127,6 +127,115 @@ enum class EArcherRangeAction : uint8
 	Relocate
 };
 
+/** What a waiting melee thug's fidget started this step (FHawkeyeRingFidget). */
+enum class EHawkeyeRingFidgetMove : uint8
+{
+	None,
+	/** To one side of his place on the ring. */
+	Shift,
+	/** In toward her and back out: a step that looks like a swing coming, with no swing. */
+	Feint
+};
+
+/**
+ * A melee thug waiting on the ring without a token keeps moving (gameplay-semantics.md, "Attack tokens"): every
+ * MinIntervalSeconds to MaxIntervalSeconds he either shifts ShiftDegrees to one side of his place (back to the other
+ * side next time, never drifting off it) or, FeintChance of the time, feints: FeintDepth cm in toward her for the first
+ * half of FeintSeconds and back out for the second. Pure: the caller hands it the rolls (0..1).
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FHawkeyeRingFidget
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fidget", meta = (ClampMin = "0.1"))
+	float MinIntervalSeconds = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fidget", meta = (ClampMin = "0.1"))
+	float MaxIntervalSeconds = 2.2f;
+
+	/** How far to one side of his place a shift goes, degrees round her. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fidget", meta = (ClampMin = "0.0", ClampMax = "60.0"))
+	float ShiftDegrees = 25.f;
+
+	/** How far in from the ring a feint steps, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fidget", meta = (ClampMin = "0.0"))
+	float FeintDepth = 120.f;
+
+	/** In and back out, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fidget", meta = (ClampMin = "0.1"))
+	float FeintSeconds = 0.9f;
+
+	/** The share of moves that are feints, 0..1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fidget", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FeintChance = 0.35f;
+
+	/**
+	 * Runs the clock on by DeltaSeconds. When the wait runs out a move starts: a feint when RollMove is under
+	 * FeintChance, else a shift to the side RollSide picks (under 0.5 left), and the next wait is RollInterval of the
+	 * way from MinIntervalSeconds to MaxIntervalSeconds. Returns the move started this step, or None.
+	 */
+	EHawkeyeRingFidgetMove Advance(float DeltaSeconds, float RollMove, float RollInterval, float RollSide)
+	{
+		const float Step = FMath::Max(DeltaSeconds, 0.f);
+		if (FeintRemaining > 0.f)
+		{
+			const bool bWasIn = IsFeintingIn();
+			FeintRemaining = FMath::Max(0.f, FeintRemaining - Step);
+			bSpotChanged |= bWasIn != IsFeintingIn();
+		}
+		WaitRemaining -= Step;
+		if (WaitRemaining > 0.f || FeintRemaining > 0.f)
+		{
+			return EHawkeyeRingFidgetMove::None;
+		}
+		WaitRemaining = FMath::Lerp(MinIntervalSeconds, FMath::Max(MinIntervalSeconds, MaxIntervalSeconds),
+			FMath::Clamp(RollInterval, 0.f, 1.f));
+		bSpotChanged = true;
+		if (RollMove < FeintChance)
+		{
+			FeintRemaining = FeintSeconds;
+			return EHawkeyeRingFidgetMove::Feint;
+		}
+		SlotOffsetDegrees = RollSide < 0.5f ? -ShiftDegrees : ShiftDegrees;
+		return EHawkeyeRingFidgetMove::Shift;
+	}
+
+	/** Back to his own place, waiting a full MinIntervalSeconds before the next move (his turn came, or a new fight). */
+	void Reset()
+	{
+		SlotOffsetDegrees = 0.f;
+		FeintRemaining = 0.f;
+		WaitRemaining = MinIntervalSeconds;
+		bSpotChanged = true;
+	}
+
+	/** Degrees to add to his place on the ring. */
+	float GetSlotOffsetDegrees() const { return SlotOffsetDegrees; }
+
+	/** In the first half of a feint: he stands FeintDepth inside the ring. */
+	bool IsFeintingIn() const { return FeintRemaining > FeintSeconds * 0.5f; }
+
+	bool IsFeinting() const { return FeintRemaining > 0.f; }
+
+	/** Cm to take off the ring's radius this moment. */
+	float GetRadiusInset() const { return IsFeintingIn() ? FeintDepth : 0.f; }
+
+	/** True once after the spot he walks to changed (a move began, a feint turned back): re-path now. */
+	bool ConsumeSpotChanged()
+	{
+		const bool bChanged = bSpotChanged;
+		bSpotChanged = false;
+		return bChanged;
+	}
+
+private:
+	float WaitRemaining = 1.0f;
+	float FeintRemaining = 0.f;
+	float SlotOffsetDegrees = 0.f;
+	bool bSpotChanged = false;
+};
+
 /**
  * The gunner's burst (claude-docs/gameplay-semantics.md, "gunner"): a TelegraphSeconds wind-up (the
  * pistol raised, the glint on), then ShotsPerBurst shots ShotIntervalSeconds apart. Pure: Advance

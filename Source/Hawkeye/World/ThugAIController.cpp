@@ -218,6 +218,7 @@ void AThugAIController::OnPossess(APawn* InPawn)
 			ThinkTimerHandle, this, &AThugAIController::TickThink, ThinkIntervalSeconds, true);
 	}
 	AimStream.Initialize(GetTypeHash(GetNameSafe(InPawn)));
+	FidgetStream.Initialize(HashCombine(GetTypeHash(GetNameSafe(InPawn)), 0x51D6E7u));
 	UpdateTrackTimer();
 }
 
@@ -1169,7 +1170,7 @@ bool AThugAIController::StartBurst()
 	{
 		return false;
 	}
-	Burst.Start(Token.MinTelegraphSeconds);
+	Burst.Start(ScheduleAttackImpact(FMath::Max(Burst.TelegraphSeconds, Token.MinTelegraphSeconds)));
 	Thug->SetWeaponRaised(true, GetAimPointOn(TargetActor));
 	Thug->SetTelegraphGlint(true);
 	UE_LOG(LogHawkeye, Log, TEXT("%s: raises his pistol at %s from %.0f cm: %.1f s telegraph, then %d shots."),
@@ -1562,8 +1563,8 @@ bool AThugAIController::StartArcherDraw()
 	}
 	// The difficulty sets how long the draw takes (from off her screen, at least the token's minimum); the
 	// bow's own numbers stay as they are.
-	const float DrawSeconds = FMath::Max(UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ArcherDrawSeconds),
-		Token.MinTelegraphSeconds);
+	const float DrawSeconds = ScheduleAttackImpact(FMath::Max(
+		UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ArcherDrawSeconds), Token.MinTelegraphSeconds));
 	Bow->DrawRate = ComputeArcherDrawRate(BowDef->FullDrawSeconds, DrawSeconds);
 	if (!Bow->StartDraw())
 	{
@@ -1846,7 +1847,20 @@ void AThugAIController::WaitOnRing(float DeltaSeconds, float& RepathRemaining)
 	const UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(this);
 	const float Slot = Tokens ? Tokens->GetRingSlotYaw(GetPawn(), TargetActor, MeleeRingSeparationDegrees)
 		: (-GetToTarget()).Rotation().Yaw;
-	CircleTarget(DeltaSeconds, MeleeWaitRingDistance, Slot, RepathRemaining, TEXT("his place on the ring"));
+	// Not parked: a step to one side of his place, or a feint in and back (gameplay-semantics.md, "Attack tokens").
+	const EHawkeyeRingFidgetMove Move =
+		RingFidget.Advance(DeltaSeconds, FidgetStream.FRand(), FidgetStream.FRand(), FidgetStream.FRand());
+	if (Move != EHawkeyeRingFidgetMove::None)
+	{
+		UE_LOG(LogHawkeye, Verbose, TEXT("%s: waiting on the ring, %s."), *GetNameSafe(GetPawn()),
+			Move == EHawkeyeRingFidgetMove::Feint ? TEXT("feints in") : TEXT("shifts along it"));
+	}
+	if (RingFidget.ConsumeSpotChanged())
+	{
+		RepathRemaining = 0.f;
+	}
+	CircleTarget(DeltaSeconds, MeleeWaitRingDistance - RingFidget.GetRadiusInset(), Slot + RingFidget.GetSlotOffsetDegrees(),
+		RepathRemaining, RingFidget.IsFeintingIn() ? TEXT("a feint in") : TEXT("his place on the ring"));
 }
 
 bool AThugAIController::StartSwing(const FHawkeyeTokenGrant& Token, float Distance)
@@ -1857,9 +1871,11 @@ bool AThugAIController::StartSwing(const FHawkeyeTokenGrant& Token, float Distan
 	{
 		return false;
 	}
-	// Granted from off her screen, the wind-up is never shorter than the warning it has to give.
+	// Granted from off her screen, the wind-up is never shorter than the warning it has to give; and it lands clear
+	// of any other blow due on her (gameplay-semantics.md, "Attack tokens").
 	FHawkeyeMeleeAttack Attack = ScaleAttackForDifficulty(Thug->GetMeleeAttack(SwingsStarted));
-	Attack.WindupSeconds = FMath::Max(Attack.WindupSeconds, Token.MinTelegraphSeconds);
+	Attack.WindupSeconds = ScheduleAttackImpact(FMath::Max(Attack.WindupSeconds, Token.MinTelegraphSeconds));
+	RingFidget.Reset();
 	UE_LOG(LogHawkeye, Log, TEXT("%s: telegraphs a %s swing at %s from %.0f cm (%.1f s wind-up)."), *Thug->GetName(),
 		*Attack.Name.ToString(), *GetNameSafe(TargetActor), Distance, Attack.WindupSeconds);
 	const bool bStarted = Melee->StartAttack(Attack);
@@ -1871,6 +1887,12 @@ FHawkeyeTokenGrant AThugAIController::RequestAttackToken(EHawkeyeAttackKind Kind
 {
 	UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(this);
 	return Tokens ? Tokens->RequestToken(GetPawn(), TargetActor, Kind, bReady) : FHawkeyeTokenGrant();
+}
+
+float AThugAIController::ScheduleAttackImpact(float DesiredDelaySeconds)
+{
+	UCombatTokenSubsystem* Tokens = UCombatTokenSubsystem::Get(this);
+	return Tokens ? Tokens->ScheduleImpact(GetPawn(), TargetActor, DesiredDelaySeconds) : DesiredDelaySeconds;
 }
 
 void AThugAIController::ReleaseAttackToken()
