@@ -336,7 +336,52 @@ parents rigidly. Nothing simulates, so a zip, a vault or a fast-travel teleport 
 
 **Swapping the look** (a licensed Kate later): put the new skeletal mesh in, point `create_kate_look.py`'s
 `SPARROW_MESH`, chain map, material slots and `HIDDEN_BONES` at it (or set `BP_Kate.BodyLook` by hand for a test),
-and run the script. Nothing in C++ names Sparrow. Clint and the thugs have no look.
+and run the script. Nothing in C++ names Sparrow.
+
+## Bodies: the thugs, the heavy, Clint and Lucky (built 2026-11-11)
+
+The same look mechanism, on Quaternius's CC0 packs instead of Paragon. `Tools/Editor/import_bodies.py` (a
+`create_all.py` step, after `create_kate_look`) imports from the packs outside the repo
+(`HAWKEYE_ASSETS_ROOT`, `Tools\local.json` `assetsRoot`, else `C:\Users\camer\code\hawkeye-assets`; read as data, only
+handed to the engine's importer) and builds everything under git-ignored folders:
+
+| Asset | What |
+|-------|------|
+| `/Game/Characters/Bodies/SK_Body_Male`, `SKEL_Body_Male` | Universal Base Characters' `Superhero_Male_FullBody.gltf` through Interchange (no materials, no textures, no physics asset). 181 cm, cm scale, faces +Y with arms along X like the UE mannequins, so no import rotation or scale was needed. Its 65 bones carry the UE mannequin's names (`root`, `pelvis`, `spine_01..03`, `neck_01`, `Head`, `clavicle`..`hand`, three-joint fingers plus `_04_leaf`, `thigh`..`ball`); no `ik_` or twist bones. The Standard pack has no regular-proportion male, only this Superhero one. |
+| `T_Body_Male_D/_N/_R`, `T_Body_Eye_D`, `T_Body_Hair_D` | from the pack's `Textures` folder (the glTF names `_png.png` files the pack does not ship) |
+| `M_BodyLook`, `MI_Body_Thug/_Heavy/_Clint/_Eyes/_Brows` | skin from the texture; clothes painted from the bind pose (`PreSkinnedPosition`/`Normal`, like the thugs' tracksuit): top, legs, belt, stripes, a vest, a forearm guard, a chest chevron, boots, painted short hair and stubble, an optional ski mask, each a parameter. Cloth takes no normal map, little specular and high roughness, so the sculpted muscles read as clothing. `HitFlash` and `Telegraph` are the thug's. |
+| `IK_Body_Male` | `create_kate_look.ensure_rig` on the body: the manifest's `ue4` chains (`head` matches `Head`; FNames ignore case), a goal and limb solver per limb |
+| `/Game/Characters/Thug/Look/RTG_Thug_To_Body`, `ABP_Thug_Body` | `IK_Thug_Mannequin` (UE4 mannequin) to the body; hands blended fully onto the driver's |
+| `/Game/Characters/Clint/Look/RTG_Clint_To_Body`, `ABP_Clint_Body` | `IK_Kate_UEFN` (UEFN mannequin) to the body; the same |
+| `/Game/Characters/Lucky/SK_Lucky`, `SKEL_Lucky`, `A_Lucky_Idle`, `A_Lucky_Jump`, `M_Lucky_Coat`, `MI_Lucky_Golden*` | a **stand-in**: the animals pack's Pug (Lucky is a golden retriever; no retriever mesh is on disk), imported at 0.12 (it comes in 264 cm tall), tinted golden. `LUCKY_SOURCE` in the script is the one line to change for a real retriever. No actor uses it: there is no Lucky in the game yet. |
+
+**The skeleton question.** No mesh is put on another skeleton. The thugs keep the UE4 mannequin and Clint the UEFN
+mannequin as their drivers (`GetMesh()`): every clip, montage, notify, socket, the bow, the bat and the shield, hit
+contact's sweeps against the physics bodies by bone name, the hit reaction's motors and the knockout ragdoll stay on
+the driver exactly as before. The body is a `BodyLook` (`AThugCharacter::BodyLook`, `AHawkeyeCharacter::BodyLook`)
+posed from the driver by Retarget Pose From Mesh. The body mesh has no physics asset, and that is the switch:
+`HawkeyeBodyLook::Apply` ticks a look without bodies in `TG_PostPhysics`, after the driver's physics is blended into
+its pose, so the body follows a hit reaction or a ragdoll (measured: the body's pelvis 2 cm from the ragdoll's); and
+`UHitReactionComponent::GetBodyMesh` reacts on the driver when the look has no physics asset (Kate's Sparrow has one
+and still reacts herself). `AThugCharacter::GetBodyMesh()` is what is drawn; his hit-flash and telegraph material
+instances are made on it.
+
+Who wears what: `BP_Thug` (fists, bat, gunner) the dark red tracksuit; `BP_Thug_Heavy` the tracksuit, vest, ski mask and
+boots; `BP_Clint` black. Every other child of `BP_Thug` (the archer, elves, reindeer, candy cane, Santa, Tomas) is
+written an empty look by the script, so it keeps its own mannequin colours rather than inheriting BP_Thug's.
+
+**Fallback.** Without the packs the script logs one `skipped` line. The Blueprints keep their soft references;
+`HawkeyeBodyLook::Apply` finds the packages missing, logs one Display line and the mannequin is drawn as before.
+`verify_content.py` (`check_bodies`) says which each wearer shows and fails only when a body that is on disk is
+incomplete. `Hawkeye.Screenshot.Bodies` writes `Saved/Screenshots/Bodies/body_thug, body_heavy, body_clint,
+body_lucky, body_thug_ragdoll.png` and checks the body is not exploded, T-posed, turned or off the driver's head, and
+follows the ragdoll.
+
+**Not done.** The get-up clip: UAL2's `LayToIdle` (a get-up from lying down) and `Hit_Knockback` are on the same rig
+and would retarget with the `ue4` chain map, but `import_combat_anims.py` has no glTF source type; adding one, a
+manifest `GetUp` line for the thugs and checking the Mixamo knockdown's last pose meets the get-up's first is the work
+(the thug's `GetUp` role and `PlayRole` path already exist). Hair meshes from the pack are not used (hair is painted);
+arrows stuck in a thug sit on the hidden driver's surface, a few cm off the body's.
 
 ## Known limits
 

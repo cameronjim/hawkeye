@@ -1617,6 +1617,11 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
 - The look's hands are the driver's hands (place and turn), so the bow, the string hand and a hang's grip land in
   them; the rest of her keeps the look's own proportions.
 - A look whose mesh or AnimBP is not on disk is not applied: one Display line, and the driver is drawn as before.
+- Thugs (`AThugCharacter::BodyLook`), the heavy and Clint wear one too (2026-11-11, Quaternius's body, animation.md,
+  "Bodies"). A look mesh with no physics asset never simulates: it ticks after physics and follows the driver, whose
+  bodies take the hit reaction (`UHitReactionComponent` reacts on the driver unless the look has its own physics
+  asset) and the ragdoll. Hit contact always sweeps the driver's bodies. A thug's hit flash and telegraph are on the
+  mesh that is drawn.
 
 ## Bow aim assist (built 2026-09-28, from playtest note "aim assist for the bows")
 - One setting, Aim assist: Off / Normal / Strong (default Normal), a choice row under Controls in

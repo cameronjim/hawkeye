@@ -458,8 +458,8 @@ in `WBP_*`; behaviour in the C++ parent.
   motion-matching AnimBP owns the body. The character writes its gait, crouch and aim into the sample's
   `CharacterInputState` every update (`SyncGaspInputState`). `HawkeyeLocomotion` (`LocomotionAnim`) is the
   idle and walk clip switch for a mesh with no AnimBP (thugs). `FHawkeyeBodyLook` (`BodyLook`) draws a
-  different skeletal mesh over the driver mesh (Kate: Paragon's Sparrow over the UEFN mannequin) through a
-  Retarget Pose From Mesh AnimBP. Setup: `animation.md`.
+  different skeletal mesh over the driver mesh (Kate: Paragon's Sparrow over the UEFN mannequin; thugs, the heavy
+  and Clint: Quaternius's body over their mannequins) through a Retarget Pose From Mesh AnimBP. Setup: `animation.md`.
 - `UHawkeyeMovementComponent` (`Player/HawkeyeMovementComponent`): the character's
   CharacterMovementComponent (`AHawkeyeCharacter` swaps it in with `SetDefaultSubobjectClass`, so
   BP_Kate and BP_Clint keep their tuned values). It adds custom movement modes

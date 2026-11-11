@@ -201,6 +201,24 @@ republished, and 2 GB is past the free LFS quota. Consequences:
 - The full `Hawkeye.Screenshot` group has hung once mid-run; run `Hawkeye.Screenshot.Kate`
   and the others separately.
 
+## Quaternius packs (not in git)
+
+The thugs', the heavy's and Clint's bodies and Lucky's stand-in mesh come from three CC0 Quaternius packs kept outside
+the repo, by default in `C:\Users\camer\code\hawkeye-assets` (`Resolve-HawkeyeAssetsRoot`: env `HAWKEYE_ASSETS_ROOT`,
+then `Tools\local.json` key `assetsRoot`, then that path; `create-content.ps1` hands it to the editor as
+`HAWKEYE_ASSETS_ROOT`):
+
+- `quaternius-base-characters\Universal Base Characters[Standard]\` (the male glTF and its `Textures`)
+- `quaternius-animals\FBX\Pug.fbx` (Lucky's stand-in)
+- `quaternius-animation-library-2\` (not imported yet; see `animation.md`, "Bodies")
+
+`Tools/Editor/import_bodies.py` (a step of `create-content.ps1`) imports them through Interchange and builds the
+materials, retargets and the Blueprints' `BodyLook`. Nothing in the packs is executed; treat them as data. Everything it
+makes (`Content/Characters/Bodies/`, `.../Thug/Look/`, `.../Clint/Look/`, `.../Lucky/`) is git-ignored: CC0 would allow
+committing it, but the retargets depend on rigs that are git-ignored too, and LFS quota is saved. A clone without the
+packs logs one `skipped` line and keeps the mannequins; `verify_content.py` reports which is in use. An import is
+skipped when the asset's build tag carries the source file's size and time, so a second run saves nothing.
+
 ## Combat clips (not in git)
 
 Mixamo FBX downloads go in `Tools/Data/Anims/Mixamo/`; Paragon Sparrow is read from the Game

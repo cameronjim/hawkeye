@@ -37,6 +37,10 @@ Epic Launcher, Samples tab). Its assets are copied into `Content/` by
 `Tools\create-content.ps1` and are git-ignored; `BP_Kate` won't load without them. See
 `claude-docs/infrastructure.md`.
 
+Quaternius's CC0 packs (Universal Base Characters, LowPoly Animated Animals, Universal Animation Library 2) live in
+`C:\Users\camer\code\hawkeye-assets` (or `HAWKEYE_ASSETS_ROOT`); `Tools\create-content.ps1` imports the thugs', Clint's
+and Lucky's bodies from them, git-ignored. Without them the mannequins are drawn and nothing fails.
+
 ## Toolchain
 
 - Engine: `C:\Program Files\Epic Games\UE_5.8`

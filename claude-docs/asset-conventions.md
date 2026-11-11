@@ -52,6 +52,11 @@ Content/
   Characters/Kate/Look/ Kate's body look, all built by create_kate_look.py from Paragon's Sparrow and
                         git-ignored: IK_Kate_Sparrow, RTG_Kate_To_Sparrow, ABP_Kate_Sparrow,
                         MI_Kate_Sparrow_<Part>. Never edit Paragon's own assets; tint with an MI here.
+  Characters/Bodies/    The Quaternius body (SK_Body_Male, SKEL_, T_Body_*, M_BodyLook, MI_Body_<Who>, IK_Body_Male),
+                        imported and built by import_bodies.py; git-ignored
+  Characters/Thug/Look/, Characters/Clint/Look/
+                        RTG_<Who>_To_Body, ABP_<Who>_Body (git-ignored)
+  Characters/Lucky/     SK_Lucky and its A_Lucky_ clips, M_Lucky_Coat, MI_Lucky_Golden* (a stand-in pug; git-ignored)
   Environment/          Final art, one subfolder per area
   Characters/           Kate/, Thug/, later Clint/, Bosses/
   Materials/            M_ master materials, MI_ instances, MF_ functions
@@ -140,7 +145,10 @@ animated mesh. Swapping Kate's look is a data change: a new mesh plus the assets
 it (its constants name the mesh, the chain map, the tinted slots and the hidden bones), never a new class. Content
 from a pack we may not redistribute (Paragon) stays git-ignored; only the soft references on the Blueprint are
 committed, and a clone without the pack falls back to the animated mesh. Details: `animation.md`, "Kate's
-visible mesh".
+visible mesh". The thugs (`AThugCharacter::BodyLook`), the heavy and Clint wear Quaternius's CC0 body the same way
+(`import_bodies.py`, `animation.md`, "Bodies"). CC0 content could be committed; it is git-ignored because its
+retargets hang off rigs that are git-ignored too, and it is re-imported from the packs outside the repo. A look mesh
+with no physics asset leaves hit reactions and the ragdoll to the driver and follows them.
 
 ## Blueprint hygiene
 - Parent class is the C++ class when one exists. `BP_Guard` derives `AGuardCharacter`,
