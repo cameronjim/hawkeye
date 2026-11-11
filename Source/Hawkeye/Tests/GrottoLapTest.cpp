@@ -566,7 +566,13 @@ namespace HawkeyeGrottoLap
 			return EStep::Running;
 		}
 		const float Flat = FVector::Dist2D(Target->GetActorLocation(), Kate->GetActorLocation());
-		if (Flat > 700.f && Bow && Kate->GetInventoryComponent()->GetArrowCount(SlotStandard) > 0)
+		// A shot only with a line to him: an elf in the next room is walked to, not shot at through the wall (once the
+		// group fight got shorter, the hall's elf could still be calm next door when the stockroom's were down).
+		FCollisionQueryParams LineParams(SCENE_QUERY_STAT(GrottoLapShot), false, Kate);
+		LineParams.AddIgnoredActor(Target);
+		const bool bLine = !World->LineTraceTestByChannel(Kate->GetActorLocation() + FVector(0.f, 0.f, 60.f),
+			Target->GetActorLocation() + FVector(0.f, 0.f, 30.f), ECC_Visibility, LineParams);
+		if (Flat > 700.f && bLine && Bow && Kate->GetInventoryComponent()->GetArrowCount(SlotStandard) > 0)
 		{
 			StopMoving(PC);
 			Kate->GetInventoryComponent()->SelectArrowSlot(SlotStandard);
