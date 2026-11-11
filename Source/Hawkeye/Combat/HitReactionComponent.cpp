@@ -22,7 +22,10 @@ USkeletalMeshComponent* UHitReactionComponent::GetBodyMesh() const
 {
 	if (const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(GetOwner()))
 	{
-		return Hawkeye->GetBodyMesh();
+		// A look with bodies of its own (Kate's Sparrow) reacts itself; one without (Clint's) is posed from the
+		// driver after physics, so the driver's bodies react and the look shows it.
+		USkeletalMeshComponent* Seen = Hawkeye->GetBodyMesh();
+		return Seen && Seen->GetPhysicsAsset() ? Seen : Hawkeye->GetMesh();
 	}
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	return Character ? Character->GetMesh() : nullptr;

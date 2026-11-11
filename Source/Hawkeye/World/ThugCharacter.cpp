@@ -234,6 +234,8 @@ AThugCharacter::AThugCharacter()
 void AThugCharacter::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
+	// Before BeginPlay, so the body materials are made on the mesh people see.
+	ApplyBodyLook();
 
 	// Bound here rather than in BeginPlay: a thug killed the same frame he spawns still has to
 	// drop and go limp, and a world that never begins play (tests) still wires the death path.
@@ -404,9 +406,25 @@ void AThugCharacter::RefreshHeldWeapon()
 	HeldWeaponComponent->SetVisibility(bShowBat);
 }
 
+USkeletalMeshComponent* AThugCharacter::ApplyBodyLook()
+{
+	if (LookMesh || !BodyLook.IsSet() || !GetMesh())
+	{
+		return LookMesh;
+	}
+	LookMesh = HawkeyeBodyLook::Apply(*GetMesh(), BodyLook);
+	return LookMesh;
+}
+
+USkeletalMeshComponent* AThugCharacter::GetBodyMesh() const
+{
+	return LookMesh ? LookMesh.Get() : GetMesh();
+}
+
 void AThugCharacter::CreateBodyMaterials()
 {
-	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	// The hit flash and the telegraph show on what is drawn: the look when he has one.
+	USkeletalMeshComponent* SkeletalMesh = GetBodyMesh();
 	if (!SkeletalMesh || !SkeletalMesh->GetSkeletalMeshAsset())
 	{
 		return;

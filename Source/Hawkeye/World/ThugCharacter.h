@@ -6,6 +6,7 @@
 #include "Combat/Takedownable.h"
 #include "GameFramework/Character.h"
 #include "ISpudObject.h"
+#include "Player/BodyLook.h"
 #include "World/ThugTypes.h"
 #include "ThugCharacter.generated.h"
 
@@ -770,6 +771,28 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug|Readability")
 	bool IsGroundThudPending() const { return GroundThudRemaining > 0.f; }
 
+	// --- Body look ------------------------------------------------------------------------------
+
+	/**
+	 * What he looks like over the driver mesh (claude-docs/animation.md, "Bodies"). Empty: the mannequin is what is
+	 * drawn. BP_Thug's and BP_Thug_Heavy's are Quaternius's base male, written by Tools/Editor/import_bodies.py; a clone
+	 * without the pack keeps the mannequin. The driver (GetMesh) keeps every system: the clips, the bodies hit contact
+	 * sweeps and the hit reaction and ragdoll simulate, the sockets the bat, pistol, shield and headwear ride on.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Look")
+	FHawkeyeBodyLook BodyLook;
+
+	/** The mesh people see: the look's while BodyLook is on, else GetMesh(). His materials (hit flash, telegraph) are on it. */
+	UFUNCTION(BlueprintPure, Category = "Thug|Look")
+	USkeletalMeshComponent* GetBodyMesh() const;
+
+	/** True when a BodyLook mesh is drawn over a hidden driver. */
+	UFUNCTION(BlueprintPure, Category = "Thug|Look")
+	bool HasBodyLook() const { return LookMesh != nullptr; }
+
+	/** Puts BodyLook on (once; PostInitializeComponents calls it). The look's mesh, or null. Public for tests. */
+	USkeletalMeshComponent* ApplyBodyLook();
+
 protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
@@ -904,6 +927,10 @@ protected:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> BodyMaterials;
+
+	/** The look's mesh while BodyLook is on; null otherwise. */
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> LookMesh;
 
 	/** Whichever of IdleAnim / WalkAnim / RunAnim is playing, so Tick only re-plays on a real change. */
 	UPROPERTY(Transient)

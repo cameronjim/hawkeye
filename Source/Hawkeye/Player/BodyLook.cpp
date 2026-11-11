@@ -71,8 +71,8 @@ namespace HawkeyeBodyLook
 			{
 				UE_LOG(LogHawkeye, Display,
 					TEXT("%s: body look %s (AnimBP %s) is not on disk; the %s mesh stays visible. "
-						 "Install Paragon: Sparrow and run Tools\\import-anims.ps1 for the intended look (README, "
-						 "Setup)."),
+						 "Install its pack and run Tools\\create-content.ps1 (Tools\\import-anims.ps1 for Paragon) for "
+						 "the intended look (CLAUDE.md, one-time setup)."),
 					*GetNameSafe(Owner), *Look.Mesh.ToString(), *Look.AnimClass.ToString(),
 					*GetNameSafe(Driver.GetSkeletalMeshAsset()));
 			}
@@ -94,6 +94,13 @@ namespace HawkeyeBodyLook
 		Visible->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 		// Retarget Pose From Mesh reads the driver's finished pose, so the driver ticks first.
 		Visible->AddTickPrerequisiteComponent(&Driver);
+		if (!Mesh->GetPhysicsAsset())
+		{
+			// A look with no bodies of its own never simulates: the driver's bodies take the hit reactions and the
+			// ragdoll, and the driver's physics is blended into its pose after the physics step. Ticking after it
+			// is what makes the look follow a ragdoll rather than the clip under it.
+			Visible->SetTickGroup(TG_PostPhysics);
+		}
 		ApplyMaterials(*Visible, Look);
 		Visible->RegisterComponent();
 		Owner->AddInstanceComponent(Visible);

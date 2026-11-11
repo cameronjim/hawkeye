@@ -48,7 +48,9 @@ struct FHawkeyeBodyLook
 /**
  * Applies an FHawkeyeBodyLook. The driver keeps animating, posing and colliding (every system reads it)
  * but is not drawn and casts no shadow; the look mesh is attached to it at the identity, inherits its
- * transform (scale, the roll's tumble), ticks after it and has no collision of its own.
+ * transform (scale, the roll's tumble), ticks after it and has no collision of its own. A look mesh with no
+ * physics asset (the Quaternius bodies) ticks after the physics step, so it follows the driver's hit reactions
+ * and ragdoll, which then run on the driver (UHitReactionComponent::GetBodyMesh).
  */
 namespace HawkeyeBodyLook
 {

@@ -2,10 +2,12 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/AutomationTest.h"
 #include "Player/BodyLook.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Tests/HawkeyeTestUtils.h"
+#include "World/ThugCharacter.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -34,6 +36,24 @@ namespace HawkeyeBodyLookTest
 			Kate->FinishSpawning(Where);
 		}
 		return Kate;
+	}
+
+	static AThugCharacter* SpawnThug(const FHawkeyeTestWorld& TestWorld, const FHawkeyeBodyLook& Look)
+	{
+		UWorld* World = TestWorld.Get();
+		if (!World)
+		{
+			return nullptr;
+		}
+		const FTransform Where(FRotator::ZeroRotator, FVector(0.f, 0.f, 100.f));
+		AThugCharacter* Thug = World->SpawnActorDeferred<AThugCharacter>(
+			AThugCharacter::StaticClass(), Where, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Thug)
+		{
+			Thug->BodyLook = Look;
+			Thug->FinishSpawning(Where);
+		}
+		return Thug;
 	}
 }
 
@@ -128,6 +148,67 @@ bool FHawkeyeBodyLookHidesDriver::RunTest(const FString& Parameters)
 		Driver->VisibilityBasedAnimTickOption == EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones);
 	TestTrue(TEXT("The driver still collides"), Driver->GetCollisionEnabled() != ECollisionEnabled::NoCollision);
 	TestTrue(TEXT("Applying again changes nothing"), Kate->ApplyBodyLook() == Seen);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyLookThugMissingKeepsDriver, "Hawkeye.BodyLook.ThugWithoutContentKeepsTheDriver",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeBodyLookThugMissingKeepsDriver::RunTest(const FString& Parameters)
+{
+	// A clone without the Quaternius packs: BP_Thug names the body, the packages are not on disk.
+	FHawkeyeBodyLook Look;
+	Look.Mesh = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TEXT("/Game/NoSuchLook/SK_Missing.SK_Missing")));
+	Look.AnimClass = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(TEXT("/Game/NoSuchLook/ABP_Missing.ABP_Missing_C")));
+	FHawkeyeTestWorld TestWorld;
+	AThugCharacter* Thug = HawkeyeBodyLookTest::SpawnThug(TestWorld, Look);
+	if (!TestNotNull(TEXT("Spawned"), Thug) || !TestNotNull(TEXT("Has a mesh"), Thug->GetMesh()))
+	{
+		return false;
+	}
+	TestFalse(TEXT("No look put on"), Thug->HasBodyLook());
+	TestTrue(TEXT("The body people see is the driver"), Thug->GetBodyMesh() == Thug->GetMesh());
+	TestTrue(TEXT("The driver is still drawn"), Thug->GetMesh()->IsVisible());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyLookThugLookWearsHisMaterials, "Hawkeye.BodyLook.ThugLookWearsHisFlashMaterials",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeBodyLookThugLookWearsHisMaterials::RunTest(const FString& Parameters)
+{
+	USkeletalMesh* LookMesh =
+		LoadObject<USkeletalMesh>(nullptr, HawkeyeBodyLookTest::LookMeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!LookMesh)
+	{
+		AddInfo(TEXT("No UE4 mannequin in this clone; the thug's look is not checked."));
+		return true;
+	}
+	FHawkeyeBodyLook Look;
+	Look.Mesh = LookMesh;
+	Look.AnimClass = UAnimInstance::StaticClass();
+	FHawkeyeTestWorld TestWorld;
+	AThugCharacter* Thug = HawkeyeBodyLookTest::SpawnThug(TestWorld, Look);
+	if (!TestNotNull(TEXT("Spawned"), Thug) || !TestNotNull(TEXT("Has a mesh"), Thug->GetMesh()))
+	{
+		return false;
+	}
+	USkeletalMeshComponent* Driver = Thug->GetMesh();
+	USkeletalMeshComponent* Seen = Thug->GetBodyMesh();
+	if (!TestTrue(TEXT("The look is on"), Thug->HasBodyLook()) || !TestNotNull(TEXT("The body people see"), Seen))
+	{
+		return false;
+	}
+	TestTrue(TEXT("It is not the driver"), Seen != Driver);
+	TestTrue(TEXT("It is under the driver"), Seen->GetAttachParent() == Driver);
+	TestFalse(TEXT("The driver is not drawn"), Driver->IsVisible());
+	TestTrue(TEXT("The driver still collides"), Driver->GetCollisionEnabled() != ECollisionEnabled::NoCollision);
+	// BeginPlay made his per-thug materials, the hit flash and the telegraph, on what is drawn.
+	TestTrue(TEXT("The look wears a dynamic instance"), Cast<UMaterialInstanceDynamic>(Seen->GetMaterial(0)) != nullptr);
+	// A look with bodies of its own (this mannequin) ticks with the driver, not after physics.
+	TestEqual(TEXT("Ticks before physics"), static_cast<int32>(Seen->PrimaryComponentTick.TickGroup),
+		static_cast<int32>(TG_PrePhysics));
+	TestTrue(TEXT("Applying again changes nothing"), Thug->ApplyBodyLook() == Seen);
 	return true;
 }
 
