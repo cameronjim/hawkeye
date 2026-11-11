@@ -79,7 +79,8 @@ error, never a silent fallback. `.\Tools\test-env.ps1` checks the lookup without
 
 | Path | What |
 |------|------|
-| `Source/Hawkeye/` | C++. `Player` (movement, parkour, grapple), `Combat`, `World` (thugs, city), `Mission`, `UI`, `Tests` |
+| `Source/Hawkeye/` | C++, the runtime module. `Player` (movement, parkour, grapple), `Combat`, `World` (thugs, city), `Mission`, `Traversal` (grapple reach and the audit), `UI`, `Tests` |
+| `Source/HawkeyeEditor/` | C++, the editor-only module: the Traversal Debugger tab and the headless traversal audit commandlet |
 | `Tools/Editor/` | Python that generates the city and every asset |
 | `Tools/` | PowerShell wrappers for build, test, content, packaging and measurement |
 | `Content/` | Generated assets (LFS) |

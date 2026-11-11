@@ -21,8 +21,9 @@ rule is here.
 | Path | What lives there |
 |------|------------------|
 | `Hawkeye.uproject` | Project file. EngineAssociation must match the installed engine (5.8). |
-| `Source/Hawkeye/` | All C++. One module. Subfolders: `Mission`, `Flashback`, `Combat`, `Player`, plus GameMode and PlayerController at the root. |
+| `Source/Hawkeye/` | The runtime module, `Hawkeye`: every system the game ships. Subfolders: `Mission`, `Flashback`, `Combat`, `Player`, `Traversal`, and more, plus GameMode and PlayerController at the root. |
 | `Source/Hawkeye/Tests/` | Automation tests (created in stage 2). |
+| `Source/HawkeyeEditor/` | The editor-only module, `HawkeyeEditor`: the Traversal Debugger tab and the `HawkeyeTraversalAudit` commandlet (`claude-docs/tools-traversal-debugger.md`). Depends on `Hawkeye`, never the reverse; not in the game target. Its tests are in `Tests/`. |
 | `Config/` | `DefaultEngine.ini`, `DefaultGame.ini`, `DefaultInput.ini`. Change deliberately, note why in the commit. |
 | `Content/` | Unreal assets (binary, LFS-tracked). Folder layout in `claude-docs/asset-conventions.md`. |
 | `docs/` | Design doc, research, stage plans, per-chapter one-pagers (`docs/chapters/`), playtest notes, the primer, and `archive/` for the old Punisher build. Human-facing. |
