@@ -503,7 +503,8 @@ The second module, `HawkeyeEditor` (Editor, Default loading phase), and the runt
 `tools-traversal-debugger.md`.
 - `FGrappleReachQuery` (runtime, pure): the grapple's reach rules with no world: range, cone, screen, the predicted
   lens, the zip's launch and release point, a verdict per anchor from a standing point (`EGrappleReachVerdict`), roof
-  spots, neighbours, chains, sidewalk sampling, roofs the street cannot reach. The world comes in through
+  spots, neighbours, chains, sidewalk sampling, street walls (the generator's street-facing rule), roofs the street
+  cannot reach. The world comes in through
   `FGrappleReachOracle`. `GrappleReachDefaults` holds the grapple's numbers; `UGrappleComponent`'s defaults come from
   it and the component calls the query for the shared math (`ChoosePick`, `IsOnScreen`, the release point).
 - `FGrappleReachWorld` (runtime): a profile from a pawn, a scene either from `DA_EastVillage_CityProps`, the map data and
@@ -533,7 +534,8 @@ Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
   downloads). It is the one script that touches `unreal`; the placement rules are plain Python in
   modules it re-exports so they run and test under CPython: `_geo` and `_geomutil` (projection and 2D
   geometry), `_district` (the records, shared dimensions, street layout, facade style, lamps),
-  `_reach` (the grapple's reach model and anchor placement), `_ledges` (one slab per roof edge),
+  `_reach` (the grapple's reach model and anchor placement, matched to the traversal audit's rules and sidewalk
+  spots; it also drops a fire escape that would leave the street no anchor), `_ledges` (one slab per roof edge),
   `_fire_escapes`. `_chase.py` plans the chase from the same records with the same reach model; `_arena.py` picks
   and lays out the boss's roof the same way (`create_boss.py`); `_site.py` picks chapter 2's spot on Avenue B and lays out
   its toy drive and the courier (`create_site.py`); `_grotto.py` picks chapter 3's grotto (a street door on a

@@ -218,6 +218,16 @@ unless he is a ragdoll) and `knockout_settled.png` (once asleep: fails past 400 
 45 cm up, or no settle within 6 s). Ragdoll captures hold time at the crawl (0.02), never the 0.0001 stop: a near-zero
 step blew the solver up and threw the body over the roofs.
 
+## 2i. The traversal audit (a gate since 2026-11-11)
+
+`.\Tools\traversal-audit.ps1` (the `HawkeyeTraversalAudit` commandlet, headless editor, about 30 to 70 s) runs the grapple
+audit on the district with the game's own targeting, sight and zip sweeps and must exit 0: every street-facing roof (a wall
+on a street in the open and a sidewalk spot in range) has an anchor some sidewalk spot reaches, and chapter 1's roofs chain.
+Run it after any change to the generator, the anchors, the fire escapes, the dressing or the grapple's rules, and before a
+push that regenerates the city. Roofs it does not fail on (no sidewalk spot in range; inside the block or behind buildings) are
+listed in its JSON's `roofs_off_the_street` with how they are reached instead. It needs the engine, so it is not in CI.
+`-Probe` checks the generator's reach model against the game pair by pair (`tools-traversal-debugger.md`).
+
 ## 3. Playtest checklist (human)
 
 Before any commit that touches player feel, AI, or a level, play through this in
@@ -291,4 +301,5 @@ via `Tools
 un-tests.ps1`). Jobs: `python-tests` (unittest discovery over
 `Tools/Editor/test_*.py`), `osm-determinism` (re-parse the committed Overpass data, fail if
 the parsed JSON changes), `lint-python` (ruff, rules in `ruff.toml`), and `format-cpp`
-(clang-format on C++ files changed under `Source/` only). Checkouts skip LFS.
+(clang-format on C++ files changed under `Source/` only). Checkouts skip LFS. The traversal audit (2i)
+needs the engine and the LFS content, so it runs locally, not in CI.

@@ -254,7 +254,10 @@ gone from the code, and so from this file. Every section below describes code th
   saved actors.
 - Fire escapes (built 2026-09-26): every building 10 to 30 m tall gets one zig-zag
   escape on its longest road-facing edge (487 of 494 qualify; the rest would hit a
-  neighbour, a lamp, or another escape). Landings 240 x 90 cm with 90 cm rails at 330 cm
+  neighbour, a lamp, or another escape). Since 2026-11-11 a building whose escape would leave the
+  street no anchor to reach (by the reach model: its street wall is all escape, the far sidewalk is
+  out of range, and with the escape gone a facade anchor is reached) gets none: 4 tenements
+  (`_reach.escapes_blocking_street`), 483 escapes, 1,992 landings. Landings 240 x 90 cm with 90 cm rails at 330 cm
   and every 330 cm above, the top one at least 180 cm under the roof, ladders alternating
   between them. The outer rail carries a traversable ledge so mantle and vault work onto
   it. 2,010 landings, stored in the props data asset and spawned nearest-first. Black
@@ -422,14 +425,18 @@ gone from the code, and so from this file. Every section below describes code th
   each other over no third building as high as the lower roof) whose roof spots reach none of its anchors
   yet. Nothing is removed: the parapet anchors keep their indices. By the generator's reach model
   (`GrappleReach`: the grapple's range, cone, hip camera, sight and clear zip over the building prisms,
-  fire escapes and lamps), verify_city checks that every anchored roof with an open wall on a street and a
-  sidewalk within range has an anchor reachable from the sidewalk, and that the chapter 1 roofs chain:
+  fire escapes and lamps; since 2026-11-11 the zip is Kate's capsule with the game's start and anchor
+  supports, and the sidewalk spots are the traversal audit's own), verify_city checks that every anchored
+  roof with an open wall on a street and a sidewalk within range has an anchor reachable from the sidewalk,
+  and the traversal audit checks the same with the game's traces (it must exit 0), and that the chapter 1 roofs chain:
   reach_roof reachable from the street, cross_block from reach_roof on the roofs, find_arrow from the street
   and from cross_block (the street between them is 24.6 m facade to facade, so the model's chain goes down
   a fire escape and up; the game's own traces in the audit also find a roof route). Geometry the guarantee
-  cannot cover is listed, not failed: 23 roofs too tall for 25 m from the pavement or with no sidewalk within
-  range, 5 inside their blocks, 1 whose 4 m street wall its fire escape fills. The game's traces (the audit)
-  find 5 more the model passes (views past neighbouring fire escapes and walls the model is kinder about).
+  cannot cover is listed, not failed: 21 roofs too tall for 25 m from the pavement or with no sidewalk within
+  range, 7 with every wall inside the block or behind a building as tall (all but the 65.5 m tower are
+  reached from other roofs). Until 2026-11-11 the audit failed 14 roofs: 5 the model passed, 1 it excused
+  (its fire escape filled its 4 m street wall) and 8 it never counted street-facing; see
+  `tools-traversal-debugger.md`.
   Across streets and gaps, 88% of the roof pairs in range reach each other by the model, 85% by the audit
   (the rest: a lower roof below her own parapet's line of sight, or a third building in the view); about
   700 more pairs are farther apart than the grapple reaches.

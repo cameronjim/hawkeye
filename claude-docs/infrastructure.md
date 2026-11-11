@@ -277,8 +277,12 @@ Facts that matter:
 - Since 2026-11-10 the audit's code is `FGrappleAudit` (`Source/Hawkeye/Traversal`), and the same audit runs with no game
   world: `.\Tools\traversal-audit.ps1` (the `HawkeyeTraversalAudit` commandlet, `-nullrhi`, about 40 s) writes
   `Saved/Automation/traversal_audit.json` and fails on a street-facing roof nothing reaches. On the district it matches
-  the test anchor for anchor (2457 anchors, 24420 reachable pairs, 92 / 34 roofs, 519 pairs); 14 street-facing roofs
-  have no allow-file entry yet, so it exits 1. Details: `tools-traversal-debugger.md`.
+  the test anchor for anchor. It exited 1 on 14 street-facing roofs until 2026-11-11, when the reach model was matched
+  to it (the capsule zip, the audit's sidewalk spots, 4 fire escapes dropped) and roofs with no wall on a street were
+  classed apart: now 2457 anchors, 24459 reachable pairs (was 24420), roofs with none from a 10 m / 2.5 m spot 78 / 28
+  (was 92 / 34), 514 neighbour pairs not reaching (was 519), 0 street-facing roofs unreached, and it exits 0 with no
+  allow file. It is a local gate (it needs the engine): run it before pushing a change to the generator or the grapple
+  (`testing.md`, 2i). Details: `tools-traversal-debugger.md`.
 - World Partition is off for the single block. Stage 3 turns it on.
 - The world map's data, `/Game/City/EastVillage/DA_EastVillage_Map` (`UCityMapData`), is written by
   the same run (`ensure_city_map`): every footprint and the park cleaned to a few points (edges
