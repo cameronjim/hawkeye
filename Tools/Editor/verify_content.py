@@ -920,6 +920,29 @@ def check_grotto():
         fail("BP_Thug_Elf")
 
 
+def check_dressing():
+    """The hero block's December dressing in DA_EastVillage_CityProps: one Dress_ clutter group per kit group with
+    the instance count _dressing_kit makes from the committed plan, each with a mesh and a material."""
+    say("---- december dressing ----")
+    import _dressing_build as dress  # noqa: PLC0415
+    import _dressing_kit as kit  # noqa: PLC0415
+    doc = dress.plan_doc()
+    props = c.load_or_none("/Game/City/EastVillage/DA_EastVillage_CityProps")
+    if doc is None or props is None:
+        fail("no dressing plan or no DA_EastVillage_CityProps")
+        return
+    want = kit.group_counts(doc)
+    groups = [g for g in prop(props, "clutter") or [] if str(prop(g, "kind")).startswith(kit.GROUP_PREFIX)]
+    got = {str(prop(g, "kind")): len(prop(g, "instances")) for g in groups}
+    say("  {0}: {1} records -> {2} instances in {3} groups".format(doc["block"], len(doc["records"]),
+                                                                  sum(got.values()), len(got)))
+    if got != want:
+        fail("dressing groups {0} are not the plan's {1}".format(got, want))
+    empty = [str(prop(g, "kind")) for g in groups if prop(g, "mesh") is None or prop(g, "material") is None]
+    if empty:
+        fail("dressing groups without a mesh or material: " + ", ".join(empty))
+
+
 def check_skeletal_material_usage():
     """Every material on a skeletal mesh must have bUsedWithSkeletalMesh.
 
@@ -1124,6 +1147,7 @@ def main():
     check_data_assets()
     check_narrative()
     check_grotto()
+    check_dressing()
     check_audio()
     check_vfx()
     check_combat_anims()

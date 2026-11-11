@@ -43,6 +43,9 @@ Prints one line per check and a final ``[Hawkeye] verify_city PASS`` or ``FAIL``
   and none stands within reach of the thug patrol (its points, the line between them, the thugs),
   on or against a fire-escape landing at the landing's height, within 3 m of an objective beacon,
   or within the anchor clearance of a grapple anchor or its landing point on the same roof
+* the hero block's December dressing: the props asset's Dress_ groups hold exactly the instances _dressing_kit makes
+  from the committed plan (mesh, instanced-usable material and collision per group), SpawnAll draws them all, none
+  on the navmesh, and the few City_DressLight_ lights and the City_DressShot_ cameras are there
 * the side challenges: three archery and three traversal definitions as create_challenges.py plans
   them, a City_Challenge_<id> pedestal on each start holding its definition, every archery target
   10 to 40 m out with a clear line, and every traversal ring reachable from the one before it
@@ -65,6 +68,8 @@ import unreal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 import generate_city as gen  # noqa: E402
+import _dressing_build as dress  # noqa: E402
+import _dressing_kit as kit  # noqa: E402
 import _geo as geo  # noqa: E402
 import _materials as m  # noqa: E402
 
@@ -317,6 +322,9 @@ def check_spawner(district, actors):
     anchors = gen.anchor_spots(district)
     escapes = gen.fire_escape_spots(district)
     clutter, _plan = clutter_groups(district)
+    doc = dress.plan_doc()
+    if doc is not None:
+        clutter = clutter + dress.loaded_groups(doc)
     want = gen.city_props_hash(ledges, anchors, spawner.get_editor_property("ledge_class"),
                                spawner.get_editor_property("anchor_class"), escapes, clutter)
     check(data is not None and str(data.get_editor_property("source_hash")) == want,
@@ -351,7 +359,9 @@ def check_clutter(district, spawner):
         check(False, "clutter", "no spawner")
         return
     data = spawner.get_editor_property("data")
-    groups = list(data.get_editor_property("clutter")) if data is not None else []
+    # The December dressing's groups (Dress_*) are checked by check_dressing.
+    groups = [g for g in (data.get_editor_property("clutter") if data is not None else [])
+              if not str(g.get_editor_property("kind")).startswith(kit.GROUP_PREFIX)]
     _want, plan = clutter_groups(district)
     have = {str(g.get_editor_property("kind")): list(g.get_editor_property("instances")) for g in groups}
     want = {k: len(v) for k, v in plan.items() if v}
@@ -361,10 +371,11 @@ def check_clutter(district, spawner):
     total = sum(want.values())
     missing = [str(g.get_editor_property("kind")) for g in groups
                if g.get_editor_property("mesh") is None or g.get_editor_property("material") is None]
-    check(spawner.get_clutter_instance_count() == total and not missing,
+    drawn = sum(comp.get_instance_count() for comp in spawner.get_clutter_components()
+                if not comp.get_name().startswith("Clutter_" + kit.GROUP_PREFIX))
+    check(drawn == total and not missing,
           "SpawnAll draws every clutter instance, each group with its mesh and MI_Prop_ material",
-          "{0}/{1} instances{2}".format(spawner.get_clutter_instance_count(), total,
-                                        "; no mesh or material: " + ", ".join(missing) if missing else ""))
+          "{0}/{1} instances{2}".format(drawn, total, "; no mesh or material: " + ", ".join(missing) if missing else ""))
     prop = c.load_or_none(m.M_PROP)
     check(prop is not None and bool(prop.get_editor_property("used_with_instanced_static_meshes")),
           "M_Prop is usable on instanced meshes")
@@ -417,6 +428,70 @@ def check_clutter(district, spawner):
             {"patrol": "thug patrol", "landing": "fire-escape landings", "beacon": "objective beacons",
              "anchor": "grapple anchors"}[what]),
               "{0} instance(s): {1}".format(len(kinds), ", ".join(sorted(set(kinds)))) if kinds else "")
+
+
+def check_dressing(spawner, actors):
+    """The hero block's December dressing (_dressing_build.py): the props asset's Dress_ groups hold exactly the
+    instances _dressing_kit makes from the committed plan, each with its mesh, an instanced-usable material and its
+    collision; SpawnAll draws them all, none of them on the navmesh; the few real lights and the shot cameras."""
+    doc = dress.plan_doc()
+    check(doc is not None and doc["block"] == dress.HERO_BLOCK, "the dressing plan is the hero block's",
+          doc["block"] if doc else "no plan")
+    if doc is None or spawner is None:
+        return
+    data = spawner.get_editor_property("data")
+    groups = [g for g in (data.get_editor_property("clutter") if data is not None else [])
+              if str(g.get_editor_property("kind")).startswith(kit.GROUP_PREFIX)]
+    want = kit.group_counts(doc)
+    got = {str(g.get_editor_property("kind")): len(g.get_editor_property("instances")) for g in groups}
+    check(got == want, "dressing groups hold the plan's instances",
+          "{0} records -> {1} instances in {2} groups{3}".format(
+              len(doc["records"]), sum(got.values()), len(got),
+              "" if got == want else "; want " + ", ".join("{0} {1}".format(k, v) for k, v in want.items())))
+    kinds = {}
+    for rec in doc["records"]:
+        kinds[rec["kind"]] = kinds.get(rec["kind"], 0) + 1
+    check(kinds == doc["counts"], "the plan's records match its counts",
+          ", ".join("{0} {1}".format(k, v) for k, v in kinds.items()))
+    bad = []
+    for g in groups:
+        kind = str(g.get_editor_property("kind"))
+        _mesh, _mat, collision, _shadow = kit.GROUPS.get(kind, (None, None, None, None))
+        material = g.get_editor_property("material")
+        base = material
+        while base is not None and not isinstance(base, unreal.Material):
+            base = base.get_editor_property("parent")
+        if g.get_editor_property("mesh") is None or material is None:
+            bad.append(kind + " no mesh or material")
+        elif base is None or not bool(base.get_editor_property("used_with_instanced_static_meshes")):
+            bad.append(kind + " material not usable on instances")
+        if bool(g.get_editor_property("collision")) != collision:
+            bad.append(kind + " collision")
+    check(not bad, "every dressing group has its mesh, an instanced material and its collision", "; ".join(bad))
+    comps = [comp for comp in spawner.get_clutter_components()
+             if comp.get_name().startswith("Clutter_" + kit.GROUP_PREFIX)]
+    drawn = sum(comp.get_instance_count() for comp in comps)
+    nav = []
+    for comp in comps:
+        try:
+            if bool(comp.get_editor_property("can_ever_affect_navigation")):
+                nav.append(comp.get_name())
+        except Exception:  # noqa: BLE001 - not readable from Python on this engine: the spawner sets it in C++
+            pass
+    check(drawn == sum(want.values()) and len(comps) == len(want) and not nav,
+          "SpawnAll draws every dressing instance, one instanced mesh per group, none on the navmesh",
+          "{0}/{1} instances in {2} components{3}".format(drawn, sum(want.values()), len(comps),
+                                                          "; on the navmesh: " + ", ".join(nav) if nav else ""))
+    lights = {label: a for label, a in actors.items() if label.startswith(dress.LIGHT_PREFIX)}
+    spots = kit.light_spots(doc)
+    shadowed = [label for label, a in lights.items()
+                if a.get_editor_property("point_light_component").get_editor_property("cast_shadows")]
+    check(len(lights) == len(spots) and len(spots) <= 4 and not shadowed,
+          "the dressing's real lights: a handful, movable, no shadows",
+          "{0} lights, {1} planned, {2} casting shadows".format(len(lights), len(spots), len(shadowed)))
+    shots = {label for label in actors if label.startswith(dress.SHOT_PREFIX)}
+    check(shots == {dress.SHOT_PREFIX + s[0] for s in kit.shot_cameras(doc)}, "the dressing's shot cameras",
+          ", ".join(sorted(shots)))
 
 
 def _landing_quad(actor, margin=0.0):
@@ -1306,6 +1381,7 @@ def run():
     check_ledges(district, actors)
     check_fire_escapes(district, actors, spawner)
     check_clutter(district, spawner)
+    check_dressing(spawner, actors)
     sky = actors.get(gen.STARS_LABEL)
     sky_comp = sky.get_editor_property("static_mesh_component") if sky is not None else None
     check(sky_comp is not None and sky_comp.get_collision_enabled() == unreal.CollisionEnabled.NO_COLLISION
