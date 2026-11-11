@@ -196,11 +196,11 @@ boomerang out and back, vault, santa, santa_down, roof, endcard, call, ornament)
 
 Every lap records what each fight cost and how hard it pressed (`Tests/LapFightPressure.h`). `HawkeyeLapPressure::Start`
 in the lap's `RunTest` samples every frame on the core ticker, so a level change or a reload never loses a frame; a fight
-opens when anyone asks for a token on Kate and closes after 2.5 s with nobody standing on her budgets. Per fight: seconds,
+opens when anyone asks for a token on Kate and closes after 4 s with nobody standing on her budgets. Per fight: seconds,
 attackers, hits from someone else that took health and the health lost, dodges started and parries landed (Kate's own
 counters, not the bot's taps), the most melee holders at once, the most attackers of both kinds at once, and the seconds two
 melee holders overlapped. `Finish`, where the lap writes its JSON, adds a `"fights"` array to it, puts one line a fight in
-the test's log, and fails a group fight (three or more attackers) that cost her neither a hit nor 2 dodges and parries.
+the test's log, and fails a group fight (three or more melee attackers: fewer share one melee token) that cost her neither a hit nor 2 dodges and parries.
 The bot is never slowed to make this pass: when it is too good to be hit, the forced defences are the measure.
 
 ## 3. Playtest checklist (human)

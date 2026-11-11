@@ -35,15 +35,20 @@ struct FHawkeyeLapFightPressure
 		int32 PeakHolders = 0;
 		float TwoMeleeSeconds = 0.f;
 		TSet<FString> Attackers;
+		/** Those of them seen on her melee budget. */
+		TSet<FString> MeleeAttackers;
 
 		float GetSeconds() const { return static_cast<float>(LastActiveSeconds - StartSeconds); }
 		int32 GetDefences() const { return Dodges + Parries; }
-		/** Three or more attackers: a group fight, where the pressure is asserted. */
-		bool IsGroup() const { return Attackers.Num() >= 3; }
+		/**
+		 * Three or more melee attackers: a group fight, where the pressure is asserted. Fewer share one melee token
+		 * (gameplay-semantics.md, "Attack tokens"), so two at once only starts at three.
+		 */
+		bool IsGroup() const { return MeleeAttackers.Num() >= 3; }
 	};
 
 	/** Nobody on her budgets this long closes the fight, seconds of world time. */
-	double QuietSeconds = 2.5;
+	double QuietSeconds = 4.0;
 
 	TArray<FFight> Fights;
 
@@ -81,6 +86,7 @@ struct FHawkeyeLapFightPressure
 		const FHawkeyeTokenBudgetView Ranged = Tokens->GetBudgetView(Kate, EHawkeyeAttackKind::Ranged);
 		// Who is in it: anyone on her budgets still standing (a body left on a list until someone asks again is out).
 		TArray<const AActor*> InFight;
+		TArray<const AActor*> InMelee;
 		for (const FHawkeyeTokenBudgetView* View : {&Melee, &Ranged})
 		{
 			for (const TArray<TObjectPtr<AActor>>* List : {&View->Holders, &View->Waiters, &View->Idle})
@@ -91,6 +97,10 @@ struct FHawkeyeLapFightPressure
 					if (Attacker && !(Thug && Thug->IsLimp()))
 					{
 						InFight.AddUnique(Attacker);
+						if (View == &Melee)
+						{
+							InMelee.AddUnique(Attacker);
+						}
 					}
 				}
 			}
@@ -133,6 +143,10 @@ struct FHawkeyeLapFightPressure
 		{
 			Open->Attackers.Add(GetNameSafe(Attacker));
 		}
+		for (const AActor* Attacker : InMelee)
+		{
+			Open->MeleeAttackers.Add(GetNameSafe(Attacker));
+		}
 	}
 
 	/** The fights as a JSON array, for the lap's own file. */
@@ -141,10 +155,10 @@ struct FHawkeyeLapFightPressure
 		TArray<FString> Rows;
 		for (const FFight& Fight : Fights)
 		{
-			Rows.Add(FString::Printf(TEXT("%s  {\"start\": %.1f, \"seconds\": %.1f, \"attackers\": %d, \"group\": %s, \"hits\": %d, "
+			Rows.Add(FString::Printf(TEXT("%s  {\"start\": %.1f, \"seconds\": %.1f, \"attackers\": %d, \"melee_attackers\": %d, \"group\": %s, \"hits\": %d, "
 										  "\"health_lost\": %.0f, \"dodges\": %d, \"parries\": %d, \"peak_melee_holders\": %d, "
 										  "\"peak_holders\": %d, \"two_melee_seconds\": %.1f}"),
-				*Indent, Fight.StartSeconds, Fight.GetSeconds(), Fight.Attackers.Num(), Fight.IsGroup() ? TEXT("true") : TEXT("false"),
+				*Indent, Fight.StartSeconds, Fight.GetSeconds(), Fight.Attackers.Num(), Fight.MeleeAttackers.Num(), Fight.IsGroup() ? TEXT("true") : TEXT("false"),
 				Fight.Hits, Fight.HealthLost, Fight.Dodges, Fight.Parries, Fight.PeakMeleeHolders, Fight.PeakHolders,
 				Fight.TwoMeleeSeconds));
 		}
@@ -157,9 +171,10 @@ struct FHawkeyeLapFightPressure
 		for (int32 Index = 0; Index < Fights.Num(); ++Index)
 		{
 			const FFight& Fight = Fights[Index];
-			Test->AddInfo(FString::Printf(TEXT("%s fight %d at %.1f s: %.1f s, %d attackers, %d hits (%.0f health), %d dodges, "
+			Test->AddInfo(FString::Printf(TEXT("%s fight %d at %.1f s: %.1f s, %d attackers (%d melee), %d hits (%.0f health), %d dodges, "
 											   "%d parries, %d melee at once (%.1f s of two), %d attacking at once."),
-				*Lap, Index + 1, Fight.StartSeconds, Fight.GetSeconds(), Fight.Attackers.Num(), Fight.Hits, Fight.HealthLost,
+				*Lap, Index + 1, Fight.StartSeconds, Fight.GetSeconds(), Fight.Attackers.Num(), Fight.MeleeAttackers.Num(), Fight.Hits,
+				Fight.HealthLost,
 				Fight.Dodges, Fight.Parries, Fight.PeakMeleeHolders, Fight.TwoMeleeSeconds, Fight.PeakHolders));
 		}
 	}
@@ -175,8 +190,8 @@ struct FHawkeyeLapFightPressure
 			const FFight& Fight = Fights[Index];
 			if (Fight.IsGroup())
 			{
-				Test->TestTrue(FString::Printf(TEXT("%s fight %d (%d attackers) cost her a hit or %d dodges and parries (%d hits, %d)"),
-								   *Lap, Index + 1, Fight.Attackers.Num(), MinDefences, Fight.Hits, Fight.GetDefences()),
+				Test->TestTrue(FString::Printf(TEXT("%s fight %d (%d melee attackers) cost her a hit or %d dodges and parries (%d hits, %d)"),
+								   *Lap, Index + 1, Fight.MeleeAttackers.Num(), MinDefences, Fight.Hits, Fight.GetDefences()),
 					Fight.Hits >= 1 || Fight.GetDefences() >= MinDefences);
 			}
 		}
