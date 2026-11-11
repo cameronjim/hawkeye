@@ -24,7 +24,7 @@ UHawkeyeTraversalAuditCommandlet::UHawkeyeTraversalAuditCommandlet(const FObject
 	// The gate is the return value, whatever else the map load logged.
 	UseCommandletResultAsExitCode = true;
 	HelpDescription = TEXT("Runs the grapple audit on a map and fails when a street-facing roof has no anchor reachable from the street.");
-	HelpUsage = TEXT("-run=HawkeyeTraversalAudit -map=/Game/Maps/<Map> [-out=<json>] [-chain=a,b,c] [-streetlinks=c] [-allowfile=<txt>] [-pawn=<class>] [-nospawn]");
+	HelpUsage = TEXT("-run=HawkeyeTraversalAudit -map=/Game/Maps/<Map> [-out=<json>] [-chain=a,b,c] [-streetlinks=c] [-allowfile=<txt>] [-pawn=<class>] [-nospawn] [-probe=<pairs.txt> [-probeout=<tsv>]]");
 }
 
 TSet<FString> UHawkeyeTraversalAuditCommandlet::ParseAllowList(const TArray<FString>& Lines)
@@ -81,6 +81,12 @@ int32 UHawkeyeTraversalAuditCommandlet::Main(const FString& Params)
 	if (const FString* StreetLinks = Values.Find(TEXT("streetlinks")))
 	{
 		Options.StreetLinkObjectives = FTraversalAuditRunner::ParseList(*StreetLinks);
+	}
+	if (const FString* ProbeIn = Values.Find(TEXT("probe")))
+	{
+		Options.ProbeIn = FPaths::ConvertRelativePathToFull(*ProbeIn);
+		const FString* ProbeOut = Values.Find(TEXT("probeout"));
+		Options.ProbeOut = ProbeOut ? FPaths::ConvertRelativePathToFull(*ProbeOut) : FPaths::ChangeExtension(Options.ProbeIn, TEXT("out.tsv"));
 	}
 	TSet<FString> Allowed;
 	if (const FString* AllowFile = Values.Find(TEXT("allowfile")))

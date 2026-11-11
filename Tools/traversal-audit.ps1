@@ -12,7 +12,10 @@ param(
     [string]$AllowFile = "",
     [switch]$NoSpawn,
     [string]$Engine = "",
-    [string]$LogFile = ""
+    [string]$LogFile = "",
+    # Pair probe: "x y anchor" lines (street point, anchor index) evaluated with the game's traces into a TSV.
+    [string]$Probe = "",
+    [string]$ProbeOut = ""
 )
 
 # Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
@@ -37,6 +40,8 @@ if ($Chain) { $CmdArgs += "-chain=$Chain" }
 if ($StreetLinks) { $CmdArgs += "-streetlinks=$StreetLinks" }
 if ($AllowFile) { $CmdArgs += "-allowfile=$AllowFile" }
 if ($NoSpawn) { $CmdArgs += "-nospawn" }
+if ($Probe) { $CmdArgs += "-probe=$Probe" }
+if ($ProbeOut) { $CmdArgs += "-probeout=$ProbeOut" }
 
 $Began = Get-Date
 & $Cmd @CmdArgs | Out-Null
