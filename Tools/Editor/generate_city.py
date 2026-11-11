@@ -77,6 +77,10 @@ What gets built, all with Geometry Script from Python (the GeometryScripting plu
 * clutter (see clutter_plan): water towers, HVAC boxes and chimneys on the roofs, hydrants, bins and
   bags, scaffolding and parked cars on the street; data in the props asset, drawn by the spawner as
   one instanced mesh per kind.
+* the hero block's December dressing (_dressing_build.py, from the committed plan in Tools/Data/dressing/): string
+  lights over the side streets, wreaths, lit windows and candles, snow on roofs, parapets, kerbs and cars, a tree
+  stand, steam stacks, awnings; more clutter groups (Dress_*) in the same props asset, a few ``City_DressLight_``
+  point lights and the ``City_DressShot_`` cameras Hawkeye.Screenshot.Dressing looks through.
 * the world map (``/Game/City/EastVillage/DA_EastVillage_Map``, UCityMapData): every footprint and
   the park as a few-point 2D outline, every street piece as a simplified centre line with its width,
   and the ground rectangle's bounding box, all in world cm. UHawkeyeMapWidget draws it.
@@ -2498,6 +2502,14 @@ def _ledge_edge_index(label):
     return int(label.rsplit("_", 1)[1])
 
 
+def _xform_key(x):
+    """A clutter instance for the props hash: location, the whole rotation and the scale, to 0.1. The December
+    dressing tilts and stretches its instances (wreaths, awnings, wires), so yaw and one scale are not enough."""
+    r = x.rotation.rotator()
+    return [round(v, 1) + 0.0 for v in (x.translation.x, x.translation.y, x.translation.z, r.yaw, r.pitch, r.roll,
+                                        x.scale3d.x, x.scale3d.y, x.scale3d.z)]
+
+
 def city_props_hash(ledges, anchors, ledge_cls, anchor_cls, fire_escapes=None, clutter=None):
     """What the props asset was written from: every ledge, anchor, fire-escape spot and clutter
     instance, and the classes, meshes and materials."""
@@ -2508,8 +2520,7 @@ def city_props_hash(ledges, anchors, ledge_cls, anchor_cls, fire_escapes=None, c
         parts.append([list(FIRE_ESCAPE_SLAB), FIRE_ESCAPE_GAP, FIRE_ESCAPE_RAIL, FIRE_ESCAPE_RAIL_THICK])
     if clutter:
         parts.append([[kind, c.safe_name(mesh), c.safe_name(material), collision, shadow,
-                       [[round(v, 1) for v in (x.translation.x, x.translation.y, x.translation.z,
-                                               x.rotation.rotator().yaw, x.scale3d.x)] for x in xforms]]
+                       [_xform_key(x) for x in xforms]]
                       for kind, mesh, material, collision, shadow, xforms in clutter])
     return geo.record_hash(GENERATOR_VERSION, "props", *parts)
 
@@ -2570,6 +2581,9 @@ def ensure_city_props(district):
     anchors = anchor_spots(district)
     escapes = fire_escape_spots(district)
     clutter, plan = clutter_groups(district, ensure_clutter_meshes(), ensure_clutter_materials())
+    # The December dressing of the hero block rides along as more clutter groups (Dress_*): _dressing_build.py.
+    dressing, dress_doc = dressing_groups()
+    clutter = clutter + dressing
     want_hash = city_props_hash(ledges, anchors, ledge_cls, anchor_cls, escapes, clutter)
     full = c.asset_path(CITY_PROPS_PATH, CITY_PROPS_NAME)
     asset = c.load_or_none(full)
@@ -2584,6 +2598,9 @@ def ensure_city_props(district):
         len(escapes), len({f[0] for f in escapes}),
         ", ".join("{0} {1}".format(len(v), k) for k, v in sorted(plan.items()) if v),
         sum(1 for a in anchors if a[4] == FACADE_ANCHOR_LANDING))
+    if dress_doc is not None:
+        summary += "; dressing {0}: {1} records as {2} instances in {3} groups".format(
+            dress_doc["block"], len(dress_doc["records"]), sum(len(g[5]) for g in dressing), len(dressing))
     if str(asset.get_editor_property("source_hash")) == want_hash \
             and len(asset.get_editor_property("ledges")) == len(ledges) \
             and len(asset.get_editor_property("anchors")) == len(anchors) \
@@ -3447,6 +3464,19 @@ def clutter_groups(district, meshes, materials):
     return groups, plan
 
 
+def dressing_groups():
+    """(clutter groups, plan document) of the hero block's December dressing (_dressing_build.py)."""
+    import _dressing_build as dress  # noqa: PLC0415 - it imports this module back for its actor helpers
+    return dress.dressing_groups()
+
+
+def ensure_dressing_actors(existing):
+    """The dressing's few real lights and its reference cameras (_dressing_build.py). Returns changes."""
+    import _dressing_build as dress  # noqa: PLC0415
+    doc = dress.plan_doc()
+    return dress.ensure_lights(existing, doc) + dress.ensure_cameras(existing, doc)
+
+
 def _clutter_record(group):
     kind, mesh, material, collision, shadow, xforms = group
     rec = unreal.CityClutterGroup()
@@ -4133,6 +4163,7 @@ def run():
     changes += ensure_ambience(district, existing)
     changes += ensure_lamp_buzz(district, existing)
     changes += ensure_ledge_spawner(district, existing)
+    changes += ensure_dressing_actors(existing)
     changes += ensure_test_blocks(district, existing)
     # The world map data is its own asset, not part of the level.
     ensure_city_map(district)

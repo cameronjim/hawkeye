@@ -60,7 +60,8 @@
     5f. create_grotto             again: the grotto's sites and boss name L_Int_Grotto once it exists
     6. generate_city              L_District_EastVillage from OpenStreetMap, after everything
                                   else and only when Tools/Data/osm/east_village.buildings.json
-                                  exists (Tools/fetch-osm.ps1 writes it)
+                                  exists (Tools/fetch-osm.ps1 writes it); with it the hero block's
+                                  December dressing from Tools/Data/dressing/ (_dressing_build.py)
 
 Run headless:
 

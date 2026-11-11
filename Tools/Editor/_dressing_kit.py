@@ -105,7 +105,8 @@ TREE_LIGHT_LUMENS = 350.0
 TREE_LIGHT_RADIUS = 600.0
 
 EYE = 170.0                     # cm over the ground for the street-level cameras
-ROOF_PITCH = -14.0              # the rooftop camera's look down
+ROOF_EYE = 260.0                # cm over the roof: Kate standing on the parapet
+ROOF_PITCH = -24.0            # the rooftop camera's look down
 OVERVIEW_UP = 2500.0            # cm up for the overview camera
 
 
@@ -375,22 +376,25 @@ def shot_cameras(doc):
         d = math.hypot(tx - rx, ty - ry) or 1.0
         out_dir = ((tx - rx) / d, (ty - ry) / d)
         ux, uy = _out(rail["yaw"])
-        # The trees lean on the rail from the wall side, so the street is the other way.
-        eye = (rx - out_dir[0] * 550.0 + ux * 400.0, ry - out_dir[1] * 550.0 + uy * 400.0, EYE)
+        # Down the pavement from one end of the stand (the trees lean on the rail from the wall side; the parked cars
+        # are past the kerb the other way), a little to the kerb side of the rail.
+        half = rail["scale"][0] * 50.0
+        # 90 cm on from the trees: the pavement can be 2.6 m, and a camera inside the wall sees through it.
+        eye = (tx + out_dir[0] * 90.0 + ux * (half + 320.0), ty + out_dir[1] * 90.0 + uy * (half + 320.0), EYE)
         pitch, yaw = _look(eye, (tx, ty, 120.0))
         out.append(("tree_stand", (_r(eye[0]), _r(eye[1]), EYE), pitch, yaw))
     roofs = [r for r in doc["records"] if r["kind"] == "roof_snow" and r["position"][2] < 3000.0]
     if roofs and street_mid is not None:
-        def near_street(r):
-            return (min(math.hypot(q[0] - street_mid[0], q[1] - street_mid[1]) for q in r["params"]["points"]), r["id"])
-        roof = sorted(roofs, key=near_street)[0]
-        edge = min(roof["params"]["points"], key=lambda q: math.hypot(q[0] - street_mid[0], q[1] - street_mid[1]))
+        # The roof corner nearest the first string's end, looking along the street over the strings.
+        def near_end(r):
+            return (min(math.hypot(q[0] - lo[0], q[1] - lo[1]) for q in r["params"]["points"]), r["id"])
+        roof = sorted(roofs, key=near_end)[0]
+        edge = min(roof["params"]["points"], key=lambda q: math.hypot(q[0] - lo[0], q[1] - lo[1]))
         cx, cy, cz = roof["position"]
         d = math.hypot(edge[0] - cx, edge[1] - cy) or 1.0
-        # 1.5 m in from the roof's corner nearest the street, toward the roof's middle.
-        eye = (edge[0] + (cx - edge[0]) / d * 150.0, edge[1] + (cy - edge[1]) / d * 150.0, cz + EYE)
-        _pitch, yaw = _look(eye, (street_mid[0], street_mid[1], 300.0))
-        # Over the parapet and down the street, not down at the roof under the lens.
+        # Standing on the parapet at that corner, a step out over the street, so a taller neighbour does not fill it.
+        eye = (edge[0] - (cx - edge[0]) / d * 100.0, edge[1] - (cy - edge[1]) / d * 100.0, cz + ROOF_EYE)
+        yaw = _r(math.degrees(math.atan2(along[1], along[0])), 2)
         out.append(("rooftop", (_r(eye[0]), _r(eye[1]), _r(eye[2])), ROOF_PITCH, yaw))
     if street_mid is not None:
         # Up the strings' street from 30 m short of its first string, 25 m up.
