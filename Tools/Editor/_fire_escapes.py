@@ -53,7 +53,23 @@ def _rects_overlap(a, b):
 
 
 def fire_escape_spots(district):
-    """[(osm id, floor, (x, y, z), yaw, ladder drop, ladder side)] in a stable order.
+    """[(osm id, floor, (x, y, z), yaw, ladder drop, ladder side)] in a stable order: fire_escape_plan less the
+    buildings whose escape would leave the street no grapple onto their roof (_reach.escapes_blocking_street).
+    Cached on the district: the second rule runs the reach model."""
+    cached = getattr(district, "_fire_escape_spots", None)
+    if cached is not None:
+        return list(cached)
+    plan = fire_escape_plan(district)
+    import _reach   # here, not at the top: _reach builds on this module
+    dropped = _reach.escapes_blocking_street(district, plan)
+    spots = [s for s in plan if s[0] not in dropped]
+    district._fire_escape_spots = list(spots)
+    district._fire_escapes_dropped = sorted(dropped)
+    return spots
+
+
+def fire_escape_plan(district):
+    """[(osm id, floor, (x, y, z), yaw, ladder drop, ladder side)] in a stable order, before the street rule.
 
     One escape per building FIRE_ESCAPE_MIN_HEIGHT_M to FIRE_ESCAPE_MAX_HEIGHT_M tall, on the
     longest exterior edge whose outward normal faces a road and whose middle is within

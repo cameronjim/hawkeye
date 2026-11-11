@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _geo as geo  # noqa: E402
-from _geomutil import closest_point_on_polyline, ring_distance, stable_hash  # noqa: E402
+from _geomutil import _segment_distance, closest_point_on_polyline, ring_distance, stable_hash  # noqa: E402
 
 
 DISTRICT = "east_village"
@@ -113,6 +113,38 @@ def road_paths(district):
         paths = [district.ring_cm(piece) for piece in rec["pieces"] if len(piece) >= 2]
         if paths:
             out.append((rec, paths))
+    return out
+
+
+MAP_LINE_TOLERANCE = 50.0   # cm: street pieces are Douglas-Peucker'd to this for the world map
+
+
+def simplify_line(points, tolerance):
+    """Douglas-Peucker on an open polyline."""
+    if len(points) < 3:
+        return list(points)
+    a, b = points[0], points[-1]
+    worst, worst_i = -1.0, 0
+    for i in range(1, len(points) - 1):
+        d = _segment_distance(points[i], a, b)
+        if d > worst:
+            worst, worst_i = d, i
+    if worst <= tolerance:
+        return [a, b]
+    left = simplify_line(points[:worst_i + 1], tolerance)
+    return left[:-1] + simplify_line(points[worst_i:], tolerance)
+
+
+def map_street_lines(district):
+    """[(record, width m, [(x, y) whole cm])] in road_paths order: every street piece as DA_EastVillage_Map stores
+    it (Douglas-Peucker'd to MAP_LINE_TOLERANCE, rounded to the centimetre). The world map draws these and the
+    traversal audit samples its sidewalk spots along them, so the reach model samples the same lines."""
+    out = []
+    for rec, paths in road_paths(district):
+        for path in paths:
+            line = simplify_line([tuple(p) for p in path], MAP_LINE_TOLERANCE)
+            if len(line) >= 2:
+                out.append((rec, float(rec["width_m"]), [(round(x), round(y)) for x, y in line]))
     return out
 
 

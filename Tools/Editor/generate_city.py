@@ -115,7 +115,7 @@ from _district import (  # noqa: E402,F401 - re-exported for gen.X callers
     data_available, load_json, District, PAINTED_BUILDINGS, STONE_BUILDINGS, TENEMENT_STYLES, facade_style,
     ground_ring_cm, road_paths, LAMP_SPACING, LAMP_MIN_GAP, LAMP_KERB_INSET, LAMP_POLE_HEIGHT,
     LAMP_POLE_DIAMETER, LAMP_ARM, LAMP_SHADOW_DISTANCE, lamp_spots, FIRE_ESCAPE_MIN_HEIGHT_M,
-    FIRE_ESCAPE_MAX_HEIGHT_M)
+    FIRE_ESCAPE_MAX_HEIGHT_M, MAP_LINE_TOLERANCE, simplify_line, map_street_lines)
 from _fire_escapes import (  # noqa: E402,F401 - re-exported for gen.X callers
     FIRE_ESCAPE_PREFIX, FIRE_ESCAPE_FLOOR, FIRE_ESCAPE_ROOF_CLEARANCE, FIRE_ESCAPE_SLAB, FIRE_ESCAPE_GAP,
     FIRE_ESCAPE_RAIL, FIRE_ESCAPE_RAIL_THICK, FIRE_ESCAPE_MIN_EDGE, FIRE_ESCAPE_STREET_SLACK,
@@ -2261,7 +2261,8 @@ def anchor_reach_report(district):
                         marker = _anchor_marker(spot)
                         d = math.sqrt((marker[0] - feet[0]) ** 2 + (marker[1] - feet[1]) ** 2 +
                                       (marker[2] - feet[2] - REACH_HALF_HEIGHT) ** 2)
-                        if d <= REACH_RANGE - REACH_RANGE_SLACK:
+                        # In range as the audit counts it (FGrappleReachQuery::IsInRange, no slack).
+                        if REACH_MIN_RANGE <= d <= REACH_RANGE:
                             in_range = True
                             if osm not in street_ok and reach.targetable(feet, spot):
                                 street_ok.add(osm)
@@ -2674,23 +2675,8 @@ def ensure_ledge_spawner(district, existing):
 CITY_MAP_NAME = "DA_EastVillage_Map"
 MAP_MIN_EDGE = 100.0        # cm
 MAP_COLLINEAR = 50.0        # cm
-MAP_LINE_TOLERANCE = 50.0   # cm
-
-
-def _simplify_line(points, tolerance):
-    """Douglas-Peucker on an open polyline."""
-    if len(points) < 3:
-        return list(points)
-    a, b = points[0], points[-1]
-    worst, worst_i = -1.0, 0
-    for i in range(1, len(points) - 1):
-        d = _segment_distance(points[i], a, b)
-        if d > worst:
-            worst, worst_i = d, i
-    if worst <= tolerance:
-        return [a, b]
-    left = _simplify_line(points[:worst_i + 1], tolerance)
-    return left[:-1] + _simplify_line(points[worst_i:], tolerance)
+# MAP_LINE_TOLERANCE and the street lines (simplify_line, map_street_lines) are _district's: the reach model
+# samples its sidewalk spots along the same lines the map stores and the traversal audit reads.
 
 
 def _map_ring(ring_latlon, district):
@@ -2718,12 +2704,7 @@ def city_map_records(district):
         ring = _map_ring(park["outer"], district)
         if len(ring) >= 3:
             parks.append((park["id"], 0.0, ring))
-    streets = []
-    for rec, paths in road_paths(district):
-        for path in paths:
-            line = _simplify_line([tuple(p) for p in path], MAP_LINE_TOLERANCE)
-            if len(line) >= 2:
-                streets.append((rec.get("name") or "", float(rec["width_m"]), [(round(x), round(y)) for x, y in line]))
+    streets = [(rec.get("name") or "", width, line) for rec, width, line in map_street_lines(district)]
     return bounds_min, bounds_max, footprints, parks, streets
 
 

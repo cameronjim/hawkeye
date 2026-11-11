@@ -14,9 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _geo as geo  # noqa: E402
 from _district import (  # noqa: E402
     LAMP_ARM, LAMP_POLE_HEIGHT, PARAPET_HEIGHT, PARAPET_MIN_HEIGHT_M, PARAPET_THICK, SIDEWALK_TOP,
-    SIDEWALK_WIDTH, ground_ring_cm, lamp_spots, road_paths)
+    SIDEWALK_WIDTH, ground_ring_cm, lamp_spots, map_street_lines, road_paths)
 from _fire_escapes import (  # noqa: E402
-    FIRE_ESCAPE_FACING, FIRE_ESCAPE_GAP, FIRE_ESCAPE_RAIL, FIRE_ESCAPE_SLAB, fire_escape_spots)
+    FIRE_ESCAPE_FACING, FIRE_ESCAPE_GAP, FIRE_ESCAPE_RAIL, FIRE_ESCAPE_SLAB, _landing_corners, fire_escape_spots)
 from _geomutil import _edge_distance, _segment_params, closest_point_on_polyline, ring_distance  # noqa: E402
 
 
@@ -156,14 +156,18 @@ REACH_HALF_HEIGHT = 90.0          # Kate's capsule half height plus the 2 cm a s
 REACH_CAPSULE_HALF = 88.0
 REACH_ZIP_LAUNCH = 120.0          # ZipLaunchHeight
 REACH_START_RELEASE = 284.0       # ZipStartIgnoreRadius plus the capsule radius
-REACH_SUPPORT_RADIUS = 150.0      # SupportRadius
-REACH_FEET_CLEAR = 10.0           # cm the capsule's bottom has to clear a roof or parapet by
+REACH_START_IGNORE = 250.0        # ZipStartIgnoreRadius: the start's supports are what lies this near her capsule centre
+REACH_SUPPORT_RADIUS = 150.0      # SupportRadius: the anchor's supports are what lies this near its origin
+REACH_FEET_CLEAR = 10.0           # cm the capsule's bottom has to clear a roof or parapet by (the dressing's checks)
+REACH_CAPSULE_RADIUS = 34.0       # Kate's capsule radius: the zip sweeps the whole capsule, not a line
+REACH_ZIP_MARGIN = 5.0            # cm the model's capsule is grown by, so a pair it passes is not a graze in the game
 REACH_PITCH = (-70.0, 75.0)       # CameraPitchMin, CameraPitchMax
 REACH_CAMERA = {"arm": (350.0, 220.0), "socket_y": 70.0, "socket_z": (60.0, 110.0), "lift": (0.0, 150.0),
                 "pitch": (20.0, 60.0), "probe": 12.0}   # HipCamera and the LookUp* values of AHawkeyeCharacter
 REACH_STREET_ROBUST = 3           # sidewalk spots a street anchor is placed to be seen from, where it can be
 REACH_STREET_STEP = 250.0         # cm between sidewalk spots: a player stands anywhere on the sidewalk (the audit's
                                   # report uses 10 m, then 2 m for a roof none of those reach)
+REACH_AUDIT_STREET_STEPS = (1000.0, 250.0)   # FGrappleAuditSettings StreetStep, FineStreetStep: the audit's two passes
 REACH_SIDEWALK_MIDDLE = SIDEWALK_WIDTH * 0.5   # cm out from the kerb
 REACH_SIDEWALK_BACKOFF = (0.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0)   # cm towards the centre line
 REACH_STAND_CLEAR = 60.0          # cm from any wall a street spot stands (her capsule and a little)
@@ -190,8 +194,11 @@ class GrappleReach(object):
     """The grapple's rules (range, cone, the camera's line of sight, the clear zip) as plain geometry over
     the building records, for placing anchors and for verify_city's guarantees."""
 
-    def __init__(self, district):
+    def __init__(self, district, escapes=None):
+        """escapes: the fire escapes to model (fire_escape_spots' rows); the district's own when None."""
         self.district = district
+        if escapes is None:
+            escapes = fire_escape_spots(district)
         self.tops = []   # (rec, ring, bounds, top z, roof z)
         for rec in sorted(district.buildings, key=lambda r: r["id"]):
             ring = geo.clean_ring(district.ring_cm(rec["outer"]), min_edge=5.0, collinear_tol=2.0)
@@ -216,7 +223,7 @@ class GrappleReach(object):
         # slab to over the top landing's rail, REACH_ESCAPE_MARGIN bigger all round.
         self.boxes = []   # (ring, bounds, z0, z1)
         stacks = {}
-        for osm, _floor, (x, y, z), yaw, _drop, _side in fire_escape_spots(district):
+        for osm, _floor, (x, y, z), yaw, _drop, _side in escapes:
             stacks.setdefault(osm, []).append((x, y, z, yaw))
         for osm in sorted(stacks):
             x, y, _z, yaw = stacks[osm][0]
@@ -233,6 +240,17 @@ class GrappleReach(object):
             for gx in range(int(math.floor(b[0] / REACH_CELL)), int(math.floor(b[2] / REACH_CELL)) + 1):
                 for gy in range(int(math.floor(b[1] / REACH_CELL)), int(math.floor(b[3] / REACH_CELL)) + 1):
                     self.box_grid.setdefault((gx, gy), []).append(k)
+        # The zip collides with each landing on its own (AFireEscapeLanding: the slab and its rails, one actor a
+        # floor), so a landing near where she stands is one of the start's supports and the ones above it are not.
+        self.landings = []   # (ring, bounds, z0, z1)
+        for _osm, _floor, (x, y, z), yaw, _drop, _side in escapes:
+            ring = _landing_corners(x, y, yaw)
+            self.landings.append((ring, geo.bounds(ring), z - FIRE_ESCAPE_SLAB[2], z + FIRE_ESCAPE_RAIL))
+        self.landing_grid = {}
+        for k, (_ring, b, _z0, _z1) in enumerate(self.landings):
+            for gx in range(int(math.floor(b[0] / REACH_CELL)), int(math.floor(b[2] / REACH_CELL)) + 1):
+                for gy in range(int(math.floor(b[1] / REACH_CELL)), int(math.floor(b[3] / REACH_CELL)) + 1):
+                    self.landing_grid.setdefault((gx, gy), []).append(k)
         self.column_grid = {}
         for k, (x, y, _z0, _z1, radius) in enumerate(self.columns):
             for gx in range(int(math.floor((x - radius) / REACH_CELL)), int(math.floor((x + radius) / REACH_CELL)) + 1):
@@ -270,13 +288,20 @@ class GrappleReach(object):
         return i is not None and p3[2] < self.tops[i][3]
 
     def _street_spots(self, district, ground):
+        """The traversal audit's own sidewalk spots (FGrappleReachQuery::GatherSidewalkSpots), both passes: every
+        REACH_AUDIT_STREET_STEPS along the street lines the world map stores (map_street_lines), each side, at
+        the sidewalk's middle or, where that is in a building, up to 8 m nearer the centre line. Until
+        2026-11-11 the model sampled the raw OSM lines and kept 60 cm off every wall, so its spots stood up to
+        a metre from the audit's: a roof the model reached from one spot could be reached from none of the
+        audit's (5 of the 14 street-facing roofs the audit failed)."""
         spots = []
-        taken = set()
-        for rec, paths in road_paths(district):
-            out = rec["width_m"] * 50.0 + REACH_SIDEWALK_MIDDLE
-            for path in paths:
+        seen = set()
+        for step in REACH_AUDIT_STREET_STEPS:
+            taken = set()
+            for _rec, width, line in map_street_lines(district):
+                out = width * 50.0 + REACH_SIDEWALK_MIDDLE
                 carry = 0.0
-                for a, b in zip(path, path[1:]):
+                for a, b in zip(line, line[1:]):
                     length = math.hypot(b[0] - a[0], b[1] - a[1])
                     if length < 1.0:
                         continue
@@ -289,16 +314,17 @@ class GrappleReach(object):
                             for back in REACH_SIDEWALK_BACKOFF:
                                 o = out - back
                                 x, y = a[0] + dx * t - dy * o * side, a[1] + dy * t + dx * o * side
-                                if not self._clear_of_buildings((x, y), REACH_STAND_CLEAR):
+                                if self.building_at((x, y)) is not None:
                                     continue
-                                if ground[0] <= x <= ground[2] and ground[1] <= y <= ground[3]:
-                                    key = (int(math.floor(x / (REACH_STREET_STEP * 0.5))),
-                                           int(math.floor(y / (REACH_STREET_STEP * 0.5))))
-                                    if key not in taken:
-                                        taken.add(key)
+                                key = (int(math.floor(x / (step * 0.5))), int(math.floor(y / (step * 0.5))))
+                                if key not in taken and ground[0] < x < ground[2] and ground[1] < y < ground[3]:
+                                    taken.add(key)
+                                    where = (round(x, 1), round(y, 1))
+                                    if where not in seen:
+                                        seen.add(where)
                                         spots.append((x, y, SIDEWALK_TOP))
                                 break
-                        t += REACH_STREET_STEP
+                        t += step
                     carry = t - length
         return spots
 
@@ -460,35 +486,111 @@ class GrappleReach(object):
         hit = self.first_block(lens, marker)
         return hit is None or (1.0 - hit[0]) * dist <= REACH_SIGHT_TOLERANCE
 
-    def zip_clear(self, feet, spot):
-        """IsZipClear from the ground: the capsule's feet from the launch point to the landing clear every
-        roof and parapet but the anchor's building (and any within SupportRadius of the anchor), her own
-        until REACH_START_RELEASE from where she stood, and the lamps."""
-        landing = _anchor_landing(spot)
-        target = self.building_at((landing[0], landing[1]))
-        supports = {target} if target is not None else set()
-        for i in self.near(spot[0] - REACH_SUPPORT_RADIUS, spot[1] - REACH_SUPPORT_RADIUS,
-                           spot[0] + REACH_SUPPORT_RADIUS, spot[1] + REACH_SUPPORT_RADIUS):
-            if ring_distance((spot[0], spot[1]), self.tops[i][1]) < REACH_SUPPORT_RADIUS:
-                supports.add(i)
-        start = set()
-        for i in self.near(feet[0] - REACH_START_RELEASE, feet[1] - REACH_START_RELEASE,
-                           feet[0] + REACH_START_RELEASE, feet[1] + REACH_START_RELEASE):
-            if ring_distance((feet[0], feet[1]), self.tops[i][1]) < REACH_START_RELEASE:
-                start.add(i)
-        drop = REACH_CAPSULE_HALF + REACH_FEET_CLEAR
-        a = (feet[0], feet[1], feet[2] + REACH_HALF_HEIGHT + REACH_ZIP_LAUNCH - drop)
-        b = (landing[0], landing[1], landing[2] + REACH_HALF_HEIGHT - drop)
-        hit = self.first_block(a, b, ignore=supports | start)
-        if hit is not None:
-            return False
-        # Anything it hits now is her own roof or parapet (everything else was clear above).
-        hit = self.first_block(a, b, ignore=supports, columns=False)
-        if hit is None:
+    # --- the zip: Kate's capsule swept along the line, as UGrappleComponent::IsZipClear does -------------
+    #
+    # Until 2026-11-11 the model swept a line at the capsule's feet and let her own building be crossed for
+    # the first 164 cm of it. The game sweeps the whole capsule (34 cm round, 88 half height) and ignores
+    # only what lies within 250 cm of where she stood (to the release point, 284 cm out) and within 150 cm of
+    # the anchor in 3D. The line was kinder on steep zips over a parapet's edge, on a low neighbour beside a
+    # corner anchor (2D 150 cm, but metres below it), and on a line that stays inside her own building past
+    # the release point: 1018 of 6859 sidewalk pairs the line passed were blocked in the game (the traversal
+    # audit's pair probe), and 5 street-facing roofs had no anchor the street could zip to.
+
+    def _obstacles_near(self, x0, y0, x1, y1):
+        """[(kind, index)] of the buildings ("b"), fire-escape landings ("l") and lamps ("c") whose cells the box
+        touches."""
+        out = [("b", i) for i in self.near(x0, y0, x1, y1)]
+        landings, columns = set(), set()
+        for gx in range(int(math.floor(min(x0, x1) / REACH_CELL)), int(math.floor(max(x0, x1) / REACH_CELL)) + 1):
+            for gy in range(int(math.floor(min(y0, y1) / REACH_CELL)), int(math.floor(max(y0, y1) / REACH_CELL)) + 1):
+                landings.update(self.landing_grid.get((gx, gy), ()))
+                columns.update(self.column_grid.get((gx, gy), ()))
+        return out + [("l", k) for k in sorted(landings)] + [("c", k) for k in sorted(columns)]
+
+    def _obstacle_gap(self, obstacle, p, core):
+        """Distance from the vertical segment p.z - core .. p.z + core at p's XY to the obstacle (0 inside it):
+        with core 0, from the point; with the capsule's core, the capsule touches it under its radius."""
+        kind, k = obstacle
+        lo, hi = p[2] - core, p[2] + core
+        if kind == "c":
+            x, y, z0, z1, radius = self.columns[k]
+            dh = max(0.0, math.hypot(p[0] - x, p[1] - y) - radius)
+            dv = max(0.0, lo - z1, z0 - hi)
+            return math.hypot(dh, dv)
+        if kind == "b":
+            _rec, ring, box, top, _roof = self.tops[k]
+            z0, z1 = -1.0e9, top
+        else:
+            ring, box, z0, z1 = self.landings[k]
+        dv = max(0.0, lo - z1, z0 - hi)
+        # The box first: a cheap lower bound that settles most obstacles far from the line.
+        bx = max(box[0] - p[0], 0.0, p[0] - box[2])
+        by = max(box[1] - p[1], 0.0, p[1] - box[3])
+        if bx > 0.0 or by > 0.0:
+            far = math.hypot(math.hypot(bx, by), dv)
+            if far > 150.0:
+                return far
+        dh = 0.0 if geo.point_in_polygon((p[0], p[1]), ring) else ring_distance((p[0], p[1]), ring)
+        return math.hypot(dh, dv)
+
+    def _supports(self, p, radius):
+        """The obstacles within radius of the point p in 3D (the game's sphere overlap)."""
+        return {o for o in self._obstacles_near(p[0] - radius, p[1] - radius, p[0] + radius, p[1] + radius)
+                if self._obstacle_gap(o, p, 0.0) < radius}
+
+    def _sweep_clear(self, a, b, obstacles):
+        """The capsule (REACH_CAPSULE_RADIUS plus REACH_ZIP_MARGIN, standing upright) from a to b touches none of
+        the obstacles. Sphere-traced: each step moves by the clearance just measured, which no obstacle can close."""
+        length = math.sqrt(sum((b[k] - a[k]) ** 2 for k in range(3)))
+        radius = REACH_CAPSULE_RADIUS + REACH_ZIP_MARGIN
+        core = REACH_CAPSULE_HALF - REACH_CAPSULE_RADIUS
+        if not obstacles:
             return True
-        # Her own roof counts again once the capsule is REACH_START_RELEASE from where she stood.
-        span = math.sqrt(sum((b[k] - a[k]) ** 2 for k in range(3)))
-        return hit[0] * span < REACH_START_RELEASE - REACH_ZIP_LAUNCH
+        t = 0.0
+        while True:
+            f = t / length if length > 0.1 else 1.0
+            p = (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f)
+            gap = min(self._obstacle_gap(o, p, core) for o in obstacles) - radius
+            if gap < 0.0:
+                return False
+            if t >= length:
+                return True
+            t = min(length, t + max(gap, 2.0))
+
+    def zip_clear(self, feet, spot):
+        """IsZipClear from a standing spot: the capsule from the launch point (REACH_ZIP_LAUNCH over her centre) to
+        her centre over the landing touches no building (a prism to its parapet top), fire escape or lamp except
+        the anchor's supports (the building under the landing and anything within REACH_SUPPORT_RADIUS of the
+        anchor's origin) and, until the release point (REACH_START_RELEASE from her centre along the line), the
+        start's (anything within REACH_START_IGNORE of her centre)."""
+        centre = (feet[0], feet[1], feet[2] + REACH_HALF_HEIGHT)
+        launch = (centre[0], centre[1], centre[2] + REACH_ZIP_LAUNCH)
+        landing = _anchor_landing(spot)
+        end = (landing[0], landing[1], landing[2] + REACH_HALF_HEIGHT)
+        target = self.building_at((landing[0], landing[1]))
+        supports = self._supports((spot[0], spot[1], spot[2]), REACH_SUPPORT_RADIUS)
+        if target is not None:
+            supports.add(("b", target))
+        start = self._supports(centre, REACH_START_IGNORE)
+        # The release point: the far root of |launch + dir s - centre| = REACH_START_RELEASE (ComputeStartReleasePoint).
+        line = [end[k] - launch[k] for k in range(3)]
+        length = math.sqrt(sum(v * v for v in line))
+        if length <= 1e-3:
+            return True
+        unit = [v / length for v in line]
+        offset = [launch[k] - centre[k] for k in range(3)]
+        bb = sum(offset[k] * unit[k] for k in range(3))
+        cc = sum(v * v for v in offset) - REACH_START_RELEASE * REACH_START_RELEASE
+        disc = bb * bb - cc
+        s = -bb + math.sqrt(disc) if disc >= 0.0 else 0.0
+        s = max(0.0, min(length, s))
+        release = tuple(launch[k] + unit[k] * s for k in range(3))
+        grow = REACH_CAPSULE_RADIUS + REACH_ZIP_MARGIN
+        near = self._obstacles_near(min(launch[0], end[0]) - grow, min(launch[1], end[1]) - grow,
+                                    max(launch[0], end[0]) + grow, max(launch[1], end[1]) + grow)
+        if not self._sweep_clear(launch, release, [o for o in near if o not in supports and o not in start]):
+            return False
+        return self._sweep_clear(release, end, [o for o in near if o not in supports])
 
     def targetable(self, feet, spot):
         centre = (feet[0], feet[1], feet[2] + REACH_HALF_HEIGHT)
@@ -663,6 +765,118 @@ def _street_edges(reach, index):
     return [entry[4] for entry in out]
 
 
+def _street_anchor_search(reach, index, placed, escapes, street_near, street, edges):
+    """(chosen, fallback, spots) for building index's street facade anchor: over edges in order, the first
+    position seen from REACH_STREET_ROBUST sidewalk spots wins, else the one reached from the most (spots, up to
+    REACH_STREET_ROBUST); fallback is the first that fits on a street edge clear of the fire escape."""
+    fallback = None
+    chosen = None
+    best_seen = 0
+    for edge in edges:
+        # Straight above a sidewalk spot in front of the edge first (the lens then looks up the wall at
+        # it), the nearest spot first; then the usual places along the edge.
+        _k, a, b, length, (ux, uy), (ox, oy) = edge
+        feet_along = []
+        for feet in street_near((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5):
+            out = (feet[0] - a[0]) * ox + (feet[1] - a[1]) * oy
+            along = (feet[0] - a[0]) * ux + (feet[1] - a[1]) * uy
+            if 0.0 < out < REACH_RANGE * 0.5 and 0.0 <= along <= length:
+                feet_along.append((out, along))
+        feet_along.sort()
+        options = []
+        for _out, along in feet_along:
+            for extra in _along_options(length, along)[:1]:
+                if extra not in options:
+                    options.append(extra)
+        options += [x for x in _along_options(length) if x not in options]
+        # Clear of the fire escape first; over it only where a spot across the street sees past it. The
+        # first seen from REACH_STREET_ROBUST sidewalk spots wins; else the one seen from the most.
+        for allow_escape in (False, True):
+            for along in options:
+                spot = _facade_anchor(reach, index, edge, along, placed, escapes, allow_escape)
+                if spot is None:
+                    continue
+                if edge in street and not allow_escape:
+                    fallback = fallback or spot
+                seen = 0
+                for feet in street_near(spot[0], spot[1]):
+                    if reach.targetable(feet, spot):
+                        seen += 1
+                        if seen >= REACH_STREET_ROBUST:
+                            break
+                if seen > best_seen:
+                    chosen, best_seen = spot, seen
+                if best_seen >= REACH_STREET_ROBUST:
+                    break
+            if best_seen >= REACH_STREET_ROBUST:
+                break
+        if best_seen >= REACH_STREET_ROBUST:
+            break
+    return chosen, fallback, best_seen
+
+
+def _street_cells(reach):
+    """street_near(x, y): the sidewalk spots in the REACH_CELL cells round a point."""
+    cells = {}
+    for feet in reach.street_spots:
+        cells.setdefault((int(math.floor(feet[0] / REACH_CELL)), int(math.floor(feet[1] / REACH_CELL))), []).append(feet)
+
+    def street_near(x, y):
+        cx, cy = int(math.floor(x / REACH_CELL)), int(math.floor(y / REACH_CELL))
+        return [f for dx in (-1, 0, 1) for dy in (-1, 0, 1) for f in cells.get((cx + dx, cy + dy), ())]
+    return street_near
+
+
+def _first_floor_escapes(escapes):
+    out = {}
+    for osm, floor, (x, y, _z), _yaw, _drop, _side in escapes:
+        if floor == 1:
+            out.setdefault(osm, []).append((x, y))
+    return out
+
+
+def escapes_blocking_street(district, plan):
+    """The osm ids whose fire escape (in plan, fire_escape_spots' rows before this rule) leaves the street no way
+    up: the building has an open wall on a street, its escape stands on one, no facade anchor anywhere on it is
+    reached from any sidewalk spot with the escape there, and one is with it gone.
+
+    A tenement's street wall can be 4 to 7.5 m: its escape (240 cm wide, out 95 cm, landings every 330 cm up)
+    fills the middle, the sidewalk under it sees the parapet only past the landings, and every other sidewalk spot
+    in range stands in front of a neighbour (whose wall or escape is in the way). Where the far sidewalk is out of
+    range too (an avenue, or a roof over 16 m) nothing on the pavement reaches the roof. Such a building gets no
+    fire escape: its roof is grappled from the pavement instead. Only where no spot reaches at all: a roof some
+    spot reaches keeps its escape, even when fewer than REACH_STREET_ROBUST do."""
+    if not plan:
+        return set()
+    reach = GrappleReach(district, escapes=plan)
+    placed = list(_corner_anchor_spots(district))
+    street_near = _street_cells(reach)
+    escapes = _first_floor_escapes(plan)
+
+    def best(model, i, esc):
+        street = _street_edges(model, i)
+        others = sorted((e for e in _outward_edges(model.tops[i][1]) if e[3] >= FACADE_ANCHOR_MIN_EDGE
+                         and all(e[0] != f[0] for f in street)), key=lambda e: (-e[3], e[0]))
+        return _street_anchor_search(model, i, placed, esc, street_near, street, street + others)[2]
+
+    candidates = []
+    for i, t in enumerate(reach.tops):
+        osm = t[0]["id"]
+        if t[0]["height_m"] <= ANCHOR_MIN_HEIGHT_M or osm not in escapes:
+            continue
+        street = _street_edges(reach, i)
+        if not any(closest_point_on_polyline(xy, [e[1], e[2]])[0] < 50.0 for e in street for xy in escapes[osm]):
+            continue
+        if not _street_anchor_search(reach, i, placed, escapes, street_near, street, street)[2] and not best(reach, i, escapes):
+            candidates.append(osm)
+    if not candidates:
+        return set()
+    without = [s for s in plan if s[0] not in candidates]
+    reach_wo = GrappleReach(district, escapes=without)
+    escapes_wo = _first_floor_escapes(without)
+    return {osm for osm in candidates if best(reach_wo, reach_wo.index[osm], escapes_wo) > 0}
+
+
 def _roof_reached(reach, feet_list, spots, target_osm):
     for feet in feet_list:
         for spot in spots:
@@ -713,52 +927,10 @@ def anchor_spots(district):
     for i in anchored:
         # The widest street's edge first; a narrower street's only when no spot on it can be reached, and
         # then any open wall a sidewalk round the corner can see.
-        fallback = None
-        chosen = None
-        best_seen = 0
         street = _street_edges(reach, i)
         others = sorted((e for e in _outward_edges(reach.tops[i][1]) if e[3] >= FACADE_ANCHOR_MIN_EDGE
                          and all(e[0] != f[0] for f in street)), key=lambda e: (-e[3], e[0]))
-        for edge in street + others:
-            # Straight above a sidewalk spot in front of the edge first (the lens then looks up the wall at
-            # it), the nearest spot first; then the usual places along the edge.
-            _k, a, b, length, (ux, uy), (ox, oy) = edge
-            feet_along = []
-            for feet in street_near((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5):
-                out = (feet[0] - a[0]) * ox + (feet[1] - a[1]) * oy
-                along = (feet[0] - a[0]) * ux + (feet[1] - a[1]) * uy
-                if 0.0 < out < REACH_RANGE * 0.5 and 0.0 <= along <= length:
-                    feet_along.append((out, along))
-            feet_along.sort()
-            options = []
-            for _out, along in feet_along:
-                for extra in _along_options(length, along)[:1]:
-                    if extra not in options:
-                        options.append(extra)
-            options += [x for x in _along_options(length) if x not in options]
-            # Clear of the fire escape first; over it only where a spot across the street sees past it. The
-            # first seen from REACH_STREET_ROBUST sidewalk spots wins; else the one seen from the most.
-            for allow_escape in (False, True):
-                for along in options:
-                    spot = _facade_anchor(reach, i, edge, along, placed, escapes, allow_escape)
-                    if spot is None:
-                        continue
-                    if edge in street and not allow_escape:
-                        fallback = fallback or spot
-                    seen = 0
-                    for feet in street_near(spot[0], spot[1]):
-                        if reach.targetable(feet, spot):
-                            seen += 1
-                            if seen >= REACH_STREET_ROBUST:
-                                break
-                    if seen > best_seen:
-                        chosen, best_seen = spot, seen
-                    if best_seen >= REACH_STREET_ROBUST:
-                        break
-                if best_seen >= REACH_STREET_ROBUST:
-                    break
-            if best_seen >= REACH_STREET_ROBUST:
-                break
+        chosen, fallback, _best = _street_anchor_search(reach, i, placed, escapes, street_near, street, street + others)
         if chosen or fallback:
             placed.append(chosen or fallback)
 

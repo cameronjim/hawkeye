@@ -253,5 +253,103 @@ class ReachTest(unittest.TestCase):
             self.assertTrue(reach._roof_reached(r, feet, spots, target), target)
 
 
+class ZipLikeTheGameTest(unittest.TestCase):
+    """The zip as UGrappleComponent::IsZipClear sweeps it (the 2026-11-11 audit parity): the whole capsule, the start's
+    supports only to the release point, the anchor's within 150 cm in 3D, each fire-escape landing on its own."""
+
+    def test_her_own_shop_counts_again_past_the_release_point(self):
+        # She stands 60 cm off a 3.3 m shop; the anchor is on the 12 m building behind it. The line climbs through the
+        # shop's roof well past 284 cm from her: the game blocks it. The old feet-line model let her own building be
+        # crossed for the first 164 cm of the line and never looked again.
+        shop = ("shop", box(0, 0, 1000, 500), 3.3)
+        tall = ("tall", box(0, 500, 1000, 1500), 12.0)
+        top = 1200.0 + dist.PARAPET_HEIGHT
+        z = top - reach.FACADE_ANCHOR_DOWN
+        spot = (500.0, 500.0 - reach.FACADE_ANCHOR_OUT, z, 90.0, reach.FACADE_ANCHOR_LANDING, z - 1200.0, "tall")
+        feet = (500.0, -60.0, dist.SIDEWALK_TOP)
+        self.assertFalse(reach.GrappleReach(FakeDistrict([shop, tall])).zip_clear(feet, spot))
+        self.assertTrue(reach.GrappleReach(FakeDistrict([tall])).zip_clear(feet, spot), "with no shop in front it is clear")
+
+    def test_the_capsule_not_a_line(self):
+        # A 30 cm post 30 cm beside the line of a roof-to-roof zip: a line misses it, the capsule (34 cm) does not.
+        west, east = ("west", box(0, 0, 1000, 1000), 10.0), ("east", box(2500, 0, 3500, 1000), 10.0)
+        z = 1000.0 + dist.PARAPET_HEIGHT - reach.FACADE_ANCHOR_DOWN
+        spot = (2500.0 - reach.FACADE_ANCHOR_OUT, 500.0, z, 0.0, reach.FACADE_ANCHOR_LANDING, z - 1000.0, "east")
+        feet = (800.0, 500.0, 1000.0)
+        self.assertTrue(reach.GrappleReach(FakeDistrict([west, east])).zip_clear(feet, spot))
+        post = ("post", box(1700, 530, 1730, 560), 14.0)
+        self.assertFalse(reach.GrappleReach(FakeDistrict([west, east, post])).zip_clear(feet, spot))
+
+    def test_the_anchors_supports_are_within_150_cm_in_3d(self):
+        # A corner anchor on a 15 m roof beside a 10 m neighbour: 2D the neighbour is 15 cm off, but its parapet top is
+        # 4 m below the anchor, so the game does not ignore it (the model used to). One the same height is ignored.
+        r = reach.GrappleReach(FakeDistrict([("tall", box(0, 0, 600, 2000), 15.0), ("low", box(600, 0, 1500, 2000), 10.0),
+                                             ("even", box(-900, 0, 0, 2000), 15.0)]))
+        origin = (585.0, 15.0, 1500.0 + dist.PARAPET_HEIGHT)
+        near = {r.tops[k][0]["id"] for kind, k in r._supports(origin, reach.REACH_SUPPORT_RADIUS) if kind == "b"}
+        self.assertEqual(near, {"tall"})
+        origin = (15.0, 15.0, 1500.0 + dist.PARAPET_HEIGHT)
+        near = {r.tops[k][0]["id"] for kind, k in r._supports(origin, reach.REACH_SUPPORT_RADIUS) if kind == "b"}
+        self.assertEqual(near, {"tall", "even"})
+
+    def test_each_landing_is_its_own_support(self):
+        # Standing under a fire escape the first landing (330 cm) is within 250 cm of her and ignored to the release
+        # point; the one above it (660 cm) is not, as the game spawns a landing per floor.
+        d = FakeDistrict([("tenement", box(0, 0, 1000, 2000), 15.0)])
+        escapes = [("tenement", f, (500.0, 0.0, f * 330.0), 180.0, 330.0 if f > 1 else 0.0, 1.0) for f in (1, 2, 3)]
+        r = reach.GrappleReach(d, escapes=escapes)
+        centre = (500.0, -150.0, dist.SIDEWALK_TOP + reach.REACH_HALF_HEIGHT)
+        landings = sorted(r.landings[k][2] for kind, k in r._supports(centre, reach.REACH_START_IGNORE) if kind == "l")
+        self.assertEqual(landings, [330.0 - 8.0])
+
+
+class StreetSpotsLikeTheAuditTest(unittest.TestCase):
+    """The model's sidewalk spots are the audit's (FGrappleReachQuery::GatherSidewalkSpots, Hawkeye.Grapple.Reach.SidewalkSpots):
+    both passes, every 10 m and every 2.5 m along the map's street lines, at the sidewalk's middle or backed off."""
+
+    ROAD = {"id": "r", "width_m": 12.0, "pieces": [[(0, 0), (3000, 0)]]}
+
+    def test_both_passes_both_sides(self):
+        r = reach.GrappleReach(FakeDistrict([], roads=[self.ROAD]))
+        xs = sorted({round(f[0]) for f in r.street_spots})
+        self.assertEqual(xs, list(range(0, 3001, 250)))
+        self.assertEqual(len(r.street_spots), 2 * 13)   # the 10 m spots are among the 2.5 m ones
+        self.assertEqual({round(abs(f[1])) for f in r.street_spots}, {800})
+
+    def test_a_building_over_the_middle_backs_the_spot_off(self):
+        # As the audit's trace: a spot inside a building backs off 100 cm at a time; no 60 cm keep-off from walls.
+        r = reach.GrappleReach(FakeDistrict([("b", box(-500, 650, 3500, 2000), 3.0)], roads=[self.ROAD]))
+        self.assertEqual({round(f[1]) for f in r.street_spots}, {-800, 600})
+
+
+class EscapeLeavesTheStreetAWayTest(unittest.TestCase):
+    """_reach.escapes_blocking_street: a fire escape that leaves the street no anchor to reach goes."""
+
+    def district(self, front, width):
+        kerb = width * 50.0 + dist.SIDEWALK_WIDTH
+        return FakeDistrict([("left", box(0, kerb, 900, kerb + 2000), 10.1),
+                             ("narrow", box(900, kerb, 900 + front, kerb + 2000), 15.0),
+                             ("right", box(900 + front, kerb, 1800 + front, kerb + 2000), 11.9)],
+                            roads=[{"id": "ave", "width_m": width, "pieces": [[(-3000, 0), (6000, 0)]]}])
+
+    def test_a_4_m_wall_on_an_avenue_loses_its_escape(self):
+        # Lower neighbours, the far sidewalk out of range, the escape across the whole 4.2 m wall: nothing reaches
+        # the roof from the pavement with it, so it goes, and then the street reaches it.
+        from _fire_escapes import fire_escape_plan, fire_escape_spots
+        d = self.district(420, 25.0)
+        self.assertIn("narrow", {s[0] for s in fire_escape_plan(d)})
+        self.assertNotIn("narrow", {s[0] for s in fire_escape_spots(d)})
+        self.assertEqual(d._fire_escapes_dropped, ["narrow"])
+        r = reach.grapple_reach(d)
+        spots = [s for s in reach.anchor_spots(d) if s[6] == "narrow"]
+        self.assertTrue(any(r.targetable(f, s) for s in spots for f in r.street_spots))
+
+    def test_a_wider_wall_on_a_street_keeps_it(self):
+        from _fire_escapes import fire_escape_spots
+        d = self.district(751, 12.0)
+        self.assertIn("narrow", {s[0] for s in fire_escape_spots(d)})
+        self.assertEqual(d._fire_escapes_dropped, [])
+
+
 if __name__ == "__main__":
     unittest.main()
