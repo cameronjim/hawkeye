@@ -472,6 +472,19 @@ namespace HawkeyeInteriorLap
 			Note(TEXT("Kate went down"));
 			return EStep::Failed;
 		}
+		// Steering at a thug behind the hall's crates can catch a ledge (2026-11-11: hung 130 s while the gunner shot
+		// her); a player lets go with crouch and fights on.
+		if (const UParkourComponent* Parkour = Kate->GetParkourComponent(); Parkour && Parkour->IsHanging())
+		{
+			StopMoving(PC);
+			if (Now >= NextActionAt)
+			{
+				Note(TEXT("let go of a ledge the steer caught"));
+				Tap(PC, CrouchPath);
+				NextActionAt = Now + 0.4;
+			}
+			return EStep::Running;
+		}
 		AThugCharacter* Target = bDrawing && DrawTarget.IsValid() && !IsDown(DrawTarget.Get()) ? DrawTarget.Get() : Nearest;
 		const FVector Chest = Target->GetActorLocation() + FVector(0.f, 0.f, 30.f);
 		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
