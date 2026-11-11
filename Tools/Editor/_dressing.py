@@ -57,6 +57,9 @@ WAYPOINT_KEEPOUT = 150.0        # cm round a chase waypoint, from 30 cm under it
 SITE_MARGIN = 150.0             # cm round the toy drive's props and people
 COURIER_KEEPOUT = 700.0         # cm round the courier scene's body and cruiser
 ARENA_STAND_KEEPOUT = 300.0     # cm round the boss arena's street stand
+DOOR_KEEPOUT_ALONG = 200.0      # cm either side of a safehouse or interior door along its wall
+DOOR_KEEPOUT_OUT = 250.0        # cm out from the wall
+DOOR_KEEPOUT_HIGH = 600.0       # cm up: the door, its sign and the storefront band
 STRUCTURE_TOL = 0.5             # cm two volumes may share a face without overlapping
 STRING_LIGHT_CLEARANCE = 550.0  # cm from the road or pavement to the lowest point of a string of lights
 PROP_CLEAR = 30.0               # cm between a colliding dressing volume and a lamp or street prop
@@ -327,6 +330,14 @@ def gather_scene(district):
         keepouts.append({"what": "boss arena stand", "ring": circle_ring(sx, sy, ARENA_STAND_KEEPOUT),
                          "z0": sz - 50.0, "z1": sz + 400.0})
 
+    # The doors the game puts in walls: the safehouses and the interior entrance, their signs and the pavement in front.
+    doors = [(label, spot) for label, spot in gen.safehouse_spots(district)]
+    interior = gen.interior_spot(district)
+    if interior is not None:
+        doors.append(("interior entrance", interior))
+    for label, spot in doors:
+        keepouts.append(door_keepout(label, spot["x"], spot["y"], spot["yaw"]))
+
     scene = {
         "buildings": buildings, "roads": roads, "pois": pois, "escapes": escapes, "ledges": ledges,
         "anchors": anchors, "props": props, "keepouts": keepouts, "chase_start": chase_start, "site": site_info,
@@ -334,6 +345,15 @@ def gather_scene(district):
     }
     district._dressing_scene = scene
     return scene
+
+
+def door_keepout(what, x, y, yaw):
+    """A door's keep-out: DOOR_KEEPOUT_ALONG either side of it along the wall, DOOR_KEEPOUT_OUT out from the wall,
+    from under the pavement to over its sign. ``yaw`` faces out of the wall."""
+    ux, uy = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+    half_out = DOOR_KEEPOUT_OUT * 0.5
+    return {"what": "door " + what, "ring": box_ring(x + ux * half_out, y + uy * half_out, half_out, DOOR_KEEPOUT_ALONG, yaw),
+            "z0": -30.0, "z1": DOOR_KEEPOUT_HIGH}
 
 
 def anchor_lines(reach, anchors):

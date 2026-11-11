@@ -27,7 +27,8 @@ import _dressing_kit as kit  # noqa: E402
 
 GOLDEN = {
     "hero_block": "blk_R3363343",
-    "hero_plan": "e546bc7c14c36f1f",   # windows on M_Facade's grid, strings' bulbs in their envelope (2026-11-10)
+    # 2026-11-10: windows on M_Facade's grid, strings' bulbs in their envelope, the safehouse and interior doors kept clear
+    "hero_plan": "e973fcdb265016cc",
 }
 
 
@@ -184,6 +185,15 @@ class ConstraintTest(unittest.TestCase):
         high = _box("string_light", (0.0, 700.0, 0.0), host="N3",
                     params={"points": [[0.0, 995.0, 720.0], [0.0, -995.0, 720.0]], "radius": 2.0})
         self.assertIsNone(dr.in_keepout(high, keep), "over the waypoint's keep-out")
+
+    def test_a_door_keeps_its_wall_and_pavement_clear(self):
+        keep = [dr.door_keepout("safehouse", 0.0, FACADE_Y, -90.0)]   # in the north row's wall, facing the street
+        card = _box("window_light", (100.0, FACADE_Y - 1.5, 500.0), (2.0, 110.0, 150.0), yaw=-90.0, host="N3")
+        self.assertEqual(dr.in_keepout(card, keep), "door safehouse", "over the door, under its sign line")
+        high = _box("window_light", (100.0, FACADE_Y - 1.5, 830.0), (2.0, 110.0, 150.0), yaw=-90.0, host="N3")
+        self.assertIsNone(dr.in_keepout(high, keep))
+        aside = _box("window_light", (400.0, FACADE_Y - 1.5, 500.0), (2.0, 110.0, 150.0), yaw=-90.0, host="N3")
+        self.assertIsNone(dr.in_keepout(aside, keep))
 
     def test_overlaps_structure(self):
         sc = self.scene
@@ -431,6 +441,8 @@ class HeroBlockTest(unittest.TestCase):
     def test_nothing_sits_on_the_chase_or_in_the_toy_drive(self):
         keep = [k for k in self.scene["keepouts"]]
         self.assertTrue(any(k["what"] == "toy drive" for k in keep))
+        self.assertTrue(any(k["what"].startswith("door City_Safehouse_2") for k in keep),
+                        "the second safehouse's door is on the hero block")
         for rec in self.plan["records"]:
             self.assertIsNone(dr.in_keepout(rec, keep), rec["id"])
 
