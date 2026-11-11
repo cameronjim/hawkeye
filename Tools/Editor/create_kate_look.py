@@ -88,19 +88,20 @@ def _stamp(*parts):
     return ica.fingerprint(LOOK_BUILD, *parts)
 
 
-def ensure_rig(mesh, chain_map):
-    """IK_Kate_Sparrow: the ue4 chains (the names IK_Kate_UEFN uses), a goal and a limb solver per limb."""
+def ensure_rig(mesh, chain_map, path=RIG):
+    """IK_Kate_Sparrow (or path): the ue4 chains (the names IK_Kate_UEFN uses), a goal and a limb solver per limb.
+    import_bodies.py builds the bodies' rig with it too."""
     stamp = _stamp("rig", mesh.get_path_name(), chain_map)
-    existing = c.load_or_none(RIG)
+    existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
-        c.log("exists", RIG)
+        c.log("exists", path)
         return existing
-    folder, name = RIG.rsplit("/", 1)
+    folder, name = path.rsplit("/", 1)
     rig = existing
     if rig is None:
         rig, _created = c.create_asset(name, folder, unreal.IKRigDefinition, unreal.IKRigDefinitionFactory(), quiet=True)
     if rig is None:
-        c.log("FAILED", RIG, "could not create the IK Rig")
+        c.log("FAILED", path, "could not create the IK Rig")
         return None
     ctl = unreal.IKRigController.get_controller(rig)
     # Rebuilt in place, emptied first: a loaded rig cannot be deleted, and a second set of goals is refused.
@@ -130,7 +131,7 @@ def ensure_rig(mesh, chain_map):
         made.append(chain_name)
     ica.set_tag(rig, stamp)
     c.save(rig)
-    c.log("updated" if existing is not None else "created", RIG, "{0} chains, {1} goals, {2} solvers".format(len(made), len(ctl.get_all_goals()), ctl.get_num_solvers()))
+    c.log("updated" if existing is not None else "created", path, "{0} chains, {1} goals, {2} solvers".format(len(made), len(ctl.get_all_goals()), ctl.get_num_solvers()))
     return rig
 
 
@@ -156,17 +157,17 @@ def _hands_to_driver(ctl):
     return "hands on the driver's: " + (", ".join(done) if done else "FAILED, no hand chains in the IK op")
 
 
-def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh):
+def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG):
     stamp = _stamp("rtg", source_rig.get_path_name(), ica.tag_of(source_rig), ica.tag_of(target_rig))
-    existing = c.load_or_none(RTG)
+    existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
-        c.log("exists", RTG)
+        c.log("exists", path)
         return existing
-    ica.delete_if_exists(RTG)
-    folder, name = RTG.rsplit("/", 1)
+    ica.delete_if_exists(path)
+    folder, name = path.rsplit("/", 1)
     rtg, _created = c.create_asset(name, folder, unreal.IKRetargeter, unreal.IKRetargetFactory(), quiet=True)
     if rtg is None:
-        c.log("FAILED", RTG, "could not create the IK Retargeter")
+        c.log("FAILED", path, "could not create the IK Retargeter")
         return None
     side = unreal.RetargetSourceOrTarget
     ctl = unreal.IKRetargeterController.get_controller(rtg)
@@ -192,27 +193,27 @@ def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh):
     hands = _hands_to_driver(ctl)
     ica.set_tag(rtg, stamp)
     c.save(rtg)
-    c.log("FAILED" if "FAILED" in hands else "created", RTG, "{0} ops, {1}".format(ctl.get_num_retarget_ops(), hands))
+    c.log("FAILED" if "FAILED" in hands else "created", path, "{0} ops, {1}".format(ctl.get_num_retarget_ops(), hands))
     return rtg
 
 
-def ensure_anim_bp(mesh, rtg):
+def ensure_anim_bp(mesh, rtg, path=ABP):
     stamp = _stamp("abp", ica.tag_of(rtg))
-    existing = c.load_or_none(ABP)
+    existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
-        c.log("exists", ABP)
+        c.log("exists", path)
         return existing
     builder = getattr(unreal, "HawkeyeRetargetGraphBuilder", None)
     if builder is None:
-        c.log("FAILED", ABP, "UHawkeyeRetargetGraphBuilder not exposed; build the module")
+        c.log("FAILED", path, "UHawkeyeRetargetGraphBuilder not exposed; build the module")
         return None
-    abp = builder.build_retarget_from_parent(ABP, ica.mesh_skeleton(mesh), rtg)
+    abp = builder.build_retarget_from_parent(path, ica.mesh_skeleton(mesh), rtg)
     if abp is None:
-        c.log("FAILED", ABP, "did not build or compile; see LogHawkeye")
+        c.log("FAILED", path, "did not build or compile; see LogHawkeye")
         return None
     ica.set_tag(abp, stamp)
     c.save(abp)
-    c.log("created" if existing is None else "updated", ABP, "retarget from the parent mesh with " + rtg.get_name())
+    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with " + rtg.get_name())
     return abp
 
 

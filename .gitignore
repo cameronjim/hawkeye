@@ -82,6 +82,13 @@ Content/ParagonSparrow/
 Content/Paragon*/
 # Kate's look, built from Sparrow by Tools/Editor/create_kate_look.py (BP_Kate only holds soft references)
 Content/Characters/Kate/Look/
+# The thugs', Clint's and Lucky's bodies, imported from Quaternius's CC0 packs outside the repo by
+# Tools/Editor/import_bodies.py, with the retargets and materials built on them. CC0 would allow committing them;
+# they stay out because the retargets hang off rigs that are git-ignored too (BP_Thug and BP_Clint hold soft references).
+Content/Characters/Bodies/
+Content/Characters/Thug/Look/
+Content/Characters/Clint/Look/
+Content/Characters/Lucky/
 
 # Combat clips: downloads, their imports and copies, and the retargeted results. Mixamo's and
 # Epic's clips are not republished here; Tools/import-anims.ps1 rebuilds all of it (claude-docs/animation.md).
