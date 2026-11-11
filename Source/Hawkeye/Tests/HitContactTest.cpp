@@ -180,9 +180,9 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 		< UHawkeyeHitContactRules::ComputeHitStopSeconds(0.6f, Tuning));
 	TestTrue(TEXT("A few frames: two to five at 60"), Tuning.MinSeconds >= 0.015f && Tuning.MaxSeconds <= 0.09f);
 
-	TestTrue(TEXT("Alive and not winding up: held"), UHawkeyeHitContactRules::ShouldHitStop(true, false));
-	TestFalse(TEXT("Winding up a swing: never held (his telegraph is a promise)"), UHawkeyeHitContactRules::ShouldHitStop(true, true));
-	TestFalse(TEXT("Dead: never held"), UHawkeyeHitContactRules::ShouldHitStop(false, false));
+	TestTrue(TEXT("Alive and not winding up: reacts after the stop"), UHawkeyeHitContactRules::ShouldHitStop(true, false));
+	TestFalse(TEXT("Winding up a swing: keeps his swing"), UHawkeyeHitContactRules::ShouldHitStop(true, true));
+	TestFalse(TEXT("Dead: the ragdoll, no reaction"), UHawkeyeHitContactRules::ShouldHitStop(false, false));
 
 	FHawkeyeTestWorld TestWorld;
 	AHawkeyeCharacter* Kate = HawkeyeHitContactTest::SpawnKate(TestWorld);
@@ -195,15 +195,17 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Her light"), Kate->GetMeleeHitStopSeconds(false), 0.035f, 0.001f);
 	TestEqual(TEXT("Her heavy"), Kate->GetMeleeHitStopSeconds(true), 0.07f, 0.001f);
 
-	// The stop is the body's own time and comes back exactly.
+	// The stop is the world's, as the parry's, so every clock holds together; the body only remembers it.
+	Kate->ApplyHitStop(0.05f, FHawkeyeHitStopTuning().Dilation);
+	TestEqual(TEXT("The world's time slows"), Kate->GetWorld()->GetWorldSettings()->TimeDilation, FHawkeyeHitStopTuning().Dilation,
+		0.0001f);
+	TestEqual(TEXT("Her own does not (no clock of hers falls behind the others)"), Kate->CustomTimeDilation, 1.f);
 	UHitReactionComponent* Reaction = Kate->GetHitReactionComponent();
 	TestNotNull(TEXT("She has a reaction component"), Reaction);
 	if (Reaction)
 	{
 		Reaction->BeginHitStop(0.05f);
-		TestTrue(TEXT("Held"), Reaction->IsHitStopped());
-		TestEqual(TEXT("Her own time slows"), Kate->CustomTimeDilation, Reaction->HitStop.Dilation, 0.0001f);
-		TestEqual(TEXT("The world's does not"), Kate->GetWorld()->GetWorldSettings()->TimeDilation, 1.f);
+		TestTrue(TEXT("Her reaction waits for it"), Reaction->IsHitStopped());
 	}
 	return true;
 }
@@ -314,8 +316,9 @@ bool FHawkeyeHitContactUnchanged::RunTest(const FString& Parameters)
 	TestEqual(TEXT("It lands at his guard's share"), Before - Health->GetCurrentHealth(), 15.f * 0.3f, 0.01f);
 	TestTrue(TEXT("Still winding up: a guarded boss is not staggered by a light"), His->IsWindingUp());
 	TestEqual(TEXT("His telegraph's clock did not move"), His->GetPhaseRemaining(), TelegraphLeft, 0.0001f);
-	TestEqual(TEXT("He is not held by the hit-stop"), Thug->CustomTimeDilation, 1.f);
-	TestTrue(TEXT("She is"), Kate->CustomTimeDilation < 1.f);
+	TestEqual(TEXT("Nobody's own clock is touched"), Thug->CustomTimeDilation + Kate->CustomTimeDilation, 2.f);
+	TestEqual(TEXT("The world holds, as for the parry"), Kate->GetWorld()->GetWorldSettings()->TimeDilation,
+		FHawkeyeHitStopTuning().Dilation, 0.0001f);
 	TestTrue(TEXT("The impact is known: its weight is her light's"),
 		Kate->GetMeleeComponent()->GetLastImpact().bValid
 			&& FMath::IsNearlyEqual(Kate->GetMeleeComponent()->GetLastImpact().Weight, 0.3f));
