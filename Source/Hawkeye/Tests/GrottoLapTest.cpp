@@ -36,6 +36,7 @@
 #include "Tests/HawkeyeShots.h"
 #include "Tests/InteriorTestKit.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapFightPressure.h"
 #include "UI/HawkeyeHudWidget.h"
 #include "World/ArrowSwitch.h"
 #include "World/ChapterEndInteractable.h"
@@ -635,7 +636,8 @@ namespace HawkeyeGrottoLap
 			Hits, Damage, LightSwings, HeavySwings, Dodges, ArrowsLoosed, Finishers, FightSeconds, *BoomerangNote.ReplaceCharWithEscapedChar(),
 			*RoundTrip.ReplaceCharWithEscapedChar(), *ChapterFourCheck.ReplaceCharWithEscapedChar(), *FString::Join(Shots, TEXT(", ")),
 			*FString::Join(AlertNotes, TEXT("; ")).ReplaceCharWithEscapedChar(), *FString::Join(Legs, TEXT(",\n")));
-		WriteText(bLoud ? TEXT("grotto_loud_lap.json") : TEXT("grotto_lap.json"), Json);
+		WriteText(bLoud ? TEXT("grotto_loud_lap.json") : TEXT("grotto_lap.json"),
+			HawkeyeLapPressure::Finish(Test, bLoud ? TEXT("SeenGrotto") : TEXT("Grotto"), Json));
 		Test->AddInfo(FString::Printf(TEXT("%s:\n%s"), bLoud ? TEXT("grotto_loud_lap.json") : TEXT("grotto_lap.json"), *Json));
 		UE_LOG(LogTemp, Display, TEXT("[Hawkeye] grotto %s lap: %s"), bLoud ? TEXT("loud") : TEXT("stealth"), *Json);
 		if (!bLoud)
@@ -1896,6 +1898,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapGrotto, "Hawkeye.Lap.Grotto",
 
 bool FHawkeyeLapGrotto::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	using namespace HawkeyeGrottoLap;
 	if (!FApp::CanEverRender())
 	{
@@ -1913,6 +1916,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapGrottoLoud, "Hawkeye.Lap.SeenGrotto"
 
 bool FHawkeyeLapGrottoLoud::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	using namespace HawkeyeGrottoLap;
 	if (!FApp::CanEverRender())
 	{

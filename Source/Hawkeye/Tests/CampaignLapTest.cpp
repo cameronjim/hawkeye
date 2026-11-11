@@ -52,6 +52,7 @@
 #include "SpudSubsystem.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
+#include "Tests/LapFightPressure.h"
 #include "UI/ChapterTitleWidget.h"
 #include "UI/HawkeyeDifficultyPromptWidget.h"
 #include "UI/HawkeyeHintSubsystem.h"
@@ -1391,7 +1392,8 @@ void FHawkeyeCampaignLapRunner::Finish(UWorld* World)
 		"  \"hawkeye_warnings\": [\n%s\n  ],\n  \"checks\": [\n%s\n  ],\n  \"shots\": [\n%s\n  ]\n}\n"),
 		*Name, Clock(), CheckFailures, ChaseSeconds, MinLead < BIG_NUMBER ? MinLead : 0.f, MaxLead, *Quote(Timeline), *Quote(LeadSamples),
 		*Quote(Forced), *Quote(Findings), *Quote(Warnings), *Quote(Checks), *Quote(Shots));
-	WriteText(bFallBehind ? TEXT("campaign_fall_behind.json") : TEXT("campaign_lap.json"), Json);
+	WriteText(bFallBehind ? TEXT("campaign_fall_behind.json") : TEXT("campaign_lap.json"),
+		HawkeyeLapPressure::Finish(Test, bFallBehind ? TEXT("ChaseFallBehind") : TEXT("Campaign"), Json));
 	Test->AddInfo(TEXT("campaign lap json:\n") + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] campaign lap:\n%s"), *Json);
 	for (const FString& Warning : Warnings)
@@ -2263,11 +2265,13 @@ static bool HawkeyeStartCampaignLap(FAutomationTestBase* Test, bool bFallBehind)
 
 bool FHawkeyeLapCampaign::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	return HawkeyeStartCampaignLap(this, /*bFallBehind=*/false);
 }
 
 bool FHawkeyeLapCampaignFallBehind::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	return HawkeyeStartCampaignLap(this, /*bFallBehind=*/true);
 }
 

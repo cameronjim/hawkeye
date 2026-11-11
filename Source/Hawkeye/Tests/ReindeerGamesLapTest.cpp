@@ -44,6 +44,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapFightPressure.h"
 #include "UI/HawkeyeHudWidget.h"
 #include "UI/HawkeyeObjectiveWidget.h"
 #include "World/ChapterEndInteractable.h"
@@ -1235,7 +1236,7 @@ void FHawkeyeReindeerLap::Report(UWorld* World)
 		Lines.Add(TEXT("\"") + Escape(Why) + TEXT("\""));
 	}
 	Json += TEXT("  \"failures\": [") + FString::Join(Lines, TEXT(", ")) + TEXT("]\n}\n");
-	WriteText(TEXT("reindeer_games_lap.json"), Json);
+	WriteText(TEXT("reindeer_games_lap.json"), Json = HawkeyeLapPressure::Finish(Test, TEXT("ReindeerGames"), Json));
 	Test->AddInfo(TEXT("reindeer_games_lap.json:\n") + Json);
 	if (UHawkeyeSaveSubsystem* MutableSave = World ? UHawkeyeSaveSubsystem::Get(World) : nullptr)
 	{
@@ -1246,6 +1247,7 @@ void FHawkeyeReindeerLap::Report(UWorld* World)
 
 bool FHawkeyeLapReindeerGames::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
 		AddInfo(TEXT("No RHI: skipping the reindeer games lap. Run it from the standalone game (-game, no -nullrhi)."));

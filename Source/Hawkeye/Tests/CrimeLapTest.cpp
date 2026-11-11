@@ -43,6 +43,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapFightPressure.h"
 #include "UI/HawkeyeHudWidget.h"
 #include "UI/HawkeyeObjectiveWidget.h"
 #include "World/GrappleAnchor.h"
@@ -786,7 +787,7 @@ void FHawkeyeCrimeLapRunner::Report(UWorld* World, AHawkeyeCharacter* Kate)
 		DamageTaken, Kate->GetHealthComponent()->GetCurrentHealth(), *Extra, ArrowsLoosed, *FString::Join(TrickArrows, TEXT(", ")), Strikes,
 		Parries, Finishers, Dodges, ArrowsBeforeEnd, ArrowsAfter, Result.ArrowsGiven, CountBefore, CountAfter, SavedBefore, SavedAfter,
 		bToastSeen ? TEXT("true") : TEXT("false"), *ToastText);
-	WriteText(FString::Printf(TEXT("crime_%s.json"), *TypeName), Json);
+	WriteText(FString::Printf(TEXT("crime_%s.json"), *TypeName), HawkeyeLapPressure::Finish(Test, TEXT("Crime") + TypeName, Json));
 	Test->AddInfo(FString::Printf(TEXT("crime_%s.json:\n"), *TypeName) + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] crime %s: %s"), *TypeName, *Json);
 	if (!bWon)
@@ -1386,21 +1387,25 @@ static bool HawkeyeStartCrimeLap(FAutomationTestBase* Test, ECrimeType Type)
 
 bool FHawkeyeLapCrimeMugging::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	return HawkeyeStartCrimeLap(this, ECrimeType::Mugging);
 }
 
 bool FHawkeyeLapCrimeRobbery::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	return HawkeyeStartCrimeLap(this, ECrimeType::Robbery);
 }
 
 bool FHawkeyeLapCrimeAmbush::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	return HawkeyeStartCrimeLap(this, ECrimeType::Ambush);
 }
 
 bool FHawkeyeLapCrimeRooftop::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	return HawkeyeStartCrimeLap(this, ECrimeType::Rooftop);
 }
 

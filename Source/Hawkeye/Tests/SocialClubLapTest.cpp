@@ -41,6 +41,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapFightPressure.h"
 #include "World/GrappleAnchor.h"
 #include "World/ThugAIController.h"
 #include "World/ThugCharacter.h"
@@ -1284,7 +1285,7 @@ void FHawkeyeSocialClubLap::Report(UWorld* World)
 		Quoted.Add(TEXT("\"") + Escape(Why) + TEXT("\""));
 	}
 	Json += TEXT("  \"failures\": [") + FString::Join(Quoted, TEXT(", ")) + TEXT("]\n}\n");
-	WriteText(TEXT("social_club_lap.json"), Json);
+	WriteText(TEXT("social_club_lap.json"), Json = HawkeyeLapPressure::Finish(Test, TEXT("SocialClub"), Json));
 	Test->AddInfo(FString::Printf(TEXT("Social club lap: %s in %.1f s wall, %.1f s of fighting; hits %d (%.0f), hazard hits %d, strikes %d, parries %d, finishers %d (%d on Tomas, %d outside his window), winded %d, guard breaks %d, unblockables dodged %d, Santa on Tomas %d, deaths %d."),
 		bComplete ? TEXT("completed") : TEXT("NOT completed"), FPlatformTime::Seconds() - WallStart, FightSeconds, HitsTaken, DamageTaken, HazardHits,
 		Strikes, Parries, Finishers, BossFinishers, OutsideWindow(Fight), Winded(Fight), GuardBreaks(Fight), UnblockableDodges(Fight),
@@ -1302,6 +1303,7 @@ void FHawkeyeSocialClubLap::Report(UWorld* World)
 
 bool FHawkeyeLapSocialClub::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
 		AddInfo(TEXT("No RHI: skipping the social club lap. Run it from the standalone game (-game, no -nullrhi)."));

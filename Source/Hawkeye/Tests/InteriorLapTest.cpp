@@ -21,6 +21,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/InteriorTestKit.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapFightPressure.h"
 #include "World/DoorActor.h"
 #include "World/GrappleAnchor.h"
 #include "World/InteractionComponent.h"
@@ -632,7 +633,8 @@ namespace HawkeyeInteriorLap
 			bLoud ? TEXT("InteriorLoud") : TEXT("InteriorStealth"), bFailed ? TEXT("false") : TEXT("true"), Seconds, Alerts, Suspicions, Takedowns,
 			Hits, Damage, LightSwings, HeavySwings, Dodges, ArrowsLoosed, Finishers, MaxFightArm, IndoorCap, ScriptedStands, StandUps.Num(),
 			*FString::Join(AlertNotes, TEXT("; ")).ReplaceCharWithEscapedChar(), *FString::Join(Legs, TEXT(",\n")));
-		WriteText(bLoud ? TEXT("interior_loud.json") : TEXT("interior_stealth.json"), Json);
+		WriteText(bLoud ? TEXT("interior_loud.json") : TEXT("interior_stealth.json"),
+			HawkeyeLapPressure::Finish(Test, bLoud ? TEXT("InteriorLoud") : TEXT("InteriorStealth"), Json));
 		Test->AddInfo(FString::Printf(TEXT("%s:\n%s"), bLoud ? TEXT("interior_loud.json") : TEXT("interior_stealth.json"), *Json));
 		UE_LOG(LogTemp, Display, TEXT("[Hawkeye] interior %s lap: %s"), bLoud ? TEXT("loud") : TEXT("stealth"), *Json);
 		if (!bLoud)
@@ -1145,6 +1147,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapInteriorStealth, "Hawkeye.Lap.Interi
 
 bool FHawkeyeLapInteriorStealth::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	using namespace HawkeyeInteriorLap;
 	if (!FApp::CanEverRender())
 	{
@@ -1187,6 +1190,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapInteriorLoud, "Hawkeye.Lap.InteriorL
 
 bool FHawkeyeLapInteriorLoud::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	using namespace HawkeyeInteriorLap;
 	if (!FApp::CanEverRender())
 	{

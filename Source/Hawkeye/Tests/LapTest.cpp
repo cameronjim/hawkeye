@@ -39,6 +39,7 @@
 #include "Tests/HawkeyeShots.h"
 #include "Tests/HawkeyeTestUtils.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapFightPressure.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UnrealClient.h"
 #include "World/CityLedgeSpawner.h"
@@ -1365,7 +1366,7 @@ void FHawkeyeLapRunner::Finish(UWorld* World, APlayerController* PC, AHawkeyeCha
 		Meter.AverageMs(), Meter.WorstFrame * 1000.0, Meter.WorstFrameIndex, Meter.FramesOver33, Meter.FramesOver100, Spawner ? Spawner->GetLoadLedgeSpawnSeconds() * 1000.f : -1.f,
 		Spawner ? Spawner->GetTotalLedgeSpawnSeconds() * 1000.f : -1.f, Spawner ? Spawner->GetAnchorSpawnSeconds() * 1000.f : -1.f,
 		*StreetGrappleNote.ReplaceCharWithEscapedChar(), Kate->GetHealthComponent()->GetCurrentHealth(), SurveyRoofs, SurveyRoofsWithExit);
-	HawkeyeLap::WriteText(TEXT("lap_eastvillage.json"), Json);
+	HawkeyeLap::WriteText(TEXT("lap_eastvillage.json"), HawkeyeLapPressure::Finish(Test, TEXT("EastVillage"), Json));
 	Test->AddInfo(TEXT("lap_eastvillage.json:\n") + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] lap: %s"), *Json);
 
@@ -2169,8 +2170,9 @@ void FHawkeyeRoofFightRunner::Finish(UWorld* World, APlayerController* PC, AHawk
 		*HawkeyeLap::DifficultyName(Kate), bWon ? TEXT("true") : TEXT("false"), *Why, DoneAt - FightStart, Health, Kate->GetHealthComponent()->GetMaxHealth(),
 		HitsTaken, DamageTaken, Dead, ArrowsLoosed, LightSwings, HeavySwings, Dodges, Parries, Finishers,
 		Kate->GetPerfectDodgeCount(), MaxCombo, Meter.AverageMs());
-	HawkeyeLap::WriteText(TEXT("lap_roof_fight.json"), Json);
-	HawkeyeLap::WriteText(FString::Printf(TEXT("lap_roof_fight_%s.json"), *HawkeyeLap::DifficultyName(Kate).ToLower()), Json);
+	const FString WithFights = HawkeyeLapPressure::Finish(Test, TEXT("RoofFight"), Json);
+	HawkeyeLap::WriteText(TEXT("lap_roof_fight.json"), WithFights);
+	HawkeyeLap::WriteText(FString::Printf(TEXT("lap_roof_fight_%s.json"), *HawkeyeLap::DifficultyName(Kate).ToLower()), WithFights);
 	Test->AddInfo(TEXT("lap_roof_fight.json:\n") + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] roof fight: %s"), *Json);
 	if (!bWon)
@@ -2688,8 +2690,9 @@ void FHawkeyeArcherDuelRunner::Finish(UWorld* World, APlayerController* PC, AHaw
 		"  \"archer_holds\": %d,\n  \"hold_shots\": %d,\n  \"hold_guess_seconds\": %.2f,\n  \"cover\": \"%s\",\n  \"average_frame_ms\": %.2f\n}\n"),
 		*HawkeyeLap::DifficultyName(Kate), bWon ? TEXT("true") : TEXT("false"), *Why, Seconds, Health, HitsTaken, DamageTaken, Down, ArrowsUsed, TheirArrows,
 		Pops, Aborts, Moves, Holds, HoldShots, HoldGuessSeconds, *CoverNote, Meter.AverageMs());
-	HawkeyeLap::WriteText(TEXT("lap_archer_duel.json"), Json);
-	HawkeyeLap::WriteText(FString::Printf(TEXT("lap_archer_duel_%s.json"), *HawkeyeLap::DifficultyName(Kate).ToLower()), Json);
+	const FString WithFights = HawkeyeLapPressure::Finish(Test, TEXT("ArcherDuel"), Json);
+	HawkeyeLap::WriteText(TEXT("lap_archer_duel.json"), WithFights);
+	HawkeyeLap::WriteText(FString::Printf(TEXT("lap_archer_duel_%s.json"), *HawkeyeLap::DifficultyName(Kate).ToLower()), WithFights);
 	Test->AddInfo(TEXT("lap_archer_duel.json:\n") + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] archer duel: %s"), *Json);
 	if (!bWon)
@@ -3327,8 +3330,9 @@ void FHawkeyeStreetFightRunner::Finish(UWorld* World, APlayerController* PC, AHa
 		FullShots, QuickShots, *FString::Join(TrickArrows, TEXT(", ")), LightSwings, HeavySwings, Dodges, Parries, Finishers,
 		Kate->GetPerfectDodgeCount(), MaxCombo, Blocks.IsEmpty() ? TEXT("0") : *Blocks, Metrics.GetDisabledSeconds(), Annoyance * 100.f, Metrics.GetUntelegraphedHits(),
 		*Untelegraphed, Meter.AverageMs());
-	HawkeyeLap::WriteText(TEXT("lap_street_fight.json"), Json);
-	HawkeyeLap::WriteText(FString::Printf(TEXT("lap_street_fight_%s.json"), *HawkeyeLap::DifficultyName(Kate).ToLower()), Json);
+	const FString WithFights = HawkeyeLapPressure::Finish(Test, TEXT("StreetFight"), Json);
+	HawkeyeLap::WriteText(TEXT("lap_street_fight.json"), WithFights);
+	HawkeyeLap::WriteText(FString::Printf(TEXT("lap_street_fight_%s.json"), *HawkeyeLap::DifficultyName(Kate).ToLower()), WithFights);
 	Test->AddInfo(TEXT("lap_street_fight.json:\n") + Json);
 	UE_LOG(LogTemp, Display, TEXT("[Hawkeye] street fight: %s"), *Json);
 	if (!bWon)
@@ -3635,6 +3639,7 @@ bool FHawkeyeStreetFightRunner::Update()
 
 bool FHawkeyeLapEastVillage::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
 		AddInfo(TEXT("No RHI: skipping the lap. Run it from the standalone game (-game, no -nullrhi)."));
@@ -3650,6 +3655,7 @@ bool FHawkeyeLapEastVillage::RunTest(const FString& Parameters)
 
 bool FHawkeyeLapRoofFight::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
 		AddInfo(TEXT("No RHI: skipping the roof fight. Run it from the standalone game (-game, no -nullrhi)."));
@@ -3665,6 +3671,7 @@ bool FHawkeyeLapRoofFight::RunTest(const FString& Parameters)
 
 bool FHawkeyeLapArcherDuel::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
 		AddInfo(TEXT("No RHI: skipping the archer duel. Run it from the standalone game (-game, no -nullrhi)."));
@@ -3680,6 +3687,7 @@ bool FHawkeyeLapArcherDuel::RunTest(const FString& Parameters)
 
 bool FHawkeyeLapStreetFight::RunTest(const FString& Parameters)
 {
+	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
 		AddInfo(TEXT("No RHI: skipping the street fight. Run it from the standalone game (-game, no -nullrhi)."));
