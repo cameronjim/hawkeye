@@ -1,6 +1,7 @@
 #include "Combat/HitReactionComponent.h"
 
 #include "Hawkeye.h"
+#include "Misc/App.h"
 #include "Combat/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
@@ -43,24 +44,17 @@ void UHitReactionComponent::BeginHitStop(float Seconds)
 	{
 		return;
 	}
-	if (HitStopRemaining <= 0.f)
-	{
-		SavedTimeDilation = Owner->CustomTimeDilation;
-	}
+	// The world's time is what stops (AHawkeyeCharacter::ApplyTimeWarp, started by whoever landed the blow); this only
+	// remembers it, in real seconds, so the body's reaction waits for it.
 	HitStopRemaining = FMath::Max(HitStopRemaining, Seconds);
 	LastHitStopSeconds = Seconds;
 	++HitStopCount;
-	Owner->CustomTimeDilation = SavedTimeDilation * HitStop.Dilation;
 	UpdateTickEnabled();
 }
 
 void UHitReactionComponent::EndHitStop()
 {
 	HitStopRemaining = 0.f;
-	if (AActor* Owner = GetOwner())
-	{
-		Owner->CustomTimeDilation = SavedTimeDilation;
-	}
 }
 
 void UHitReactionComponent::PlayHitReaction(const FHawkeyeStrikeImpact& Impact)
@@ -293,7 +287,8 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 
 	if (HitStopRemaining > 0.f)
 	{
-		HitStopRemaining -= Step;
+		// Real time: the stop slows the world's.
+		HitStopRemaining -= FMath::Max(static_cast<float>(FApp::GetDeltaTime()), 0.f);
 		if (HitStopRemaining <= 0.f)
 		{
 			EndHitStop();

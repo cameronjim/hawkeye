@@ -17,6 +17,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
+#include "Player/HawkeyeCharacter.h"
 #include "World/ThugCharacter.h"
 
 UMeleeComponent::UMeleeComponent()
@@ -465,18 +466,30 @@ void UMeleeComponent::DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& 
 	AActor* Owner = GetOwner();
 	UHitReactionComponent* Mine = Owner ? Owner->FindComponentByClass<UHitReactionComponent>() : nullptr;
 	UHitReactionComponent* Theirs = Target.FindComponentByClass<UHitReactionComponent>();
-	// Both bodies hold a few frames (their own time only: the world, the tokens and the boss's clock run on), except
-	// anyone winding up a swing, whose telegraph is a promise (a boss swinging through a light).
-	if (Mine && UHawkeyeHitContactRules::ShouldHitStop(true, false))
+	// The hit-stop is the world's (as the parry's), so the two bodies and every clock hold together: tokens, telegraphs
+	// and a boss's combo never fall out of step. Kate or Clint landing a blow, or taking one, stops it.
+	AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Owner);
+	if (!Hawkeye)
 	{
-		Mine->BeginHitStop(UHawkeyeHitContactRules::ComputeHitStopSeconds(Impact.Weight, Mine->HitStop));
+		Hawkeye = Cast<AHawkeyeCharacter>(&Target);
 	}
+	const FHawkeyeHitStopTuning Tuning = Mine ? Mine->HitStop : (Theirs ? Theirs->HitStop : FHawkeyeHitStopTuning());
+	const float Seconds = UHawkeyeHitContactRules::ComputeHitStopSeconds(Impact.Weight, Tuning);
+	if (Hawkeye && Seconds > 0.f)
+	{
+		Hawkeye->ApplyHitStop(Seconds, Tuning.Dilation);
+		if (Mine)
+		{
+			Mine->BeginHitStop(Seconds);
+		}
+		if (Theirs)
+		{
+			Theirs->BeginHitStop(Seconds);
+		}
+	}
+	// The struck body reacts once the stop ends, unless he swings through it (a guarded boss keeps his swing's pose).
 	const UMeleeComponent* TheirMelee = Target.FindComponentByClass<UMeleeComponent>();
 	if (Theirs && UHawkeyeHitContactRules::ShouldHitStop(bTargetAlive, TheirMelee && TheirMelee->IsWindingUp()))
-	{
-		Theirs->BeginHitStop(UHawkeyeHitContactRules::ComputeHitStopSeconds(Impact.Weight, Theirs->HitStop));
-	}
-	if (Theirs && bTargetAlive)
 	{
 		Theirs->PlayHitReaction(Impact);
 	}

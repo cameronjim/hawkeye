@@ -36,7 +36,7 @@ public:
 	/** The last blow this body reacted to (for the screenshots and the log). */
 	const FHawkeyeStrikeImpact& GetLastImpact() const { return LastImpact; }
 
-	/** Holds the owner Seconds of world time at the tuning's dilation (its own time only). A longer stop wins. */
+	/** Notes a hit-stop of Seconds (real) under way, so a reaction waits for it to end. A longer stop wins. */
 	void BeginHitStop(float Seconds);
 
 	UFUNCTION(BlueprintPure, Category = "Hit Reaction")
@@ -125,7 +125,6 @@ protected:
 	FHawkeyeStrikeImpact QueuedImpact;
 
 	float HitStopRemaining = 0.f;
-	float SavedTimeDilation = 1.f;
 	float LastHitStopSeconds = 0.f;
 	int32 HitStopCount = 0;
 

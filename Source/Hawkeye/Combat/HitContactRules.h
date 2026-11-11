@@ -137,13 +137,16 @@ struct HAWKEYE_API FHawkeyeStrikeImpact
 	bool bValid = false;
 };
 
-/** Hit-stop on both parties of a landed blow: a per-actor time dilation, never the world's. */
+/**
+ * Hit-stop on a landed blow Kate (or Clint) is a party to: the world's time, as the parry's stop, so both bodies and every
+ * clock (tokens, telegraphs, the boss's combo) hold together and nothing falls out of step.
+ */
 USTRUCT(BlueprintType)
 struct HAWKEYE_API FHawkeyeHitStopTuning
 {
 	GENERATED_BODY()
 
-	/** At weight 0, s of world time. */
+	/** At weight 0, real seconds. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0"))
 	float MinSeconds = 0.02f;
 
@@ -151,9 +154,9 @@ struct HAWKEYE_API FHawkeyeHitStopTuning
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0"))
 	float MaxSeconds = 0.07f;
 
-	/** The two bodies' own time while it holds. */
+	/** The world's time while it holds. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Dilation = 0.02f;
+	float Dilation = 0.1f;
 };
 
 /** The struck body's physical reaction: an impulse at the struck bone, blended over the animation and recovered. */
@@ -300,8 +303,8 @@ public:
 	static float ComputeHitStopSeconds(float Weight, const FHawkeyeHitStopTuning& Tuning);
 
 	/**
-	 * Whether a party of a landed blow is held by the hit-stop: alive and not winding up a swing (a boss swinging
-	 * through a light keeps his telegraph's clock: the parry, dodge and token timings are a promise).
+	 * Whether a party of a landed blow plays its reaction after the hit-stop (alive, not winding up a swing: a boss
+	 * swinging through a light keeps his swing's pose).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Contact")
 	static bool ShouldHitStop(bool bAlive, bool bWindingUp);

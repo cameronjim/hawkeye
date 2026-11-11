@@ -605,8 +605,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Camera")
 	float GetCameraPunchOffset() const;
 
-	/** The hit-stop her landed light (the chain's first) or heavy gives both bodies, world seconds (by its weight). */
+	/** The hit-stop her landed light (the chain's first) or heavy gives, real seconds (by its weight). */
 	float GetMeleeHitStopSeconds(bool bHeavy) const;
+
+	/** A landed blow's hit-stop: the world at Dilation for RealSeconds (ApplyTimeWarp; never cuts a finisher's slow motion). */
+	void ApplyHitStop(float RealSeconds, float Dilation) { ApplyTimeWarp(RealSeconds, Dilation); }
 
 	/** The hit-stop, the physical reaction to a blow (on the body people see) and the knockout's throw. */
 	UHitReactionComponent* GetHitReactionComponent() const { return HitReactionComponent; }
