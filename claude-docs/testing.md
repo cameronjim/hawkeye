@@ -203,6 +203,16 @@ melee holders overlapped. `Finish`, where the lap writes its JSON, adds a `"figh
 the test's log, and fails a group fight (three or more melee attackers: fewer share one melee token) that cost her neither a hit nor 2 dodges and parries.
 The bot is never slowed to make this pass: when it is too good to be hit, the forced defences are the measure.
 
+## 2h. Contact shots (since 2026-11-11)
+
+`Hawkeye.Screenshot.Contact` (standalone `-game`, about a minute; also at the end of `Hawkeye.Screenshot.Melee` and so the
+Kate pass) writes to `Saved/Screenshots/Kate/`: `punch_contact.png` (time stopped the frame her light lands on a fists
+thug 170 cm off: fails when her nearest fist or foot is more than 35 cm from his nearest body's bone), `hit_reaction.png`
+(0.12 s later: fails when no physical reaction started), `knockout_ragdoll.png` (0.3 s after her heavy kills one: fails
+unless he is a ragdoll) and `knockout_settled.png` (once asleep: fails past 400 cm from where he stood, the pelvis over
+45 cm up, or no settle within 6 s). Ragdoll captures hold time at the crawl (0.02), never the 0.0001 stop: a near-zero
+step blew the solver up and threw the body over the roofs.
+
 ## 3. Playtest checklist (human)
 
 Before any commit that touches player feel, AI, or a level, play through this in

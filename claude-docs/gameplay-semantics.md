@@ -930,7 +930,7 @@ gone from the code, and so from this file. Every section below describes code th
   in the Santa phase is Tomas's "Oh, that's nice" line.
 
 ### Chapter 3's boss, Santa (`DA_Boss_CH03_Santa`; numbers on Normal; 2026-11-10)
-- In L_Int_Grotto's workshop (the arena's outline is the room, its floor at 0): 560 health (320 before the
+- In L_Int_Grotto's workshop (the arena's outline is the room, its floor at 0): 640 health (560 until 2026-11-11, when the scripted player beat him in 41 to 43 s, under the 45 to 70 s target; 320 before the
   2026-11-10 difficulty pass, when the scripted player beat him in 25 s), 1.15 times a thug,
   `BP_Boss_Santa` (BP_Thug in a red suit with white trim, a Santa hat and beard, a sack in his bat slot drawn at 0.85),
   no light riding on him (the workshop's tubes light him; a rim light washed his red out). One phase, "Santa" (`beat_santa`), fighting from the start: a sack swing (14,
@@ -1181,6 +1181,7 @@ Thugs are the guards (`EThugAlertState`, `AThugAIController`). Perception runs o
 - Guard death logs the killer and cause at Log level (takedowns name the attacker);
   every bullet hit logs actor, bone, and damage at Verbose so a playtest can be
   reconstructed from `Hawkeye.log`.
+- (2026-11-11: the ragdoll is now thrown from the blow that killed him and settles; see "Contact, reaction and knockout".)
 - Guard death is always visible. `GoLimp(Killer)` ragdolls the mesh (the mannequin's
   physics asset from the High feature pack; the Standard pack's copy is an empty stub and
   must never be used). If the mesh reports it is not simulating afterwards, a procedural
@@ -1475,6 +1476,8 @@ format is in `claude-docs/asset-conventions.md`, "Interior layouts".
   pick ("light assist picks BP_Thug_C_2 at 240 cm, 18 deg off where she meant") or says nobody.
 - She turns to him over 0.1 s as before, then keeps facing him (up to 720 degrees per second)
   for the rest of the wind-up if he moves. The blow goes at him at the press.
+- (2026-11-11: the 90 cm below is now each attack's contact distance from the region it aims at, capped; see "Contact,
+  reaction and knockout".)
 - Closing the gap: a root-motion strike clip is warped to 90 cm short of him (the warp target
   follows him through the wind-up; inside 90 cm it only turns her). Without one (procedural, or an
   in-place clip) the lunge grows to end 90 cm short of him, never less than the attack's own lunge,
@@ -1525,6 +1528,8 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   tap now would parry him: in the difficulty's window (Hard: not the first 0.1 s), within 250 cm and
   70 degrees of her view, 150 cm up or down (`AHawkeyeCharacter::CanParryNow`, the same test the
   parry itself uses).
+- (2026-11-11: the hit stop is now both bodies' own time, by the blow's weight, and every landed blow kicks the lens;
+  see "Contact, reaction and knockout". The parry and the perfect dodge keep the world's stop.)
 - Hit read: a landed light keeps 2 frames of hit stop (0.033 s); a landed heavy gets 4 (0.067 s, as
   the parry) and a camera punch, the lens 2.5 cm in toward her and back over 0.1 s of real time (a
   half sine), times the camera shake scale (0.3 with reduce camera shake). Every landed strike puts
@@ -1651,6 +1656,53 @@ Rules in `Source/Hawkeye/Combat/CombatReadability.h` (pure, tested by `Hawkeye.M
   500 cm/s at 20 m 7 / 11 / 11; gunner sprinting at 8 m 1 / 2 / 7, standing 10 / 9 / 14. The test
   holds Normal's sprint to 7 or fewer (about one in three) for both, Story at or under Normal, Hard
   at or over it, and a standing Kate hit at least 15 times by the archer.
+
+## Contact, reaction and knockout (built 2026-11-11, from "it actually makes contact with their body and it ragdolls appropriately")
+Rules in `Source/Hawkeye/Combat/HitContactRules.h` (`UHawkeyeHitContactRules`, pure, tested by `Hawkeye.HitContact.*`);
+the bodies' side is `UHitReactionComponent` (on Kate, Clint and every thug); the numbers are data: `FHawkeyeStrikeContact`
+on every `FHawkeyeMeleeAttack`, the hit-stop, reaction and knockout tuning on the component, `ImpactWeight` on each arrow.
+- Contact. Every swing has a target (Kate's assist pick; a thug's or boss's own target, given at his telegraph) and aims at
+  a region of him: head (`head`), torso (`spine_03`, else down the spine) or legs (`thigh_r`); a body on the floor is hit
+  in the torso. The swing is moved so the striker's capsule stands `ContactDistance` (times the striker's scale) from that
+  bone, flat, turned onto it (`PlanContact`): a root-motion clip (Kate) by the motion warp `CombatTarget`, kept on him
+  through the wind-up; a procedural swing by her lunge; an in-place clip (thugs) by a slide over the last `ApproachSeconds`
+  (0.2) of the telegraph; a boss's lunge stops at the contact distance. The slide is never backward; inside the distance
+  only the turn. Past `MaxSlide` or `MaxTurnDegrees` the swing is not moved and whiffs honestly: no warp, no slide, no
+  assist forgiveness ("... warp refused: too far ...; it whiffs" in the log). The capsules stop anyone closer than 68 cm.
+- The hit. A clip-timed swing (its `ANS_HitWindow`) is found by its limbs: a `StrikeRadius` (15 cm) sphere swept from each
+  striking limb's place last tick to now (`Limbs`: fists, feet, both, or a held weapon's hand, middle and far end) against
+  the target's physics bodies; his capsule counts only when he has none or lies in a ragdoll. The limb nearest him goes
+  first. A procedural swing (no clip) keeps the sweep from the capsule. Kate's forgiveness is unchanged (when in reach).
+  Parry, dodge, guard, unblockable, finisher and token rules are untouched: the slide never changes when a blow lands.
+- The impact: where it met him (the limb's sweep, or his capsule's front at the striking limb's height), which way it
+  travels (the limb's flat motion when over 150 cm/s and not away from him: a hook comes from the side; else the line
+  between them), its `Weight` (0 to 1). The struck body hears it before the damage, so a reaction clip picks the side it
+  came from (`ClassifyReaction`) and a death throws the ragdoll from there. The melee hit sound plays at the contact point;
+  Kate's spark sits at its height.
+- Hit-stop: both bodies' own time (`CustomTimeDilation`, 0.02) for `Lerp(0.02, 0.07, weight)` s of world time; the
+  world, the tokens, the AI and the boss's combo clock run on. Never on anyone winding up a swing (a boss swinging through
+  a light: his telegraph is a promise) or dead. Kate's light (0.3) is 0.035 s, her heavy (1.0) 0.07 s. The finisher's slow
+  motion composes with it. Every landed blow of hers kicks the lens in by `Lerp(0.8, 2.5, weight)` cm over 0.1 s.
+- Reaction: after the hit-stop, the struck body (Kate's look when she has one) simulates from the pelvis's child above the
+  struck body down (spine_01 for the torso, a thigh for a leg) under physical-animation motors (orientation 1200, angular
+  velocity 80), the struck body given `ImpulseSpeed` (420 cm/s) along the blow times `Lerp(0.35, 1, weight)`; its blend
+  over the animation rises to 0.8 of that share in 0.04 s and eases back to none by 0.4 s. A guard (incoming damage
+  scaled under 1) takes it at 0.35. A body already simulating (a knockdown, a get-up) is left alone. Arrows react too
+  (weight `ImpactWeight`, 0.5).
+- Knockout: when a thug dies of a strike or an arrow, the ragdoll gets the impact's throw (`ComputeKnockoutImpulse`): the
+  struck bone 520 cm/s along the blow, the whole body 200 along it plus 90 up, times `Lerp(0.4, 1, weight)`; an arrow 0.45
+  of that along the arrow with no lift and never into the floor; capped at 650 and 300 cm/s. Damping 0.6 / 1.5 while it
+  falls. It ignores Pawn (Kate walks through) and now the camera. A clip playing as he dies (the finisher's victim, a
+  knockdown, a swing) hands over to the ragdoll over 0.2 s. Once the pelvis is under 10 cm/s for 0.5 s (4 s at most) the
+  body is put to sleep where it lies. A takedown from behind pushes him over forward at weight 0.15. A finisher's thrown
+  velocity is unchanged. Saves, `ITakedownable`, the mission's kill counts and stealth bodies are untouched. Kate's own
+  defeat is unchanged (no ragdoll).
+- Numbers on Normal: Kate's light 66 cm to the head (her chain's third 70 to the torso, weight 0.55), slide cap 290 (the
+  assist's 350 less the contact), turns any way; her heavy (the roundhouse) 88 to the torso, weight 1. A thug's fists 72 to
+  the head (hands, weight 0.4), bat 100 to the torso (the bat, 0.65), the heavy's bash 85 (hands, a 35 cm sphere, 0.8), his
+  slow bat 0.75; slide cap 110, turn cap 75. Bosses use the defaults (80, torso, 120, 75, any limb or what he holds, 0.4).
+- Seen (`Hawkeye.Screenshot.Contact`, and in the melee pass): `punch_contact.png`, `hit_reaction.png`,
+  `knockout_ragdoll.png`, `knockout_settled.png` (testing.md, "Contact shots").
 
 ## Attack tokens (built 2026-11-10; group pressure pass the same day)
 Rules in `Source/Hawkeye/Combat/CombatTokenRules.h` (pure, tested by `Hawkeye.Tokens.*`); the state is
