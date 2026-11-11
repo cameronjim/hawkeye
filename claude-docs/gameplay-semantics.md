@@ -900,7 +900,7 @@ gone from the code, and so from this file. Every section below describes code th
   and the console command `hawkeye.StartChapter <mission asset>` starts it at once (laps and tests).
 
 ### Chapter 4's boss, Tomas (`DA_Boss_CH04_Tomas`; numbers on Normal; second pass 2026-11-10)
-- 680 health (544 / 680 / 816 by the difficulty's thug health scale; 400 before the second pass), drawn and sized 1.12
+- 820 health (656 / 820 / 984 by the difficulty's thug health scale; 680 until 2026-11-11, when blows landing on contact took the scripted fight down to 80 to 105 s, under its 90 s floor; 400 before the second pass), drawn and sized 1.12
   times a thug, `BP_Boss_Tomas`: BP_Thug in a green tracksuit with gold stripes and no ski mask, a cool light (0.75,
   0.85, 1.0; 260 lm over 380 cm) riding in front of him so he reads at night.
 - Combo: a jab (12 damage, 0.75 s wind-up, 0.5 s recovery, 150 cm; parryable), a jab (12, 0.6 s, 0.5 s; parryable), a

@@ -162,6 +162,11 @@ santa, down, endcard).
 
 Since 2026-11-10 it also stands Kate 60 cm outside the Santa's lane across from Tomas while it telegraphs (the lure) and
 asserts the sweep catches him at least once.
+Since 2026-11-11 the lure starts in the rest before the telegraph (from across the roof the 1.5 s telegraph was too
+short to reach the spot), she holds the spot through the sweep that follows (fleeing on out to the wider avoidance
+margin dragged him out of the lane), and she lures only until the first catch, so a working lure does not cut the
+fight under its floor. Each sweep logs how close across the lane Tomas came ("Social club lap: sweep 2, Tomas came
+...") so a miss says why. The lure failed 1 of 5 runs on 2026-11-10's code too (0 catches).
 
 ## 2e. The reindeer games lap (chapter 2 from its start)
 
