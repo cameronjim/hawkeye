@@ -26,10 +26,13 @@ GOLDEN = {
     "facade_style": "ae9cb6a634805a36",
     "lamp_spots": "99da37accac1a571",
     "ledge_spots": "132273595296ea25",
-    "fire_escape_spots": "b0342c208fc44bc0",
-    "anchor_spots": "7dab19e466ea9fd2",
+    # 2026-11-11, the reach model matched to the traversal audit: four tenements whose escape left the street no anchor
+    # lose it (fire_escape_spots), the zip is the game's capsule sweep and the sidewalk spots the audit's (anchor_spots),
+    # and the clutter keeps clear of both (clutter_plan). Were b0342c208fc44bc0, 7dab19e466ea9fd2, 647ed3d9105e0e97.
+    "fire_escape_spots": "ff035e5e19d9211f",
+    "anchor_spots": "bc88e66f70d663c3",
     "archer_placements": "3aa6f24537b5d483",
-    "clutter_plan": "647ed3d9105e0e97",
+    "clutter_plan": "ada1b44e28e55d95",
     "chase_plan": "f48c5dee01ea1533",
 }
 

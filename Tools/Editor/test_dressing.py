@@ -28,7 +28,9 @@ import _dressing_kit as kit  # noqa: E402
 GOLDEN = {
     "hero_block": "blk_R3363343",
     # 2026-11-10: windows on M_Facade's grid, strings' bulbs in their envelope, the safehouse and interior doors kept clear
-    "hero_plan": "e973fcdb265016cc",
+    # 2026-11-11: the anchors moved with the reach model's audit parity; strings and lights keep off the new anchor lines
+    # (10 to 8 string lights, 369 to 367 window lights, 418 to 420 parapet snow). Was e973fcdb265016cc.
+    "hero_plan": "986763cdbd5bc4d6",
 }
 
 
