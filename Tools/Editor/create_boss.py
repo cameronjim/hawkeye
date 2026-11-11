@@ -61,7 +61,7 @@ MESH_VERSION = 1
 
 # --- Tomas (numbers on Normal; gameplay-semantics.md, "Chapter 4's boss") ---------------------------------------
 BOSS_DISPLAY = "Tomas"
-MAX_HEALTH = 680.0
+MAX_HEALTH = 820.0     # 680 until 2026-11-11: with blows landing on contact the scripted fight fell to 80 to 105 s (floor 90)
 BODY_SCALE = 1.12
 # (name, damage, wind-up, recovery, range, knockback, lunge, unblockable). The jabs can be parried (a brief stagger,
 # no finisher: a boss's finisher waits for his winded window); the haymaker cannot, it is dodged.
