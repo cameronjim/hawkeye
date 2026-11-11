@@ -17,6 +17,16 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Combat difficulty pass (your note on multiple attackers).** Up to two melee thugs
+  attack at once on Normal and three on Hard, sized to the group (two thugs share one
+  token). Two at once must come from different sides (60 degrees apart on Normal), blows
+  land at least 0.45 s apart, and nothing lands for 0.6 s after a hit. An attack from off
+  screen shows a "!" on a ring around Kate. Waiting thugs shift and feint. Santa has 560
+  health and lasts about 42 s (was 25). 576 tests pass; all 13 laps passed first try after
+  one lap-bot fix. Tomas's crew now takes 28 s (was 10) and his phase 105 s (was 87).
+  Rough: the lap bot still wins easily, so two-at-once lasts only 1 to 1.6 s per fight in
+  the laps, and small fights (two melee thugs or fewer) cost it nothing. **Feel check:**
+  fight four thugs on Normal and Hard. Fair, or a mess? Is the "!" ring noticeable?
 - **Traversal Debugger (editor tool).** A second, editor-only module `HawkeyeEditor` adds
   a tab at Tools > Hawkeye > Traversal Debugger and a headless audit
   (`Tools\traversal-audit.ps1`) that answers "which roofs can be grappled from where"
