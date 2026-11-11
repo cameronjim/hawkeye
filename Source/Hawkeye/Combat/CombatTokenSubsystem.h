@@ -30,6 +30,40 @@ struct HAWKEYE_API FHawkeyeTokenBudgetView
 };
 
 /**
+ * How hard a target has been pressed since ResetPressure (the laps read it per fight): the most attackers holding a
+ * token on her at once, by kind and together, and how many grants overlapped another melee holder.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FHawkeyeTokenPressure
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 PeakMeleeHolders = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 PeakRangedHolders = 0;
+
+	/** Melee and ranged holders together. */
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 PeakHolders = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 MeleeGrants = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 RangedGrants = 0;
+
+	/** Melee grants made while another melee attacker already held one: two coming at her at once. */
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 OverlappingMeleeGrants = 0;
+
+	/** Impacts pushed later to keep them ImpactIntervalSeconds apart. */
+	UPROPERTY(BlueprintReadOnly, Category = "Tokens")
+	int32 StaggeredImpacts = 0;
+};
+
+/**
  * The attack tokens (gameplay-semantics.md, "Attack tokens"): for each target, a melee and a ranged budget of
  * how many of her attackers may be attacking at once, who holds them, and who waits. Attackers ask from their
  * own think (no tick here, no sweep over actors) and the rules in UHawkeyeCombatTokenRules decide. Everyone is
@@ -69,6 +103,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Tokens")
 	FHawkeyeTokenBudgetView GetBudgetView(const AActor* Target, EHawkeyeAttackKind Kind) const;
 
+	/**
+	 * A holder's attack on Target will land DesiredDelaySeconds from now (a swing's wind-up, a burst's telegraph,
+	 * a draw): returns the delay to use, pushed later until it is ImpactIntervalSeconds from every other impact
+	 * due on her (melee and ranged alike), and books it. A release or a new booking replaces his.
+	 */
+	float ScheduleImpact(const AActor* Attacker, const AActor* Target, float DesiredDelaySeconds);
+
+	/** The pressure on Target since the last ResetPressure (or since the world began). */
+	UFUNCTION(BlueprintCallable, Category = "Tokens")
+	FHawkeyeTokenPressure GetPressure(const AActor* Target) const;
+
+	/** Starts Target's pressure count again (a lap's fight beginning). */
+	void ResetPressure(const AActor* Target);
+
 	/** hawkeye.DebugTokens: lines from holders and waiters to their target, and every grant and return at Log. */
 	static bool IsDebugEnabled();
 
@@ -93,15 +141,30 @@ private:
 		TMap<TObjectKey<AActor>, double> LastGrantSeconds;
 	};
 
+	/** An attack booked to land on a target. */
+	struct FImpact
+	{
+		TWeakObjectPtr<const AActor> Attacker;
+		double AtSeconds = 0.0;
+	};
+
 	struct FTargetTokens
 	{
 		FBudget Budgets[2];
+		TArray<FImpact> Impacts;
+		FHawkeyeTokenPressure Pressure;
 	};
 
 	double GetNowSeconds() const;
 
-	/** Kind's budget at the difficulty in force. */
+	/** Kind's budget at the difficulty in force, before the group scale. */
 	int32 GetBudgetSize(EHawkeyeAttackKind Kind) const;
+
+	/** Kind's budget scaled to the attackers on it (UHawkeyeCombatTokenRules::ScaleBudgetForGroup). */
+	int32 GetGroupBudget(const FBudget& Budget, EHawkeyeAttackKind Kind) const;
+
+	/** Notes the holders on Tokens after a grant in its pressure count. */
+	void NotePressure(FTargetTokens& Tokens, EHawkeyeAttackKind Kind, int32 MeleeHeldBefore);
 
 	/** Where Target looks from and along: her camera when a player has her, else her eyes. */
 	static void GetViewOf(const AActor* Target, FVector& OutLocation, FVector& OutForward);

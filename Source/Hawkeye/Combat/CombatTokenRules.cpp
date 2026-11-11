@@ -12,6 +12,43 @@ bool UHawkeyeCombatTokenRules::CanGrant(
 	return Held < Budget && NowSeconds - LastReleaseSeconds + UE_KINDA_SMALL_NUMBER >= GapSeconds;
 }
 
+int32 UHawkeyeCombatTokenRules::ScaleBudgetForGroup(int32 Budget, int32 Attackers, float GroupShare)
+{
+	const int32 Share = FMath::CeilToInt(FMath::Max(Attackers, 0) * FMath::Max(GroupShare, 0.f) - UE_KINDA_SMALL_NUMBER);
+	return FMath::Clamp(Share, 1, FMath::Max(Budget, 1));
+}
+
+bool UHawkeyeCombatTokenRules::IsSeparatedFromHolders(
+	float BearingDegrees, const TArray<float>& HolderBearingsDegrees, float MinSeparationDegrees)
+{
+	for (const float Holder : HolderBearingsDegrees)
+	{
+		if (FMath::Abs(FMath::FindDeltaAngleDegrees(Holder, BearingDegrees)) + UE_KINDA_SMALL_NUMBER < MinSeparationDegrees)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+float UHawkeyeCombatTokenRules::StaggerImpactDelay(
+	float DesiredDelaySeconds, double NowSeconds, const TArray<double>& OtherImpactSeconds, float MinIntervalSeconds)
+{
+	TArray<double> Others = OtherImpactSeconds;
+	Others.Sort();
+	double Impact = NowSeconds + FMath::Max(DesiredDelaySeconds, 0.f);
+	const double Interval = FMath::Max(MinIntervalSeconds, 0.f);
+	// Ascending: each one too close pushes it just past itself, which can only bring later ones into play.
+	for (const double Other : Others)
+	{
+		if (FMath::Abs(Impact - Other) + UE_KINDA_SMALL_NUMBER < Interval)
+		{
+			Impact = Other + Interval;
+		}
+	}
+	return static_cast<float>(Impact - NowSeconds);
+}
+
 float UHawkeyeCombatTokenRules::ComputeViewAngle(
 	const FVector& ViewLocation, const FVector& ViewForward, const FVector& Point)
 {

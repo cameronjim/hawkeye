@@ -56,6 +56,75 @@ int32 UCombatTokenSubsystem::GetBudgetSize(EHawkeyeAttackKind Kind) const
 	return FMath::RoundToInt(UDifficultySubsystem::GetScalarFor(this, UHawkeyeCombatTokenRules::GetBudgetStat(Kind)));
 }
 
+int32 UCombatTokenSubsystem::GetGroupBudget(const FBudget& Budget, EHawkeyeAttackKind Kind) const
+{
+	const int32 Attackers = Budget.Entries.FilterByPredicate([](const FEntry& Each) { return Each.Attacker.IsValid(); }).Num();
+	return UHawkeyeCombatTokenRules::ScaleBudgetForGroup(
+		GetBudgetSize(Kind), Attackers, UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::TokenGroupShare));
+}
+
+void UCombatTokenSubsystem::NotePressure(FTargetTokens& Tokens, EHawkeyeAttackKind Kind, int32 MeleeHeldBefore)
+{
+	auto CountHeld = [](const FBudget& Budget)
+	{ return Budget.Entries.FilterByPredicate([](const FEntry& Each) { return Each.bHolding; }).Num(); };
+	const int32 Melee = CountHeld(Tokens.Budgets[static_cast<int32>(EHawkeyeAttackKind::Melee)]);
+	const int32 Ranged = CountHeld(Tokens.Budgets[static_cast<int32>(EHawkeyeAttackKind::Ranged)]);
+	FHawkeyeTokenPressure& Pressure = Tokens.Pressure;
+	Pressure.PeakMeleeHolders = FMath::Max(Pressure.PeakMeleeHolders, Melee);
+	Pressure.PeakRangedHolders = FMath::Max(Pressure.PeakRangedHolders, Ranged);
+	Pressure.PeakHolders = FMath::Max(Pressure.PeakHolders, Melee + Ranged);
+	if (Kind == EHawkeyeAttackKind::Melee)
+	{
+		++Pressure.MeleeGrants;
+		Pressure.OverlappingMeleeGrants += MeleeHeldBefore > 0 ? 1 : 0;
+	}
+	else
+	{
+		++Pressure.RangedGrants;
+	}
+}
+
+float UCombatTokenSubsystem::ScheduleImpact(const AActor* Attacker, const AActor* Target, float DesiredDelaySeconds)
+{
+	if (!Attacker || !IsValid(Target))
+	{
+		return DesiredDelaySeconds;
+	}
+	FTargetTokens& Tokens = Targets.FindOrAdd(Target);
+	const double Now = GetNowSeconds();
+	Tokens.Impacts.RemoveAll([Attacker, Now](const FImpact& Impact)
+		{ return !Impact.Attacker.IsValid() || Impact.Attacker.Get() == Attacker || Impact.AtSeconds < Now; });
+	TArray<double> Others;
+	for (const FImpact& Impact : Tokens.Impacts)
+	{
+		Others.Add(Impact.AtSeconds);
+	}
+	const float Delay = UHawkeyeCombatTokenRules::StaggerImpactDelay(DesiredDelaySeconds, Now, Others,
+		UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::ImpactIntervalSeconds));
+	if (Delay > DesiredDelaySeconds + UE_KINDA_SMALL_NUMBER)
+	{
+		++Tokens.Pressure.StaggeredImpacts;
+		HawkeyeTokens::LogEvent(FString::Printf(TEXT("%s: his blow on %s waits %.2f s more to land clear of another."),
+			*Attacker->GetName(), *Target->GetName(), Delay - DesiredDelaySeconds));
+	}
+	Tokens.Impacts.Add({Attacker, Now + Delay});
+	return Delay;
+}
+
+FHawkeyeTokenPressure UCombatTokenSubsystem::GetPressure(const AActor* Target) const
+{
+	const FTargetTokens* Tokens = IsValid(Target) ? Targets.Find(Target) : nullptr;
+	return Tokens ? Tokens->Pressure : FHawkeyeTokenPressure();
+}
+
+void UCombatTokenSubsystem::ResetPressure(const AActor* Target)
+{
+	if (IsValid(Target))
+	{
+		Targets.FindOrAdd(Target).Pressure = FHawkeyeTokenPressure();
+	}
+}
+
 FHawkeyeTokenGrant UCombatTokenSubsystem::RequestToken(
 	AActor* Attacker, AActor* Target, EHawkeyeAttackKind Kind, bool bReady)
 {
@@ -70,7 +139,8 @@ FHawkeyeTokenGrant UCombatTokenSubsystem::RequestToken(
 			It.RemoveCurrent();
 		}
 	}
-	FBudget& Budget = Targets.FindOrAdd(Target).Budgets[static_cast<int32>(Kind)];
+	FTargetTokens& Tokens = Targets.FindOrAdd(Target);
+	FBudget& Budget = Tokens.Budgets[static_cast<int32>(Kind)];
 	Withdraw(Attacker, &Budget);
 	Prune(Budget, Target, Kind);
 
@@ -98,9 +168,36 @@ FHawkeyeTokenGrant UCombatTokenSubsystem::RequestToken(
 	{
 		const int32 Held = Budget.Entries.FilterByPredicate([](const FEntry& Each) { return Each.bHolding; }).Num();
 		const float Gap = UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::TokenGapSeconds);
+		const int32 GroupBudget = GetGroupBudget(Budget, Kind);
 		RankWaiters(Budget, Target, Line);
-		if (UHawkeyeCombatTokenRules::CanGrant(GetBudgetSize(Kind), Held, Now, Budget.LastReleaseSeconds, Gap) &&
-			Line.Num() > 0 && Line[0] == Index)
+		// A second melee blow at once only from another side: the first in line who stands far enough round her
+		// from every melee holder goes next (gameplay-semantics.md, "Attack tokens").
+		int32 Next = Line.Num() > 0 ? Line[0] : INDEX_NONE;
+		if (Kind == EHawkeyeAttackKind::Melee && Held > 0)
+		{
+			const FVector Centre = Target->GetActorLocation();
+			TArray<float> HolderBearings;
+			for (const FEntry& Each : Budget.Entries)
+			{
+				if (Each.bHolding && Each.Attacker.IsValid())
+				{
+					HolderBearings.Add((Each.Attacker->GetActorLocation() - Centre).Rotation().Yaw);
+				}
+			}
+			const float Separation = UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::MeleeSeparationDegrees);
+			Next = INDEX_NONE;
+			for (const int32 Candidate : Line)
+			{
+				const AActor* Waiter = Budget.Entries[Candidate].Attacker.Get();
+				if (Waiter && UHawkeyeCombatTokenRules::IsSeparatedFromHolders(
+								  (Waiter->GetActorLocation() - Centre).Rotation().Yaw, HolderBearings, Separation))
+				{
+					Next = Candidate;
+					break;
+				}
+			}
+		}
+		if (UHawkeyeCombatTokenRules::CanGrant(GroupBudget, Held, Now, Budget.LastReleaseSeconds, Gap) && Next == Index)
 		{
 			FVector ViewLocation;
 			FVector ViewForward;
@@ -112,11 +209,13 @@ FHawkeyeTokenGrant UCombatTokenSubsystem::RequestToken(
 			Entry.MinTelegraphSeconds = UHawkeyeCombatTokenRules::GetMinTelegraphSeconds(
 				Angle, UDifficultySubsystem::GetScalarFor(this, EDifficultyStat::OffScreenTelegraphSeconds));
 			Budget.LastGrantSeconds.Add(Attacker, Now);
+			NotePressure(Tokens, Kind, Kind == EHawkeyeAttackKind::Melee ? Held : 0);
 			HawkeyeTokens::LogEvent(FString::Printf(
-				TEXT("%s: takes %s's %s token (%d of %d out) %.0f deg off her view, "
+				TEXT("%s: takes %s's %s token (%d of %d out: the difficulty's %d for %d attackers) %.0f deg off her view, "
 					 "after %.1f s in line; telegraph at least %.1f s; %d still waiting."),
-				*Attacker->GetName(), *Target->GetName(), HawkeyeTokens::KindName(Kind), Held + 1, GetBudgetSize(Kind),
-				Angle, Now - Entry.WaitSinceSeconds, Entry.MinTelegraphSeconds, Line.Num() - 1));
+				*Attacker->GetName(), *Target->GetName(), HawkeyeTokens::KindName(Kind), Held + 1, GroupBudget,
+				GetBudgetSize(Kind), Budget.Entries.Num(), Angle, Now - Entry.WaitSinceSeconds, Entry.MinTelegraphSeconds,
+				Line.Num() - 1));
 		}
 	}
 	if (IsDebugEnabled())
@@ -131,6 +230,10 @@ void UCombatTokenSubsystem::ReleaseToken(const AActor* Attacker)
 	if (Attacker)
 	{
 		Withdraw(Attacker, nullptr);
+		for (TPair<TObjectKey<AActor>, FTargetTokens>& Pair : Targets)
+		{
+			Pair.Value.Impacts.RemoveAll([Attacker](const FImpact& Impact) { return Impact.Attacker.Get() == Attacker; });
+		}
 	}
 }
 
@@ -322,6 +425,7 @@ FHawkeyeTokenBudgetView UCombatTokenSubsystem::GetBudgetView(const AActor* Targe
 		return View;
 	}
 	const FBudget& Budget = Tokens->Budgets[static_cast<int32>(Kind)];
+	View.Budget = GetGroupBudget(Budget, Kind);
 	TArray<int32> Line;
 	RankWaiters(Budget, Target, Line);
 	for (const int32 Index : Line)

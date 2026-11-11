@@ -61,6 +61,28 @@ public:
 	 */
 	static bool CanGrant(int32 Budget, int32 Held, double NowSeconds, double LastReleaseSeconds, float GapSeconds);
 
+	/**
+	 * A budget against a group: GroupShare of the Attackers on it, rounded up, never under 1 and never over
+	 * Budget (the difficulty's). Two thugs at 0.5 share one token; four share two; six on Hard share three.
+	 */
+	static int32 ScaleBudgetForGroup(int32 Budget, int32 Attackers, float GroupShare);
+
+	/**
+	 * Whether a melee attacker standing at BearingDegrees round the target (yaw from her to him) may attack
+	 * alongside the melee holders at HolderBearingsDegrees: at least MinSeparationDegrees from every one, so
+	 * two blows at once come from different sides. True with no holders.
+	 */
+	static bool IsSeparatedFromHolders(
+		float BearingDegrees, const TArray<float>& HolderBearingsDegrees, float MinSeparationDegrees);
+
+	/**
+	 * The delay before an attack wanted DesiredDelaySeconds after NowSeconds lands: pushed later (never
+	 * earlier) until its impact is at least MinIntervalSeconds from every impact already due in
+	 * OtherImpactSeconds (world seconds), so two blows land in a rhythm she can parry or dodge one by one.
+	 */
+	static float StaggerImpactDelay(
+		float DesiredDelaySeconds, double NowSeconds, const TArray<double>& OtherImpactSeconds, float MinIntervalSeconds);
+
 	/** Degrees between ViewForward from ViewLocation and the line to Point. 0 when either is degenerate. */
 	static float ComputeViewAngle(const FVector& ViewLocation, const FVector& ViewForward, const FVector& Point);
 

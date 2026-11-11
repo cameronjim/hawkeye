@@ -32,14 +32,22 @@ enum class EDifficultyStat : uint8
 	ArcherShotGapMaxSeconds,
 	/** Multiplier on every cone, pull and bend of the bow's aim assist: 1.25 / 1.0 / 0.5. */
 	AimAssistScale,
-	/** Thugs who may be swinging at one target at once (the melee attack tokens): 1 / 1 / 2. */
+	/** Thugs who may be swinging at one target at once (the melee attack tokens): 1 / 2 / 3, before the group scale. */
 	MeleeTokens,
-	/** Thugs who may be shooting or drawing on one target at once: 1 / 1 / 2. */
+	/** Thugs who may be shooting or drawing on one target at once: 1 / 1 / 2, before the group scale. */
 	RangedTokens,
-	/** After a token is given back, seconds before its budget grants again: 0.9 / 0.6 / 0.4. */
+	/** After a token is given back, seconds before its budget grants again: 0.9 / 0.45 / 0.3. */
 	TokenGapSeconds,
 	/** The shortest telegraph of an attack granted from off her screen, seconds: 1.2 / 1.0 / 0.8. */
-	OffScreenTelegraphSeconds
+	OffScreenTelegraphSeconds,
+	/** A budget is at most this share of the attackers on it, rounded up (never under 1): 0.5 / 0.5 / 0.5. */
+	TokenGroupShare,
+	/** Two melee attackers at once must come at her at least this far apart round her, degrees: 90 / 60 / 45. */
+	MeleeSeparationDegrees,
+	/** Any two attacks on her land at least this far apart, seconds: 0.6 / 0.45 / 0.35. */
+	ImpactIntervalSeconds,
+	/** After a hit lands on Kate, nothing else does for this long, seconds: 0.8 / 0.6 / 0.45. */
+	HitGraceSeconds
 };
 
 /**
