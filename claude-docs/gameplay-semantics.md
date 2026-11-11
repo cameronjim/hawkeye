@@ -1662,7 +1662,8 @@ group pass lets several come at once, Spider-Man style, and keeps every blow ans
   bash and swing) and ranged (a gunner's burst, an archer's draw): how many of her attackers may be
   attacking at once. Melee 1 / 2 / 3 and ranged 1 / 1 / 2 at Story / Normal / Hard, then scaled to the group:
   at most `TokenGroupShare` (0.5 on all three) of the attackers on that budget, rounded up, never under 1
-  (`ScaleBudgetForGroup`). Two thugs share one token, three or four share two, Hard's three needs five or six.
+  (`ScaleBudgetForGroup`). The attackers are everyone who asked on it in the last 3 s and is not dead
+  (`RosterSeconds`), in line or not, so one staggered thug does not shrink the group. Two thugs share one token, three or four share two, Hard's three needs five or six.
   Story stays one swing and one shot.
 - Two at once come from different sides: a second (or third) melee token goes only to a waiter standing at least
   `MeleeSeparationDegrees` (90 / 60 / 45) round her from every melee holder (`IsSeparatedFromHolders`); the first in
@@ -1692,11 +1693,11 @@ group pass lets several come at once, Spider-Man style, and keeps every blow ans
 - Only an attacker ready to attack is granted (a melee thug within reach of his place on the ring, off his
   cooldown and not backing off; a gunner off his pause and not jammed; an archer past his gap with a line).
 - A melee thug without a token closes to a ring 300 cm round her and holds his place on it facing her;
-  places are spread at least 40 degrees apart in the order the thugs stand round her, each moving as
-  little as he can. He is not parked there: every 1.0 to 2.2 s he either shifts 25 degrees to one side of his
+  places are spread at least 70 degrees apart (40 before the group pass; wider than Normal's 60 so neighbours
+  can both come) in the order the thugs stand round her, each moving as little as he can. He is not parked there: every 1.0 to 2.2 s he either shifts 25 degrees to one side of his
   place (the other side next time) or, a 0.35 chance, feints 120 cm in toward her and back out over 0.9 s
   (`FHawkeyeRingFidget`, `AThugAIController::RingFidget`, data on the thug). A feint is no attack: no glyph, no
-  hit. Granted, he steps in and swings; if he has not started his swing 1.5 s after the grant he gives it
+  hit. A boss does not fidget (`bFidgetOnRing`, off by the boss fight): Tomas's hazard lure counts on where he waits. Granted, he steps in and swings; if he has not started his swing 1.5 s after the grant he gives it
   back. A gunner or archer without one holds his aim and waits.
 - Ranged pressure is what was there: a gunner's raised pistol (and the glyph inside 600 cm) or an archer's glint
   says a shot is coming, a standing Kate is hit, a dodge or a turn makes it miss ("Ranged thug accuracy"), and the
