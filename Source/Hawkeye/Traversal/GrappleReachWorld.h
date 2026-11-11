@@ -11,6 +11,9 @@ class APawn;
 class UCityMapData;
 class UWorld;
 
+/** Actors a reach check's traces leave out. */
+using FGrappleIgnoredActors = TArray<TWeakObjectPtr<const AActor>>;
+
 /**
  * Everything about the player a reach check needs from the world: the grapple's rules, the hip camera, and how
  * her capsule collides. Read off a pawn (its class default is enough), so the tools check BP_Kate's tuning
@@ -56,6 +59,14 @@ struct HAWKEYE_API FGrappleReachScene
 	/** Objective id to the osm id of the roof its volume stands on ("objective:<id>" and "osm:<id>" tags). */
 	TMap<FString, FString> ObjectiveRoofs;
 
+	/**
+	 * Actors every trace sees through. BuildScene puts the chapter actors here (anything tagged "objective:<id>": the
+	 * chapter-end arrow and its prop, beacons): in the game they collide only while their own chapter runs
+	 * (AHawkeyeGameMode::ApplyChapterCast), so the district's reach is measured without them. BuildSceneFromActors leaves
+	 * it empty: a game world has already switched them on or off.
+	 */
+	FGrappleIgnoredActors SeeThrough;
+
 	/** The roof carrying OsmId; INDEX_NONE for none. */
 	int32 FindRoofByOsm(const FString& OsmId) const;
 };
@@ -98,16 +109,39 @@ struct HAWKEYE_API FGrappleReachWorld
 	static bool BuildScene(UWorld* World, const UCityMapData* Map, const UCityLedgeData* Props, float MarkerHeight,
 		FGrappleReachScene& OutScene, FString& OutError);
 
+	/**
+	 * Builds the scene from what is in World rather than from the props data: the roofs, streets and objectives as
+	 * BuildScene, but the anchors are the AGrappleAnchor actors (their own marker, landing and bEnabled, in iteration
+	 * order, a roof only where a building is under the landing point) and the fire escapes the AFireEscapeLanding actors.
+	 * Hawkeye.Grapple.Audit uses it on the district as the game spawned it. Ignore (Kate) is left out of the traces.
+	 */
+	static bool BuildSceneFromActors(UWorld* World, const UCityMapData* Map, const AActor* Ignore, FGrappleReachScene& OutScene,
+		FString& OutError);
+
+	/** The actors tagged "objective:<id>" in World (FGrappleReachScene::SeeThrough). */
+	static FGrappleIgnoredActors FindChapterActors(UWorld* World);
+
 	/** The first building under Point within Depth (Up above it), by a multi trace so clutter on top does not hide it. */
-	static AActor* FindBuildingUnder(const UWorld* World, const FVector& Point, float Up, float Depth, FVector* OutTop = nullptr);
+	static AActor* FindBuildingUnder(const UWorld* World, const FVector& Point, float Up, float Depth, FVector* OutTop = nullptr,
+		const FGrappleIgnoredActors& Ignore = FGrappleIgnoredActors());
 
 	/** What the floor under a sidewalk candidate is (Hawkeye.Grapple.Audit's rule: no building, lower than MaxFloorZ). */
-	static FGrappleReachQuery::EStand FindSidewalkFloor(const UWorld* World, const FVector2D& Point, float MaxFloorZ, FVector& OutFloor);
+	static FGrappleReachQuery::EStand FindSidewalkFloor(const UWorld* World, const FVector2D& Point, float MaxFloorZ, FVector& OutFloor,
+		const FGrappleIgnoredActors& Ignore = FGrappleIgnoredActors());
+
+	/**
+	 * Finishes any physics-state creation the world has put off: bodies deferred while their level loaded (their
+	 * collision mesh not cooked yet) and the async physics-state jobs. The world's tick normally drains both; a world
+	 * nobody ticks (a commandlet's) has no collision until this runs, so every trace misses. Call it after loading or
+	 * spawning, before tracing. Game thread only.
+	 */
+	static void FlushPendingPhysicsState(UWorld* World);
 
 	/**
 	 * The oracle over World: sight on ECC_Visibility with the rules' SightTolerance, the capsule swept along the zip
 	 * with the anchor's and the start's supports ignored as UGrappleComponent does, the lens probed on the arm's
-	 * channel. Scene, when given, lets the sight line ignore the spawned anchor actor as the component does.
+	 * channel. Scene, when given, lets the sight line and the zip ignore the spawned anchor actor as the component does,
+	 * and every trace see through the scene's SeeThrough actors.
 	 * The returned functions hold World weakly; they answer "blocked" once it is gone.
 	 */
 	static FGrappleReachOracle MakeOracle(UWorld* World, const FGrappleReachProfile& Profile, const FGrappleReachScene* Scene = nullptr);

@@ -79,6 +79,8 @@ struct HAWKEYE_API FGrappleReachBlocker
 	FString Kind;
 	/** The building's osm id when it is one. */
 	FString OsmId;
+	/** Where the line or sweep hit it (zero when the oracle does not say). */
+	FVector Location = FVector::ZeroVector;
 };
 
 /** One grapple anchor as the reach rules see it: no actor, just where it is. */
