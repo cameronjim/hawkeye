@@ -17,6 +17,18 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Hits make contact, bodies react, knockouts ragdoll.** Every swing is moved so the fist,
+  foot or bat lands on a body region (head, torso, thigh); out of reach it whiffs. A hit
+  is a sweep of the striking limb against the target's physics bodies. The struck body
+  jolts physically and recovers in 0.4 s, there is hit-stop and a camera kick scaled by
+  the blow's weight, and a knocked-out thug is thrown from the struck bone and falls as a
+  ragdoll. Parry, dodge, guard and tokens are unchanged. 583 tests pass; all 13 laps
+  passed first try; frame cost about 0.2 ms. Shots in `Saved/Screenshots/Kate/`
+  (`punch_contact`, `hit_reaction`, `knockout_ragdoll`, `knockout_settled`). **Your call:**
+  Tomas went from 680 to 820 health because landing blows shortened his fight under the
+  lap's floor; Santa is 640 and lasts 43 s. Rough: the white hit flash hides the fist on
+  the body, no get-up clip, only Kate's light chain and roundhouse were checked by eye.
+  **Feel check:** does the warp ever look like sliding? Is the hit-stop too much?
 - **Combat difficulty pass (your note on multiple attackers).** Up to two melee thugs
   attack at once on Normal and three on Hard, sized to the group (two thugs share one
   token). Two at once must come from different sides (60 degrees apart on Normal), blows
