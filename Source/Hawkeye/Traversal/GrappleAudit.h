@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Traversal/GrappleReachWorld.h"
 
+class AActor;
 class UWorld;
 
 /** One anchored roof in the audit: the JSON's "roofs" row plus what the debugger draws and gates on. */
@@ -31,6 +32,20 @@ struct HAWKEYE_API FGrappleAuditRoofRow
 	FString Why;
 };
 
+/** One anchor in the audit, over every spot: the JSON's "anchors" row, for diffing two audits of one map. */
+struct HAWKEYE_API FGrappleAuditAnchorRow
+{
+	FString Name;
+	/** The roof's osm id, empty for an anchor on no roof. */
+	FString RoofOsmId;
+	int32 InRange = 0;
+	int32 Seen = 0;
+	int32 Clear = 0;
+	int32 Reach = 0;
+	/** Reachable pairs the picker marked dead on (0 without a picker). */
+	int32 Picked = 0;
+};
+
 /**
  * What an audit found, in the shape Hawkeye.Grapple.Audit writes grapple_audit.json, plus the street-facing roofs
  * nothing reaches (the commandlet's gate).
@@ -49,6 +64,8 @@ struct HAWKEYE_API FGrappleAuditReport
 	TArray<FString> AnchorsNeverPicked;
 	/** Anchored roofs only, in scene order. */
 	TArray<FGrappleAuditRoofRow> Roofs;
+	/** Every anchor, in scene order. */
+	TArray<FGrappleAuditAnchorRow> AnchorRows;
 	/** Indices into Roofs of the street-facing roofs no sidewalk spot reaches. */
 	TArray<int32> StreetFacingUnreached;
 	/** A chain objective's roof the street or the objective before cannot reach. */
@@ -58,9 +75,29 @@ struct HAWKEYE_API FGrappleAuditReport
 	int32 AnchorCount = 0;
 	int32 StreetSpotCount = 0;
 	int32 RoofSpotCount = 0;
+	/** Spot-anchor pairs in range, seen, zip-clear and reachable. */
+	int64 PairsInRange = 0;
+	int64 SeenPairs = 0;
+	int64 ClearPairs = 0;
+	int64 ReachablePairs = 0;
+	/** Only with a picker (FGrappleAuditInputs::Picker): reachable pairs the picker marks dead on. */
+	bool bPickerChecked = false;
+	int64 PickedPairs = 0;
+	/** Dead-on views where the picker and the full check disagree; views aimed 6.3 degrees off and those that disagree. */
+	int64 PickerDisagreements = 0;
+	int64 RoughViews = 0;
+	int64 RoughMismatches = 0;
+	/** "dead on, the picker disagreed with the full check on ...", empty without a picker. */
+	FString PickerSummary;
+	int32 NeighbourPairs = 0;
+	int32 NeighbourPairsNotReaching = 0;
+	int32 NeighbourPairsOutOfRange = 0;
 	double Seconds = 0.0;
 
-	/** The report as grapple_audit.json: the test's keys and layout, plus "street_facing_unreached". */
+	/**
+	 * The report as grapple_audit.json: the keys and layout Hawkeye.Grapple.Audit has always written, plus
+	 * "street_facing_unreached" and "anchors" (one row per anchor, for diffing two audits).
+	 */
 	FString ToJson() const;
 
 	/** Writes ToJson to Path, making the directory. */
@@ -89,18 +126,39 @@ struct HAWKEYE_API FGrappleAuditInputs
 	 * three). Data, not code: the commandlet takes them on its command line.
 	 */
 	TArray<FString> ObjectiveChain;
+
+	/**
+	 * Chain objectives that may instead be reached down a fire escape on a roof the chain gets to and up from the
+	 * street (find_arrow: the street between it and cross_block is wider than the grapple's range). Any other link must
+	 * be made on the roofs.
+	 */
+	TSet<FString> StreetLinkObjectives;
+
+	/**
+	 * Optional: the game's own picker (UGrappleComponent::SelectBestAnchorFrom) standing at Spot with the camera at Lens
+	 * looking along Forward. Returns the index into the scene's anchors it marks, or INDEX_NONE; OutGreyed is the one it
+	 * greys out (INDEX_NONE for none) and OutReason why. With it, every reachable pair also checks that the picker agrees
+	 * with the full check (every anchor through every rule, then FGrappleReachQuery::ChoosePick), dead on and 6.3 degrees
+	 * off each way, and the report's picker fields are filled. Needs a character in a game world, so only the test has one.
+	 */
+	TFunction<int32(const FGrappleReachSpot& Spot, const FVector& Lens, const FVector& Forward, int32& OutGreyed, FString& OutReason)> Picker;
 };
 
 /**
- * The grapple audit with no character: the same spots, rules, neighbours and chain as Hawkeye.Grapple.Audit, over an
- * FGrappleReachScene and an oracle. The one thing it cannot check offline is the picker against the full check (that
- * needs UGrappleComponent in a game world), so "picker_misses" and "anchors_never_picked" stay empty and the summary
- * says so. Shared by the traversal debugger and UHawkeyeTraversalAuditCommandlet.
+ * The grapple audit: sidewalk and roof spots, every spot against every anchor in range, the second pass at 2.5 m, the
+ * neighbours across a gap and the objective chain, over an FGrappleReachScene and an oracle. Hawkeye.Grapple.Audit runs
+ * it in the game world with Kate's own traces and picker; the traversal debugger and UHawkeyeTraversalAuditCommandlet
+ * run it in an editor world with FGrappleReachWorld's oracle and no picker, so there "picker_misses" and
+ * "anchors_never_picked" stay empty and the summary says the picker was not checked.
  */
 struct HAWKEYE_API FGrappleAudit
 {
 	static FGrappleAuditReport Run(const FGrappleAuditInputs& Inputs);
 
-	/** Inputs over World: its oracle, sidewalk floor and roof tops. Scene must outlive the run. */
-	static FGrappleAuditInputs MakeWorldInputs(UWorld* World, const FGrappleReachScene& Scene, const FGrappleReachProfile& Profile);
+	/**
+	 * Inputs over World: its oracle, sidewalk floor and roof tops. Scene must outlive the run. Ignore (a character
+	 * standing in the world) is left out of the sidewalk and roof-top traces.
+	 */
+	static FGrappleAuditInputs MakeWorldInputs(UWorld* World, const FGrappleReachScene& Scene, const FGrappleReachProfile& Profile,
+		const AActor* Ignore = nullptr);
 };

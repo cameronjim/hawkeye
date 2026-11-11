@@ -454,6 +454,86 @@ bool FHawkeyeGrappleReachAuditReportTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(FString::Printf(TEXT("The report has %s"), Key), Json.Contains(Key));
 	}
+	TestFalse(TEXT("Without a picker the picker is not checked"), Report.bPickerChecked);
+	TestTrue(TEXT("and the summary says so"), Report.Summary.Contains(TEXT("picker not checked")));
+	TestEqual(TEXT("One anchors row per anchor"), Report.AnchorRows.Num(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleReachAuditChainTest, "Hawkeye.Grapple.Reach.AuditPickerAndStreetLinks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeGrappleReachAuditChainTest::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeGrappleReachQueryTest;
+	// Two roofs 35 m apart on one street, too far for a grapple between them; the first has a fire escape.
+	FGrappleReachScene Scene;
+	Scene.Roofs.Add(Square(TEXT("near"), FVector2D(500.0, 1000.0), 1000.0, 12.f));
+	Scene.Roofs.Add(Square(TEXT("far"), FVector2D(5000.0, 1000.0), 1000.0, 12.f));
+	Scene.RoofByOsm.Add(TEXT("near"), 0);
+	Scene.RoofByOsm.Add(TEXT("far"), 1);
+	Scene.Anchors.Add(Anchor(FVector(1000.f, 1000.f, 1220.f), 0));
+	Scene.Anchors.Add(Anchor(FVector(5500.f, 1000.f, 1220.f), 1));
+	for (int32 Index = 0; Index < Scene.Anchors.Num(); ++Index)
+	{
+		Scene.Anchors[Index].Index = Index;
+	}
+	FGrappleReachStreet Street;
+	Street.Points = { FVector2D(-1000.0, 0.0), FVector2D(7000.0, 0.0) };
+	Scene.Streets.Add(Street);
+	Scene.Bounds = FBox2D(FVector2D(-10000.0, -10000.0), FVector2D(10000.0, 10000.0));
+	FCityFireEscapeRecord Escape;
+	Escape.Transform.SetLocation(FVector(1500.0, 1500.0, 400.0));
+	Scene.FireEscapes.Add(Escape);
+	Scene.ObjectiveRoofs.Add(TEXT("first"), TEXT("near"));
+	Scene.ObjectiveRoofs.Add(TEXT("second"), TEXT("far"));
+
+	FGrappleAuditInputs Inputs;
+	Inputs.Scene = &Scene;
+	Inputs.Profile.Lens = Eye();
+	Inputs.Oracle = Oracle();
+	Inputs.SidewalkFloor = [](const FVector2D& Point, FVector& OutFloor)
+	{
+		OutFloor = FVector(Point.X, Point.Y, 15.f);
+		return FGrappleReachQuery::EStand::Stand;
+	};
+	Inputs.RoofTop = [&Scene](const FVector2D& Point, int32 Roof, FVector& OutTop)
+	{
+		OutTop = FVector(Point.X, Point.Y, Scene.Roofs[Roof].HeightM * 100.f);
+		return FGrappleReachQuery::IsInsideRing(Point, Scene.Roofs[Roof].Ring);
+	};
+	Inputs.ObjectiveChain = { TEXT("first"), TEXT("second") };
+
+	// The second roof is reached from the street but not from the first: the chain breaks unless the data lets that
+	// link go down the fire escape and back up from the street.
+	const FGrappleAuditReport Strict = FGrappleAudit::Run(Inputs);
+	TestTrue(TEXT("Both roofs are reached from the street"), Strict.Roofs.Num() == 2 && Strict.Roofs[0].FromStreet > 0 && Strict.Roofs[1].FromStreet > 0);
+	TestTrue(TEXT("Without a street link the chain is broken"), Strict.bObjectiveChainBroken);
+	TestTrue(TEXT("and says which link"), Strict.Errors.Num() == 1 && Strict.Errors[0].Contains(TEXT("cannot be reached from near")));
+
+	Inputs.StreetLinkObjectives = { TEXT("second") };
+	const FGrappleAuditReport Linked = FGrappleAudit::Run(Inputs);
+	TestFalse(TEXT("With the street link the chain holds"), Linked.bObjectiveChainBroken);
+	TestTrue(TEXT("by the fire escape"), Linked.Objectives.Num() == 2 && Linked.Objectives[1].Contains(TEXT("down a fire escape")));
+
+	// A picker that never marks anything: every reachable pair is a miss, and every view disagrees with the full check.
+	int32 PickerCalls = 0;
+	Inputs.Picker = [&PickerCalls](const FGrappleReachSpot&, const FVector&, const FVector&, int32& OutGreyed, FString& OutReason)
+	{
+		++PickerCalls;
+		OutGreyed = INDEX_NONE;
+		OutReason = TEXT("blind");
+		return int32(INDEX_NONE);
+	};
+	const FGrappleAuditReport Blind = FGrappleAudit::Run(Inputs);
+	TestTrue(TEXT("The picker is checked"), Blind.bPickerChecked);
+	TestTrue(TEXT("Some pairs are reachable"), Blind.ReachablePairs > 0);
+	TestEqual(TEXT("Asked once dead on and four times aimed off per reachable pair"), int64(PickerCalls), Blind.ReachablePairs * 5);
+	TestEqual(TEXT("Nothing is picked"), Blind.PickedPairs, int64(0));
+	TestEqual(TEXT("Dead on, it disagrees with the full check every time"), Blind.PickerDisagreements, Blind.ReachablePairs);
+	TestEqual(TEXT("Both anchors are reachable but never picked"), Blind.AnchorsNeverPicked.Num(), 2);
+	TestTrue(TEXT("The reason is listed"), Blind.PickerMisses.Num() > 0 && Blind.PickerMisses[0].StartsWith(TEXT("nothing marked x")));
+	TestTrue(TEXT("The summary counts the picks"), Blind.Summary.Contains(TEXT("0 of those picked")));
 	return true;
 }
 

@@ -1,6 +1,7 @@
 #include "Traversal/GrappleAudit.h"
 
 #include "Engine/World.h"
+#include "Hawkeye.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/FileHelper.h"
@@ -30,6 +31,9 @@ namespace HawkeyeGrappleAuditRun
 		int32 Seen = 0;
 		int32 Clear = 0;
 		int32 Reach = 0;
+		/** Reachable pairs the picker marked dead on, and why it last did not. */
+		int32 Picked = 0;
+		FString Miss;
 	};
 
 	/** One audit run, split into the test's passes. */
@@ -190,6 +194,108 @@ namespace HawkeyeGrappleAuditRun
 				Target.FromRoofs.Add(Id);
 				Target.ReachedFromRoof.Add(Spot.Roof);
 			}
+			if (Inputs.Picker)
+			{
+				CheckPicker(Spot, Id, Result);
+			}
+		}
+
+		/**
+		 * The pick by the full check from a view: every enabled anchor in range round the spot through every rule the
+		 * picker has, in full (cone, screen, sight, zip), then ChoosePick. INDEX_NONE for none.
+		 */
+		int32 FullCheck(const FGrappleReachSpot& Spot, const FVector& Lens, const FVector& Forward) const
+		{
+			TArray<FVector2f> Passing;
+			TArray<int32> PassingAnchors;
+			const FIntPoint Home = CellOf(Spot.Centre);
+			for (int32 DX = -1; DX <= 1; ++DX)
+			{
+				for (int32 DY = -1; DY <= 1; ++DY)
+				{
+					const TArray<int32>* Near = AnchorCells.Find(Home + FIntPoint(DX, DY));
+					if (!Near)
+					{
+						continue;
+					}
+					for (const int32 Other : *Near)
+					{
+						const FGrappleReachAnchor& O = Scene.Anchors[Other];
+						const float Distance = static_cast<float>(FVector::Dist(Spot.Centre, O.Marker));
+						if (!O.bEnabled || !FGrappleReachQuery::IsInRange(Rules, Distance))
+						{
+							continue;
+						}
+						const float Angle = FGrappleReachQuery::AngleOffViewDegrees(Lens, Forward, O.Marker);
+						if (Angle > Rules.ConeDegrees || !FGrappleReachQuery::IsOnScreen(Rules, Lens, Forward, O.Marker)
+							|| !Inputs.Oracle.HasLineOfSight(Lens, O, nullptr)
+							|| !Inputs.Oracle.IsZipClear(Spot.Centre, O, /*bFromGround=*/true, nullptr))
+						{
+							continue;
+						}
+						Passing.Add(FVector2f(Angle, Distance));
+						PassingAnchors.Add(Other);
+					}
+				}
+			}
+			const int32 Choice = FGrappleReachQuery::ChoosePick(Passing, Rules.PickTieDegrees);
+			return Choice != INDEX_NONE ? PassingAnchors[Choice] : INDEX_NONE;
+		}
+
+		FString NameOf(int32 Id) const
+		{
+			return Scene.Anchors.IsValidIndex(Id) ? Scene.Anchors[Id].Name : FString(TEXT("None"));
+		}
+
+		/**
+		 * A reachable pair: aimed 6.3 degrees off each way the picker must agree with the full check, and dead on it marks
+		 * the anchor (or the tie rule's nearer one).
+		 */
+		void CheckPicker(const FGrappleReachSpot& Spot, int32 Id, const FGrappleReachEvaluation& Result)
+		{
+			const FVector& Lens = Result.Lens;
+			const FVector& Forward = Result.Forward;
+			for (const FRotator& Off : { FRotator(6.3f, 0.f, 0.f), FRotator(-6.3f, 0.f, 0.f), FRotator(0.f, 6.3f, 0.f), FRotator(0.f, -6.3f, 0.f) })
+			{
+				const FRotator View = Forward.Rotation() + Off;
+				const FVector RoughForward = FRotator(Inputs.Profile.Lens.ClampPitch(static_cast<float>(View.Pitch)), View.Yaw, 0.f).Vector();
+				const int32 Best = FullCheck(Spot, Lens, RoughForward);
+				int32 Greyed = INDEX_NONE;
+				FString Reason;
+				const int32 RoughPick = Inputs.Picker(Spot, Lens, RoughForward, Greyed, Reason);
+				++Report.RoughViews;
+				if (RoughPick != Best)
+				{
+					++Report.RoughMismatches;
+					RoughReasons.FindOrAdd(RoughPick == INDEX_NONE ? TEXT("picker found nothing")
+						: (Best == INDEX_NONE ? TEXT("picker marked one the full check rejects") : TEXT("picker marked a different anchor")))++;
+					if (Report.RoughMismatches <= 5)
+					{
+						UE_LOG(LogHawkeye, Display, TEXT("Grapple audit: aimed off from %s, the picker marked %s, the full check %s"),
+							*Spot.Centre.ToCompactString(), *NameOf(RoughPick), *NameOf(Best));
+					}
+				}
+			}
+
+			int32 Greyed = INDEX_NONE;
+			FString Reason;
+			const int32 Picked = Inputs.Picker(Spot, Lens, Forward, Greyed, Reason);
+			const int32 Truth = FullCheck(Spot, Lens, Forward);
+			if (Picked != Truth)
+			{
+				++Report.PickerDisagreements;
+			}
+			if (Picked == Id)
+			{
+				++Anchors[Id].Picked;
+				++Report.PickedPairs;
+				return;
+			}
+			const FString Why = Picked != INDEX_NONE && Picked == Truth ? FString(TEXT("a nearer anchor as near the middle (the tie rule)"))
+				: (Picked != INDEX_NONE ? FString(TEXT("another anchor, not the full check's"))
+					: FString(Greyed != INDEX_NONE ? TEXT("nothing marked, one greyed") : TEXT("nothing marked")));
+			MissReasons.FindOrAdd(Why)++;
+			Anchors[Id].Miss = FString::Printf(TEXT("%s (marked %s, greyed %s: %s)"), *Why, *NameOf(Picked), *NameOf(Greyed), *Reason);
 		}
 
 		/** A roof no 10 m sidewalk spot reaches gets a second look from a spot every 2.5 m, with the reasons. */
@@ -243,8 +349,9 @@ namespace HawkeyeGrappleAuditRun
 					Roof.FineWhy.FindOrAdd(TEXT("view blocked by ") + (bOwn ? FString(TEXT("its own building")) : Result.Blocker.Kind))++;
 					if (Roof.FineExamples.Num() < 3)
 					{
-						Roof.FineExamples.Add(FString::Printf(TEXT("%s from %s: lens %s, hit %s"), *Scene.Anchors[Id].Name,
-							*Spot.Centre.ToCompactString(), *Result.Lens.ToCompactString(), *Result.Blocker.Name));
+						Roof.FineExamples.Add(FString::Printf(TEXT("%s from %s: lens %s, hit %s at %s"), *Scene.Anchors[Id].Name,
+							*Spot.Centre.ToCompactString(), *Result.Lens.ToCompactString(),
+							Result.Blocker.Name.IsEmpty() ? TEXT("None") : *Result.Blocker.Name, *Result.Blocker.Location.ToCompactString()));
 					}
 					break;
 				}
@@ -290,10 +397,27 @@ namespace HawkeyeGrappleAuditRun
 			for (int32 Id = 0; Id < Scene.Anchors.Num(); ++Id)
 			{
 				const int32 R = Scene.Anchors[Id].Roof;
-				if (R != INDEX_NONE && Anchors[Id].Reach == 0)
+				FGrappleAuditAnchorRow& Row = Report.AnchorRows.AddDefaulted_GetRef();
+				Row.Name = Scene.Anchors[Id].Name;
+				Row.RoofOsmId = Scene.Roofs.IsValidIndex(R) ? Scene.Roofs[R].OsmId : FString();
+				Row.InRange = Anchors[Id].InRange;
+				Row.Seen = Anchors[Id].Seen;
+				Row.Clear = Anchors[Id].Clear;
+				Row.Reach = Anchors[Id].Reach;
+				Row.Picked = Anchors[Id].Picked;
+				if (R == INDEX_NONE)
+				{
+					continue;
+				}
+				if (Anchors[Id].Reach == 0)
 				{
 					Report.AnchorsNeverReachable.Add(FString::Printf(TEXT("%s on %s (in range %d, seen %d, clear %d)"), *Scene.Anchors[Id].Name,
 						*Scene.Roofs[R].OsmId, Anchors[Id].InRange, Anchors[Id].Seen, Anchors[Id].Clear));
+				}
+				else if (Inputs.Picker && Anchors[Id].Picked == 0)
+				{
+					Report.AnchorsNeverPicked.Add(FString::Printf(TEXT("%s on %s (reachable from %d spots): %s"), *Scene.Anchors[Id].Name,
+						*Scene.Roofs[R].OsmId, Anchors[Id].Reach, *Anchors[Id].Miss));
 				}
 			}
 		}
@@ -454,8 +578,8 @@ namespace HawkeyeGrappleAuditRun
 			{
 				bEscapeReached |= EscapeRoofs.Contains(K);
 			}
-			// Down a fire escape on a roof the chain reaches, then up from the sidewalk (find_arrow's way, generalised).
-			const bool bByStreet = !bByRoofs && Roofs[R].FromStreet.Num() > 0 && bEscapeReached;
+			// Down a fire escape on a roof the chain reaches, then up from the sidewalk: only where the inputs allow it (find_arrow).
+			const bool bByStreet = !bByRoofs && Inputs.StreetLinkObjectives.Contains(Id) && Roofs[R].FromStreet.Num() > 0 && bEscapeReached;
 			const FString How = bByRoofs ? FString::Printf(TEXT("%d hop(s) on the roofs"), Hops)
 				: (bByStreet ? FString(TEXT("down a fire escape and up from the street")) : FString(TEXT("no chain")));
 			const FString From = Previous == INDEX_NONE ? FString()
@@ -478,16 +602,48 @@ namespace HawkeyeGrappleAuditRun
 		void Summarise()
 		{
 			Report.AnchorCount = Scene.Anchors.Num();
+			Report.PairsInRange = Pairs;
+			Report.SeenPairs = SeenPairs;
+			Report.ClearPairs = ClearPairs;
+			Report.ReachablePairs = ReachPairs;
+			Report.NeighbourPairs = NeighbourPairs;
+			Report.NeighbourPairsNotReaching = NeighbourPairsMissing;
+			Report.NeighbourPairsOutOfRange = NeighbourPairsOutOfRange;
+			Report.bPickerChecked = static_cast<bool>(Inputs.Picker);
+			// Hawkeye.Grapple.Audit's summary line, word for word where the two audits share a number.
+			const FString Picked = Report.bPickerChecked
+				? FString::Printf(TEXT(", %lld of those picked (%.1f%%)"), Report.PickedPairs,
+					ReachPairs > 0 ? 100.0 * double(Report.PickedPairs) / double(ReachPairs) : 0.0)
+				: FString();
+			const FString NeverPicked = Report.bPickerChecked
+				? FString::Printf(TEXT(", %d reachable but never picked"), Report.AnchorsNeverPicked.Num())
+				: FString(TEXT("; picker not checked (no character)"));
 			Report.Summary = FString::Printf(
 				TEXT("%d anchors (%d on no roof), %d roofs over %.0f m (%d with anchors); %d spots (%d street, %d roof); %lld spot-anchor pairs in range, ")
-				TEXT("%lld seen, %lld zip-clear, %lld reachable; %d roofs with no anchor reachable from the street ")
+				TEXT("%lld seen, %lld zip-clear, %lld reachable%s; %d roofs with no anchor reachable from the street ")
 				TEXT("(%d with a street spot in range or no anchors; %d reached from none of the 2.5 m spots either), %d with none from another roof; ")
-				TEXT("neighbour pairs %d, %d not reachable (%d more out of range); %d anchors reachable from nowhere; ")
-				TEXT("%d street-facing roofs unreached; picker not checked (offline audit, profile %s); %.1f s"),
+				TEXT("neighbour pairs %d, %d not reachable (%d more out of range); %d anchors reachable from nowhere%s; ")
+				TEXT("%d street-facing roofs unreached; profile %s; %.1f s"),
 				Scene.Anchors.Num(), Homeless, AnchoredRoofs, Settings.AnchoredHeightM, RoofsWithAnchors, Spots.Num(), Report.StreetSpotCount,
-				Report.RoofSpotCount, Pairs, SeenPairs, ClearPairs, ReachPairs, Report.RoofsNoStreet.Num(), Report.RoofsNoStreetWithSpotInRange.Num(),
-				Report.RoofsNoStreetAtFineStep.Num(), Report.RoofsNoRoof.Num(), NeighbourPairs, NeighbourPairsMissing, NeighbourPairsOutOfRange,
-				Report.AnchorsNeverReachable.Num(), Report.StreetFacingUnreached.Num(), *Inputs.Profile.Source, Report.Seconds);
+				Report.RoofSpotCount, Pairs, SeenPairs, ClearPairs, ReachPairs, *Picked, Report.RoofsNoStreet.Num(),
+				Report.RoofsNoStreetWithSpotInRange.Num(), Report.RoofsNoStreetAtFineStep.Num(), Report.RoofsNoRoof.Num(), NeighbourPairs,
+				NeighbourPairsMissing, NeighbourPairsOutOfRange, Report.AnchorsNeverReachable.Num(), *NeverPicked,
+				Report.StreetFacingUnreached.Num(), *Inputs.Profile.Source, Report.Seconds);
+
+			if (Report.bPickerChecked)
+			{
+				Report.PickerSummary = FString::Printf(TEXT("dead on, the picker disagreed with the full check on %lld of %lld views; aimed 6.3 ")
+					TEXT("degrees off, on %lld of %lld (%.2f%%)"), Report.PickerDisagreements, ReachPairs, Report.RoughMismatches, Report.RoughViews,
+					Report.RoughViews > 0 ? 100.0 * double(Report.RoughMismatches) / double(Report.RoughViews) : 0.0);
+				for (const TPair<FString, int32>& Miss : MissReasons)
+				{
+					Report.PickerMisses.Add(FString::Printf(TEXT("%s x%d"), *Miss.Key, Miss.Value));
+				}
+				for (const TPair<FString, int32>& Miss : RoughReasons)
+				{
+					Report.PickerMisses.Add(FString::Printf(TEXT("aimed off: %s x%d"), *Miss.Key, Miss.Value));
+				}
+			}
 		}
 
 		const FGrappleAuditInputs& Inputs;
@@ -502,6 +658,9 @@ namespace HawkeyeGrappleAuditRun
 		TArray<FGrappleReachSpot> Spots;
 		TArray<TArray<int32>> Neighbours;
 		TArray<TArray<int32>> Walkable;
+		/** Why the picker did not mark a reachable anchor dead on, and how aimed-off views disagreed, with counts. */
+		TMap<FString, int32> MissReasons;
+		TMap<FString, int32> RoughReasons;
 
 		int32 Homeless = 0;
 		int64 Pairs = 0;
@@ -539,6 +698,12 @@ FString FGrappleAuditReport::ToJson() const
 			*Row.OsmId, *Row.ActorName, Row.HeightM, Row.Anchors, Row.FromStreet, Row.FromRoofs, Row.StreetSpotsInRange, Row.Neighbours,
 			Row.NeighboursReaching));
 	}
+	TArray<FString> AnchorLines;
+	for (const FGrappleAuditAnchorRow& Row : AnchorRows)
+	{
+		AnchorLines.Add(FString::Printf(TEXT("{\"name\": \"%s\", \"roof\": \"%s\", \"in_range\": %d, \"seen\": %d, \"clear\": %d, \"reach\": %d, ")
+			TEXT("\"picked\": %d}"), *Row.Name, *Row.RoofOsmId, Row.InRange, Row.Seen, Row.Clear, Row.Reach, Row.Picked));
+	}
 	TArray<FString> Gate;
 	for (const int32 Index : StreetFacingUnreached)
 	{
@@ -549,10 +714,11 @@ FString FGrappleAuditReport::ToJson() const
 		TEXT("  \"roofs_no_street\": %s,\n  \"roofs_no_street_with_spot_in_range\": %s,\n  \"roofs_no_street_at_2_5_m\": %s,\n")
 		TEXT("  \"roofs_no_roof\": %s,\n")
 		TEXT("  \"neighbour_pairs_missing\": %s,\n  \"anchors_never_reachable\": %s,\n  \"anchors_never_picked\": %s,\n")
-		TEXT("  \"street_facing_unreached\": %s,\n  \"roofs\": [\n    %s\n  ]\n}\n"),
+		TEXT("  \"street_facing_unreached\": %s,\n  \"roofs\": [\n    %s\n  ],\n  \"anchors\": [\n    %s\n  ]\n}\n"),
 		*Summary.ReplaceCharWithEscapedChar(), *JsonList(Objectives), *JsonList(PickerMisses), *JsonList(RoofsNoStreet),
 		*JsonList(RoofsNoStreetWithSpotInRange), *JsonList(RoofsNoStreetAtFineStep), *JsonList(RoofsNoRoof), *JsonList(NeighbourPairsMissing),
-		*JsonList(AnchorsNeverReachable), *JsonList(AnchorsNeverPicked), *JsonList(Gate), *FString::Join(RoofRows, TEXT(",\n    ")));
+		*JsonList(AnchorsNeverReachable), *JsonList(AnchorsNeverPicked), *JsonList(Gate), *FString::Join(RoofRows, TEXT(",\n    ")),
+		*FString::Join(AnchorLines, TEXT(",\n    ")));
 }
 
 bool FGrappleAuditReport::WriteJson(const FString& Path) const
@@ -595,20 +761,26 @@ FGrappleAuditReport FGrappleAudit::Run(const FGrappleAuditInputs& Inputs)
 	return Worker.Execute();
 }
 
-FGrappleAuditInputs FGrappleAudit::MakeWorldInputs(UWorld* World, const FGrappleReachScene& Scene, const FGrappleReachProfile& Profile)
+FGrappleAuditInputs FGrappleAudit::MakeWorldInputs(UWorld* World, const FGrappleReachScene& Scene, const FGrappleReachProfile& Profile,
+	const AActor* Ignore)
 {
 	FGrappleAuditInputs Inputs;
 	Inputs.Scene = &Scene;
 	Inputs.Profile = Profile;
 	Inputs.Oracle = FGrappleReachWorld::MakeOracle(World, Profile, &Scene);
 	const TWeakObjectPtr<UWorld> WeakWorld(World);
-	const float MaxFloorZ = Inputs.Settings.StreetMaxFloorZ;
-	Inputs.SidewalkFloor = [WeakWorld, MaxFloorZ](const FVector2D& Point, FVector& OutFloor)
+	FGrappleIgnoredActors IgnoreList = Scene.SeeThrough;
+	if (Ignore)
 	{
-		return FGrappleReachWorld::FindSidewalkFloor(WeakWorld.Get(), Point, MaxFloorZ, OutFloor);
+		IgnoreList.Add(Ignore);
+	}
+	const float MaxFloorZ = Inputs.Settings.StreetMaxFloorZ;
+	Inputs.SidewalkFloor = [WeakWorld, IgnoreList, MaxFloorZ](const FVector2D& Point, FVector& OutFloor)
+	{
+		return FGrappleReachWorld::FindSidewalkFloor(WeakWorld.Get(), Point, MaxFloorZ, OutFloor, IgnoreList);
 	};
 	const FGrappleReachScene* ScenePtr = &Scene;
-	Inputs.RoofTop = [WeakWorld, ScenePtr](const FVector2D& Point, int32 Roof, FVector& OutTop)
+	Inputs.RoofTop = [WeakWorld, IgnoreList, ScenePtr](const FVector2D& Point, int32 Roof, FVector& OutTop)
 	{
 		if (!ScenePtr->Roofs.IsValidIndex(Roof) || !FGrappleReachQuery::IsInsideRing(Point, ScenePtr->Roofs[Roof].Ring))
 		{
@@ -616,7 +788,7 @@ FGrappleAuditInputs FGrappleAudit::MakeWorldInputs(UWorld* World, const FGrapple
 		}
 		// The audit's probe: from 6 m over the roof's height down 8 m, the first building hit must be this one.
 		const FVector Over(Point.X, Point.Y, ScenePtr->Roofs[Roof].HeightM * 100.f);
-		const AActor* Under = FGrappleReachWorld::FindBuildingUnder(WeakWorld.Get(), Over, 600.f, 800.f, &OutTop);
+		const AActor* Under = FGrappleReachWorld::FindBuildingUnder(WeakWorld.Get(), Over, 600.f, 800.f, &OutTop, IgnoreList);
 		return Under && ScenePtr->RoofActors.IsValidIndex(Roof) && Under == ScenePtr->RoofActors[Roof].Get();
 	};
 	return Inputs;
