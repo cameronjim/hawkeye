@@ -177,4 +177,16 @@ namespace HawkeyeCombatReadability
 		Out.A = Base.A;
 		return Out;
 	}
+
+	bool IsOffScreen(bool bProjected, const FVector2D& Projected, const FVector2D& Size, float EdgeMargin)
+	{
+		return !bProjected || Projected.X < EdgeMargin || Projected.Y < EdgeMargin || Projected.X > Size.X - EdgeMargin
+			|| Projected.Y > Size.Y - EdgeMargin;
+	}
+
+	FVector2D ComputeOffScreenCuePosition(float RelativeYawDegrees, const FVector2D& Centre, const FVector2D& Radii)
+	{
+		const float Radians = FMath::DegreesToRadians(RelativeYawDegrees);
+		return Centre + FVector2D(FMath::Sin(Radians) * Radii.X, -FMath::Cos(Radians) * Radii.Y);
+	}
 }

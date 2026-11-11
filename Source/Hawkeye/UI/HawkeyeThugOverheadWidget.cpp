@@ -46,8 +46,12 @@ void UHawkeyeThugOverheadWidget::GatherEntries()
 		return;
 	}
 	const FVector Camera = PC->PlayerCameraManager->GetCameraLocation();
+	const float CameraYaw = PC->PlayerCameraManager->GetCameraRotation().Yaw;
 	const APawn* Viewer = PC->GetPawn();
 	const AHawkeyeCharacter* Kate = Cast<AHawkeyeCharacter>(Viewer);
+	bKateProjected = Viewer
+		&& UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, Viewer->GetActorLocation() + FVector(0.f, 0.f, 40.f),
+			KateScreenPosition, false);
 	for (TActorIterator<AThugCharacter> It(World); It; ++It)
 	{
 		const AThugCharacter* Thug = *It;
@@ -65,8 +69,13 @@ void UHawkeyeThugOverheadWidget::GatherEntries()
 		{
 			continue;
 		}
-		// The whole stack sits on his head bone: the bar on it, the parry line and the glyph over the bar.
-		if (!UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, Thug->GetGlyphLocation(), Entry.GlyphPosition, false))
+		// The whole stack sits on his head bone: the bar on it, the parry line and the glyph over the bar. Behind the lens
+		// only a telegraph is kept, for the off-screen cue round her.
+		const FVector From = Viewer ? Viewer->GetActorLocation() : Camera;
+		Entry.RelativeYawDegrees = FMath::FindDeltaAngleDegrees(CameraYaw, (Thug->GetActorLocation() - From).Rotation().Yaw);
+		Entry.bProjected =
+			UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, Thug->GetGlyphLocation(), Entry.GlyphPosition, false);
+		if (!Entry.bProjected && !Entry.bTelegraph)
 		{
 			continue;
 		}
@@ -229,8 +238,23 @@ int32 UHawkeyeThugOverheadWidget::NativePaint(const FPaintArgs& Args, const FGeo
 			AllottedGeometry.ToPaintGeometry(FVector2f(Size), FSlateLayoutTransform(FVector2f(TopLeft))), White,
 			ESlateDrawEffect::None, Color);
 	};
+	const FVector2D Size = AllottedGeometry.GetLocalSize();
 	for (const FHawkeyeThugOverhead& Entry : Entries)
 	{
+		// A strike coming from where she cannot see it: his telegraph glyph drawn round her, on his side.
+		if (Entry.bTelegraph && HawkeyeCombatReadability::IsOffScreen(Entry.bProjected, Entry.GlyphPosition, Size))
+		{
+			const FVector2D Centre = bKateProjected ? KateScreenPosition : Size * 0.5f;
+			const FVector2D Cue = HawkeyeCombatReadability::ComputeOffScreenCuePosition(
+				Entry.RelativeYawDegrees, Centre, FVector2D(Size.X * OffScreenCueRadii.X, Size.Y * OffScreenCueRadii.Y));
+			FLinearColor Color = Entry.bUnblockable ? Entry.UnblockableTint : TelegraphColor;
+			Color.A *= Entry.GlyphAlpha;
+			const FSlateFontInfo CueFont = GetTelegraphFont(Entry.TelegraphScale * OffScreenCueScale);
+			// The glyph's middle on the point: its bottom half its size under it.
+			PaintGlyph(OutDrawElements, Layer, AllottedGeometry, Entry.Glyph, CueFont, Color, Cue.X, Cue.Y + CueFont.Size * 0.5f);
+			continue;
+		}
+
 		// The ring first, under everything: thin, her purple, on the ground round his feet.
 		if (Entry.MarkerAlpha > 0.f && Entry.MarkerRing.Num() > 1)
 		{

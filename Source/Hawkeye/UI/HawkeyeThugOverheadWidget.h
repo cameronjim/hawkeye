@@ -64,6 +64,14 @@ struct HAWKEYE_API FHawkeyeThugOverhead
 
 	/** The ring round his feet, projected (closed: the last point joins the first). */
 	TArray<FVector2D> MarkerRing;
+
+	/** His head did not project (he is behind the lens): Position means nothing; a telegraph shows as the off-screen cue. */
+	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
+	bool bProjected = true;
+
+	/** His yaw from Kate less the camera's, degrees (0 ahead, 90 right, 180 behind): where the off-screen cue goes. */
+	UPROPERTY(BlueprintReadOnly, Category = "HUD|Thugs")
+	float RelativeYawDegrees = 0.f;
 };
 
 /**
@@ -168,6 +176,21 @@ public:
 
 	/** The telegraph glyph's font at Scale of TelegraphFontSize, outline included. */
 	FSlateFontInfo GetTelegraphFont(float Scale) const;
+
+	/**
+	 * A telegraph whose glyph would be off the screen (behind her, out to the side) is drawn round Kate instead, the
+	 * spider-sense's stand-in: on an ellipse this share of the screen's width and height round her, on his side.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Thugs")
+	FVector2D OffScreenCueRadii = FVector2D(0.16f, 0.24f);
+
+	/** The off-screen cue's size against the telegraph glyph's (it is further from the eye's focus). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Thugs", meta = (ClampMin = "0.1"))
+	float OffScreenCueScale = 1.2f;
+
+	/** Kate's screen point, px (her chest projected): the off-screen cue's centre. The screen's middle if she did not project. */
+	FVector2D KateScreenPosition = FVector2D::ZeroVector;
+	bool bKateProjected = false;
 
 	/** The glyph's font size. Small: a flag, not a banner. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Thugs", meta = (ClampMin = "6"))

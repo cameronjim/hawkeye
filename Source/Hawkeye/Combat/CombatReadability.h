@@ -152,4 +152,18 @@ namespace HawkeyeCombatReadability
 
 	/** The unblockable glyph's colour at Elapsed: Base, flashing to white PulseHz times a second (FlashScale dims the flash). */
 	HAWKEYE_API FLinearColor ComputeUnblockableColor(const FLinearColor& Base, float Elapsed, float FlashScale, float PulseHz = 6.f);
+
+	/**
+	 * Whether a telegraph's glyph over an attacker's head would not be seen: his head did not project (behind the
+	 * lens), or projected outside the screen (Size, px) by more than none, or within EdgeMargin px of its edge.
+	 */
+	HAWKEYE_API bool IsOffScreen(bool bProjected, const FVector2D& Projected, const FVector2D& Size, float EdgeMargin = 24.f);
+
+	/**
+	 * Where the off-screen warning for an attacker goes (the spider-sense's stand-in: his telegraph glyph drawn round
+	 * her instead of over him): on an ellipse of Radii round Centre (Kate on screen, y down) at RelativeYawDegrees, his
+	 * yaw from her less the camera's (0 ahead, 90 to her right, 180 behind), as seen from above: ahead at the top,
+	 * right at the right, behind at the bottom.
+	 */
+	HAWKEYE_API FVector2D ComputeOffScreenCuePosition(float RelativeYawDegrees, const FVector2D& Centre, const FVector2D& Radii);
 }

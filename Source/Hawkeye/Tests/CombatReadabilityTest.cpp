@@ -246,4 +246,28 @@ bool FHawkeyeHitReadRules::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeOffScreenCue, "Hawkeye.Melee.OffScreenTelegraphCue", HawkeyeCombatReadabilityTest::Flags)
+
+bool FHawkeyeOffScreenCue::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeCombatReadability;
+	const FVector2D Size(1280.f, 720.f);
+	TestFalse(TEXT("Over his head in the middle of the screen: no cue"), IsOffScreen(true, FVector2D(640.f, 300.f), Size));
+	TestTrue(TEXT("Behind the lens: the cue"), IsOffScreen(false, FVector2D(640.f, 300.f), Size));
+	TestTrue(TEXT("Off the right edge: the cue"), IsOffScreen(true, FVector2D(1400.f, 300.f), Size));
+	TestTrue(TEXT("Hard on the top edge: the cue"), IsOffScreen(true, FVector2D(640.f, 10.f), Size));
+
+	// Round her, as seen from above: ahead at the top, behind at the bottom, right at the right.
+	const FVector2D Centre(640.f, 400.f);
+	const FVector2D Radii(200.f, 170.f);
+	const FVector2D Behind = ComputeOffScreenCuePosition(180.f, Centre, Radii);
+	TestEqual(TEXT("Behind her: under her"), Behind.Y, 570.0, 0.1);
+	TestEqual(TEXT("Behind her: in line with her"), Behind.X, 640.0, 0.1);
+	TestEqual(TEXT("To her right: right of her"), ComputeOffScreenCuePosition(90.f, Centre, Radii).X, 840.0, 0.1);
+	TestEqual(TEXT("To her left: left of her"), ComputeOffScreenCuePosition(-90.f, Centre, Radii).X, 440.0, 0.1);
+	const FVector2D BackRight = ComputeOffScreenCuePosition(135.f, Centre, Radii);
+	TestTrue(TEXT("Behind and to the right: lower right"), BackRight.X > Centre.X && BackRight.Y > Centre.Y);
+	return true;
+}
+
 #endif
