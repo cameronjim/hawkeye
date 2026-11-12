@@ -2,9 +2,9 @@
 
     blender.exe --background --factory-startup --python Tools/Blender/build_thug.py -- [--no-render] [--views a,b]
 
-A loose dark red tracksuit: a zip jacket that hangs straight from the chest and gathers into a ribbed hem, ribbed
-cuffs, a stand collar, a zip with a pull, two white stripes from the collar down each sleeve; baggy trousers with two
-white stripes down the outside of each leg and gathered ankles; white trainers with a thick sole, laces and a heel
+A dark red tracksuit: a zip jacket that falls from the chest to a flat ribbed hem at the hips (no blouson: it read
+as a bomber), slim sleeves into ribbed cuffs, a stand collar, a zip with a pull, two white stripes from the collar down each sleeve; trousers with two white
+stripes down the outside of each leg, long enough to rest on the trainers; white trainers with a thick sole, laces and a heel
 tab; buzzed black hair. Writes <assets root>/built/thug/SK_Thug.glb (+ .blend, slots json) and the renders.
 build_heavy.py builds on build_tracksuit() here.
 """
@@ -20,15 +20,15 @@ import costume as cs  # noqa: E402
 import pieces  # noqa: E402
 
 WHO = "thug"
-HEM_Z = 0.90          # the jacket's hem, at the hips
-RIB_H = 0.045         # ribbed hem band height
+HEM_Z = 0.87          # the jacket's hem, at the hips
+RIB_H = 0.032         # ribbed hem band height (a narrow band: a deep one read as a bomber's)
 CUFF_X = 0.69         # sleeves end at the wrist
 CUFF_W = 0.04         # ribbed cuff length
 ZIP_X = 0.0045
 STRIPES_ARM = ((0.051, 0.061), (0.077, 0.087))    # y bands along the top of each sleeve (arm axis at y 0.069)
 STRIPES_LEG = ((0.026, 0.036), (0.050, 0.060))    # y bands down the outside of each leg
 STRIPE_FROM_X = 0.10                               # sleeve stripes start at the collar
-ANKLE_Z = 0.092
+ANKLE_Z = 0.072       # the ribbed ankle rests on the trainer's collar (0.092 showed sock above the shoe)
 TROUSER_TOP = 1.0
 
 RED = (0.065, 0.0045, 0.006)
@@ -86,12 +86,14 @@ def head_materials(body, out, who, hair_tint):
 
 def build_jacket(body, mats):
     fam = body.family
-    off = 0.024 * fam["torso"] + 0.016 * fam["arm"] + 0.016 * fam["hand"] + 0.016 * fam["leg"] + 0.012 * fam["head"]
-    # Sleeves sag underneath (loose polyester hanging off a T-posed arm).
-    off = off + 0.008 * np.clip(-body.normals[:, 2], 0, 1) * cs.smoothstep(0.22, 0.4, np.abs(body.co[:, 0])) \
+    off = 0.024 * fam["torso"] + 0.010 * fam["arm"] + 0.012 * fam["hand"] + 0.016 * fam["leg"] + 0.012 * fam["head"]
+    # Sleeves sag a little underneath (polyester hanging off a T-posed arm).
+    off = off + 0.003 * np.clip(-body.normals[:, 2], 0, 1) * cs.smoothstep(0.22, 0.4, np.abs(body.co[:, 0])) \
         * (fam["arm"] > 0.5)
-    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=0.03, hem_in=0.03)
-    sleeves = pieces.arm_tubes(body, 0.26, CUFF_X - CUFF_W - 0.01, pad0=0.022, pad1=0.03, sag=0.012)
+    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=0.022, hem_in=0.04)
+    # Slim sleeves: a tube over the upper arm only (it hides the biceps); the forearm follows the arm down to the cuff.
+    # Tubes to the wrist ended in a fat disc above the cuff, the balloon; this one narrows into the forearm.
+    sleeves = pieces.arm_tubes(body, 0.26, 0.53, pad0=0.003, pad1=-0.008, sag=0.002)
     jacket = pieces.shell(body, "Jacket", off, extras=[hang] + sleeves, voxel=0.009, smooth=6,
                           keep=body.co[:, 2] > 0.75)
     pieces.iron(body, jacket, torso_iters=60, limb_iters=20, z_range=(0.9, 1.52))
@@ -111,14 +113,14 @@ def build_jacket(body, mats):
         d = np.zeros(len(co))
         hem = cs.smoothstep(HEM_Z + RIB_H + 0.01, HEM_Z + RIB_H - 0.005, z) * (ax < 0.3)
         theta = np.arctan2(y - cy, x)
-        d += hem * (-0.014 + 0.0018 * np.abs(np.sin(theta * 70)))
+        d += hem * (-0.005 + 0.0015 * np.abs(np.sin(theta * 70)))
         blouse = np.exp(-((z - (HEM_Z + RIB_H + 0.03)) / 0.025) ** 2) * (ax < 0.3)
-        d += 0.006 * blouse * (0.6 + 0.4 * cs.fold_noise(theta * 9, 5))
+        d += 0.0015 * blouse * (0.6 + 0.4 * cs.fold_noise(theta * 9, 5))
         cuff = cs.smoothstep(CUFF_X - CUFF_W - 0.006, CUFF_X - CUFF_W + 0.004, ax)
         ang = np.array([math.atan2(zz - ay(xx)[1], yy - ay(xx)[0]) for xx, yy, zz in zip(ax, y, z)])
-        d += cuff * (-0.008 + 0.0015 * np.abs(np.sin(ang * 40)))
+        d += cuff * (-0.004 + 0.0012 * np.abs(np.sin(ang * 40)))
         wrist = np.exp(-((ax - (CUFF_X - CUFF_W - 0.03)) / 0.025) ** 2)
-        d += 0.005 * wrist * np.sin(ax / 0.02 * 2 * math.pi + cs.fold_noise(ang, 2))
+        d += 0.002 * wrist * np.sin(ax / 0.02 * 2 * math.pi + cs.fold_noise(ang, 2))
         elbow = np.exp(-((ax - 0.47) / 0.05) ** 2) * (n[:, 1] < -0.1) * (ax > 0.3)
         d += 0.004 * elbow * np.sin((ax + 0.5 * (z - 1.456)) / 0.022 * 2 * math.pi)
         side = cs.smoothstep(1.3, 1.1, z) * (np.abs(n[:, 0]) > 0.5) * (ax < 0.3)
@@ -200,13 +202,13 @@ def build_trousers(body, mats, boots=None, boot_top=0.0):
         d = np.zeros(len(co))
         if boots is None:
             cuff = cs.smoothstep(ANKLE_Z + 0.045, ANKLE_Z + 0.03, z)
-            d += cuff * (-0.022 + 0.0012 * np.abs(np.sin(ang * 30)))
+            d += cuff * (-0.008 + 0.0012 * np.abs(np.sin(ang * 30)))
             bunch = np.exp(-((z - (ANKLE_Z + 0.07)) / 0.035) ** 2)
             d += 0.005 * bunch * np.sin(z / 0.03 * 2 * math.pi + 1.5 * cs.fold_noise(ang, 8))
         knee = np.exp(-((z - 0.55) / 0.06) ** 2)
         d += 0.0025 * knee * np.sin((z + 0.02 * np.sin(ang * 2)) / 0.035 * 2 * math.pi)
         crotch = np.exp(-((z - 0.86) / 0.05) ** 2) * (np.abs(co[:, 0]) < 0.12)
-        d += 0.003 * crotch * np.sin((z + 0.6 * np.abs(co[:, 0])) / 0.03 * 2 * math.pi)
+        d += 0.001 * crotch * np.sin((z + 0.6 * np.abs(co[:, 0])) / 0.03 * 2 * math.pi)
         return d
 
     cs.displace(tr, shape)
