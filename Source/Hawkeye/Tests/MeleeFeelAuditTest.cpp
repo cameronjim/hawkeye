@@ -1245,7 +1245,9 @@ bool FHawkeyeMeleeAuditRun::Run(UWorld* World, AHawkeyeCharacter* Kate)
 			}
 			if (S.CaptureAt.IsValidIndex(S.NextCapture) && Elapsed >= S.CaptureAt[S.NextCapture])
 			{
-				UGameplayStatics::SetGlobalTimeDilation(World, 0.02f);
+				// Captured at full speed: a crawl (0.02) disturbed the ragdolls it caught (the solver's corrections
+				// over tiny steps).
+				UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
 				const FString File = FString::Printf(TEXT("%s_%02d_%.1fs.png"), *K.Label, S.NextCapture, Elapsed);
 				HawkeyeShots::Request(Test, ShotPath(File), false);
 				S.Ko.Frames.Add(File);
@@ -1261,7 +1263,9 @@ bool FHawkeyeMeleeAuditRun::Run(UWorld* World, AHawkeyeCharacter* Kate)
 				return false;
 			}
 			const FString File = FString::Printf(TEXT("%s_%02d_settled.png"), *K.Label, S.NextCapture);
-			UGameplayStatics::SetGlobalTimeDilation(World, 0.02f);
+			// Captured at full speed: a crawl (0.02) disturbed the ragdolls it caught (the solver's corrections over
+			// tiny steps).
+			UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
 			HawkeyeShots::Request(Test, ShotPath(File), false);
 			S.Ko.Frames.Add(File);
 			S.bKoWatching = false;
@@ -1439,7 +1443,7 @@ void FHawkeyeMeleeAuditRun::Write(UWorld* World, AHawkeyeCharacter* Kate)
 	S.Extra->SetNumberField(TEXT("phys_projection_iterations"), Physics->SolverOptions.ProjectionIterations);
 	if (AThugCharacter* Probe = HawkeyeMeleeAudit::SpawnFoe(World, S.StreetFeet + S.Along * 900.f, 0.f))
 	{
-		const USkeletalMeshComponent* Body = Probe->GetMesh();
+		USkeletalMeshComponent* Body = Probe->GetMesh();
 		float Mass = 0.f;
 		float Damping = 0.f;
 		int32 Count = 0;
@@ -1456,7 +1460,9 @@ void FHawkeyeMeleeAuditRun::Write(UWorld* World, AHawkeyeCharacter* Kate)
 		}
 		S.Extra->SetStringField(TEXT("thug_physics_asset"), GetNameSafe(Body->GetPhysicsAsset()));
 		S.Extra->SetNumberField(TEXT("thug_bodies"), Count);
-		S.Extra->SetNumberField(TEXT("thug_mass_kg"), Mass);
+		S.Extra->SetNumberField(TEXT("thug_asset_mass_kg"), Mass);
+		S.Extra->SetNumberField(TEXT("thug_ragdoll_mass_kg"),
+			Probe->GetHitReactionComponent() ? Probe->GetHitReactionComponent()->RagdollMassKg : 0.f);
 		S.Extra->SetNumberField(TEXT("thug_mean_linear_damping"), Count ? Damping / Count : 0.f);
 		S.Extra->SetNumberField(TEXT("thug_depenetration_overrides"), Overrides);
 		S.Extra->SetStringField(TEXT("thug_ragdoll_vs_pawn"),
