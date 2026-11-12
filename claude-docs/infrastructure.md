@@ -229,7 +229,10 @@ skeletal mesh reduction (`BUILT_LODS`: half the triangles each step).
 `hawkeye-assets\built\lucky\` holds Lucky: `SK_Lucky.glb` (rigged, clips Idle, Walk, Trot, Sit), `lucky_basecolor.png`
 and `lucky_normal.png` (Blender convention; the import flips green). Generated locally (TRELLIS.2 from a Z-Image-Turbo
 reference, `docs/CREDITS.md`); nothing in the repo rebuilds it. `import_bodies.py` imports it into
-`/Game/Characters/Lucky/` (git-ignored) for `ALuckyCharacter`; without it `City_Lucky` is hidden.
+`/Game/Characters/Lucky/` (git-ignored) for `ALuckyCharacter`; without it `City_Lucky` is hidden. The steps that made
+it are in `C:\Users\camer\code\hawkeye-tools` (`scripts\run_lucky.ps1`, its README). Since 2026-11-12 `paint_lucky.py`
+paints the grey the generator left on his undersides (a dark patch on the near hind leg when he sat), and the sit lays
+the hind feet flat forward from the hock (they stood up behind the haunch).
 
 ## Combat clips (not in git)
 
