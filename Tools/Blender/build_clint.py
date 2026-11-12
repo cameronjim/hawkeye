@@ -2,8 +2,9 @@
 
     blender.exe --background --factory-startup --python Tools/Blender/build_clint.py -- [--no-render] [--views a,b]
 
-The show's suit, from a cosplay photo of it: a knee-length long-sleeved black coat with a stand collar, wide maroon
-panels down both front edges (the skirt opens below the belt), a maroon yoke over the shoulders and bands at the
+The show's suit, from a cosplay photo of it: a tailored long-sleeved black coat to above the knee, fitted at the waist,
+its skirt tapering a little and open at the front below the belt, a stand collar, wide maroon panels down both front
+edges, a maroon yoke over the shoulders and bands at the
 elbows, thin silver piping along the panels and seams; black trousers into tall lace-up combat boots; black gloves;
 a guard on the bow (left) forearm; a black quiver on his back, arrows over the left shoulder, its strap across the
 chest. Not the Ronin look. Writes <assets root>/built/clint/SK_Clint.glb (+ .blend, slots json) and the renders.
@@ -20,8 +21,10 @@ import costume as cs  # noqa: E402
 import pieces  # noqa: E402
 
 WHO = "clint"
-HEM_Z = 0.47          # the coat's hem, at the knee
+HEM_Z = 0.60          # the coat's hem, above the knee (the reference's is mid-thigh; knee-length read as a robe)
 OPEN_Z = 0.95         # the skirt is open at the front below this
+OPEN_GAP = 0.009      # half the opening's width at OPEN_Z
+OPEN_SPREAD = 0.035   # and how much wider each side it is at the hem
 CUFF_X = 0.655        # sleeves end at the wrist
 PLACKET_X = 0.011     # the closed chest's black placket between the panels
 PANEL_X = 0.085       # the maroon front panels run from the opening out to here
@@ -81,9 +84,29 @@ def head_materials(body, out, hair_tint, skin_file="T_Superhero_Male_Dark.png"):
     }
 
 
+def fitted_torso(body, z_bottom, z_top, pad, p=2.4):
+    """A closed solid round the torso that follows its width down to the waist (a tailored coat, not a box falling
+    from the chest), its profile smoothed along the height so pecs, abs and the groove between the shoulder blades do
+    not read through; the back is a convex curve, so it bridges the spine."""
+    cy = pieces.TORSO_AXIS[1]
+    zs = np.linspace(z_top, z_bottom, 22)
+    prof = []
+    for z in zs:
+        e = pieces.extents(body, z, families=("torso",))
+        prof.append((min(max(-e[0], e[1]), 0.21), cy - e[2], e[3] - cy))
+    prof = np.array(prof)
+    kernel = np.array([1.0, 2.0, 3.0, 2.0, 1.0])
+    kernel /= kernel.sum()
+    padded = np.pad(prof, ((2, 2), (0, 0)), mode="edge")
+    smooth = np.stack([np.convolve(padded[:, i], kernel, mode="valid") for i in range(3)], axis=1)
+    rings = [pieces.superellipse(0.0, cy, smooth[j, 0] + pad, smooth[j, 1] + pad, smooth[j, 2] + pad, z, p=p)
+             for j, z in enumerate(zs)]
+    return cs.loft("FittedTorso", rings, closed=True, cap_start=True, cap_end=True)
+
+
 def skirt_solid(body):
-    """A closed flared solid from the ribs to below the hem: merged into the coat's volume, it is the skirt hanging
-    clear of the legs."""
+    """A closed solid from the ribs to below the hem: merged into the coat's volume, it is the skirt, fitted at the
+    waist, over the hips and tapering a little to the hem (a tailored coat, not a flared robe)."""
     cy = pieces.TORSO_AXIS[1]
     hips = [pieces.extents(body, z) for z in np.linspace(0.84, 1.0, 9)]
     hx = max(max(-e[0], e[1]) for e in hips)
@@ -99,9 +122,9 @@ def skirt_solid(body):
             ayb = (1 - k) * (hyb + 0.03) + k * (e[3] - cy + 0.026)
         else:
             t = (0.94 - z) / (0.94 - HEM_Z)
-            ax = hx + 0.03 + 0.05 * t
-            ayf = hyf + 0.03 + 0.035 * t
-            ayb = hyb + 0.03 + 0.045 * t
+            ax = hx + 0.026 - 0.012 * t
+            ayf = hyf + 0.026 - 0.004 * t
+            ayb = hyb + 0.026 - 0.006 * t
         rings.append(pieces.superellipse(0.0, cy, ax, ayf, ayb, z))
     return cs.loft("Skirt", rings, closed=True, cap_start=True, cap_end=True)
 
@@ -114,7 +137,7 @@ def fold_field(body):
         x, y, z = co[:, 0], co[:, 1], co[:, 2]
         theta = np.arctan2(y - cy, x)
         skirt = cs.smoothstep(0.98, HEM_Z, z) * (np.abs(x) < 0.4)
-        d = 0.016 * skirt * cs.fold_noise(theta * 7.0 + 0.8 * z, 11)
+        d = 0.008 * skirt * cs.fold_noise(theta * 7.0 + 0.8 * z, 11)
         ax = np.abs(x)
         wrist = cs.smoothstep(0.54, 0.60, ax) * cs.smoothstep(CUFF_X + 0.01, CUFF_X - 0.03, ax)
         d += 0.0035 * wrist * np.sin(ax / 0.018 * 2 * math.pi + cs.fold_noise(np.arctan2(z - 1.456, y), 3))
@@ -127,14 +150,13 @@ def fold_field(body):
 
 def build_coat(body, mats):
     fam = body.family
-    off = 0.022 * fam["torso"] + 0.018 * fam["arm"] + 0.018 * fam["hand"] + 0.02 * fam["leg"] + 0.012 * fam["head"]
-    torso = (fam["torso"] > 0.5) & (np.abs(body.co[:, 0]) < 0.24)
-    hangs = [(torso, lambda z: pieces.TORSO_AXIS, 1.37, 0.85, 0.97, 0.3)]
-    sleeves = pieces.arm_tubes(body, 0.26, CUFF_X + 0.01, pad0=0.02, pad1=0.024, sag=0.006)
-    chest = pieces.torso_solid(body, 0.95, 1.42, pad=0.022, hem_in=0.06)
-    coat = pieces.shell(body, "Coat", off, hangs=hangs, extras=[skirt_solid(body), chest] + sleeves, voxel=0.008,
+    off = 0.020 * fam["torso"] + 0.012 * fam["arm"] + 0.016 * fam["hand"] + 0.02 * fam["leg"] + 0.012 * fam["head"]
+    # No hang from the chest (that was the box): fitted_torso bridges the hollows and comes in to the waist.
+    sleeves = pieces.arm_tubes(body, 0.26, CUFF_X + 0.01, pad0=0.012, pad1=0.013, sag=0.003)
+    chest = fitted_torso(body, 0.96, 1.43, pad=0.02)
+    coat = pieces.shell(body, "Coat", off, extras=[skirt_solid(body), chest] + sleeves, voxel=0.008,
                         smooth=6)
-    pieces.iron(body, coat, torso_iters=60, limb_iters=16, z_range=(0.9, 1.52))
+    pieces.iron(body, coat, torso_iters=120, limb_iters=16, z_range=(0.9, 1.56))
     cs.cut_and_delete(coat, (0, 0, HEM_Z), (0, 0, 1), lambda c, n: c[:, 2] < HEM_Z)
     for sx in (1, -1):
         cs.cut_and_delete(coat, (sx * CUFF_X, 0, 0), (1, 0, 0), lambda c, n, sx=sx: sx * c[:, 0] > CUFF_X)
@@ -142,15 +164,24 @@ def build_coat(body, mats):
     cs.delete_faces(coat, pieces.neck_hole(body, c))
     pieces.keep_largest(coat)
     cs.displace(coat, fold_field(body))
-    # The front opening below the belt.
+    # The front opening below the belt: an inverted V, OPEN_GAP wide at the belt, OPEN_SPREAD more each side at the
+    # hem, so the skirt parts over the trousers like the reference's instead of a closed tube.
     def front_low(c, n):
-        return (np.abs(c[:, 0]) < 0.05) & (c[:, 1] < 0.0) & (c[:, 2] < OPEN_Z + 0.03)
+        return (np.abs(c[:, 0]) < 0.06 + OPEN_SPREAD) & (c[:, 1] < 0.0) & (c[:, 2] < OPEN_Z + 0.03)
 
-    for x0 in (-0.009, 0.009):
-        cs.bisect(coat, (x0, 0, 0), (1, 0, 0), front_low)
-    cs.bisect(coat, (0, 0, OPEN_Z), (0, 0, 1), lambda c, n: (np.abs(c[:, 0]) < 0.05) & (c[:, 1] < 0.0))
+    edges = []
+    for sx in (1, -1):
+        normal = np.array([sx * (OPEN_Z - HEM_Z), 0.0, OPEN_SPREAD])
+        normal /= np.linalg.norm(normal)
+        point = np.array([sx * OPEN_GAP, 0.0, OPEN_Z])
+        edges.append((point, normal))
+        cs.bisect(coat, point, normal, front_low)
+    cs.bisect(coat, (0, 0, OPEN_Z), (0, 0, 1), lambda c, n: (np.abs(c[:, 0]) < 0.06) & (c[:, 1] < 0.0))
     c, n = cs.face_data(coat)
-    cs.delete_faces(coat, (np.abs(c[:, 0]) < 0.009) & (c[:, 1] < 0.0) & (c[:, 2] < OPEN_Z))
+    inside = (c[:, 1] < 0.0) & (c[:, 2] < OPEN_Z)
+    for point, normal in edges:
+        inside &= (c - point) @ normal < 0.0
+    cs.delete_faces(coat, inside)
     cs.decimate(coat, tris=7500)
     pieces.snap_neckline(body, coat)
     trim_coat(coat, mats)
@@ -276,11 +307,12 @@ def build_trousers(body, mats, boots_upper, boot_top):
 
 
 def build_guard(body, surf, mats):
-    """A rigid guard on the bow (left) forearm over the sleeve: wraps the inside of the arm (open on top), two straps."""
+    """A slim rigid guard on the bow (left) forearm over the sleeve: wraps the inside of the arm (open over the top
+    third), sits close on the sleeve, two thin straps."""
     ay = pieces.arm_axis(body, "l")
     out = []
     xs = np.linspace(0.505, 0.632, 12)
-    angles = np.radians(np.linspace(-135, 135, 31))
+    angles = np.radians(np.linspace(-100, 100, 25))
     P, N = [], []
     for x in xs:
         y0, z0 = ay(x)
@@ -291,7 +323,7 @@ def build_guard(body, surf, mats):
             row_n.append(n)
         P.append(row_p)
         N.append(row_n)
-    guard = cs.slab("Guard", np.array(P), np.array(N), 0.004, gap=0.004)
+    guard = cs.slab("Guard", np.array(P), np.array(N), 0.0028, gap=0.0015)
     cs.set_material(guard, mats["guard"])
     out.append((guard, cs.rigid(body, len(guard.data.vertices), {"lowerarm_l": 1.0})))
     for k, x in enumerate((0.53, 0.607)):
@@ -305,7 +337,7 @@ def build_guard(body, surf, mats):
                 row_n.append(n)
             P.append(row_p)
             N.append(row_n)
-        strap = cs.slab("GuardStrap%d" % k, np.array(P), np.array(N), 0.003, gap=0.0085, closed=True)
+        strap = cs.slab("GuardStrap%d" % k, np.array(P), np.array(N), 0.0025, gap=0.0048, closed=True)
         cs.set_material(strap, mats["belt"])
         out.append((strap, cs.rigid(body, len(strap.data.vertices), {"lowerarm_l": 1.0})))
     return out
