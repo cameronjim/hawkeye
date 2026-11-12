@@ -66,7 +66,10 @@ public:
 
 	/** What he is doing now. */
 	UFUNCTION(BlueprintPure, Category = "Lucky")
-	ELuckyState GetLuckyState() const { return State; }
+	ELuckyState GetLuckyState() const
+	{
+		return State;
+	}
 
 	/** Stops him thinking (the screenshot tests stand him); he holds his current clip. */
 	void SetThinkingEnabled(bool bEnabled);

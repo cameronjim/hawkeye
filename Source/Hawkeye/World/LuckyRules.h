@@ -55,7 +55,10 @@ struct HAWKEYE_API FLuckyRules
 		float HeightGap, float KateStillSeconds);
 
 	/** True for the states that move him. */
-	static bool IsMoving(ELuckyState State) { return State == ELuckyState::Walk || State == ELuckyState::Trot; }
+	static bool IsMoving(ELuckyState State)
+	{
+		return State == ELuckyState::Walk || State == ELuckyState::Trot;
+	}
 
 	/**
 	 * The clip's play rate for a ground speed (cm/s) so the feet do not slide: speed over the clip's own speed,

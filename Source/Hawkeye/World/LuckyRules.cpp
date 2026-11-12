@@ -1,7 +1,7 @@
 #include "World/LuckyRules.h"
 
-ELuckyState FLuckyRules::ChooseState(const FLuckyFollowSettings& Settings, ELuckyState Current, float Distance,
-	float HeightGap, float KateStillSeconds)
+ELuckyState FLuckyRules::ChooseState(
+	const FLuckyFollowSettings& Settings, ELuckyState Current, float Distance, float HeightGap, float KateStillSeconds)
 {
 	const bool bInReach = Distance <= Settings.NoticeRadius && FMath::Abs(HeightGap) <= Settings.MaxHeightGap;
 	const bool bStill = KateStillSeconds >= Settings.SitDelay;

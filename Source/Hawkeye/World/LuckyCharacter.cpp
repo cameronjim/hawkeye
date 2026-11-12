@@ -73,7 +73,8 @@ void ALuckyCharacter::BeginPlay()
 	bHasBody = LoadedMesh != nullptr;
 	if (!bHasBody)
 	{
-		UE_LOG(LogHawkeye, Display, TEXT("%s: no %s on this clone (import_bodies.py makes it from the asset packs); Lucky is hidden."),
+		UE_LOG(LogHawkeye, Display,
+			TEXT("%s: no %s on this clone (import_bodies.py makes it from the asset packs); Lucky is hidden."),
 			*GetName(), *BodyMesh.ToString());
 		SetActorHiddenInGame(true);
 		SetActorEnableCollision(false);
@@ -81,7 +82,7 @@ void ALuckyCharacter::BeginPlay()
 		return;
 	}
 	GetMesh()->SetSkeletalMeshAsset(LoadedMesh);
-	State = ELuckyState::Sit;   // anything but Idle, so the next line plays the clip
+	State = ELuckyState::Sit; // anything but Idle, so the next line plays the clip
 	SetLuckyState(ELuckyState::Idle);
 }
 
@@ -139,12 +140,12 @@ float ALuckyCharacter::SpeedFor(ELuckyState InState) const
 {
 	switch (InState)
 	{
-	case ELuckyState::Walk:
-		return WalkClipSpeed * WalkRate;
-	case ELuckyState::Trot:
-		return TrotClipSpeed * TrotRate;
-	default:
-		return 0.f;
+		case ELuckyState::Walk:
+			return WalkClipSpeed * WalkRate;
+		case ELuckyState::Trot:
+			return TrotClipSpeed * TrotRate;
+		default:
+			return 0.f;
 	}
 }
 
@@ -207,13 +208,13 @@ UAnimSequence* ALuckyCharacter::ClipFor(ELuckyState InState) const
 {
 	switch (InState)
 	{
-	case ELuckyState::Walk:
-		return WalkClip.Get();
-	case ELuckyState::Trot:
-		return TrotClip.Get();
-	case ELuckyState::Sit:
-		return SitClip.Get() ? SitClip.Get() : IdleClip.Get();
-	default:
-		return IdleClip.Get();
+		case ELuckyState::Walk:
+			return WalkClip.Get();
+		case ELuckyState::Trot:
+			return TrotClip.Get();
+		case ELuckyState::Sit:
+			return SitClip.Get() ? SitClip.Get() : IdleClip.Get();
+		default:
+			return IdleClip.Get();
 	}
 }
