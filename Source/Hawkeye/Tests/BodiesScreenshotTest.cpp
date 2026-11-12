@@ -19,6 +19,10 @@
 #include "Misc/App.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/LocalPlayer.h"
+#include "InputAction.h"
+#include "InputActionValue.h"
 #include "Partner/HawkeyePartnerController.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Tests/AutomationCommon.h"
@@ -36,13 +40,20 @@
  * body_clint.png, body_lucky.png), then a thug thrown into a ragdoll (body_thug_ragdoll.png), a thug 0.4 s into his
  * punch's wind-up with the telegraph glow on (body_thug_punch.png), a thug the frame a hit flashes him
  * (body_thug_flash.png), Clint 0.7 s into a bow draw (body_clint_draw.png) and Lucky sitting by Kate
- * (body_lucky_kate.png).
+ * (body_lucky_kate.png). Then Kate's built body in two rounds, by day and by night (hawkeye.TimeOfDay; put back to
+ * the saved setting after): body_kate_<shot>_day.png and _night.png for front (idle, facing the camera), back (idle,
+ * her back to it: the ponytail and quiver), run (1.6 s into a run, side on), crouch, punch (0.3 s into a light
+ * attack), draw (0.7 s into a bow draw) and trio (Kate between Clint and Lucky).
  *
  * Fails, for a character with a body look, when the look is not drawn over a hidden driver, a bone of it is more than
  * 150 cm from the actor (exploded), its hands are not well below its shoulders while he stands (a T-pose), its toes
  * point away from where he faces (turned), its head is more than 25 cm from the driver's (scaled or turned), or, in the
  * ragdoll, its pelvis is more than 25 cm from the driver's (the look not following the physics). Lucky fails when he is
- * not 40 to 95 cm tall or his head is not toward where he faces. A clone without the
+ * not 40 to 95 cm tall or his head is not toward where he faces. Kate fails the same standing checks (front, back,
+ * trio), and when her look's feet are more than 12 cm off the ground (front, back, run, crouch), she is not crouched in
+ * the crouch, or her look's hands are more than 5 cm from the driver's in the punch and the draw (the hands are
+ * blended fully onto the driver's, where the bow and the fist are measured; at full draw her shorter arm leaves the
+ * hands about 3 cm short). Each facing is walked into rather than teleported (PlaceKate). A clone without the
  * packs has no look: the shots are still taken and the checks are skipped with a note. Needs a real RHI:
  *
  *   UnrealEditor-Cmd.exe Hawkeye.uproject /Game/Maps/L_District_EastVillage -game -windowed -ResX=1280 -ResY=720
@@ -144,6 +155,57 @@ namespace HawkeyeBodyShots
 		return Start;
 	}
 
+	/** The lowest of the look's foot and ball bones above the capsule's bottom, in cm (the bones sit a few cm in). */
+	static float FeetAboveGround(const ACharacter* Character, const USkeletalMeshComponent* Seen)
+	{
+		const float Ground = Character->GetActorLocation().Z - Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		float Lowest = TNumericLimits<float>::Max();
+		for (const TCHAR* Name : { TEXT("foot_l"), TEXT("foot_r"), TEXT("ball_l"), TEXT("ball_r") })
+		{
+			FVector At(0.f);
+			if (Bone(Seen, Name, At))
+			{
+				Lowest = FMath::Min(Lowest, At.Z);
+			}
+		}
+		return Lowest < TNumericLimits<float>::Max() ? Lowest - Ground : 999.f;
+	}
+
+	/** The farther of the look's hands from the driver's, in cm. */
+	static float HandDrift(const USkeletalMeshComponent* Driver, const USkeletalMeshComponent* Seen)
+	{
+		float Worst = 0.f;
+		for (const TCHAR* Name : { TEXT("hand_l"), TEXT("hand_r") })
+		{
+			FVector A(0.f), B(0.f);
+			Worst = Bone(Seen, Name, A) && Bone(Driver, Name, B) ? FMath::Max(Worst, FVector::Dist(A, B)) : 999.f;
+		}
+		return Worst;
+	}
+
+	/**
+	 * Holds IA_Move at Value through Enhanced Input's continuous injection (the same triggers, bindings and gait choice
+	 * as a stick held), or lets go when bHold is false. As Hawkeye.Screenshot.Kate's run.
+	 */
+	static void HoldMove(APlayerController* PC, const FVector2D& Value, bool bHold)
+	{
+		const UInputAction* Move = LoadObject<UInputAction>(nullptr, TEXT("/Game/Input/IA_Move.IA_Move"));
+		ULocalPlayer* Player = PC ? PC->GetLocalPlayer() : nullptr;
+		UEnhancedInputLocalPlayerSubsystem* Input = Player ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(Player) : nullptr;
+		if (!Move || !Input)
+		{
+			return;
+		}
+		if (bHold)
+		{
+			Input->StartContinuousInputInjectionForAction(Move, FInputActionValue(Value), {}, {});
+		}
+		else
+		{
+			Input->StopContinuousInputInjectionForAction(Move);
+		}
+	}
+
 	static FString CheckStanding(FAutomationTestBase* Test, const FString& Who, const ACharacter* Character,
 		const USkeletalMeshComponent* Driver, const USkeletalMeshComponent* Seen)
 	{
@@ -222,8 +284,10 @@ public:
 			++Step;
 			return false;
 		}
+		KeepKateSeen();
 		if (Now - StepStart < SettleSeconds(Subject))
 		{
+			WalkKateIn();
 			return false;
 		}
 		// A moment shot (the punch, the flash, the draw) starts its action, waits its lead, then holds time on him.
@@ -251,19 +315,47 @@ public:
 	}
 
 private:
-	static constexpr int32 NumSubjects = 9;
-	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, FlashShot, DrawShot, LuckyKateShot };
+	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, FlashShot, DrawShot, LuckyKateShot, FirstKateShot };
+	/** Kate's shots, taken once by day and once by night after the others. */
+	enum EKateShot : int32 { KFront, KBack, KRun, KCrouch, KPunch, KDraw, KTrio, NumKateShots };
+	static constexpr int32 NumSubjects = FirstKateShot + NumKateShots * 2;
+
+	static bool IsKate(int32 Subject) { return Subject >= FirstKateShot; }
+	static int32 KateShot(int32 Subject) { return (Subject - FirstKateShot) % NumKateShots; }
+	static bool KateNight(int32 Subject) { return (Subject - FirstKateShot) / NumKateShots == 1; }
+
+	static FString ShotName(int32 Subject)
+	{
+		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
+			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_thug_flash"), TEXT("body_clint_draw"), TEXT("body_lucky_kate")};
+		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
+			TEXT("draw"), TEXT("trio")};
+		if (!IsKate(Subject))
+		{
+			return Names[Subject];
+		}
+		return FString::Printf(TEXT("body_kate_%s_%s"), KateNames[KateShot(Subject)], KateNight(Subject) ? TEXT("night") : TEXT("day"));
+	}
 
 	static double SettleSeconds(int32 Subject)
 	{
-		// The ragdoll needs time to fall; the others only Lumen and the exposure. The punch, the flash and the draw are
-		// started at the end of their settle (Shoot), so the pose is the moment asked for.
+		// The ragdoll needs time to fall; the others only Lumen and the exposure (longer after the time of day changes).
+		// The punch, the flash and the draw are started at the end of their settle (Shoot), so the pose is the moment
+		// asked for. The run is the run's length.
+		if (IsKate(Subject))
+		{
+			return KateShot(Subject) == KRun ? 1.6 : KateShot(Subject) == KFront ? 4.0 : 2.5;
+		}
 		return Subject == RagdollShot ? 1.6 : 2.5;
 	}
 
 	/** Seconds from the action to the shot, or -1 for a subject with no action. */
 	static double ActionLead(int32 Subject)
 	{
+		if (IsKate(Subject))
+		{
+			return KateShot(Subject) == KPunch ? 0.3 : KateShot(Subject) == KDraw ? 0.7 : -1.0;
+		}
 		switch (Subject)
 		{
 		case PunchShot:
@@ -279,6 +371,19 @@ private:
 
 	void StartAction(int32 Subject)
 	{
+		if (IsKate(Subject))
+		{
+			AHawkeyeCharacter* Kate = KateRef.Get();
+			if (Kate && KateShot(Subject) == KPunch)
+			{
+				Test->TestTrue(*FString::Printf(TEXT("%s: the light attack started"), *ShotName(Subject)), Kate->StartLightAttack());
+			}
+			else if (Kate && KateShot(Subject) == KDraw && Kate->GetBowComponent())
+			{
+				Test->TestTrue(*FString::Printf(TEXT("%s: the draw started"), *ShotName(Subject)), Kate->GetBowComponent()->StartDraw());
+			}
+			return;
+		}
 		AThugCharacter* Thug = Cast<AThugCharacter>(Current.Get());
 		if (Subject == PunchShot && Thug && Thug->GetMeleeComponent())
 		{
@@ -421,6 +526,7 @@ private:
 				Clint->TeleportTo(At + FVector(0.f, 0.f, Clint->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
 					Along.Rotation(), false, true);
 				Clint->SetActorRotation(Along.Rotation());
+				ClintRef = Clint;
 				return Clint;
 			}
 		}
@@ -456,9 +562,148 @@ private:
 		return Dog;
 	}
 
+	FVector RunDirection() const { return FVector::CrossProduct(FVector::UpVector, Along); }
+
+	/**
+	 * Kate back in the world facing Yaw: drawn, colliding, walking, her control rotation turned her way. With bWalkIn
+	 * she is put a metre short of Ground and walks onto it (WalkKateIn): a teleport turns the capsule, but the sample's
+	 * AnimBP keeps the mesh's old facing until she moves (seen: a 180 degree teleport left her body facing the old way
+	 * with the bow on her chest), so a facing is walked into, as a player would.
+	 */
+	void PlaceKate(const FVector& Ground, float Yaw, bool bWalkIn = true)
+	{
+		AHawkeyeCharacter* Kate = KateRef.Get();
+		if (!Kate)
+		{
+			return;
+		}
+		const FRotator Facing(0.f, Yaw, 0.f);
+		const FVector Start = bWalkIn ? Ground - Facing.Vector() * 100.f : Ground;
+		WalkGoal = Ground;
+		bWalkingIn = bWalkIn;
+		Kate->SetActorHiddenInGame(false);
+		Kate->SetActorEnableCollision(true);
+		Kate->CustomTimeDilation = 1.f;
+		Kate->TeleportTo(Start + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f), Facing, false, true);
+		Kate->SetActorRotation(Facing);
+		if (UCharacterMovementComponent* Movement = Kate->GetCharacterMovement())
+		{
+			Movement->StopMovementImmediately();
+			Movement->SetMovementMode(MOVE_Walking);
+		}
+		if (AController* Controller = Kate->GetController())
+		{
+			Controller->SetControlRotation(Facing);
+		}
+		bKateOut = true;
+		KeepKateSeen();
+	}
+
+	/** One frame of the walk onto the spot PlaceKate set; stops on it. */
+	void WalkKateIn()
+	{
+		AHawkeyeCharacter* Kate = KateRef.Get();
+		if (!bWalkingIn || !Kate)
+		{
+			return;
+		}
+		const FVector Here = Kate->GetActorLocation();
+		const FVector To(WalkGoal.X - Here.X, WalkGoal.Y - Here.Y, 0.f);
+		if (To.Size() < 8.f)
+		{
+			bWalkingIn = false;
+			if (UCharacterMovementComponent* Movement = Kate->GetCharacterMovement())
+			{
+				Movement->StopMovementImmediately();
+			}
+			if (bCrouchOnArrival)
+			{
+				bCrouchOnArrival = false;
+				Kate->PressCrouch();
+				if (Kate->IsCrouchToggle())
+				{
+					Kate->ReleaseCrouch();
+				}
+			}
+			return;
+		}
+		Kate->AddMovementInput(To.GetSafeNormal(), 0.5f);
+	}
+
+	/** Her own camera's close-up hide is for her own view; these shots look through another camera. */
+	void KeepKateSeen()
+	{
+		if (USkeletalMeshComponent* Body = bKateOut && KateRef.IsValid() ? KateRef->GetBodyMesh() : nullptr)
+		{
+			Body->SetOwnerNoSee(false);
+		}
+	}
+
+	void StandKate(UWorld* World, APlayerController* PC, int32 Subject)
+	{
+		const int32 Shot = KateShot(Subject);
+		if (Shot == KFront && GEngine)
+		{
+			// Each round starts with its time of day; hawkeye.TimeOfDay does not save, and Cleanup puts back "Saved".
+			GEngine->Exec(World, KateNight(Subject) ? TEXT("hawkeye.TimeOfDay Night") : TEXT("hawkeye.TimeOfDay Day"));
+		}
+		const FVector Side = RunDirection();
+		const float Yaw = Along.Rotation().Yaw;
+		switch (Shot)
+		{
+		case KBack:
+			PlaceKate(Feet, Yaw + 180.f);
+			Frame(PC, Feet + FVector(0.f, 0.f, 85.f), 400.f, 50.f);
+			break;
+		case KRun:
+			// Back along the run so the 1.6 s of it ends near the spot, the stick held forward (her control faces the
+			// run); framed where she is when shot.
+			PlaceKate(Feet - Side * 650.f, Yaw + 90.f, /*bWalkIn=*/false);
+			HawkeyeBodyShots::HoldMove(PC, FVector2D(0.f, 1.f), true);
+			bHoldingMove = true;
+			Frame(PC, Feet + FVector(0.f, 0.f, 85.f), 420.f, 50.f);
+			break;
+		case KCrouch:
+			// Crouched once she has walked onto the spot (a press while moving is a slide).
+			PlaceKate(Feet, Yaw - 30.f);
+			bCrouchOnArrival = true;
+			Frame(PC, Feet + FVector(0.f, 0.f, 65.f), 330.f, 50.f);
+			break;
+		case KPunch:
+			// From her left, like the thug's punch, so the arm reads against the street.
+			PlaceKate(Feet, Yaw + 90.f);
+			Frame(PC, Feet + FVector(0.f, 0.f, 85.f), 380.f, 50.f);
+			break;
+		case KDraw:
+			// Side on to the draw (the bow arm points along her facing), seen from a little in front.
+			PlaceKate(Feet, Yaw + 70.f);
+			Frame(PC, Feet + FVector(0.f, 0.f, 95.f), 400.f, 50.f);
+			break;
+		case KTrio:
+			PlaceKate(Feet, Yaw);
+			if (AHawkeyeCharacter* Clint = BringClint(World, Feet + Side * 95.f))
+			{
+				Clint->SetActorRotation(FRotator(0.f, Yaw - 10.f, 0.f));
+			}
+			LuckyRef = BringLucky(World, Feet - Side * 80.f, FRotator(0.f, Yaw + 15.f, 0.f), ELuckyState::Idle);
+			Frame(PC, Feet + FVector(0.f, 0.f, 85.f), 460.f, 50.f);
+			break;
+		default:
+			PlaceKate(Feet, Yaw);
+			Frame(PC, Feet + FVector(0.f, 0.f, 85.f), 400.f, 50.f);
+			break;
+		}
+		Current = KateRef.Get();
+	}
+
 	void Stand(UWorld* World, APlayerController* PC, int32 Subject)
 	{
 		Clear();
+		if (IsKate(Subject))
+		{
+			StandKate(World, PC, Subject);
+			return;
+		}
 		const FVector Chest = Feet + FVector(0.f, 0.f, 110.f);
 		const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
 		switch (Subject)
@@ -573,15 +818,84 @@ private:
 		Test->TestTrue(*FString::Printf(TEXT("%s: his feet are on the ground (%.0f cm off)"), *Name, Ground), FMath::Abs(Ground) < 15.f);
 	}
 
+	/** Kate's checks for one shot (see the file comment) and a line of what was measured. */
+	void CheckKate(int32 Subject)
+	{
+		using namespace HawkeyeBodyShots;
+		const FString Name = ShotName(Subject);
+		AHawkeyeCharacter* Kate = KateRef.Get();
+		if (!Kate)
+		{
+			Test->AddError(Name + TEXT(": no Kate."));
+			return;
+		}
+		const USkeletalMeshComponent* Driver = Kate->GetMesh();
+		const USkeletalMeshComponent* Seen = Kate->GetBodyMesh();
+		const int32 Shot = KateShot(Subject);
+		if (Shot == KRun)
+		{
+			// Framed side on where the run has taken her.
+			if (APlayerController* PC = Kate->GetWorld()->GetFirstPlayerController())
+			{
+				const FVector At = Kate->GetActorLocation() - FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() - 85.f);
+				Frame(PC, At, 420.f, 50.f);
+			}
+		}
+		FString Line;
+		if (Shot == KFront || Shot == KBack || Shot == KTrio)
+		{
+			Line = CheckStanding(Test, Name, Kate, Driver, Seen);
+		}
+		if (!Seen || Seen == Driver)
+		{
+			Test->AddInfo(Name + TEXT(".png: no body look on this clone; the mannequin is shot."));
+			return;
+		}
+		const float FeetUp = FeetAboveGround(Kate, Seen);
+		const float Drift = HandDrift(Driver, Seen);
+		FVector Pelvis(0.f), DriverPelvis(0.f);
+		const float PelvisOff = Bone(Seen, TEXT("pelvis"), Pelvis) && Bone(Driver, TEXT("pelvis"), DriverPelvis) ? FVector::Dist(Pelvis, DriverPelvis) : -1.f;
+		const UBowComponent* Bow = Kate->GetBowComponent();
+		const UMeleeComponent* Melee = Kate->GetMeleeComponent();
+		Test->AddInfo(FString::Printf(TEXT("%s.png: %s, scale %.2f, speed %.0f cm/s, crouched %d, drawing %d (%.2f), melee winding %d; look feet %.1f cm above the capsule's bottom, hands %.1f cm from the driver's, pelvis %.1f cm from the driver's, owner-no-see %d. %s"),
+			*Name, *GetNameSafe(Seen->GetSkeletalMeshAsset()), Seen->GetComponentScale().Z, Kate->GetVelocity().Size2D(), Kate->bIsCrouched ? 1 : 0,
+			Bow && Bow->IsDrawing() ? 1 : 0, Bow ? Bow->GetDrawFraction() : 0.f, Melee && Melee->IsWindingUp() ? 1 : 0,
+			FeetUp, Drift, PelvisOff, Seen->bOwnerNoSee ? 1 : 0, *Line));
+		if (Shot == KFront || Shot == KBack || Shot == KCrouch || Shot == KRun)
+		{
+			Test->TestTrue(*FString::Printf(TEXT("%s: her feet are on the ground (%.1f cm)"), *Name, FeetUp), FeetUp > -6.f && FeetUp < 12.f);
+		}
+		if (Shot == KCrouch)
+		{
+			Test->TestTrue(*FString::Printf(TEXT("%s: she is crouched"), *Name), Kate->bIsCrouched);
+		}
+		if (Shot == KRun)
+		{
+			Test->TestTrue(*FString::Printf(TEXT("%s: she is running (%.0f cm/s)"), *Name, Kate->GetVelocity().Size2D()), Kate->GetVelocity().Size2D() > 250.f);
+		}
+		if (Shot == KPunch || Shot == KDraw)
+		{
+			Test->TestTrue(*FString::Printf(TEXT("%s: the look's hands are on the driver's (%.1f cm)"), *Name, Drift), Drift < 5.f);
+		}
+		Test->TestFalse(*FString::Printf(TEXT("%s: the look is not hidden from the shot"), *Name), Seen->bOwnerNoSee);
+	}
+
 	void Shoot(int32 Subject)
 	{
 		using namespace HawkeyeBodyShots;
-		static const TCHAR* Names[NumSubjects] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
-			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_thug_flash"), TEXT("body_clint_draw"), TEXT("body_lucky_kate")};
+		const FString ShotFile = ShotName(Subject);
+		const TCHAR* const ShotLabel = *ShotFile;
+		if (IsKate(Subject))
+		{
+			KeepKateSeen();
+			CheckKate(Subject);
+			HawkeyeShots::Request(Test, ShotPath(ShotFile), /*bShowUI=*/false);
+			return;
+		}
 		ACharacter* Character = Cast<ACharacter>(Current.Get());
 		if (Subject == LuckyShot || Subject == LuckyKateShot)
 		{
-			CheckLucky(FString(Names[Subject]) + TEXT(".png"));
+			CheckLucky(ShotFile + TEXT(".png"));
 			if (Subject == LuckyKateShot && KateRef.IsValid())
 			{
 				const USkeletalMeshComponent* Body = KateRef->GetBodyMesh();
@@ -593,7 +907,7 @@ private:
 		}
 		else if (Subject >= PunchShot)
 		{
-			ShootMoment(Subject, Names[Subject]);
+			ShootMoment(Subject, ShotLabel);
 		}
 		else if (Character)
 		{
@@ -609,8 +923,8 @@ private:
 			}
 			if (Subject < RagdollShot)
 			{
-				Test->AddInfo(FString::Printf(TEXT("%s.png: %s"), Names[Subject],
-					*CheckStanding(Test, Names[Subject], Character, Driver, Seen)));
+				Test->AddInfo(FString::Printf(TEXT("%s.png: %s"), ShotLabel,
+					*CheckStanding(Test, ShotFile, Character, Driver, Seen)));
 			}
 			else
 			{
@@ -636,7 +950,7 @@ private:
 				}
 			}
 		}
-		HawkeyeShots::Request(Test, ShotPath(Names[Subject]), /*bShowUI=*/false);
+		HawkeyeShots::Request(Test, ShotPath(ShotFile), /*bShowUI=*/false);
 	}
 
 	/** The punch, the flash and the draw: what state he was caught in, and that the look is what is drawn. */
@@ -673,9 +987,9 @@ private:
 
 	void Clear()
 	{
-		if (AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Current.Get()))
+		if (AHawkeyeCharacter* Archer = Cast<AHawkeyeCharacter>(Current.Get()))
 		{
-			if (UBowComponent* Bow = Clint->GetBowComponent(); Bow && Bow->IsDrawing())
+			if (UBowComponent* Bow = Archer->GetBowComponent(); Bow && Bow->IsDrawing())
 			{
 				Bow->CancelDraw();
 			}
@@ -683,6 +997,43 @@ private:
 		if (Current.IsValid())
 		{
 			Current->CustomTimeDilation = 1.f;
+		}
+		if (bHoldingMove)
+		{
+			bHoldingMove = false;
+			HawkeyeBodyShots::HoldMove(KateRef.IsValid() ? KateRef->GetWorld()->GetFirstPlayerController() : nullptr, FVector2D::ZeroVector, false);
+		}
+		bWalkingIn = false;
+		bCrouchOnArrival = false;
+		if (ALuckyCharacter* Dog = LuckyRef.Get())
+		{
+			Dog->TeleportTo(Feet - Along * 1200.f + FVector(0.f, 0.f, 60.f), Along.Rotation(), false, true);
+		}
+		LuckyRef = nullptr;
+		if (AHawkeyeCharacter* Kate = KateRef.Get(); Kate && bKateOut)
+		{
+			// Back out of the frame as Setup left her: hidden, not colliding, not moving, standing.
+			bKateOut = false;
+			if (Kate->bIsCrouched)
+			{
+				Kate->PressCrouch();
+				if (Kate->IsCrouchToggle())
+				{
+					Kate->ReleaseCrouch();
+				}
+			}
+			Kate->SetActorHiddenInGame(true);
+			Kate->SetActorEnableCollision(false);
+			if (UCharacterMovementComponent* Movement = Kate->GetCharacterMovement())
+			{
+				Movement->StopMovementImmediately();
+				Movement->DisableMovement();
+			}
+			Kate->TeleportTo(Feet - Along * 1200.f + FVector(0.f, 0.f, 800.f), Along.Rotation(), false, true);
+			if (Current.Get() == Kate)
+			{
+				Current = nullptr;
+			}
 		}
 		if (ALuckyCharacter* Dog = Cast<ALuckyCharacter>(Current.Get()))
 		{
@@ -696,10 +1047,11 @@ private:
 			KateRef->TeleportTo(KateRef->GetActorLocation() - Along * 1200.f + FVector(0.f, 0.f, 800.f), Along.Rotation(), false, true);
 		}
 		// Clint is the district's own; he is walked off the spot and benched again, not destroyed.
-		if (AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Current.Get()))
+		if (AHawkeyeCharacter* Clint = ClintRef.Get())
 		{
 			Clint->TeleportTo(Feet - Along * 1500.f + FVector(0.f, 0.f, 120.f), Along.Rotation(), false, true);
 		}
+		ClintRef = nullptr;
 		if (Partner.IsValid())
 		{
 			Partner->SetBenched(bWasBenched);
@@ -719,6 +1071,10 @@ private:
 	void Cleanup()
 	{
 		Clear();
+		if (GEngine && KateRef.IsValid())
+		{
+			GEngine->Exec(KateRef->GetWorld(), TEXT("hawkeye.TimeOfDay Saved"));
+		}
 		if (Camera)
 		{
 			Camera->Destroy();
@@ -738,6 +1094,13 @@ private:
 	APointLight* Light = nullptr;
 	TWeakObjectPtr<AActor> Current;
 	TWeakObjectPtr<AHawkeyeCharacter> KateRef;
+	TWeakObjectPtr<AHawkeyeCharacter> ClintRef;
+	TWeakObjectPtr<ALuckyCharacter> LuckyRef;
+	bool bKateOut = false;
+	bool bWalkingIn = false;
+	bool bCrouchOnArrival = false;
+	bool bHoldingMove = false;
+	FVector WalkGoal = FVector::ZeroVector;
 	double ActionStart = -1.0;
 	TWeakObjectPtr<AHawkeyePartnerController> Partner;
 	bool bWasBenched = false;
