@@ -53,7 +53,7 @@ PURPLE = (0.090, 0.010, 0.228)
 PURPLE_DARK = (0.042, 0.009, 0.098)
 PURPLE_LIGHT = (0.27, 0.107, 0.55)
 BLACK = (0.012, 0.011, 0.014)
-HAIR = (0.100, 0.056, 0.030)   # dark brown (darker read black under the lights)
+HAIR = (0.105, 0.052, 0.024)   # dark brown (darker read black under the lights)
 
 
 def make_materials(out):
@@ -157,6 +157,15 @@ def athletic(body):
     co[:, 0] -= np.sign(x) * 0.28 * np.maximum(0.0, ax - 0.135) * hips
     seat = cs.smoothstep(0.76, 0.86, z) * cs.smoothstep(1.06, 0.98, z) * trunk
     co[:, 1] -= 0.3 * np.maximum(0.0, y - 0.10) * seat
+    # Slimmer thighs: in toward each leg's bone line, most at mid-thigh (the Superhero thighs made the trousers read
+    # inflated in a lunge).
+    legs = (body.family["leg"] > 0.5) & (np.abs(x) > 0.01)
+    thigh = cs.smoothstep(0.48, 0.62, z) * cs.smoothstep(0.92, 0.80, z) * legs
+    for side, sx in (("l", 1), ("r", -1)):
+        ax_fn = pieces.leg_axis(body, side)
+        sel = np.nonzero((np.sign(x) == sx) & (thigh > 0))[0]
+        centre = np.array([ax_fn(zz) for zz in z[sel]])
+        co[sel, :2] = centre + (co[sel, :2] - centre) * (1.0 - 0.08 * thigh[sel])[:, None]
     cs.set_co(body.reference, co)
     body.co = co
     body.normals = cs.get_vnormals(body.reference)
@@ -278,8 +287,10 @@ def trim_top(top, mats):
 def build_trousers(body, mats, boots_upper):
     fam = body.family
     off = 0.006 * (fam["leg"] + fam["torso"]) + 0.005 * fam["foot"]
-    # Fitted: the legs' own shape, ironed (straight tubes from the thigh read as baggy pipes with a step at their top).
-    tr = pieces.shell(body, "Trousers", off, voxel=0.007, smooth=6, keep=body.co[:, 2] < 1.10)
+    # Fitted: the legs' own shape, ironed (straight tubes from the thigh read as baggy pipes with a step at their top);
+    # a fitted solid over the hips bridges the seat's cleft, which read through the cloth.
+    seat = pieces.fitted_torso(body, 0.875, 1.0, pad=0.004, name="Seat", max_half=0.2)
+    tr = pieces.shell(body, "Trousers", off, extras=[seat], voxel=0.007, smooth=6, keep=body.co[:, 2] < 1.10)
     pieces.iron(body, tr, torso_iters=30, limb_iters=24, z_range=(0.78, 1.05))
     cs.cut_and_delete(tr, (0, 0, TROUSER_TOP), (0, 0, 1), lambda c, n: c[:, 2] > TROUSER_TOP)
     cs.cut_and_delete(tr, (0, 0, 0.19), (0, 0, 1), lambda c, n: c[:, 2] < 0.19)
@@ -674,7 +685,7 @@ def build(args):
               (0.25, 0.45)]
     out += pieces.quiver(body, top_surf, mats, bottom=(0.085, 0.0, 0.985), top=(-0.118, 0.0, 1.415), r0=0.040,
                          r1=0.053, arrows=arrows, strap=strap, strap_half=0.016, axis_top=1.36, rise=0.13,
-                         vane=(0.065, 0.012, 0.048), name="Quiver")
+                         vane=(0.065, 0.009, 0.048), name="Quiver")
 
     # Hair: the scalp, then the ponytail from the tie.
     guide = body.add_hair("Hair_BuzzedFemale.gltf", head["hair"])
