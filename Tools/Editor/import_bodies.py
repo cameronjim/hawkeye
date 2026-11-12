@@ -22,6 +22,12 @@ the packs keeps the mannequins and loads as before.
     BP_Thug, BP_Thug_Heavy, BP_Clint .BodyLook      the soft references; every other child of BP_Thug (the archer,
                                                     the elves, the reindeer, the bosses) is set to no look and keeps
                                                     its own mannequin colours
+    /Game/Characters/Bodies/Built/SK_Built_<Who>    when <assets root>\\built\\<who>\\SK_<Who>.glb is on disk (thug, heavy,
+                                                    clint: modelled clothes from Tools/Blender, claude-docs/blender-
+                                                    pipeline.md): imported onto SKEL_Body_Male, MI_<slot> instances of
+                                                    M_BuiltLook from <who>.slots.json, and that wearer's BodyLook points
+                                                    at it with the same AnimBP. Missing or failing: the painted body.
+                                                    Written without an engine run (2026-11-11)
     /Game/Characters/Lucky/SK_Lucky, A_Lucky_*      a stand-in for Lucky (a golden retriever): the animals pack's Pug
                                                     (FBX, rigged, its own clips), tinted golden (M_Lucky_Coat,
                                                     MI_Lucky_Golden*). LUCKY_SOURCE swaps it. Nothing uses it yet:
@@ -32,6 +38,7 @@ every built asset carries a build tag and is rebuilt only when it changes; a Blu
 differs.
 """
 
+import json
 import os
 import sys
 
@@ -192,6 +199,11 @@ def _texture_settings(texture, kind):
     if kind == "normal":
         texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP)
         texture.set_editor_property("srgb", False)
+    elif kind == "normal_gl":
+        # Blender writes OpenGL (+Y) normals; the engine reads DirectX ones.
+        texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP)
+        texture.set_editor_property("srgb", False)
+        texture.set_editor_property("flip_green_channel", True)
     elif kind == "linear":
         texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
         texture.set_editor_property("srgb", False)
@@ -199,39 +211,45 @@ def _texture_settings(texture, kind):
         texture.set_editor_property("srgb", True)
 
 
+def import_texture(path, folder, name, kind):
+    """One Texture2D from a file, imported once per source file (its size and time in the build tag). None when the
+    file is missing or the import fails."""
+    full = folder + "/" + name
+    if not os.path.isfile(path):
+        c.log("skipped", full, "no " + path)
+        return None
+    stamp = "tex-1|{0}|{1}".format(kind, _file_stamp(path))
+    existing = c.load_or_none(full)
+    if existing is not None and tag_of(existing) == stamp:
+        c.log("exists", full)
+        return existing
+    task = unreal.AssetImportTask()
+    task.filename = path
+    task.destination_path = folder
+    task.destination_name = name
+    task.automated = True
+    task.replace_existing = True
+    task.save = False
+    c.asset_tools().import_asset_tasks([task])
+    texture = c.load_or_none(full)
+    if texture is None:
+        c.log("FAILED", full, "the import made no texture from " + os.path.basename(path))
+        return None
+    _texture_settings(texture, kind)
+    set_tag(texture, stamp)
+    c.save(texture)
+    c.log("imported", full, "{0} from {1}".format(kind, os.path.basename(path)))
+    return texture
+
+
 def import_textures():
     """{asset name: Texture2D} for MALE_TEXTURES, imported once per source file."""
     out = {}
     folder = source_file(TEXTURES)
     for filename, name, kind in MALE_TEXTURES:
-        path = os.path.join(folder, filename)
-        full = BODIES + "/" + name
-        if not os.path.isfile(path):
-            c.log("skipped", full, "no " + path)
-            continue
-        stamp = "tex-1|{0}|{1}".format(kind, _file_stamp(path))
-        existing = c.load_or_none(full)
-        if existing is not None and tag_of(existing) == stamp:
-            out[name] = existing
-            c.log("exists", full)
-            continue
-        task = unreal.AssetImportTask()
-        task.filename = path
-        task.destination_path = BODIES
-        task.destination_name = name
-        task.automated = True
-        task.replace_existing = True
-        task.save = False
-        c.asset_tools().import_asset_tasks([task])
-        texture = c.load_or_none(full)
-        if texture is None:
-            c.log("FAILED", full, "the import made no texture from " + filename)
-            continue
-        _texture_settings(texture, kind)
-        set_tag(texture, stamp)
-        c.save(texture)
-        c.log("imported", full, "{0} from {1}".format(kind, filename))
-        out[name] = texture
+        texture = import_texture(os.path.join(folder, filename), BODIES, name, kind)
+        if texture is not None:
+            out[name] = texture
     return out
 
 
@@ -590,6 +608,174 @@ def ensure_materials(textures):
 
 
 # --------------------------------------------------------------------------------------------------
+# built costumes: modelled clothes from Tools/Blender (claude-docs/blender-pipeline.md), when they are on disk
+# --------------------------------------------------------------------------------------------------
+# WRITTEN BUT NOT YET RUN IN THE ENGINE (2026-11-11): see claude-docs/blender-pipeline.md, "Unreal side".
+
+BUILT = BODIES + "/Built"
+M_BUILT = BUILT + "/M_BuiltLook"
+M_BUILT_MASKED = BUILT + "/M_BuiltLookMasked"
+BUILT_MATERIAL_BUILD = "built-material-1"   # bump when the graph below changes
+# The painted look's MI -> the built folder (<assets root>\built\<who>) whose SK_<Who>.glb replaces it.
+BUILT_LOOKS = {"MI_Body_Thug": "thug", "MI_Body_Heavy": "heavy", "MI_Body_Clint": "clint"}
+WHITE_TEX = "/Engine/EngineResources/WhiteSquareTexture"
+FLAT_NORMAL_TEX = "/Engine/EngineMaterials/FlatNormal"
+
+
+def built_file(who, name):
+    return source_file(("built", who, name))
+
+
+def import_built(who, skeleton):
+    """SK_Built_<Who> from built/<who>/SK_<Who>.glb, on SKEL_Body_Male: the same 65 bones, so IK_Body_Male, the
+    retargeters and the AnimBPs drive it unchanged. None (the painted body stays) when the file is missing or the
+    import did not land on that skeleton."""
+    path = built_file(who, "SK_{0}.glb".format(who.capitalize()))
+    full = "{0}/SK_Built_{1}".format(BUILT, who.capitalize())
+    if not os.path.isfile(path):
+        c.log("skipped", full, "no built costume at {0}; the painted body stays".format(path))
+        return None
+    stamp = "built-1|" + _file_stamp(path)
+    existing = c.load_or_none(full)
+    if existing is not None and tag_of(existing) == stamp:
+        c.log("exists", full)
+        return existing
+    staging = "{0}/Import_{1}".format(BUILT, who.capitalize())
+    c.ensure_directory(staging)
+    pipeline = _interchange_pipeline(materials=False, animations=False)
+    # UInterchangeGenericCommonSkeletalMeshesAndAnimationsProperties::Skeleton (InterchangeGenericAssetsPipeline-
+    # SharedSettings.h in 5.8): a skeletal mesh imported with it set goes onto that skeleton instead of a new one.
+    c.set_props(pipeline.get_editor_property("common_skeletal_meshes_and_animations_properties"),
+                [("skeleton", skeleton)], "interchange common skeletal settings")
+    _interchange_import(path, staging, pipeline)
+    found = _assets_under(staging)
+    mesh = next((a for a in found if isinstance(a, unreal.SkeletalMesh)), None)
+    if mesh is None or mesh.get_editor_property("skeleton") != skeleton:
+        c.log("FAILED", full, "the import made {0}; the painted body stays".format(
+            "no skeletal mesh" if mesh is None else "a mesh on its own skeleton, not " + skeleton.get_name()))
+        unreal.EditorAssetLibrary.delete_directory(staging)
+        return None
+    mesh = _rename(mesh, full)
+    for leftover in _assets_under(staging):
+        unreal.EditorAssetLibrary.delete_asset(leftover.get_path_name().split(".")[0])
+    unreal.EditorAssetLibrary.delete_directory(staging)
+    mesh.set_editor_property("physics_asset", None)
+    set_tag(mesh, stamp)
+    c.save(mesh)
+    c.log("imported", full, "from {0} onto {1}".format(os.path.basename(path), skeleton.get_name()))
+    return mesh
+
+
+def _build_built(masked):
+    """Colour x BaseTex, Roughness, Metallic, NormalTex (blended from flat by NormalStrength), and the thug's
+    HitFlash everywhere plus Telegraph where Glow is 1 (the head slots), like M_BodyLook. Masked: BaseTex's alpha
+    clips (the hair cards)."""
+    import create_world_blueprints as wb  # noqa: PLC0415 - the thug's pulse
+
+    def build(material):
+        white = unreal.load_asset(WHITE_TEX)
+        flat = unreal.load_asset(FLAT_NORMAL_TEX)
+        base = _tex_sample(material, white, -900, -400, param="BaseTex")
+        tint = m.vector_param(material, "Color", (0.5, 0.5, 0.5), -900, -600)
+        m.connect_property(m.multiply(material, base, tint, -600, -500), unreal.MaterialProperty.MP_BASE_COLOR)
+        m.connect_property(_on(material, "Roughness", 0.7, -600, -200), unreal.MaterialProperty.MP_ROUGHNESS)
+        m.connect_property(_on(material, "Metallic", 0.0, -600, -100), unreal.MaterialProperty.MP_METALLIC)
+        normal = _tex_sample(material, flat, -900, 100, sampler=unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL,
+                             param="NormalTex")
+        m.connect_property(m.lerp(material, m.constant3(material, (0.0, 0.0, 1.0), -900, 300), normal,
+                                  _on(material, "NormalStrength", 1.0, -900, 400), -600, 150),
+                           unreal.MaterialProperty.MP_NORMAL)
+        glow = _on(material, "Glow", 0.0, -1100, 700)
+        m.connect_property(wb._pulse_emissive(material, glow, x=-900, y=700), unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+        if masked:
+            material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+            m.connect_property(base, unreal.MaterialProperty.MP_OPACITY_MASK, "A")
+
+    return build
+
+
+def _built_parent(path, masked):
+    existing = c.load_or_none(path)
+    material = m.ensure_material(path, _build_built(masked), rebuild=existing is not None and
+                                 tag_of(existing) != BUILT_MATERIAL_BUILD, skeletal=True)
+    if material is not None and tag_of(material) != BUILT_MATERIAL_BUILD:
+        set_tag(material, BUILT_MATERIAL_BUILD)
+        c.save(material)
+    return material
+
+
+def _built_texture(who, ref, kind, textures):
+    """The Texture2D a slot's {"file", "from"} names: the pack's own (already imported as T_Body_*) or a file next to
+    the glb (T_N_<weave> normals, T_Hair), imported under Built/<Who>."""
+    if not ref:
+        return None
+    filename = ref.get("file", "")
+    if ref.get("from") == "pack":
+        for pack_file, name, _kind in MALE_TEXTURES:
+            if pack_file == filename and name in textures:
+                return textures[name]
+        return import_texture(os.path.join(source_file(TEXTURES), filename), BUILT, "T_Built_" +
+                              os.path.splitext(filename)[0], kind)
+    return import_texture(built_file(who, filename), "{0}/{1}".format(BUILT, who.capitalize()),
+                          "T_{0}_{1}".format(who.capitalize(), os.path.splitext(filename)[0]),
+                          "normal_gl" if kind == "normal" else kind)
+
+
+def built_materials(who, mesh, textures):
+    """An MI per slot of the built mesh, from <who>.slots.json (what Blender wrote: colour, roughness, metallic,
+    textures, masked, glow). A slot the file does not name gets None (its imported default)."""
+    path = built_file(who, who + ".slots.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            slots = json.load(f)["slots"]
+    except (OSError, ValueError, KeyError) as exc:
+        c.log("FAILED", "{0}/{1}".format(BUILT, who), "no slot table at {0} ({1})".format(path, exc))
+        return None
+    opaque = _built_parent(M_BUILT, masked=False)
+    masked = _built_parent(M_BUILT_MASKED, masked=True)
+    if opaque is None or masked is None:
+        return None
+    out = []
+    for slot in mesh.get_editor_property("materials"):
+        name = str(slot.get_editor_property("material_slot_name"))
+        spec = slots.get(name)
+        if spec is None:
+            c.log("skipped", "{0}/{1}/MI_{2}".format(BUILT, who.capitalize(), name), "not in " + path)
+            out.append(None)
+            continue
+        label = "{0}/{1}/MI_{2}".format(BUILT, who.capitalize(), name)
+        instance = m.ensure_material_instance(label, masked if spec.get("masked") else opaque,
+                                              vectors=[("Color", tuple(spec.get("color", (0.5, 0.5, 0.5))))],
+                                              scalars=[("Roughness", float(spec.get("roughness", 0.7))),
+                                                       ("Metallic", float(spec.get("metallic", 0.0))),
+                                                       ("NormalStrength", min(1.0, float(spec.get("normal_strength",
+                                                                                                  1.0)))),
+                                                       ("Glow", 1.0 if spec.get("glow") else 0.0)])
+        if instance is not None:
+            for param, key, kind in (("BaseTex", "image", "color"), ("NormalTex", "normal", "normal")):
+                texture = _built_texture(who, spec.get(key), kind, textures)
+                if texture is not None:
+                    _set_texture(instance, param, texture, label)
+        out.append(instance)
+    return out
+
+
+def ensure_built(skeleton, textures):
+    """{painted look MI name: (built mesh, its materials)} for every built costume on disk and imported whole."""
+    out = {}
+    for look_mi, who in BUILT_LOOKS.items():
+        mesh = import_built(who, skeleton)
+        if mesh is None:
+            continue
+        report_mesh(mesh)
+        materials = built_materials(who, mesh, textures)
+        if materials is None:
+            continue
+        out[look_mi] = (mesh, materials)
+    return out
+
+
+# --------------------------------------------------------------------------------------------------
 # the retarget from each driver, and the Blueprints
 # --------------------------------------------------------------------------------------------------
 
@@ -654,9 +840,13 @@ def apply_look(bp_path, mesh, anim_class, materials):
     return True
 
 
-def ensure_looks(mesh, materials):
+def ensure_looks(mesh, materials, built=None):
+    """The rig, a retargeter and AnimBP per driver, and each wearer's BodyLook: its built costume when one is on disk
+    (built: {look MI name: (mesh, materials)} from ensure_built, same skeleton, same AnimBP), else the painted body."""
     import create_kate_look as kl  # noqa: PLC0415
     import import_combat_anims as ica  # noqa: PLC0415
+
+    built = built or {}
 
     manifest = ica.load_manifest()
     chain_maps = manifest["chain_maps"]
@@ -664,10 +854,10 @@ def ensure_looks(mesh, materials):
     rig = kl.ensure_rig(mesh, chain_maps["ue4"], path=RIG)
     if rig is None:
         return
-    built = {}
+    abps = {}
     for bp_path, target_name, folder, who, body_mi in WEARERS:
-        if who not in built:
-            built[who] = None
+        if who not in abps:
+            abps[who] = None
             source = ica.ensure_target(target_name, manifest["targets"][target_name], chain_maps)
             if source is None:
                 c.log("skipped", bp_path + ".BodyLook", "no driver rig for " + target_name)
@@ -676,10 +866,11 @@ def ensure_looks(mesh, materials):
             rtg = kl.ensure_retargeter(source["rig"], source["mesh"], rig, mesh,
                                        path="{0}/RTG_{1}_To_Body".format(folder, who))
             if rtg is not None:
-                built[who] = kl.ensure_anim_bp(mesh, rtg, path="{0}/ABP_{1}_Body".format(folder, who))
-        abp = built[who]
+                abps[who] = kl.ensure_anim_bp(mesh, rtg, path="{0}/ABP_{1}_Body".format(folder, who))
+        abp = abps[who]
         if abp is not None:
-            apply_look(bp_path, mesh, abp.generated_class(), _slot_materials(mesh, materials, body_mi))
+            look_mesh, look_materials = built.get(body_mi, (mesh, _slot_materials(mesh, materials, body_mi)))
+            apply_look(bp_path, look_mesh, abp.generated_class(), look_materials)
     # After BP_Thug: a child compiled before its parent changes would take the parent's look back.
     for bp_path in KEEP_MANNEQUIN:
         apply_look(bp_path, None, None, [])
@@ -700,10 +891,12 @@ def run():
     if mesh is None:
         return None
     report_mesh(mesh)
-    materials = ensure_materials(import_textures())
+    textures = import_textures()
+    materials = ensure_materials(textures)
     if materials is None:
         return None
-    ensure_looks(mesh, materials)
+    built = ensure_built(mesh.get_editor_property("skeleton"), textures)
+    ensure_looks(mesh, materials, built)
     return mesh
 
 
