@@ -107,6 +107,12 @@ winded damage 1.5 to 1.25 (Tools/Editor/create_boss.py, DA_Boss_CH04_Tomas). Fiv
 104.6, 106.5 s. Santa's fight (no pacing check in the grotto laps): 57.5 s on main, 54.5 and 54.7 s on the branch.
 One old-hit-stop run hung: the haymaker knocked Kate 200 cm over the roof's edge onto a ledge and the lap's player
 shimmied there until the lap timed out. The player now climbs back (jump) and lets go (crouch) after a second.
+## Gate (2026-11-12, second pass): green, merged
+Both builds clean; 598 headless tests; 225 Python tests, ruff clean; `create-content.ps1` twice, nothing to commit after
+either; city verify, `verify_content` PASS, traversal audit exit 0. Laps, each its own process, 13 of 13 first try, no
+engine crash: Campaign, ChaseFallBehind, ReindeerGames, Grotto, SeenGrotto, SocialClub (114.8 s of fighting),
+EastVillage, InteriorStealth, InteriorLoud, CrimeAmbush, CrimeMugging, CrimeRobbery, CrimeRooftop. Santa's fight in the
+grotto laps: 58.2 and 50.6 s.
 ## Left for a human
 - Input on release (20): the light could start on the press with the heavy as a hold that cancels its wind-up, as in
   most brawlers, but that changes the control scheme; Cameron's call.
