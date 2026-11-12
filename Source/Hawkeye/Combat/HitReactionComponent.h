@@ -65,6 +65,9 @@ public:
 	 */
 	void BeginKnockout(USkeletalMeshComponent* Ragdoll, bool bBlendFromClip);
 
+	/** What his capsule was doing as he went down (a run, a shove), carried into the knockout's throw. */
+	void SetKnockoutCarryVelocity(const FVector& Velocity) { KnockoutCarryVelocity = Velocity; }
+
 	UFUNCTION(BlueprintPure, Category = "Hit Reaction")
 	bool IsKnockoutSettled() const { return bKnockoutSettled; }
 
@@ -104,12 +107,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hit Reaction")
 	FName PelvisBone = FName(TEXT("pelvis"));
 
+	/**
+	 * The ragdoll's whole mass, kg, spread over its bodies by BodyMassShares (a body not listed shares what is left). The
+	 * UE mannequin's physics asset gives every body 1 kg (19 kg in all), so a falling man had a torso as light as a hand and
+	 * flailed like a doll (the melee feel audit, 2026-11-12). 0 keeps the physics asset's own masses.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction|Mass", meta = (ClampMin = "0.0"))
+	float RagdollMassKg = 78.f;
+
+	/** Each body's share of RagdollMassKg, by bone (left and right each take their own share). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction|Mass")
+	TMap<FName, float> BodyMassShares;
+
+	/** Sets every body on Mesh to its share of RagdollMassKg (none when it is 0) and caps how fast it is pushed out of the floor. */
+	void PrepareRagdollBodies(USkeletalMeshComponent& Mesh) const;
+
+	/** The mass BodyMassShares gives Bone out of TotalKg with Bodies bodies in all, kg. Pure. */
+	static float ComputeBodyMass(FName Bone, float TotalKg, const TMap<FName, float>& Shares, const TArray<FName>& Bodies);
+
 	/** The body a reaction moves: Kate's look, else the owner's mesh. Null when there is none. */
 	USkeletalMeshComponent* GetBodyMesh() const;
 
 protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Wakes a held knockout and gives it its throw, once the world's time dilation is at the tuning's release level. */
+	void ReleaseKnockoutIfRunning();
 
 	/** Starts the queued reaction on the body (the hit-stop is over). */
 	void StartQueuedReaction();
@@ -167,6 +191,11 @@ protected:
 	float KnockoutGroundedAt = -1.f;
 	FVector KnockoutBoneVelocity = FVector::ZeroVector;
 	FVector KnockoutBodyVelocity = FVector::ZeroVector;
+	FVector KnockoutCarryVelocity = FVector::ZeroVector;
+	/** The knockout's bodies are asleep until the world runs at ReleaseMinTimeDilation or faster (a hit-stop is over). */
+	bool bKnockoutHeld = false;
+	bool bKnockoutHasThrow = false;
+	FName KnockoutStruck;
 
 	TWeakObjectPtr<USkeletalMeshComponent> ReactionMesh;
 	TWeakObjectPtr<USkeletalMeshComponent> KnockoutMesh;

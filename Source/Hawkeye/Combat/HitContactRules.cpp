@@ -190,8 +190,11 @@ void UHawkeyeHitContactRules::ComputeKnockoutImpulse(const FVector& Direction, f
 	{
 		BoneAlong = Flat;
 	}
-	OutBone = (BoneAlong * Tuning.BoneSpeed * Share).GetClampedToMaxSize(Tuning.MaxBoneSpeed);
-	OutBody = (Flat * Tuning.BodySpeed * Share + FVector(0.f, 0.f, bArrow ? 0.f : Tuning.Lift * Share))
+	const bool bFinisher = Source == EHawkeyeImpactSource::Finisher;
+	const float BoneScale = bFinisher ? Tuning.FinisherBoneScale : 1.f;
+	const float LiftScale = bArrow ? 0.f : (bFinisher ? Tuning.FinisherLiftScale : 1.f);
+	OutBone = (BoneAlong * Tuning.BoneSpeed * Share * BoneScale).GetClampedToMaxSize(Tuning.MaxBoneSpeed);
+	OutBody = (Flat * Tuning.BodySpeed * Share + FVector(0.f, 0.f, Tuning.Lift * Share * LiftScale))
 		.GetClampedToMaxSize(Tuning.MaxBodySpeed);
 }
 

@@ -16,6 +16,87 @@ UHitReactionComponent::UHitReactionComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+	// A man's mass by part, the trunk heaviest and the extremities lightest, but no body more than about 4.5 times its
+	// neighbour: the anthropometric spread (a pelvis 20 times a hand) made the solver's joints jitter and once stood a
+	// knocked-out body upright and threw it a metre up (the audit, 2026-11-12).
+	const TPair<const TCHAR*, float> Shares[] = {
+		{ TEXT("pelvis"), 0.11f }, { TEXT("spine_01"), 0.09f }, { TEXT("spine_02"), 0.09f }, { TEXT("spine_03"), 0.09f },
+		{ TEXT("neck_01"), 0.02f }, { TEXT("head"), 0.06f }, { TEXT("upperarm_l"), 0.04f }, { TEXT("upperarm_r"), 0.04f },
+		{ TEXT("lowerarm_l"), 0.03f }, { TEXT("lowerarm_r"), 0.03f }, { TEXT("hand_l"), 0.025f }, { TEXT("hand_r"), 0.025f },
+		{ TEXT("thigh_l"), 0.08f }, { TEXT("thigh_r"), 0.08f }, { TEXT("calf_l"), 0.05f }, { TEXT("calf_r"), 0.05f },
+		{ TEXT("foot_l"), 0.03f }, { TEXT("foot_r"), 0.03f },
+	};
+	for (const TPair<const TCHAR*, float>& Share : Shares)
+	{
+		BodyMassShares.Add(FName(Share.Key), Share.Value);
+	}
+}
+
+float UHitReactionComponent::ComputeBodyMass(FName Bone, float TotalKg, const TMap<FName, float>& Shares, const TArray<FName>& Bodies)
+{
+	if (TotalKg <= 0.f || Bodies.Num() == 0)
+	{
+		return 0.f;
+	}
+	if (const float* Share = Shares.Find(Bone))
+	{
+		return FMath::Max(*Share, 0.f) * TotalKg;
+	}
+	// Bodies not listed split what the listed ones on this asset leave, never less than half a percent each.
+	float Listed = 0.f;
+	int32 Unlisted = 0;
+	for (const FName Body : Bodies)
+	{
+		if (const float* Share = Shares.Find(Body))
+		{
+			Listed += FMath::Max(*Share, 0.f);
+		}
+		else
+		{
+			++Unlisted;
+		}
+	}
+	const float Left = FMath::Max(1.f - Listed, 0.f);
+	return FMath::Max(Unlisted > 0 ? Left / Unlisted : 0.f, 0.005f) * TotalKg;
+}
+
+void UHitReactionComponent::PrepareRagdollBodies(USkeletalMeshComponent& Mesh) const
+{
+	if (Mesh.Bodies.Num() == 0)
+	{
+		return;
+	}
+	// A body that starts a ragdoll inside the floor (his feet, a hand on a kerb) is pushed out no faster than this: the
+	// project's limit is none, and that pop threw a knocked-out man 7 to 9 m/s off the ground in his first frame.
+	if (Knockout.MaxDepenetrationSpeed > 0.f)
+	{
+		for (FBodyInstance* Body : Mesh.Bodies)
+		{
+			if (Body)
+			{
+				Body->SetMaxDepenetrationVelocity(Knockout.MaxDepenetrationSpeed);
+			}
+		}
+	}
+	if (RagdollMassKg <= 0.f)
+	{
+		return;
+	}
+	TArray<FName> Names;
+	for (const FBodyInstance* Body : Mesh.Bodies)
+	{
+		Names.Add(Body && Body->BodySetup.IsValid() ? Body->BodySetup->BoneName : NAME_None);
+	}
+	for (int32 Index = 0; Index < Mesh.Bodies.Num(); ++Index)
+	{
+		FBodyInstance* Body = Mesh.Bodies[Index];
+		const float Mass = ComputeBodyMass(Names[Index], RagdollMassKg, BodyMassShares, Names);
+		if (Body && Mass > 0.f && !FMath::IsNearlyEqual(Body->GetBodyMass(), Mass, 0.01f))
+		{
+			Body->SetMassOverride(Mass, true);
+			Body->UpdateMassProperties();
+		}
+	}
 }
 
 USkeletalMeshComponent* UHitReactionComponent::GetBodyMesh() const
@@ -106,9 +187,14 @@ bool UHitReactionComponent::PrepareMesh(USkeletalMeshComponent& Mesh)
 
 FName UHitReactionComponent::FindStruckBody(const USkeletalMeshComponent& Mesh, const FHawkeyeStrikeImpact& Impact) const
 {
-	if (!Impact.Bone.IsNone() && Mesh.GetBodyInstance(Impact.Bone))
+	// The aimed-at bone, or the first bone above it with a body (the UE mannequin has none on spine_03: a roundhouse to his
+	// ribs moved his guarding hand until 2026-11-12).
+	for (FName Bone = Impact.Bone; !Bone.IsNone(); Bone = Mesh.GetParentBone(Bone))
 	{
-		return Impact.Bone;
+		if (Mesh.GetBodyInstance(Bone))
+		{
+			return Bone;
+		}
 	}
 	FName Best = NAME_None;
 	float BestDistance = TNumericLimits<float>::Max();
@@ -211,6 +297,7 @@ void UHitReactionComponent::StartQueuedReaction()
 	{
 		return;
 	}
+	PrepareRagdollBodies(*Mesh);
 	const FName Struck = FindStruckBody(*Mesh, QueuedImpact);
 	const FName Root = Struck.IsNone() ? NAME_None : FindChainRoot(*Mesh, Struck);
 	if (Root.IsNone())
@@ -321,6 +408,7 @@ void UHitReactionComponent::BeginKnockout(USkeletalMeshComponent* Ragdoll, bool 
 	{
 		return;
 	}
+	PrepareRagdollBodies(*Ragdoll);
 	KnockoutMesh = Ragdoll;
 	bKnockout = true;
 	bKnockoutSettled = false;
@@ -345,17 +433,22 @@ void UHitReactionComponent::BeginKnockout(USkeletalMeshComponent* Ragdoll, bool 
 	{
 		UHawkeyeHitContactRules::ComputeKnockoutImpulse(Impact.Direction, Impact.Weight, Impact.Source, Knockout,
 			KnockoutBoneVelocity, KnockoutBodyVelocity);
-		// The whole body keeps what it had (a run, a shove) plus the throw; the struck bone takes its own on top.
-		Ragdoll->SetAllPhysicsLinearVelocity(KnockoutBodyVelocity, /*bAddToCurrent=*/true);
 		const FName Struck = FindStruckBody(*Ragdoll, Impact);
-		if (!Struck.IsNone())
+		KnockoutStruck = Struck;
+		float Mass = 0.f;
+		float Pelvis = 0.f;
+		for (const FBodyInstance* Body : Ragdoll->Bodies)
 		{
-			Ragdoll->AddImpulse(KnockoutBoneVelocity, Struck, /*bVelChange=*/true);
+			Mass += Body ? Body->GetBodyMass() : 0.f;
 		}
-		UE_LOG(LogHawkeye, Log, TEXT("%s: knocked out on %s, the bone thrown %.0f cm/s, the body %.0f cm/s (weight %.2f, %s)."),
+		if (const FBodyInstance* Body = Ragdoll->GetBodyInstance(PelvisBone))
+		{
+			Pelvis = Body->GetBodyMass();
+		}
+		UE_LOG(LogHawkeye, Log, TEXT("%s: knocked out on %s, the bone thrown %.0f cm/s, the body %.0f cm/s (weight %.2f, %s); %.0f kg, the pelvis %.1f."),
 			*GetNameSafe(GetOwner()), *Struck.ToString(), KnockoutBoneVelocity.Size(), KnockoutBodyVelocity.Size(), Impact.Weight,
 			Impact.Source == EHawkeyeImpactSource::Arrow ? TEXT("arrow") : (Impact.Source == EHawkeyeImpactSource::Finisher
-				? TEXT("finisher") : TEXT("strike")));
+				? TEXT("finisher") : TEXT("strike")), Mass, Pelvis);
 	}
 
 	// From the clip's pose into the ragdoll's, not a snap: the bodies simulate at once, what shows blends over.
@@ -365,7 +458,41 @@ void UHitReactionComponent::BeginKnockout(USkeletalMeshComponent* Ragdoll, bool 
 		Ragdoll->SetEnablePhysicsBlending(false);
 		Ragdoll->SetAllBodiesPhysicsBlendWeight(0.f);
 	}
+	// Held still (asleep) until the world runs near its own speed: a blow that kills starts the hit-stop, and the solver's
+	// joint corrections in the ragdoll's first steps, taken over a tenth of a step, came out as 4 to 9 m/s and threw a
+	// punched man head high (the audit, 2026-11-12; an arrow, with no stop, started at 0.7 m/s). Released by the tick.
+	bKnockoutHeld = true;
+	bKnockoutHasThrow = Impact.bValid;
+	Ragdoll->PutAllRigidBodiesToSleep();
 	UpdateTickEnabled();
+}
+
+void UHitReactionComponent::ReleaseKnockoutIfRunning()
+{
+	USkeletalMeshComponent* Ragdoll = KnockoutMesh.Get();
+	const UWorld* World = GetWorld();
+	if (!bKnockoutHeld || !Ragdoll)
+	{
+		return;
+	}
+	const float Dilation = World && World->GetWorldSettings() ? World->GetWorldSettings()->GetEffectiveTimeDilation() : 1.f;
+	if (Dilation < Knockout.ReleaseMinTimeDilation)
+	{
+		return;
+	}
+	bKnockoutHeld = false;
+	Ragdoll->WakeAllRigidBodies();
+	if (!bKnockoutHasThrow)
+	{
+		return;
+	}
+	// The whole body takes the throw, with what the capsule was doing (a run, a shove); the struck bone takes its own on top.
+	Ragdoll->SetAllPhysicsLinearVelocity(KnockoutBodyVelocity + KnockoutCarryVelocity, /*bAddToCurrent=*/false);
+	Ragdoll->SetAllPhysicsAngularVelocityInRadians(FVector::ZeroVector, /*bAddToCurrent=*/false);
+	if (!KnockoutStruck.IsNone() && Ragdoll->GetBodyInstance(KnockoutStruck))
+	{
+		Ragdoll->AddImpulse(KnockoutBoneVelocity, KnockoutStruck, /*bVelChange=*/true);
+	}
 }
 
 void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -418,7 +545,13 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	{
 		USkeletalMeshComponent* Ragdoll = KnockoutMesh.Get();
 		KnockoutElapsed += Step;
-		if (!Ragdoll || !Ragdoll->IsSimulatingPhysics())
+		if (bKnockoutHeld)
+		{
+			// Still in the stop: he holds where the blow caught him, and the knockout's clock waits with him.
+			ReleaseKnockoutIfRunning();
+			KnockoutElapsed = 0.f;
+		}
+		else if (!Ragdoll || !Ragdoll->IsSimulatingPhysics())
 		{
 			bKnockoutSettled = true;
 		}

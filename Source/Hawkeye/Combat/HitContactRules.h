@@ -212,7 +212,7 @@ struct HAWKEYE_API FHawkeyeKnockoutTuning
 
 	/** The struck bone's velocity along the blow at weight 1, cm/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
-	float BoneSpeed = 520.f;
+	float BoneSpeed = 260.f;
 
 	/** The whole body's velocity along the blow at weight 1, cm/s (a light blow: a share of it, MinShare). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
@@ -220,10 +220,31 @@ struct HAWKEYE_API FHawkeyeKnockoutTuning
 
 	/** Upward on the whole body at weight 1, cm/s: enough to lift him off his feet, not to throw him. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
-	float Lift = 90.f;
+	float Lift = 40.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float MinShare = 0.4f;
+
+	/**
+	 * A finisher's struck-bone throw and lift against a strike's: its bone is low on the back (spine_01), so he folds down
+	 * and back instead of being flipped head over heels (the audit's ko_finisher frames: legs high over backward).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FinisherBoneScale = 0.6f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FinisherLiftScale = 0.25f;
+
+	/**
+	 * A knockout's ragdoll is held asleep, and thrown, only once the world's time dilation is this or more: under the hit-stop
+	 * (0.1) its joints' first corrections, over a tenth of a step, became 4 to 9 m/s. The finisher's slow motion (0.25) runs.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ReleaseMinTimeDilation = 0.2f;
+
+	/** The fastest a ragdoll's body is pushed out of whatever it starts inside (the floor), cm/s. 0: the project's (none). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
+	float MaxDepenetrationSpeed = 120.f;
 
 	/** An arrow's throw against a strike's, along the arrow (and no lift). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -231,7 +252,7 @@ struct HAWKEYE_API FHawkeyeKnockoutTuning
 
 	/** Never faster than these, cm/s, whatever the weight: a body falls, it does not fly across the street. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
-	float MaxBoneSpeed = 650.f;
+	float MaxBoneSpeed = 350.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
 	float MaxBodySpeed = 300.f;

@@ -1,5 +1,6 @@
 #include "Combat/HealthComponent.h"
 #include "Combat/HitContactRules.h"
+#include "Combat/HitReactionComponent.h"
 #include "Combat/MeleeComponent.h"
 #include "Combat/MeleeRules.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -263,6 +264,47 @@ bool FHawkeyeMeleeBufferAfterHeavy::RunTest(const FString& Parameters)
 	Kate->AdvanceMeleeFlow(0.f);
 	TestEqual(TEXT("The light goes as the heavy ends"), Melee->GetCurrentAttack().Name, FName(TEXT("light")));
 	TestTrue(TEXT("Winding up"), Melee->IsWindingUp());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeRagdollMasses, "Hawkeye.HitContact.RagdollMassesAndFinisherThrow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeRagdollMasses::RunTest(const FString& Parameters)
+{
+	const UHitReactionComponent* Defaults = GetDefault<UHitReactionComponent>();
+	const TArray<FName> Mannequin = {"pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "head", "upperarm_l",
+		"upperarm_r", "lowerarm_l", "lowerarm_r", "hand_l", "hand_r", "thigh_l", "thigh_r", "calf_l", "calf_r",
+		"foot_l", "foot_r", "clavicle_l"};
+	float Total = 0.f;
+	for (const FName Bone : Mannequin)
+	{
+		Total +=
+			UHitReactionComponent::ComputeBodyMass(Bone, Defaults->RagdollMassKg, Defaults->BodyMassShares, Mannequin);
+	}
+	TestEqual(TEXT("A thug weighs 78 kg"), Defaults->RagdollMassKg, 78.f);
+	TestTrue(
+		FString::Printf(TEXT("The bodies add up to about that (%.1f kg)"), Total), FMath::Abs(Total - 78.f) < 1.5f);
+	const float Pelvis = UHitReactionComponent::ComputeBodyMass("pelvis", 78.f, Defaults->BodyMassShares, Mannequin);
+	const float Hand = UHitReactionComponent::ComputeBodyMass("hand_r", 78.f, Defaults->BodyMassShares, Mannequin);
+	TestTrue(TEXT("The trunk outweighs a hand (it was 1 kg each), but not by more than the solver takes"),
+		Pelvis > 3.f * Hand && Pelvis < 6.f * Hand);
+	TestTrue(TEXT("A body not listed shares what is left"),
+		UHitReactionComponent::ComputeBodyMass("clavicle_l", 78.f, Defaults->BodyMassShares, Mannequin) > 0.f);
+	TestEqual(TEXT("0 keeps the asset's own"),
+		UHitReactionComponent::ComputeBodyMass("pelvis", 0.f, Defaults->BodyMassShares, Mannequin), 0.f);
+	TestEqual(TEXT("The heavy is heavier"), GetDefault<AThugCharacter>()->HeavyRagdollMassKg, 100.f);
+
+	// A finisher folds him down and back: less of a kick at the struck bone and less lift than a heavy strike.
+	const FHawkeyeKnockoutTuning Tuning;
+	FVector StrikeBone, StrikeBody, FinisherBone, FinisherBody;
+	UHawkeyeHitContactRules::ComputeKnockoutImpulse(
+		FVector::ForwardVector, 1.f, EHawkeyeImpactSource::Strike, Tuning, StrikeBone, StrikeBody);
+	UHawkeyeHitContactRules::ComputeKnockoutImpulse(
+		FVector::ForwardVector, 1.f, EHawkeyeImpactSource::Finisher, Tuning, FinisherBone, FinisherBody);
+	TestTrue(TEXT("Less bone throw"), FinisherBone.Size() < StrikeBone.Size());
+	TestTrue(TEXT("Less lift"), FinisherBody.Z < StrikeBody.Z);
+	TestTrue(TEXT("Still along the blow"), FinisherBody.X > 0.f && FinisherBone.X > 0.f);
 	return true;
 }
 

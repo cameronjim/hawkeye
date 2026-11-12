@@ -259,6 +259,11 @@ void AThugCharacter::BeginPlay()
 		MeshRelativeTransform = SkeletalMesh->GetRelativeTransform();
 	}
 	RefreshHeldWeapon();
+	// The heavy (vest, shield, boots) falls heavier: his ragdoll's mass (UHitReactionComponent::RagdollMassKg).
+	if (HitReactionComponent && IsHeavy() && HeavyRagdollMassKg > 0.f)
+	{
+		HitReactionComponent->RagdollMassKg = HeavyRagdollMassKg;
+	}
 	FitHeadwear();
 	CreateBodyMaterials();
 	UpdateLocomotionAnimation();
@@ -777,6 +782,10 @@ bool AThugCharacter::BeginKnockdownRagdoll(AActor* By, float LaunchSpeed)
 		StandUp();
 		return false;
 	}
+	if (HitReactionComponent)
+	{
+		HitReactionComponent->PrepareRagdollBodies(*SkeletalMesh);
+	}
 
 	FVector Away = By ? (GetActorLocation() - By->GetActorLocation()).GetSafeNormal2D() : -GetActorForwardVector();
 	if (Away.IsNearlyZero())
@@ -891,7 +900,8 @@ bool AThugCharacter::ReceiveFinisher(AActor* By, FVector Velocity)
 		Throw.Source = EHawkeyeImpactSource::Finisher;
 		Throw.Weight = FinisherImpactWeight;
 		Throw.Direction = Velocity.GetSafeNormal2D().IsNearlyZero() ? GetActorForwardVector() * -1.f : Velocity.GetSafeNormal2D();
-		Throw.Bone = FName(TEXT("spine_03"));
+		// Low on the back: he folds and goes down backward (from the chest the throw flipped him over, legs high).
+		Throw.Bone = FName(TEXT("spine_01"));
 		Throw.Point = GetActorLocation();
 		HitReactionComponent->SetPendingImpact(Throw);
 	}
@@ -1311,6 +1321,10 @@ void AThugCharacter::GoLimp(AActor* Killer)
 
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
+		if (HitReactionComponent)
+		{
+			HitReactionComponent->SetKnockoutCarryVelocity(Movement->Velocity);
+		}
 		Movement->StopMovementImmediately();
 		Movement->DisableMovement();
 		// The capsule stops driving the mesh; the bodies do.

@@ -636,6 +636,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float TakedownImpactWeight = 0.15f;
 
+	/** The heavy's ragdoll mass, kg (every other thug's is his hit reaction component's RagdollMassKg, 78). 0: no change. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0"))
+	float HeavyRagdollMassKg = 100.f;
+
 	/** How hard a finisher throws his body (the knockout's weight, along the finisher's way; its caps hold). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float FinisherImpactWeight = 1.f;
