@@ -1003,8 +1003,9 @@ def poly_count(obj):
 # --------------------------------------------------------------------------------------------------
 
 
-def finish(body, parts, who, args):
-    """Join the pieces into SK_<Who>, render, export, verify the export."""
+def finish(body, parts, who, args, extra_renders=None):
+    """Join the pieces into SK_<Who>, render, export, verify the export. extra_renders(body, mesh) runs after the
+    render set (the studio is body.studio), before the export."""
     for p in parts:
         log("piece", p.name, poly_count(p), "tris")
     mesh = join(parts, "SK_" + who.capitalize())
@@ -1013,6 +1014,8 @@ def finish(body, parts, who, args):
         len(mesh.data.materials), "materials")
     if not args.no_render:
         render_set(body, who, args.renders, args.views)
+        if extra_renders is not None:
+            extra_renders(body, mesh)
     if not args.no_export:
         bones = list(body.bones)
         path = export(body, mesh, args.out, who)
@@ -1128,10 +1131,16 @@ POSES = {
               ("rot", "upperarm_r", "Z", 88), ("rot", "upperarm_r", "X", 8),
               ("rot", "upperarm_l", "Y", 60), ("rot", "upperarm_l", "Z", -35),
               ("rot", "lowerarm_l", "Z", -110)],
+    # Full draw, side-on to a target on her left (+X): the bow arm straight out, the draw hand at the jaw with the
+    # elbow up and back, the head turned to the target.
+    "draw": [("rot", "neck_01", "Z", 70), ("rot", "upperarm_l", "Z", 8),
+             ("rot", "upperarm_r", "Z", -18), ("rot", "upperarm_r", "Y", 8),
+             ("rot", "lowerarm_r", "Z", 165), ("rot", "lowerarm_r", "Y", -14),
+             ("rot", "hand_r", "Z", 20)],
 }
 
 TURNAROUND = {"front": 0.0, "34": 40.0, "side": 90.0, "back": 180.0}
-POSE_ANGLE = {"idle": 30.0, "arms_up": 25.0, "crouch": 50.0, "lunge": 60.0}
+POSE_ANGLE = {"idle": 30.0, "arms_up": 25.0, "crouch": 50.0, "lunge": 60.0, "draw": 20.0}
 # Close-ups for checking details (not in the default set): (angle, target, ortho scale).
 CLOSEUPS = {"head_front": (20.0, (0, 0, 1.52), 0.55), "head_back": (200.0, (0, 0, 1.52), 0.55),
             "feet": (35.0, (0, 0, 0.22), 0.7), "hand": (60.0, (0.55, 0, 1.45), 0.5)}
@@ -1218,6 +1227,7 @@ def render_set(body, who, out_dir, views=""):
     wanted = [v for v in views.split(",") if v] or list(TURNAROUND) + list(POSES)
     body.reference.hide_render = True
     studio = Studio()
+    body.studio = studio   # for a build's own extra shots after the set
     arm = body.armature
     paths = []
     for view in wanted:
@@ -1235,7 +1245,7 @@ def render_set(body, who, out_dir, views=""):
             apply_pose(arm, view)
             if view == "idle":
                 studio.shoot(path, POSE_ANGLE[view], ortho=True, scale=2.0, target=(0, 0, 0.95))
-            elif view == "arms_up":
+            elif view in ("arms_up", "draw"):
                 studio.shoot(path, POSE_ANGLE[view], ortho=True, scale=2.4, target=(0, 0, 1.1))
             else:
                 studio.shoot(path, POSE_ANGLE[view], ortho=True, scale=2.0, target=(0, 0, 0.75))
