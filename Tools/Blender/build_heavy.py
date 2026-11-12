@@ -33,7 +33,7 @@ def vest_materials(out):
     m = cs.material
     return {
         "vest": m("M_Heavy_Vest", (0.010, 0.010, 0.011), 0.32, normal=grain, normal_strength=0.12),
-        "mask": m("M_Heavy_Mask", (0.011, 0.011, 0.011), 0.92, normal=knit, normal_strength=1.0),
+        "mask": m("M_Heavy_Mask", (0.011, 0.011, 0.011), 0.92, normal=knit, normal_strength=1.0, glow=True),
     }
 
 

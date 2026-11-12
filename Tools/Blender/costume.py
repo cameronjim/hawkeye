@@ -802,9 +802,10 @@ def weave_normal(kind, out_dir, strength=2.0):
 
 
 def material(name, color, roughness, metallic=0.0, normal=None, normal_strength=1.0, base_image=None,
-             alpha_clip=False):
+             alpha_clip=False, glow=False):
     """A Principled BSDF with constants (and an optional normal map, base colour image): what glTF carries.
-    alpha_clip: the image's alpha through a Round node, which the glTF exporter writes as alphaMode MASK at 0.5."""
+    alpha_clip: the image's alpha through a Round node, which the glTF exporter writes as alphaMode MASK at 0.5.
+    glow: the engine's thug telegraph lights this slot (the head, as on the painted body)."""
     mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     tree = _node_tree(mat)
     nodes, links = tree.nodes, tree.links
@@ -832,11 +833,24 @@ def material(name, color, roughness, metallic=0.0, normal=None, normal_strength=
         nm.inputs["Strength"].default_value = normal_strength
         links.new(tex.outputs["Color"], nm.inputs["Color"])
         links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
-    mat["hawkeye"] = json.dumps({"color": list(color), "roughness": roughness, "metallic": metallic,
+    mat["hawkeye"] = json.dumps({"color": list(color) if base_image is None else [1.0, 1.0, 1.0],
+                                 "roughness": roughness, "metallic": metallic, "normal_strength": normal_strength,
                                  "normal": normal.name if normal is not None else "",
                                  "image": base_image.name if base_image is not None else "",
-                                 "masked": bool(alpha_clip)})
+                                 "masked": bool(alpha_clip), "glow": bool(glow)})
     return mat
+
+
+def _texture_ref(image_name, out_dir):
+    """Where the engine finds an image a slot uses: {"file", "from": "built" (next to the glb) or "pack" (the
+    Quaternius Textures folder)}. Pack normals are named by the file in Textures (the engine's DirectX ones)."""
+    if not image_name:
+        return None
+    img = bpy.data.images.get(image_name)
+    path = bpy.path.abspath(img.filepath_raw or img.filepath) if img is not None else ""
+    built = bool(path) and os.path.normcase(os.path.dirname(os.path.abspath(path))) == os.path.normcase(
+        os.path.abspath(out_dir))
+    return {"file": os.path.basename(path) or image_name, "from": "built" if built else "pack"}
 
 
 def tinted_image(src_path, name, tint, out_path, keep_detail=1.0):
@@ -1056,7 +1070,10 @@ def export(body, mesh_obj, out_dir, who):
     slots = {}
     for m in mesh_obj.data.materials:
         if m is not None:
-            slots[m.name] = json.loads(m.get("hawkeye", "{}"))
+            spec = json.loads(m.get("hawkeye", "{}"))
+            spec["image"] = _texture_ref(spec.get("image", ""), out_dir)
+            spec["normal"] = _texture_ref(spec.get("normal", ""), out_dir)
+            slots[m.name] = spec
     with open(os.path.join(out_dir, who + ".slots.json"), "w", encoding="utf-8") as f:
         json.dump({"mesh": name, "slots": slots, "triangles": poly_count(mesh_obj),
                    "bones": len(body.bones)}, f, indent=2, sort_keys=True)

@@ -75,9 +75,9 @@ def head_materials(body, out, who, hair_tint):
                                "T_" + who + "_Hair", hair_tint, os.path.join(out, "T_Hair.png"), keep_detail=0.8)
     m = cs.material
     return {
-        "skin": m("M_" + who + "_Skin", (0.8, 0.6, 0.5), 0.55, normal=skin_n, base_image=skin_img),
-        "eyes": m("M_" + who + "_Eyes", (1, 1, 1), 0.2, base_image=eye_img),
-        "hair": m("M_" + who + "_Hair", hair_tint, 0.7, base_image=hair_img, alpha_clip=True),
+        "skin": m("M_" + who + "_Skin", (0.8, 0.6, 0.5), 0.55, normal=skin_n, base_image=skin_img, glow=True),
+        "eyes": m("M_" + who + "_Eyes", (1, 1, 1), 0.2, base_image=eye_img, glow=True),
+        "hair": m("M_" + who + "_Hair", hair_tint, 0.7, base_image=hair_img, alpha_clip=True, glow=True),
     }
 
 

@@ -73,9 +73,11 @@ def head_materials(body, out, hair_tint, skin_file="T_Superhero_Male_Dark.png"):
                                os.path.join(out, "T_Hair.png"), keep_detail=0.8)
     m = cs.material
     return {
-        "skin": m("M_{0}_Skin".format(WHO.capitalize()), (0.8, 0.6, 0.5), 0.55, normal=skin_n, base_image=skin_img),
-        "eyes": m("M_{0}_Eyes".format(WHO.capitalize()), (1, 1, 1), 0.2, base_image=eye_img),
-        "hair": m("M_{0}_Hair".format(WHO.capitalize()), hair_tint, 0.7, base_image=hair_img, alpha_clip=True),
+        "skin": m("M_{0}_Skin".format(WHO.capitalize()), (0.8, 0.6, 0.5), 0.55, normal=skin_n, base_image=skin_img,
+                  glow=True),
+        "eyes": m("M_{0}_Eyes".format(WHO.capitalize()), (1, 1, 1), 0.2, base_image=eye_img, glow=True),
+        "hair": m("M_{0}_Hair".format(WHO.capitalize()), hair_tint, 0.7, base_image=hair_img, alpha_clip=True,
+                  glow=True),
     }
 
 
@@ -128,7 +130,10 @@ def build_coat(body, mats):
     off = 0.022 * fam["torso"] + 0.018 * fam["arm"] + 0.018 * fam["hand"] + 0.02 * fam["leg"] + 0.012 * fam["head"]
     torso = (fam["torso"] > 0.5) & (np.abs(body.co[:, 0]) < 0.24)
     hangs = [(torso, lambda z: pieces.TORSO_AXIS, 1.37, 0.85, 0.97, 0.3)]
-    coat = pieces.shell(body, "Coat", off, hangs=hangs, extras=[skirt_solid(body)], voxel=0.008, smooth=6)
+    sleeves = pieces.arm_tubes(body, 0.26, CUFF_X + 0.01, pad0=0.02, pad1=0.024, sag=0.006)
+    chest = pieces.torso_solid(body, 0.95, 1.36, pad=0.022, hem_in=0.06)
+    coat = pieces.shell(body, "Coat", off, hangs=hangs, extras=[skirt_solid(body), chest] + sleeves, voxel=0.008,
+                        smooth=6)
     pieces.iron(body, coat, torso_iters=60, limb_iters=16)
     cs.cut_and_delete(coat, (0, 0, HEM_Z), (0, 0, 1), lambda c, n: c[:, 2] < HEM_Z)
     for sx in (1, -1):
