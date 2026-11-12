@@ -38,8 +38,9 @@ Epic Launcher, Samples tab). Its assets are copied into `Content/` by
 `claude-docs/infrastructure.md`.
 
 Quaternius's CC0 packs (Universal Base Characters, LowPoly Animated Animals, Universal Animation Library 2) live in
-`C:\Users\camer\code\hawkeye-assets` (or `HAWKEYE_ASSETS_ROOT`); `Tools\create-content.ps1` imports the thugs', Clint's
-and Lucky's bodies from them, git-ignored. Without them the mannequins are drawn and nothing fails.
+`C:\Users\camer\code\hawkeye-assets` (or `HAWKEYE_ASSETS_ROOT`), with the Blender-built costumes and Lucky under its
+`built\` folder; `Tools\create-content.ps1` imports the thugs', Clint's and Lucky's bodies from there, git-ignored.
+Without them the mannequins are drawn, Lucky is hidden and nothing fails. Licences: `docs/CREDITS.md`.
 
 ## Toolchain
 
