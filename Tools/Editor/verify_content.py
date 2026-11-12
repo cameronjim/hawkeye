@@ -395,8 +395,15 @@ def check_bodies():
     Either is a pass; a clone without the packs reports the fallback. A body that is on disk must be complete."""
     say("---- bodies ----")
     lucky = "/Game/Characters/Lucky/SK_Lucky"
-    say("  Lucky: {0}".format("SK_Lucky on disk, a stand-in pug (no Lucky actor uses it yet)" if c.exists(lucky)
-                              else "no SK_Lucky (the animals pack is not imported); nothing uses it yet"))
+    if c.exists(lucky):
+        clips = ["A_Lucky_" + n for n in ("Idle", "Walk", "Trot", "Sit")]
+        missing = [n for n in clips if not c.exists("/Game/Characters/Lucky/" + n)]
+        if missing:
+            fail("Lucky: SK_Lucky is on disk but not " + ", ".join(missing) + " (ALuckyCharacter plays them)")
+        else:
+            say("  Lucky: SK_Lucky and A_Lucky_Idle/Walk/Trot/Sit on disk (ALuckyCharacter, City_Lucky)")
+    else:
+        say("  Lucky: no SK_Lucky (the built retriever is not on disk); City_Lucky is hidden")
     if not c.exists(BODY_MESH):
         # A clone without the packs. Reading the soft references would try to load them; the mannequins are drawn.
         say("  {0} is not on disk: BP_Thug, BP_Thug_Heavy and BP_Clint draw their mannequins (run "
