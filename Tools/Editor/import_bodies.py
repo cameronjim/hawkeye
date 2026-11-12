@@ -27,6 +27,10 @@ the packs keeps the mannequins and loads as before.
                                                     pipeline.md): imported onto SKEL_Body_Male, MI_<slot> instances of
                                                     M_BuiltLook from <who>.slots.json, and that wearer's BodyLook points
                                                     at it with the same AnimBP. Missing or failing: the painted body.
+    /Game/Characters/Bodies/SK_Body_Female          Kate's: the pack's Superhero_Female (its own skeleton, SKEL_Body_Female,
+    IK_Body_Female, SK_Built_Kate                   and IK rig) and her built suit on it, when built/kate/SK_Kate.glb is on
+    /Game/Characters/Kate/Look/RTG_Kate_To_Body,    disk; the retarget from her driver (IK_Kate_UEFN) and BP_Kate.BodyLook
+    ABP_Kate_Body                                   (ensure_kate). Missing or failing: create_kate_look's Sparrow
     /Game/Characters/Lucky/SK_Lucky, SKEL_Lucky     Lucky, a golden retriever: <assets root>\built\lucky\SK_Lucky.glb
     A_Lucky_Idle/_Walk/_Trot/_Sit, MI_Lucky         (generated, rigged, four clips), MI_Lucky of M_BuiltLook with his
     T_Lucky_D, T_Lucky_N                            texture and normal map (green flipped). ALuckyCharacter (C++) names

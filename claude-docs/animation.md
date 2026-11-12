@@ -281,6 +281,13 @@ Nobody can watch a headless run, so the scripts read bones:
 
 ## Kate's visible mesh (built 2026-11-10)
 
+**Since 2026-11-12 Kate wears her built suit** (`SK_Built_Kate` on the Quaternius female body, `blender-pipeline.md`,
+"Kate"), set by `import_bodies.py` exactly as Clint's is: `IK_Body_Female`, `RTG_Kate_To_Body` from `IK_Kate_UEFN`,
+`ABP_Kate_Body` (see "Bodies" below). Sparrow, described in the rest of this section, is the fallback when the built
+Kate is not on disk or does not import: `create_kate_look.py` still builds her assets and puts her on `BP_Kate` then.
+The built look has no physics asset, so, like Clint's, it ticks after physics and her hit reactions run on the driver;
+arrows stuck in her sit on the driver's surface. Nothing in C++ changed for the swap.
+
 Kate is drawn as Paragon's Sparrow, in purple, over the Game Animation Sample's UEFN mannequin. The mannequin
 (`GetMesh()`, the driver) keeps doing everything it did: the sample's motion-matched AnimBP, every montage, the
 bow-IK post-process graph (hands, string, hit lean, hang hands), root motion, notifies, collision and the sockets
@@ -353,6 +360,8 @@ handed to the engine's importer) and builds everything under git-ignored folders
 | `IK_Body_Male` | `create_kate_look.ensure_rig` on the body: the manifest's `ue4` chains (`head` matches `Head`; FNames ignore case), a goal and limb solver per limb |
 | `/Game/Characters/Thug/Look/RTG_Thug_To_Body`, `ABP_Thug_Body` | `IK_Thug_Mannequin` (UE4 mannequin) to the body; hands blended fully onto the driver's |
 | `/Game/Characters/Clint/Look/RTG_Clint_To_Body`, `ABP_Clint_Body` | `IK_Kate_UEFN` (UEFN mannequin) to the body; the same |
+| `SK_Body_Female`, `SKEL_Body_Female`, `IK_Body_Female` | the pack's `Superhero_Female_FullBody.gltf` (177 cm, the same 65 bone names, its own rest pose), imported only when the built Kate is on disk, and its IK rig |
+| `/Game/Characters/Kate/Look/RTG_Kate_To_Body`, `ABP_Kate_Body` | `IK_Kate_UEFN` to the female body for `SK_Built_Kate`; hands blended fully onto the driver's. `BP_Kate.BodyLook` points at it (`ensure_kate`) |
 | `/Game/Characters/Lucky/SK_Lucky`, `SKEL_Lucky`, `A_Lucky_Idle/_Walk/_Trot/_Sit`, `T_Lucky_D/_N`, `MI_Lucky` | Lucky, a golden retriever generated locally (`docs/CREDITS.md`): `<assets root>\built\lucky\SK_Lucky.glb` through Interchange (no materials; metres in, 74 cm tall and 115 cm long in, faces +X, so no rotation or scale), its own 30-bone skeleton and four in-place clips at 30 fps (Walk's feet cover about 30 cm/s, Trot's about 92; Sit is a seated idle). `MI_Lucky` is an instance of `M_BuiltLook` with his base colour and his Blender normal map (green flipped). `ALuckyCharacter` (C++, `City_Lucky` in the district) plays them as single-node animations, the moving clips at his ground speed over the clip's (gameplay-semantics.md, "Lucky"). |
 
 **The skeleton question.** No mesh is put on another skeleton. The thugs keep the UE4 mannequin and Clint the UEFN
@@ -367,7 +376,8 @@ and still reacts herself). `AThugCharacter::GetBodyMesh()` is what is drawn; his
 instances are made on it.
 
 Who wears what: `BP_Thug` (fists, bat, gunner) the dark red tracksuit; `BP_Thug_Heavy` the tracksuit, vest, ski mask and
-boots; `BP_Clint` black.
+boots; `BP_Clint` black; `BP_Kate` her built suit on the female body (no painted version: without the build she is
+Sparrow or the mannequin).
 
 **Built costumes.** Modelled clothes from Blender replace the painted ones per wearer when they are on disk
 (`blender-pipeline.md`): `Tools/Blender/build_<who>.py` writes `<assets root>\built\<who>\SK_<Who>.glb` on the body's
@@ -382,7 +392,8 @@ written an empty look by the script, so it keeps its own mannequin colours rathe
 `verify_content.py` (`check_bodies`) says which each wearer shows and fails only when a body that is on disk is
 incomplete (or SK_Lucky is there without its four clips). `Hawkeye.Screenshot.Bodies` writes
 `Saved/Screenshots/Bodies/body_thug, body_heavy, body_clint, body_lucky, body_thug_ragdoll, body_thug_punch,
-body_thug_flash, body_clint_draw, body_lucky_kate.png` and checks the body is not exploded, T-posed, turned or off the
+body_thug_flash, body_clint_draw, body_lucky_kate.png`, then Kate's `body_kate_<shot>_<day, night>.png` (blender-pipeline.md,
+"Unreal side") and checks the body is not exploded, T-posed, turned or off the
 driver's head, follows the ragdoll, the punch is caught in its wind-up (the telegraph glow), the flash over half, and
 Lucky 40 to 95 cm tall, facing his way and on the ground.
 

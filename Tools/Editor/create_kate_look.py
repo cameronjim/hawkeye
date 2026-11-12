@@ -22,6 +22,10 @@ and BP_Kate keeps the mannequin at runtime.
                                                       bones to hide: Sparrow's own bow and nocked arrow (Kate holds
                                                       the game's bow, whose string the bow IK draws)
 
+Since 2026-11-12 Sparrow is the fallback: while the built Kate (Tools/Blender/build_kate.py) is on disk this script
+still builds the assets above but leaves BP_Kate to import_bodies.py, which puts her built suit on her, and calls
+run(apply=True) to put Sparrow back if that fails.
+
 The Look folder is git-ignored: everything in it is built from Paragon's content and rebuilt by this script.
 Idempotent: every asset carries a build tag and is rebuilt only when it changes; BP_Kate is saved only when its
 BodyLook differs.

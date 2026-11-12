@@ -2,8 +2,8 @@
 
 Modelled clothes for Clint, the thug and the heavy, built by script in Blender 5.3 on the Quaternius body the game
 already uses (`animation.md`, "Bodies"). Replaces the painted-on clothes (`M_BodyLook`) for whoever has a build on
-disk. Built 2026-11-11. Kate's suit (on the pack's female body) followed on 2026-11-12; it is built and rendered but
-not yet imported into the engine (see "Kate" and "Unreal side").
+disk. Built 2026-11-11. Kate's suit (on the pack's female body) followed on 2026-11-12 and is in the game the same day
+(see "Kate" and "Unreal side").
 
 ## Running it
 
@@ -116,13 +116,14 @@ face, nobody's likeness). On `Superhero_Female` (176.7 cm in the pack, about 164
 against Clint's 181), made athletic under the clothes first (`athletic`: the bust in by half its projection, the hips
 in, the seat back, the thighs 8 % slimmer toward the bone line; skeleton and weights untouched).
 
-- Top: fitted, long-sleeved, deep purple (linear 0.090, 0.010, 0.228: `#5B2A86` with less green, which read lavender
-  under the studio's lights and AgX), roughness 0.85, over `fitted_torso` (it bridges the bust and comes in to the
+- Top: fitted, long-sleeved, deep purple (linear 0.050, 0.0055, 0.125; the first build's 0.090, 0.010, 0.228 read
+  lavender in the studio and `#7539AF` to `#8649BE` on the street by day in the engine; times 0.55 the torso's median
+  is `#4C357C` by day and `#632896` under a street lamp at night, around the `#5B2A86` aimed at), roughness 0.85, over `fitted_torso` (it bridges the bust and comes in to the
   waist), slim sleeves (`arm_tubes`, 3 to 4 mm pads). Black stretch side panels between two y planes up each side and
   along the underside of each upper sleeve to the elbow (on the forearm they hid the guard). A black yoke over the
   shoulders whose lower edge is a chevron pointing down the chest (1.235 m) and the back (1.285 m), light purple piping
   under it and at the shoulder seam, a metal zip down it, black cuffs, a high purple stand collar zipped to the top
-  (0.6 degree gap) and lined in dark purple. The hem is hidden under the belt.
+  (0.6 degree gap, top edge at 1.534 m; 1.552 reached the jaw) and lined in dark purple. The hem is hidden under the belt.
 - Trousers: black, fitted (the legs' own shape, ironed, with a fitted solid over the hips so the seat's cleft does not
   read; straight tubes from the thigh read as baggy pipes with a step at their top), a raised light purple stripe down
   the outside of each leg, the crotch on `crotch_weights`, tucked into black mid-calf combat boots (top at 0.30 m, a
@@ -149,16 +150,18 @@ materials.
 
 ## Unreal side
 
-`Tools/Editor/import_bodies.py` (`ensure_built`): for each of `thug`, `heavy`, `clint` whose
-`<assets root>\built\<who>\SK_<Who>.glb` exists, imports it through Interchange onto `SKEL_Body_Male`
-(`/Game/Characters/Bodies/Built/SK_Built_<Who>`; the generic pipeline's common skeletal settings `skeleton` property is
+`Tools/Editor/import_bodies.py` (`ensure_built`): for each build in `BUILT_LOOKS` (`thug`, `heavy`, `clint` on the male
+body, `kate` on the female) whose `<assets root>\built\<who>\SK_<Who>.glb` exists, imports it through Interchange onto
+its base body's skeleton (`SKEL_Body_Male` or `SKEL_Body_Female`;
+`/Game/Characters/Bodies/Built/SK_Built_<Who>`; the generic pipeline's common skeletal settings `skeleton` property is
 honoured for glTF), gives it four LODs by the engine's skeletal mesh reduction (`BUILT_LODS`; each half the triangles of
 the last), builds `M_BuiltLook` / `M_BuiltLookMasked` (colour times texture, roughness, metallic, normal, the thug's
 HitFlash everywhere and Telegraph on the `glow` slots, like `M_BodyLook`) and an `MI_<slot>` per slot from
 `<who>.slots.json`, and points that wearer's `BodyLook` at the built mesh with the same `ABP_<Driver>_Body` (same
 skeleton, so the same IK rig and retargeter). Generated normal maps are imported with the green channel flipped
-(Blender writes OpenGL normals). Anything missing or failing (no file, the import making its own skeleton, no slot
-table) logs a line and leaves the painted body.
+(Blender writes OpenGL normals); the pack's own textures a slot names (Kate's skin and normal) are imported once as
+`Built/T_Built_<file>`. Anything missing or failing (no file, the import making its own skeleton, no slot table) logs a
+line and leaves the painted body.
 
 First run 2026-11-11: all three imported clean onto the skeleton, second run idempotent. LOD vertex counts at import:
 thug 38.7k / 12.7k / 7.4k / 4.2k, heavy 52.6k / 17.7k / 10.0k / 5.6k, Clint 66.3k / 21.2k / 11.6k / 6.2k.
@@ -166,14 +169,26 @@ thug 38.7k / 12.7k / 7.4k / 4.2k, heavy 52.6k / 17.7k / 10.0k / 5.6k, Clint 66.3
 hit flash (whole body white) and the telegraph (head and hands orange) on the thug, and the look on the ragdoll (pelvis
 2 cm off).
 
-**Kate is not imported yet.** What it needs (engine side, not written): `import_bodies.py` must import
-`Superhero_Female_FullBody.gltf` as `SK_Body_Female` / `SKEL_Body_Female` (same 65 bone names, but the female's rest
-pose and proportions differ, so the built Kate cannot go on `SKEL_Body_Male`); `ensure_built` needs a skeleton per
-wearer (`kate` on `SKEL_Body_Female`) and `BUILT_LOOKS` an entry for her; an IK rig on the female body
-(`create_kate_look.ensure_rig` with the manifest's `ue4` chains, as `IK_Body_Male`), a retargeter from `IK_Kate_UEFN`
-to it and an `ABP_Kate_Body` like Clint's; and `BP_Kate.BodyLook` pointed at `SK_Built_Kate` instead of Sparrow
-(`create_kate_look.py` writes Sparrow's look today; Sparrow's `HIDDEN_BONES` do not apply). Kate keeps the game's bow.
-Her slot table has no `glow` slots; the hair, ponytail and brows are masked (`M_BuiltLookMasked`).
+**Kate (in the game since 2026-11-12).** The female body is its own import: `Superhero_Female_FullBody.gltf` as
+`SK_Body_Female` / `SKEL_Body_Female` (`import_base("female")`, only when the built Kate is on disk; 177 cm, pelvis 93,
+head bone 155, the same 65 bone names as the male but its own rest pose, so a mesh built on it cannot go on
+`SKEL_Body_Male`). `SK_Built_Kate` lands on it (LODs 59.8k / 20.2k / 11.7k / 6.6k vertices, 23 slots). `ensure_kate`
+then builds `IK_Body_Female` (`create_kate_look.ensure_rig`, the `ue4` chains: 22 chains, 4 goals, 4 limb solvers),
+`/Game/Characters/Kate/Look/RTG_Kate_To_Body` from `IK_Kate_UEFN` (her driver, the same source as Clint's; hands
+blended fully onto the driver's) and `ABP_Kate_Body`, and sets `BP_Kate.BodyLook` to `SK_Built_Kate` with its 23
+instances and no hidden bones (Sparrow's `HIDDEN_BONES` were her own bow and arrow; the built Kate has none, and keeps
+the game's bow). `create_kate_look.py`, the step before, still builds Sparrow's assets but leaves `BP_Kate` alone
+while the built Kate is on disk; if her import or retarget fails, `import_bodies` puts Sparrow back on her
+(`create_kate_look.run(apply=True)`), and without either the mannequin is drawn. She takes the driver's 0.93 scale
+(about 164 cm; Clint 181). Her slot table has no `glow` slots: nothing on Kate is driven by material (the hit flash
+and telegraph are the thugs'). Her only quiver is the built one (right shoulder); the game's bow sits across her back
+when holstered, its string over the quiver.
+
+`Hawkeye.Screenshot.Bodies` shoots her in two rounds, day and night (`body_kate_<front, back, run, crouch, punch,
+draw, trio>_<day, night>.png`) and checks her standing pose, feet (0 to 5.5 cm above the capsule's bottom), the crouch,
+a run (500 cm/s), and that the look's hands stay within 5 cm of the driver's in the punch (0.0 to 2.8) and the draw
+(2.8 to 2.9: at full draw her arm is a little short of the driver's hands); the look's pelvis is 0.0 to 0.1 cm from the
+driver's in every shot.
 
 ## Known limits
 
@@ -184,6 +199,9 @@ Her slot table has no `glow` slots; the hair, ponytail and brows are masked (`M_
 - The thug's upper sleeves are still full: the Superhero body's deltoids and biceps are under them.
 - The face is the pack's single male face; hair, beard and the balaclava are what tell them apart. Kate has the
   pack's female face, with its painted eyeliner and heavy brows.
+- A teleport turns Kate's capsule but not her body: the Game Animation Sample's AnimBP keeps the mesh's old facing until
+  she moves (a 180 degree teleport in the bodies shot left her facing the old way, the holstered bow on her chest). The
+  shot walks her into each facing. Not fixed in the game: fast travel and checkpoint loads may show it for a moment.
 - Kate's ponytail is skinned to the head, not simulated: it turns with the head and does not swing. Physics bones or
   AnimDynamics in the engine would let it move.
 - Kate's glove edges follow the body's own edges, so the bow glove's finger ends are a little jagged close up; the
