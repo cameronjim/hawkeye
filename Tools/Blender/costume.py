@@ -36,6 +36,7 @@ from mathutils.bvhtree import BVHTree
 DEFAULT_ASSETS_ROOT = r"C:\Users\camer\code\hawkeye-assets"
 PACK = ("quaternius-base-characters", "Universal Base Characters[Standard]")
 BODY_GLTF = PACK + ("Base Characters", "Godot - UE", "Superhero_Male_FullBody.gltf")
+BODY_FEMALE_GLTF = PACK + ("Base Characters", "Godot - UE", "Superhero_Female_FullBody.gltf")
 TEXTURES = PACK + ("Base Characters", "Textures")
 GL_NORMALS = TEXTURES + ("Normals Unity - Godot",)   # OpenGL (+Y) normals, Blender's and glTF's convention
 HAIR_DIR = PACK + ("Hairstyles", "Rigged to Head Bone", "glTF (Godot -Unreal)")
@@ -552,15 +553,20 @@ def band_around(surface, center_xy, z_rows, segments=64, push=0.0, reach=0.6):
 class Body:
     """The imported body: armature, skin mesh, eyes, brows; a pristine copy to read weights and shape from."""
 
-    def __init__(self, root):
+    # Heights the shared pieces measure the neck at (pieces.neck_shape): on the male the head and neck bones own the
+    # skin at 1.545; a build on another body sets its own.
+    neck_z = 1.545
+
+    def __init__(self, root, gltf=BODY_GLTF):
         bpy.ops.wm.read_factory_settings(use_empty=True)
         self.root = root
-        bpy.ops.import_scene.gltf(filepath=pack_file(root, BODY_GLTF))
+        bpy.ops.import_scene.gltf(filepath=pack_file(root, gltf))
         for o in list(bpy.data.objects):
             if o.name.startswith("Icosphere"):   # a stray node in the pack's glTF, outside its scene
                 remove(o)
         self.armature = bpy.data.objects["Armature"]
-        self.skin = bpy.data.objects["SuperHero_Male"]
+        # SuperHero_Male, Superhero_Female: the skinned body is the mesh that is not the eyes or the brows.
+        self.skin = next(o for o in bpy.data.objects if o.type == "MESH" and o.name.lower().startswith("superhero"))
         self.eyes = bpy.data.objects.get("Eyes")
         self.brows = bpy.data.objects.get("Eyebrows")
         self.bones = [b.name for b in self.armature.data.bones]

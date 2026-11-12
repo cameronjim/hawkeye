@@ -84,26 +84,6 @@ def head_materials(body, out, hair_tint, skin_file="T_Superhero_Male_Dark.png"):
     }
 
 
-def fitted_torso(body, z_bottom, z_top, pad, p=2.4):
-    """A closed solid round the torso that follows its width down to the waist (a tailored coat, not a box falling
-    from the chest), its profile smoothed along the height so pecs, abs and the groove between the shoulder blades do
-    not read through; the back is a convex curve, so it bridges the spine."""
-    cy = pieces.TORSO_AXIS[1]
-    zs = np.linspace(z_top, z_bottom, 22)
-    prof = []
-    for z in zs:
-        e = pieces.extents(body, z, families=("torso",))
-        prof.append((min(max(-e[0], e[1]), 0.21), cy - e[2], e[3] - cy))
-    prof = np.array(prof)
-    kernel = np.array([1.0, 2.0, 3.0, 2.0, 1.0])
-    kernel /= kernel.sum()
-    padded = np.pad(prof, ((2, 2), (0, 0)), mode="edge")
-    smooth = np.stack([np.convolve(padded[:, i], kernel, mode="valid") for i in range(3)], axis=1)
-    rings = [pieces.superellipse(0.0, cy, smooth[j, 0] + pad, smooth[j, 1] + pad, smooth[j, 2] + pad, z, p=p)
-             for j, z in enumerate(zs)]
-    return cs.loft("FittedTorso", rings, closed=True, cap_start=True, cap_end=True)
-
-
 def skirt_solid(body):
     """A closed solid from the ribs to below the hem: merged into the coat's volume, it is the skirt, fitted at the
     waist, over the hips and tapering a little to the hem (a tailored coat, not a flared robe)."""
@@ -153,7 +133,7 @@ def build_coat(body, mats):
     off = 0.020 * fam["torso"] + 0.012 * fam["arm"] + 0.016 * fam["hand"] + 0.02 * fam["leg"] + 0.012 * fam["head"]
     # No hang from the chest (that was the box): fitted_torso bridges the hollows and comes in to the waist.
     sleeves = pieces.arm_tubes(body, 0.26, CUFF_X + 0.01, pad0=0.012, pad1=0.013, sag=0.003)
-    chest = fitted_torso(body, 0.96, 1.43, pad=0.02)
+    chest = pieces.fitted_torso(body, 0.96, 1.43, pad=0.02)
     coat = pieces.shell(body, "Coat", off, extras=[skirt_solid(body), chest] + sleeves, voxel=0.008,
                         smooth=6)
     pieces.iron(body, coat, torso_iters=120, limb_iters=16, z_range=(0.9, 1.56))
@@ -306,150 +286,6 @@ def build_trousers(body, mats, boots_upper, boot_top):
     return tr, W
 
 
-def build_guard(body, surf, mats):
-    """A slim rigid guard on the bow (left) forearm over the sleeve: wraps the inside of the arm (open over the top
-    third), sits close on the sleeve, two thin straps."""
-    ay = pieces.arm_axis(body, "l")
-    out = []
-    xs = np.linspace(0.505, 0.632, 12)
-    angles = np.radians(np.linspace(-100, 100, 25))
-    P, N = [], []
-    for x in xs:
-        y0, z0 = ay(x)
-        row_p, row_n = [], []
-        for a in angles:
-            p, n = surf.project_from_axis((x, y0, z0), (0.0, math.sin(a), -math.cos(a)))
-            row_p.append(p)
-            row_n.append(n)
-        P.append(row_p)
-        N.append(row_n)
-    guard = cs.slab("Guard", np.array(P), np.array(N), 0.0028, gap=0.0015)
-    cs.set_material(guard, mats["guard"])
-    out.append((guard, cs.rigid(body, len(guard.data.vertices), {"lowerarm_l": 1.0})))
-    for k, x in enumerate((0.53, 0.607)):
-        y0, z0 = ay(x)
-        P, N = [], []
-        for a in np.radians(np.linspace(0, 360, 40, endpoint=False)):
-            row_p, row_n = [], []
-            for dx in (-0.008, 0.008):
-                p, n = surf.project_from_axis((x + dx, y0, z0), (0.0, math.sin(a), -math.cos(a)))
-                row_p.append(p)
-                row_n.append(n)
-            P.append(row_p)
-            N.append(row_n)
-        strap = cs.slab("GuardStrap%d" % k, np.array(P), np.array(N), 0.0025, gap=0.0048, closed=True)
-        cs.set_material(strap, mats["belt"])
-        out.append((strap, cs.rigid(body, len(strap.data.vertices), {"lowerarm_l": 1.0})))
-    return out
-
-
-def build_quiver(body, surf, mats):
-    """A black leather quiver across the back, mouth over the left shoulder, ten arrows; a strap across the chest."""
-    out = []
-    bottom, top = np.array([-0.10, 0.0, 1.0]), np.array([0.135, 0.0, 1.47])
-    r0, r1, squash = 0.048, 0.064, 0.72
-    ts = np.linspace(0, 1, 9)
-    need = []
-    for t in ts:
-        p = bottom + (top - bottom) * t
-        hit, _n = surf.project_from_axis((p[0], 0.02, p[2]), (0, 1, 0))
-        need.append((hit[1] if hit is not None else 0.15) + (r0 + (r1 - r0) * t) * squash + 0.01)
-    yb = max(need[i] - (need[-1] - need[0]) * ts[i] for i in range(len(ts)))
-    bottom[1] = yb
-    top[1] = yb + (need[-1] - need[0])
-    top[1] = max(top[1], need[-1])
-    bottom[1] = max(bottom[1], need[0])
-    A = top - bottom
-    length = np.linalg.norm(A)
-    A /= length
-    u = np.cross(A, (0, 1, 0))
-    u /= np.linalg.norm(u)
-    v = np.cross(u, A)
-    ang = np.linspace(0, 2 * math.pi, 28, endpoint=False)
-    rings = []
-    for t in np.concatenate([[0.0, 0.015], np.linspace(0.05, 1.0, 12), [1.0]]):
-        r = r0 + (r1 - r0) * t
-        if len(rings) == 13:
-            r += 0.006   # a rolled lip at the mouth
-        c = bottom + A * length * t
-        rings.append(c + r * (np.cos(ang)[:, None] * u + squash * np.sin(ang)[:, None] * v))
-    body_q = cs.loft("Quiver", rings, closed=True, cap_start=True)
-    cs.set_material(body_q, mats["quiver"])
-    cs.solidify(body_q, 0.003)
-    # Stitched leather bands round the quiver.
-    c, _n = cs.face_data(body_q)
-    s = (c - bottom) @ A / length
-    band = (((s > 0.18) & (s < 0.22)) | ((s > 0.78) & (s < 0.82))) & (cs.get_face_int(body_q, "shell") == 0)
-    cs.set_material(body_q, mats["belt"], band)
-    cs.raise_faces(body_q, band, 0.002)
-    cs.box_uv(body_q, 0.04)
-    rig = {"spine_03": 0.65, "spine_02": 0.35}
-    out.append((body_q, cs.rigid(body, len(body_q.data.vertices), rig)))
-    # Arrows: shafts from deep in the quiver to a fan above the mouth, nocks, three vanes each.
-    parts = []
-    nocks = []
-    grid = [(-0.5, -0.4), (0.0, -0.45), (0.5, -0.4), (-0.6, 0.1), (-0.2, 0.05), (0.2, 0.05), (0.6, 0.1),
-            (-0.35, 0.5), (0.1, 0.5), (0.45, 0.45)]
-    for k, (gu, gv) in enumerate(grid):
-        off = (gu * u + gv * squash * v) * r1 * 0.8
-        start = top - A * 0.3 + off
-        tip = top + A * (0.16 + 0.02 * ((k * 7) % 3)) + off * 1.6
-        d = tip - start
-        d /= np.linalg.norm(d)
-        parts.append(cs.tube("Shaft", [start, tip], 0.0038, segments=8, cap=True))
-        nocks.append(cs.tube("Nock", [tip, tip + d * 0.014], 0.0048, segments=8, cap=True))
-        side = np.cross(d, v)
-        side /= np.linalg.norm(side)
-        for j in range(3):
-            a = 2 * math.pi * j / 3 + k
-            rad = side * math.cos(a) + np.cross(d, side) * math.sin(a)
-            tan = np.cross(d, rad)
-            centre = tip - d * 0.055 + rad * 0.011
-            vane = cs.box("Vane", centre, (0.075, 0.014, 0.0012), rotation=np.column_stack([d, rad, tan]))
-            parts.append(vane)
-    shafts = cs.join(parts, "Arrows")
-    cs.set_material(shafts, mats["arrow"])
-    out.append((shafts, cs.rigid(body, len(shafts.data.vertices), rig)))
-    nock = cs.join(nocks, "Nocks")
-    cs.set_material(nock, mats["nock"])
-    out.append((nock, cs.rigid(body, len(nock.data.vertices), rig)))
-    # The strap: from the quiver's mouth over the left shoulder, across the chest, round the right side to its foot.
-    path = np.array([top - A * 0.06, (0.16, 0.10, 1.52), (0.15, 0.0, 1.56), (0.12, -0.10, 1.45), (0.04, -0.14, 1.30),
-                     (-0.06, -0.14, 1.16), (-0.15, -0.10, 1.05), (-0.21, 0.0, 1.0), (-0.17, 0.12, 0.99),
-                     bottom + A * 0.06])
-    seg = np.linalg.norm(np.diff(path, axis=0), axis=1)
-    tt = np.concatenate([[0], np.cumsum(seg)])
-    samples = np.linspace(0, tt[-1], 70)
-    pts = np.stack([np.interp(samples, tt, path[:, i]) for i in range(3)], axis=1)
-    pts = cs.smooth_values(pts, np.array([(i, i + 1) for i in range(len(pts) - 1)]), 6, 0.5,
-                           mask=np.r_[False, np.ones(len(pts) - 2, bool), False])
-    def onto(p):
-        """The coat's outer surface under p: a ray in from outside, toward the spine."""
-        a = np.array([0.0, pieces.TORSO_AXIS[1], min(p[2], 1.40)])
-        hit, n = surf.project_from_axis(a, p - a, reach=0.5)
-        return (hit, n) if hit is not None else surf.nearest(p)
-
-    P, N = [], []
-    for i, p in enumerate(pts):
-        q, n = onto(p)
-        t = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]
-        side = np.cross(n, t)
-        side /= np.linalg.norm(side)
-        row_p, row_n = [], []
-        for w in (-0.019, 0.0, 0.019):
-            q2, n2 = onto(q + side * w)
-            row_p.append(q2)
-            row_n.append(n2)
-        P.append(row_p)
-        N.append(row_n)
-    strap = cs.slab("QuiverStrap", np.array(P), np.array(N), 0.004, gap=0.004)
-    cs.set_material(strap, mats["belt"])
-    cs.box_uv(strap, 0.04)
-    W = body.transfer(cs.get_co(strap))
-    out.append((strap, cs.smooth_values(W, cs.get_edges(strap), 4, 0.5)))
-    return out
-
-
 def build(args):
     body = cs.Body(args.assets_root)
     mats = make_materials(args.out)
@@ -465,8 +301,8 @@ def build(args):
     pieces_out.append(build_trousers(body, mats, boots[0][0], BOOT_TOP))
     pieces_out += boots
     pieces_out.append(pieces.gloves(body, mats["glove"]))
-    pieces_out += build_guard(body, coat_surface, mats)
-    pieces_out += build_quiver(body, coat_surface, mats)
+    pieces_out += pieces.forearm_guard(body, coat_surface, mats)
+    pieces_out += pieces.quiver(body, coat_surface, mats)
 
     for obj, W in pieces_out:
         if len(obj.data.uv_layers) == 0:
