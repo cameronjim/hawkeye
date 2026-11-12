@@ -560,6 +560,23 @@ gone from the code, and so from this file. Every section below describes code th
   speakers alternating, 4 s subtitle, no audio. Clint's arrows are picked up into the
   player's quiver for now. BP_Clint in the map adds PoseSearch index-build warnings at load.
 
+## Lucky (built 2026-11-11; rules in Source/Hawkeye/World/LuckyRules.h, tested in Hawkeye.Lucky.*)
+- `ALuckyCharacter`, placed by `generate_city.py` as `City_Lucky` beside the PlayerStart. No gameplay: his capsule
+  blocks only the world (Kate, thugs, arrows, the camera and sight lines pass through him), he affects no navmesh, no
+  thug perceives him, nothing saves him. No story and no lines yet.
+- States: Idle, Walk, Trot, Sit, chosen every frame from the ground distance to the player's pawn, the height gap and
+  how long she has stood still (ground speed under 15 cm/s). Numbers are `ALuckyCharacter::Follow`:
+  - Out of reach (over 1200 cm along the ground, or over 250 cm above or below him): he stops where he is; sitting, he
+    stays sat.
+  - Standing or sitting, she is over 350 cm away: he sets off. Moving, he stops inside 200 cm (the gap is the
+    hysteresis). Over 500 cm he trots, under it he walks.
+  - Near her and stopped: he sits once she has stood still 3 s, and stands again as soon as she moves.
+- He walks the navmesh to her (an AIController's MoveToActor, re-asked every 0.5 s, partial paths allowed). His top
+  speeds are each clip's own foot speed times its top play rate (walk 30 cm/s x 1.3, trot 92 cm/s x 1.6, about 39 and
+  147 cm/s), and the clip plays at his ground speed over its own (0.35 to the top rate), so the feet do not slide.
+  She outruns him at a jog: he follows a short way, not across the district.
+- No mesh on disk (a fresh clone): he logs one Display line and is hidden, ticking nothing.
+
 ## Mission
 - A mission has 1 or more objectives. At least one must be non-optional.
 - `StartMission` on a subsystem that already has an active mission ends the old one
