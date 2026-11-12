@@ -45,9 +45,11 @@ def make_materials(out, who="Thug", red=RED):
     m = cs.material
     p = "M_" + who + "_"
     return {
-        "suit": m(p + "Tracksuit", red, 0.62, normal=tricot, normal_strength=0.6),
-        "rib": m(p + "Rib", tuple(c * 0.85 for c in red), 0.7, normal=rib, normal_strength=1.0),
-        "stripe": m(p + "Stripe", (0.72, 0.72, 0.70), 0.5, normal=tricot, normal_strength=0.4),
+        # Brushed polyester, not plastic: at 0.62 the engine's sun made the suit read as shiny vinyl.
+        "suit": m(p + "Tracksuit", red, 0.86, normal=tricot, normal_strength=0.6),
+        # The rib in the suit's own red: darker, with a strong normal, the jacket's hem read as a dark seam band.
+        "rib": m(p + "Rib", red, 0.9, normal=rib, normal_strength=0.6),
+        "stripe": m(p + "Stripe", (0.72, 0.72, 0.70), 0.8, normal=tricot, normal_strength=0.4),
         "zip": m(p + "Zip", (0.25, 0.25, 0.26), 0.35, metallic=1.0),
         "trainer": m(p + "Trainer", (0.80, 0.80, 0.78), 0.45, normal=grain, normal_strength=0.25),
         "trainer_accent": m(p + "TrainerAccent", (0.05, 0.05, 0.055), 0.5, normal=grain, normal_strength=0.4),
@@ -86,11 +88,12 @@ def head_materials(body, out, who, hair_tint):
 
 def build_jacket(body, mats):
     fam = body.family
-    off = 0.024 * fam["torso"] + 0.010 * fam["arm"] + 0.012 * fam["hand"] + 0.016 * fam["leg"] + 0.012 * fam["head"]
+    off = 0.018 * fam["torso"] + 0.010 * fam["arm"] + 0.012 * fam["hand"] + 0.016 * fam["leg"] + 0.012 * fam["head"]
     # Sleeves sag a little underneath (polyester hanging off a T-posed arm).
     off = off + 0.003 * np.clip(-body.normals[:, 2], 0, 1) * cs.smoothstep(0.22, 0.4, np.abs(body.co[:, 0])) \
         * (fam["arm"] > 0.5)
-    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=0.022, hem_in=0.04)
+    # Close to the chest and drawn in toward the hem (pad 0.022 and hem_in 0.04 read as an inflated torso).
+    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=0.012, hem_in=0.08)
     # Slim sleeves: a tube over the upper arm only (it hides the biceps); the forearm follows the arm down to the cuff.
     # Tubes to the wrist ended in a fat disc above the cuff, the balloon; this one narrows into the forearm.
     sleeves = pieces.arm_tubes(body, 0.26, 0.53, pad0=0.003, pad1=-0.008, sag=0.002)
@@ -207,8 +210,6 @@ def build_trousers(body, mats, boots=None, boot_top=0.0):
             d += 0.005 * bunch * np.sin(z / 0.03 * 2 * math.pi + 1.5 * cs.fold_noise(ang, 8))
         knee = np.exp(-((z - 0.55) / 0.06) ** 2)
         d += 0.0025 * knee * np.sin((z + 0.02 * np.sin(ang * 2)) / 0.035 * 2 * math.pi)
-        crotch = np.exp(-((z - 0.86) / 0.05) ** 2) * (np.abs(co[:, 0]) < 0.12)
-        d += 0.001 * crotch * np.sin((z + 0.6 * np.abs(co[:, 0])) / 0.03 * 2 * math.pi)
         return d
 
     cs.displace(tr, shape)
@@ -235,8 +236,23 @@ def build_trousers(body, mats, boots=None, boot_top=0.0):
     cs.raise_faces(tr, cs.material_mask(tr, mats["stripe"]) & (cs.get_face_int(tr, "shell") == 0), 0.0008)
     cs.box_uv(tr, 0.03)
     cs.mark_sharp(tr, 60)
-    W = cs.smooth_values(body.transfer(cs.get_co(tr)), cs.get_edges(tr), 3, 0.5)
-    return tr, W
+    co = cs.get_co(tr)
+    edges = cs.get_edges(tr)
+    W = cs.smooth_values(body.transfer(co), edges, 3, 0.5)
+    return tr, crotch_weights(body, co, edges, W)
+
+
+def crotch_weights(body, co, edges, W):
+    """The crotch hangs between the thighs: each vertex there took the nearest thigh's weights, so neighbours across
+    the seam followed opposite legs and a wide stance tore it into a stepped crease. Near the middle, most of the
+    thighs' weight moves onto the pelvis and the weights are smoothed hard, so the cloth stretches evenly."""
+    x, z = co[:, 0], co[:, 2]
+    near = cs.smoothstep(0.11, 0.03, np.abs(x)) * cs.smoothstep(0.62, 0.74, z) * cs.smoothstep(1.0, 0.9, z)
+    W = np.array(W, np.float64)
+    moved = cs.reassign(body, W, "leg", "pelvis")
+    W = W + 0.6 * near[:, None] * (moved - W)
+    W = cs.smooth_values(W, edges, 20, 0.5, mask=near > 0.01)
+    return W / np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
 
 
 def build_tracksuit(body, mats, boots=None, boot_top=0.0):
