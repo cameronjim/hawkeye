@@ -353,7 +353,7 @@ handed to the engine's importer) and builds everything under git-ignored folders
 | `IK_Body_Male` | `create_kate_look.ensure_rig` on the body: the manifest's `ue4` chains (`head` matches `Head`; FNames ignore case), a goal and limb solver per limb |
 | `/Game/Characters/Thug/Look/RTG_Thug_To_Body`, `ABP_Thug_Body` | `IK_Thug_Mannequin` (UE4 mannequin) to the body; hands blended fully onto the driver's |
 | `/Game/Characters/Clint/Look/RTG_Clint_To_Body`, `ABP_Clint_Body` | `IK_Kate_UEFN` (UEFN mannequin) to the body; the same |
-| `/Game/Characters/Lucky/SK_Lucky`, `SKEL_Lucky`, `A_Lucky_Idle`, `A_Lucky_Jump`, `M_Lucky_Coat`, `MI_Lucky_Golden*` | a **stand-in**: the animals pack's Pug (Lucky is a golden retriever; no retriever mesh is on disk), imported at 0.12 (it comes in 264 cm tall), tinted golden. `LUCKY_SOURCE` in the script is the one line to change for a real retriever. No actor uses it: there is no Lucky in the game yet. |
+| `/Game/Characters/Lucky/SK_Lucky`, `SKEL_Lucky`, `A_Lucky_Idle/_Walk/_Trot/_Sit`, `T_Lucky_D/_N`, `MI_Lucky` | Lucky, a golden retriever generated locally (`docs/CREDITS.md`): `<assets root>\built\lucky\SK_Lucky.glb` through Interchange (no materials; metres in, 74 cm tall and 115 cm long in, faces +X, so no rotation or scale), its own 30-bone skeleton and four in-place clips at 30 fps (Walk's feet cover about 30 cm/s, Trot's about 92; Sit is a seated idle). `MI_Lucky` is an instance of `M_BuiltLook` with his base colour and his Blender normal map (green flipped). `ALuckyCharacter` (C++, `City_Lucky` in the district) plays them as single-node animations, the moving clips at his ground speed over the clip's (gameplay-semantics.md, "Lucky"). |
 
 **The skeleton question.** No mesh is put on another skeleton. The thugs keep the UE4 mannequin and Clint the UEFN
 mannequin as their drivers (`GetMesh()`): every clip, montage, notify, socket, the bow, the bat and the shield, hit
@@ -373,16 +373,18 @@ boots; `BP_Clint` black.
 (`blender-pipeline.md`): `Tools/Blender/build_<who>.py` writes `<assets root>\built\<who>\SK_<Who>.glb` on the body's
 own armature, and `import_bodies.py` (`ensure_built`) imports it onto `SKEL_Body_Male` as
 `/Game/Characters/Bodies/Built/SK_Built_<Who>` with `MI_<slot>` instances of `M_BuiltLook`, then sets that wearer's
-`BodyLook` to it with the same `ABP_<Driver>_Body`. No build on disk, or any step failing: the painted body as before.
-Written 2026-11-11 without an engine run; see that doc's "Unreal side". Every other child of `BP_Thug` (the archer, elves, reindeer, candy cane, Santa, Tomas) is
+`BodyLook` to it with the same `ABP_<Driver>_Body`, with four engine-reduced LODs. No build on disk, or any step
+failing: the painted body as before. First run in the engine 2026-11-11: clean, see that doc's "Unreal side". Every other child of `BP_Thug` (the archer, elves, reindeer, candy cane, Santa, Tomas) is
 written an empty look by the script, so it keeps its own mannequin colours rather than inheriting BP_Thug's.
 
 **Fallback.** Without the packs the script logs one `skipped` line. The Blueprints keep their soft references;
 `HawkeyeBodyLook::Apply` finds the packages missing, logs one Display line and the mannequin is drawn as before.
 `verify_content.py` (`check_bodies`) says which each wearer shows and fails only when a body that is on disk is
-incomplete. `Hawkeye.Screenshot.Bodies` writes `Saved/Screenshots/Bodies/body_thug, body_heavy, body_clint,
-body_lucky, body_thug_ragdoll.png` and checks the body is not exploded, T-posed, turned or off the driver's head, and
-follows the ragdoll.
+incomplete (or SK_Lucky is there without its four clips). `Hawkeye.Screenshot.Bodies` writes
+`Saved/Screenshots/Bodies/body_thug, body_heavy, body_clint, body_lucky, body_thug_ragdoll, body_thug_punch,
+body_thug_flash, body_clint_draw, body_lucky_kate.png` and checks the body is not exploded, T-posed, turned or off the
+driver's head, follows the ragdoll, the punch is caught in its wind-up (the telegraph glow), the flash over half, and
+Lucky 40 to 95 cm tall, facing his way and on the ground.
 
 **Not done.** The get-up clip: UAL2's `LayToIdle` (a get-up from lying down) and `Hit_Knockback` are on the same rig
 and would retarget with the `ue4` chain map, but `import_combat_anims.py` has no glTF source type; adding one, a

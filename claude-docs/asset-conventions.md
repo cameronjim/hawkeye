@@ -59,7 +59,9 @@ Content/
                         SKEL_Body_Male), M_BuiltLook, M_BuiltLookMasked, <Who>/MI_<slot>, <Who>/T_<Who>_*; git-ignored
   Characters/Thug/Look/, Characters/Clint/Look/
                         RTG_<Who>_To_Body, ABP_<Who>_Body (git-ignored)
-  Characters/Lucky/     SK_Lucky and its A_Lucky_ clips, M_Lucky_Coat, MI_Lucky_Golden* (a stand-in pug; git-ignored)
+  Characters/Lucky/     SK_Lucky, SKEL_Lucky, A_Lucky_Idle/_Walk/_Trot/_Sit, T_Lucky_D/_N, MI_Lucky: the generated
+                        retriever from <assets root>\built\lucky (git-ignored); ALuckyCharacter names them by soft
+                        reference
   Environment/          Final art, one subfolder per area
   Characters/           Kate/, Thug/, later Clint/, Bosses/
   Materials/            M_ master materials, MI_ instances, MF_ functions

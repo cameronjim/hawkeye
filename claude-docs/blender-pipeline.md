@@ -70,45 +70,57 @@ tucked into boots by clamping them inside the shaft and bagging them out over it
 
 ## The costumes
 
-**Clint** (`build_clint.py`). From a photo of the show's suit (cosplay; costume only, not the face). Knee-length
-long-sleeved coat, navy black, its skirt open at the front below the belt, hanging clear of the legs; a high stand
+**Clint** (`build_clint.py`). From a photo of the show's suit (cosplay; costume only, not the face). A tailored
+long-sleeved coat to above the knee (hem at 0.60 m), navy black, fitted at the waist (`fitted_torso`: the torso's own
+width at each height, smoothed along the height, so it comes in to the belt and bridges the pecs and the groove between
+the shoulder blades; no hang from the chest), its skirt tapering a little to the hem and parting at the front below the
+belt in an inverted V (`OPEN_GAP`, `OPEN_SPREAD`); a high stand
 collar with a maroon lining; wide maroon panels down both front edges with a black placket between them on the closed
 chest; a maroon yoke over the shoulders and bands at the elbows; thin silver piping along the panels, yoke, elbow
 bands, cuffs, the side seams and a curved line from each shoulder to the panel. Leather belt with a buckle. Black
 trousers, a little loose, tucked into tall lace-up combat boots (toe cap, heel counter, sole with a heel, strap and
-buckle, pull tab). Leather gloves. A rigid guard with two straps on the bow (left) forearm over the sleeve. A black
+buckle, pull tab). Leather gloves. A slim rigid guard (2.8 mm, open over the top third) with two thin straps on the bow
+(left) forearm over close-fitting sleeves. A black
 quiver across the back, mouth over the left shoulder, ten arrows with nocks and vanes, its strap across the chest.
 Parted brown hair and the pack's beard (an original face comes later through MetaHuman). About 77k triangles, 19
 materials.
 
-**Thug** (`build_thug.py`). The Tracksuit Mafia in dark red: a loose zip jacket hanging straight from the chest to a
-ribbed hem, ribbed cuffs, a short stand collar, a metal zip and pull, two white stripes from the collar down each
-sleeve (on top of the T-posed arm, the outside when it hangs); baggy trousers with two white stripes down the outside
-of each leg and gathered ribbed ankles; white trainers with a thick cupsole, a grey midsole line, black side panels
+**Thug** (`build_thug.py`). The Tracksuit Mafia in dark red: a zip jacket falling from the chest to a narrow ribbed
+hem at the hips (no blouson), sleeves with a tube over the upper arm only that narrows into the forearm (a tube to
+the wrist ended in a fat disc above the cuff, the balloon), ribbed cuffs, a short stand collar, a metal zip and pull, two white stripes from the collar down each
+sleeve (on top of the T-posed arm, the outside when it hangs); trousers with two white stripes down the outside of each
+leg and ribbed ankles that rest on the trainers' collars (`ANKLE_Z` 0.072; at 0.092 a gap showed); white trainers with a thick cupsole, a grey midsole line, black side panels
 and collar, laces and a heel tab. Buzzed black hair, bare hands. About 47k triangles, 12 materials.
 
 **Heavy** (`build_heavy.py`). The thug's tracksuit with a glossy black quilted puffer vest over it (channels every
 7 cm, a zip, a stand collar), a black knit balaclava with one eye slot, and the black combat boots with the trousers
 tucked in. About 60k triangles, 14 materials.
 
-## Unreal side (written, not yet run)
+## Unreal side
 
 `Tools/Editor/import_bodies.py` (`ensure_built`): for each of `thug`, `heavy`, `clint` whose
 `<assets root>\built\<who>\SK_<Who>.glb` exists, imports it through Interchange onto `SKEL_Body_Male`
-(`/Game/Characters/Bodies/Built/SK_Built_<Who>`), builds `M_BuiltLook` / `M_BuiltLookMasked` (colour times texture,
-roughness, metallic, normal, the thug's HitFlash everywhere and Telegraph on the `glow` slots, like `M_BodyLook`) and
-an `MI_<slot>` per slot from `<who>.slots.json`, and points that wearer's `BodyLook` at the built mesh with the same
-`ABP_<Driver>_Body` (same skeleton, so the same IK rig and retargeter). Anything missing or failing (no file, the
-import making its own skeleton, no slot table) logs a line and leaves the painted body. **This path was written
-without an engine run** (the editor could not be launched): the first `create-content.ps1` run after this should be
-watched for `FAILED` lines under `/Game/Characters/Bodies/Built`, and `Hawkeye.Screenshot.Bodies` rerun.
+(`/Game/Characters/Bodies/Built/SK_Built_<Who>`; the generic pipeline's common skeletal settings `skeleton` property is
+honoured for glTF), gives it four LODs by the engine's skeletal mesh reduction (`BUILT_LODS`; each half the triangles of
+the last), builds `M_BuiltLook` / `M_BuiltLookMasked` (colour times texture, roughness, metallic, normal, the thug's
+HitFlash everywhere and Telegraph on the `glow` slots, like `M_BodyLook`) and an `MI_<slot>` per slot from
+`<who>.slots.json`, and points that wearer's `BodyLook` at the built mesh with the same `ABP_<Driver>_Body` (same
+skeleton, so the same IK rig and retargeter). Generated normal maps are imported with the green channel flipped
+(Blender writes OpenGL normals). Anything missing or failing (no file, the import making its own skeleton, no slot
+table) logs a line and leaves the painted body.
+
+First run 2026-11-11: all three imported clean onto the skeleton, second run idempotent. LOD vertex counts at import:
+thug 38.7k / 12.7k / 7.4k / 4.2k, heavy 52.6k / 17.7k / 10.0k / 5.6k, Clint 66.3k / 21.2k / 11.6k / 6.2k.
+`Hawkeye.Screenshot.Bodies` (`-game`) shows each one posed by its driver, materials right, the hair cards masked, the
+hit flash (whole body white) and the telegraph (head and hands orange) on the thug, and the look on the ragdoll (pelvis
+2 cm off).
 
 ## Known limits
 
 - No cloth simulation: Clint's skirt is skinned. It swings in a stride, but in a deep crouch the front panels fold
   into the boots. A cloth asset (Chaos Cloth) on the skirt would fix it in the engine.
-- Triangle counts are still high for enemies (47k and 60k; most of it is the doubled shell from Solidify and the
-  stripe cuts); engine LODs (or lower `JACKET_TRIS` / `TROUSER_TRIS`) are the next step.
-- Faint upper-back muscle relief still shows through Clint's coat between the shoulder blades in flat light.
+- LOD0 is still 47k (thug), 60k (heavy) and 77k (Clint) triangles; the engine LODs carry the distance. The LOD screen
+  sizes are the engine's defaults, not tuned.
+- The thug's upper sleeves are still full: the Superhero body's deltoids and biceps are under them.
 - The face is the pack's single male face; hair, beard and the balaclava are what tell them apart.
 - The pack's hands are large and its eyebrow and beard cards are coarse.

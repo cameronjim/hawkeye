@@ -203,13 +203,13 @@ republished, and 2 GB is past the free LFS quota. Consequences:
 
 ## Quaternius packs (not in git)
 
-The thugs', the heavy's and Clint's bodies and Lucky's stand-in mesh come from three CC0 Quaternius packs kept outside
+The thugs', the heavy's and Clint's bodies come from CC0 Quaternius packs kept outside
 the repo, by default in `C:\Users\camer\code\hawkeye-assets` (`Resolve-HawkeyeAssetsRoot`: env `HAWKEYE_ASSETS_ROOT`,
 then `Tools\local.json` key `assetsRoot`, then that path; `create-content.ps1` hands it to the editor as
 `HAWKEYE_ASSETS_ROOT`):
 
 - `quaternius-base-characters\Universal Base Characters[Standard]\` (the male glTF and its `Textures`)
-- `quaternius-animals\FBX\Pug.fbx` (Lucky's stand-in)
+- `quaternius-animals\` (not used since 2026-11-11: its pug was Lucky's stand-in)
 - `quaternius-animation-library-2\` (not imported yet; see `animation.md`, "Bodies")
 
 `Tools/Editor/import_bodies.py` (a step of `create-content.ps1`) imports them through Interchange and builds the
@@ -223,7 +223,13 @@ skipped when the asset's build tag carries the source file's size and time, so a
 (`Tools\Blender\build_<who>.py`, headless, Blender 5.3 at `C:\Program Files\Blender Foundation\Blender 5.3`; see
 `blender-pipeline.md`): `SK_<Who>.glb`, `<who>.slots.json`, `<who>.blend`, generated textures. Rebuild them before
 `create-content.ps1` when a build script changes; `import_bodies.py` uses one when it is there and the painted body
-when it is not. Their renders go to `Saved\Screenshots\Blender\`.
+when it is not. Their renders go to `Saved\Screenshots\Blender\`. The import gives each four LODs by the engine's
+skeletal mesh reduction (`BUILT_LODS`: half the triangles each step).
+
+`hawkeye-assets\built\lucky\` holds Lucky: `SK_Lucky.glb` (rigged, clips Idle, Walk, Trot, Sit), `lucky_basecolor.png`
+and `lucky_normal.png` (Blender convention; the import flips green). Generated locally (TRELLIS.2 from a Z-Image-Turbo
+reference, `docs/CREDITS.md`); nothing in the repo rebuilds it. `import_bodies.py` imports it into
+`/Game/Characters/Lucky/` (git-ignored) for `ALuckyCharacter`; without it `City_Lucky` is hidden.
 
 ## Combat clips (not in git)
 
