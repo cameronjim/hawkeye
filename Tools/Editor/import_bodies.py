@@ -27,11 +27,10 @@ the packs keeps the mannequins and loads as before.
                                                     pipeline.md): imported onto SKEL_Body_Male, MI_<slot> instances of
                                                     M_BuiltLook from <who>.slots.json, and that wearer's BodyLook points
                                                     at it with the same AnimBP. Missing or failing: the painted body.
-                                                    Written without an engine run (2026-11-11)
-    /Game/Characters/Lucky/SK_Lucky, A_Lucky_*      a stand-in for Lucky (a golden retriever): the animals pack's Pug
-                                                    (FBX, rigged, its own clips), tinted golden (M_Lucky_Coat,
-                                                    MI_Lucky_Golden*). LUCKY_SOURCE swaps it. Nothing uses it yet:
-                                                    there is no Lucky actor
+    /Game/Characters/Lucky/SK_Lucky, SKEL_Lucky     Lucky, a golden retriever: <assets root>\built\lucky\SK_Lucky.glb
+    A_Lucky_Idle/_Walk/_Trot/_Sit, MI_Lucky         (generated, rigged, four clips), MI_Lucky of M_BuiltLook with his
+    T_Lucky_D, T_Lucky_N                            texture and normal map (green flipped). ALuckyCharacter (C++) names
+                                                    these by soft reference
 
 Idempotent: an import is skipped when its asset exists and carries the source file's size and time in its build tag;
 every built asset carries a build tag and is rebuilt only when it changes; a Blueprint is saved only when its BodyLook
@@ -58,11 +57,17 @@ MALE_MESH = BODIES + "/SK_Body_Male"
 BASE_DIR = ("quaternius-base-characters", "Universal Base Characters[Standard]", "Base Characters")
 MALE_GLTF = BASE_DIR + ("Godot - UE", "Superhero_Male_FullBody.gltf")
 TEXTURES = BASE_DIR + ("Textures",)
-# Lucky is a golden retriever. No retriever mesh is on disk, so the animals pack's Pug stands in: this is the one line
-# to change for a real one (and LUCKY_SCALE, and LUCKY_COATS' slot words, below).
-LUCKY_SOURCE = ("quaternius-animals", "FBX", "Pug.fbx")
-# The 2018 Pug comes in 264 cm tall and 351 cm long at scale 1; at 0.12 it stands about 32 cm at the head.
-LUCKY_SCALE = 0.12
+# Lucky, a golden retriever generated locally (TRELLIS.2 from a Z-Image-Turbo reference, rigged and animated in
+# Blender; docs/CREDITS.md): one skinned mesh, 30 bones, metres, faces +X, Z up, 58 cm at the shoulder, and four in-place
+# clips at 30 fps (Idle, Walk about 0.30 m/s, Trot about 0.92 m/s, Sit: a seated idle). The glb, not the FBX next to it:
+# the same Interchange glTF path as the bodies, metres to centimetres with no extra root bone.
+LUCKY_SOURCE = ("built", "lucky", "SK_Lucky.glb")
+LUCKY_SCALE = 1.0
+# The glb's clip names (Lucky_idle ...) -> A_Lucky_<name>, what ALuckyCharacter's soft references name.
+LUCKY_CLIPS = {"idle": "Idle", "walk": "Walk", "trot": "Trot", "sit": "Sit"}
+# Its textures, next to it: base colour (sRGB) and a Blender (OpenGL, +Y) normal map, green flipped on import.
+LUCKY_TEXTURES = [("lucky_basecolor.png", "T_Lucky_D", "color"), ("lucky_normal.png", "T_Lucky_N", "normal_gl")]
+LUCKY_ROUGHNESS = 0.85   # the glb's own factor
 
 # Texture file -> (asset name, kind). Kind: color (sRGB), normal, linear (roughness).
 MALE_TEXTURES = [
@@ -256,23 +261,24 @@ def import_textures():
 
 
 def import_lucky():
-    """SK_Lucky and its clips from LUCKY_SOURCE (a stand-in pug), rigged as it ships. Returns the mesh or None."""
+    """SK_Lucky, SKEL_Lucky and A_Lucky_<clip> from LUCKY_SOURCE, rigged as it ships (no materials: lucky_material
+    builds them). Returns the mesh or None."""
     path = source_file(LUCKY_SOURCE)
     full = LUCKY + "/SK_Lucky"
     if not os.path.isfile(path):
         c.log("skipped", full, "no " + path)
         return None
-    stamp = "lucky-2|{0}|{1}".format(LUCKY_SCALE, _file_stamp(path))
+    stamp = "lucky-3|{0}|{1}".format(LUCKY_SCALE, _file_stamp(path))
     existing = c.load_or_none(full)
     if existing is not None and tag_of(existing) == stamp:
         c.log("exists", full)
         return existing
     if existing is not None:
-        # A stale import (another scale, a newer file): nothing outside the folder uses it yet.
+        # A stale import (another source, a newer file): only ALuckyCharacter's soft references point in here.
         unreal.EditorAssetLibrary.delete_directory(LUCKY)
     staging = LUCKY + "/Import"
     c.ensure_directory(staging)
-    _interchange_import(path, staging, _interchange_pipeline(materials=True, animations=True, scale=LUCKY_SCALE))
+    _interchange_import(path, staging, _interchange_pipeline(materials=False, animations=True, scale=LUCKY_SCALE))
     found = _assets_under(staging)
     mesh = next((a for a in found if isinstance(a, unreal.SkeletalMesh)), None)
     if mesh is None:
@@ -285,7 +291,8 @@ def import_lucky():
         if isinstance(asset, unreal.Skeleton):
             wanted = LUCKY + "/SKEL_Lucky"
         elif isinstance(asset, unreal.AnimSequence):
-            wanted = LUCKY + "/A_Lucky_" + (asset.get_name().split("_")[-1] or "Clip")
+            key = asset.get_name().split("_")[-1].lower()
+            wanted = LUCKY + "/A_Lucky_" + LUCKY_CLIPS.get(key, key.capitalize() or "Clip")
         elif isinstance(asset, unreal.PhysicsAsset):
             wanted = LUCKY + "/PHYS_Lucky"
         elif isinstance(asset, unreal.MaterialInterface):
@@ -304,41 +311,38 @@ def import_lucky():
     return mesh
 
 
-# Lucky's coat: the stand-in's two colours (its beige body, its brown ears, muzzle and paws) turned golden.
-M_LUCKY_COAT = LUCKY + "/M_Lucky_Coat"
-LUCKY_COATS = [("Beige", "MI_Lucky_Golden", (0.36, 0.18, 0.045)), ("Brown", "MI_Lucky_GoldenDark", (0.16, 0.07, 0.02))]
-
-
-def _build_coat(material):
-    m.connect_property(m.vector_param(material, "Coat", (0.5, 0.3, 0.1), -500, -200), unreal.MaterialProperty.MP_BASE_COLOR)
-    m.set_scalar_property(material, 0.85, unreal.MaterialProperty.MP_ROUGHNESS, -500, 0)
-    m.set_scalar_property(material, 0.2, unreal.MaterialProperty.MP_SPECULAR, -500, 100)
-
-
-def tint_lucky(mesh):
-    """Golden instances on SK_Lucky's slots, matched by the stand-in's slot names. Saves the mesh only on a change."""
-    coat = m.ensure_material(M_LUCKY_COAT, _build_coat, skeletal=True)
-    if coat is None:
+def lucky_material(mesh):
+    """MI_Lucky (M_BuiltLook: his base colour and normal map, roughness from the glb) on every slot of SK_Lucky. Saves
+    the mesh only on a change."""
+    textures = {}
+    for filename, name, kind in LUCKY_TEXTURES:
+        texture = import_texture(source_file(LUCKY_SOURCE[:-1] + (filename,)), LUCKY, name, kind)
+        if texture is None:
+            return
+        textures[name] = texture
+    parent = _built_parent(M_BUILT, masked=False)
+    if parent is None:
         return
+    label = LUCKY + "/MI_Lucky"
+    instance = m.ensure_material_instance(label, parent, vectors=[("Color", (1.0, 1.0, 1.0))],
+                                          scalars=[("Roughness", LUCKY_ROUGHNESS), ("Metallic", 0.0),
+                                                   ("NormalStrength", 1.0), ("Glow", 0.0)])
+    if instance is None:
+        return
+    _set_texture(instance, "BaseTex", textures["T_Lucky_D"], label)
+    _set_texture(instance, "NormalTex", textures["T_Lucky_N"], label)
     slots = list(mesh.get_editor_property("materials"))
-    changed = []
+    changed = 0
     for slot in slots:
-        name = str(slot.get_editor_property("material_slot_name"))
-        current = slot.get_editor_property("material_interface")
-        current_name = current.get_name() if current is not None else ""
-        for word, mi_name, rgb in LUCKY_COATS:
-            if word.lower() in name.lower() or word.lower() in current_name.lower():
-                instance = m.ensure_material_instance(LUCKY + "/" + mi_name, coat, vectors=[("Coat", rgb)])
-                if instance is not None and current != instance:
-                    slot.set_editor_property("material_interface", instance)
-                    changed.append("{0} = {1}".format(name, mi_name))
-                break
+        if slot.get_editor_property("material_interface") != instance:
+            slot.set_editor_property("material_interface", instance)
+            changed += 1
     if changed:
         mesh.set_editor_property("materials", slots)
         c.save(mesh)
-        c.log("updated", LUCKY + "/SK_Lucky", "golden: " + ", ".join(changed))
+        c.log("updated", LUCKY + "/SK_Lucky", "MI_Lucky on {0} slot(s)".format(changed))
     else:
-        c.log("exists", LUCKY + "/SK_Lucky materials", "golden")
+        c.log("exists", LUCKY + "/SK_Lucky materials", "MI_Lucky")
 
 
 def report_mesh(mesh):
@@ -610,12 +614,12 @@ def ensure_materials(textures):
 # --------------------------------------------------------------------------------------------------
 # built costumes: modelled clothes from Tools/Blender (claude-docs/blender-pipeline.md), when they are on disk
 # --------------------------------------------------------------------------------------------------
-# WRITTEN BUT NOT YET RUN IN THE ENGINE (2026-11-11): see claude-docs/blender-pipeline.md, "Unreal side".
 
 BUILT = BODIES + "/Built"
 M_BUILT = BUILT + "/M_BuiltLook"
 M_BUILT_MASKED = BUILT + "/M_BuiltLookMasked"
 BUILT_MATERIAL_BUILD = "built-material-1"   # bump when the graph below changes
+BUILT_LODS = 4   # LOD0 as built, then the engine's reductions at 50, 25 and 12.5 per cent of the triangles
 # The painted look's MI -> the built folder (<assets root>\built\<who>) whose SK_<Who>.glb replaces it.
 BUILT_LOOKS = {"MI_Body_Thug": "thug", "MI_Body_Heavy": "heavy", "MI_Body_Clint": "clint"}
 WHITE_TEX = "/Engine/EngineResources/WhiteSquareTexture"
@@ -624,6 +628,23 @@ FLAT_NORMAL_TEX = "/Engine/EngineMaterials/FlatNormal"
 
 def built_file(who, name):
     return source_file(("built", who, name))
+
+
+def _generate_lods(mesh):
+    """BUILT_LODS LODs by the engine's skeletal mesh reduction (its defaults: each LOD half the triangles of the one
+    before, screen sizes 1, 0.8, 0.6, 0.4), so a thug across the street is not 50k triangles. Returns a log line."""
+    sub = unreal.SkeletalMeshEditorSubsystem
+    try:
+        ok = sub.regenerate_lod(mesh, BUILT_LODS, True, False)
+    except Exception as exc:  # noqa: BLE001
+        return "no LODs ({0})".format(exc)
+    if not ok:
+        return "no LODs (mesh reduction unavailable)"
+    try:
+        verts = [unreal.SkeletalMeshEditorSubsystem().get_num_verts(mesh, i) for i in range(BUILT_LODS)]
+    except Exception:  # noqa: BLE001
+        verts = []
+    return "{0} LODs, vertices {1}".format(BUILT_LODS, " / ".join(str(v) for v in verts) or "?")
 
 
 def import_built(who, skeleton):
@@ -635,7 +656,7 @@ def import_built(who, skeleton):
     if not os.path.isfile(path):
         c.log("skipped", full, "no built costume at {0}; the painted body stays".format(path))
         return None
-    stamp = "built-1|" + _file_stamp(path)
+    stamp = "built-2|{0}|{1}".format(BUILT_LODS, _file_stamp(path))
     existing = c.load_or_none(full)
     if existing is not None and tag_of(existing) == stamp:
         c.log("exists", full)
@@ -660,9 +681,10 @@ def import_built(who, skeleton):
         unreal.EditorAssetLibrary.delete_asset(leftover.get_path_name().split(".")[0])
     unreal.EditorAssetLibrary.delete_directory(staging)
     mesh.set_editor_property("physics_asset", None)
+    lods = _generate_lods(mesh)
     set_tag(mesh, stamp)
     c.save(mesh)
-    c.log("imported", full, "from {0} onto {1}".format(os.path.basename(path), skeleton.get_name()))
+    c.log("imported", full, "from {0} onto {1}; {2}".format(os.path.basename(path), skeleton.get_name(), lods))
     return mesh
 
 
@@ -885,7 +907,7 @@ def run():
     c.ensure_directory(BODIES)
     lucky = import_lucky()
     if lucky is not None:
-        tint_lucky(lucky)
+        lucky_material(lucky)
         report_mesh(lucky)
     mesh = import_male()
     if mesh is None:
