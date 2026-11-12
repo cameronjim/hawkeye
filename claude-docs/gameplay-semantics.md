@@ -1708,6 +1708,7 @@ on every `FHawkeyeMeleeAttack`, the hit-stop, reaction and knockout tuning on th
   between them), its `Weight` (0 to 1). The struck body hears it before the damage, so a reaction clip picks the side it
   came from (`ClassifyReaction`) and a death throws the ragdoll from there. The melee hit sound plays at the contact point;
   Kate's spark sits at its height.
+- (2026-11-12: `Lerp(0.05, 0.09, weight)`, her light 62 ms and heavy 90, never stacking; see "Melee feel".)
 - Hit-stop: the world's time at 0.1 (as the parry's stop) for `Lerp(0.02, 0.07, weight)` real seconds, on any landed
   blow Kate or Clint lands or takes (thugs' blows on her stop it too now). It is the world's, not the two bodies' own:
   a per-body stop (tried first) let the AI's, the tokens' and a boss's clocks run on while Kate's stood still, and Santa,
@@ -1724,16 +1725,53 @@ on every `FHawkeyeMeleeAttack`, the hit-stop, reaction and knockout tuning on th
   struck bone 520 cm/s along the blow, the whole body 200 along it plus 90 up, times `Lerp(0.4, 1, weight)`; an arrow 0.45
   of that along the arrow with no lift and never into the floor; capped at 650 and 300 cm/s. Damping 0.6 / 1.5 while it
   falls. It ignores Pawn (Kate walks through) and now the camera. A clip playing as he dies (the finisher's victim, a
-  knockdown, a swing) hands over to the ragdoll over 0.2 s. Once the pelvis is under 10 cm/s for 0.5 s (4 s at most) the
-  body is put to sleep where it lies. A takedown from behind pushes him over forward at weight 0.15. A finisher's thrown
-  velocity is unchanged. Saves, `ITakedownable`, the mission's kill counts and stealth bodies are untouched. Kate's own
-  defeat is unchanged (no ragdoll).
+  knockdown, a swing) hands over to the ragdoll over 0.2 s. Once the pelvis is under 10 cm/s for 0.3 s (3 s at most; 0.5
+  and 4 before 2026-11-12) the body is put to sleep where it lies. A takedown from behind pushes him over forward at weight
+  0.15. A finisher throws through the same rule at `FinisherImpactWeight` (1) along its way (2026-11-12; before, every body
+  was set to 900 cm/s on and 450 up and went 8 m). Saves, `ITakedownable`, the mission's kill counts and stealth bodies are
+  untouched. Kate's own defeat is unchanged (no ragdoll). Grounded damping and the rest of the 2026-11-12 changes: "Melee
+  feel" below.
 - Numbers on Normal: Kate's light 66 cm to the head (her chain's third 70 to the torso, weight 0.55), slide cap 290 (the
   assist's 350 less the contact), turns any way; her heavy (the roundhouse) 88 to the torso, weight 1. A thug's fists 72 to
   the head (hands, weight 0.4), bat 100 to the torso (the bat, 0.65), the heavy's bash 85 (hands, a 35 cm sphere, 0.8), his
   slow bat 0.75; slide cap 110, turn cap 75. Bosses use the defaults (80, torso, 120, 75, any limb or what he holds, 0.4).
 - Seen (`Hawkeye.Screenshot.Contact`, and in the melee pass): `punch_contact.png`, `hit_reaction.png`,
   `knockout_ragdoll.png`, `knockout_settled.png` (testing.md, "Contact shots").
+
+## Melee feel (built 2026-11-12, from "fighting isn't smooth - punches don't land properly, ragdoll physics are off")
+Measured first (`Hawkeye.Audit.MeleeFeel`, docs/playtests/2026-11-11-melee-feel-audit.md). Rules in `UHawkeyeMeleeRules`
+(`SelectStrikeTarget`, `IsSlideFloorWalkable`, `ComputeSlideCap`) and `UHawkeyeHitContactRules` (`ComputeHitStopSecondsAfter`,
+`ComputeKnockoutDamping`), tested by `Hawkeye.Melee.StrikeTargetChoice`, `.NoMagnetismThroughWalls`, `.NoMagnetismOverLedges`,
+`.LightBufferedAfterHeavy`, `Hawkeye.HitContact.HitStopScaling`, `.KnockoutGroundedDamping`. Numbers are data:
+`FHawkeyeStrikeMagnetism` on each melee component, `FHawkeyeHitStopTuning` and `FHawkeyeKnockoutTuning` on each hit reaction
+component, Kate's `MeleeAssistRange` / `MeleeAssistAngleDegrees` / `MeleeAssistNearRange` / `LightBufferSeconds`.
+- Who a strike goes at: the best (as "Melee assist") inside 60 degrees of the stick when it was pushed in the last 0.15 s;
+  nobody there, inside 60 degrees of the camera's forward; nobody in either, the nearest within 150 cm whatever the angle.
+  Within 350 cm flat and 200 up or down, as before. A thug behind a wall, across a gap or below a ledge is never a pick.
+- The pull (warp, lunge or slide) is refused, and the swing turns and whiffs, when anything solid is on the chest-to-chest
+  sight line (an 8 cm sweep on Visibility; bodies do not count), or the floor from her feet to where the swing would stand
+  her (sampled every 25 cm) drops more than 60 cm or rises more than 45 (`"a wall between"`, `"no floor on the way"` in the
+  log). Then not even the attack's own step is taken. The assist's forgiveness never lands through a wall. Thugs' slides
+  obey the same rule. In the air (no floor under her) the floor rule passes.
+- Speed cap: the pull closes no faster than `MaxClosingSpeed`, averaged over the swing's wind-up (its clip's hit time) for a
+  warp or a lunge, over `ApproachSeconds` for an in-place slide: Kate 1,100 cm/s (her clip lights, 0.24 s: 264 cm, so
+  the whole assist range still lands), a thug 550 (110 cm over his 0.2 s slide). Past it, `"too far"`.
+- A blow moves the region it was aimed at (the head for a jab, the ribs for the roundhouse, the torso for a body on the
+  floor), not the body nearest the fist (it was his own guarding hand).
+- The struck body's kick is set on the body itself (`FBodyInstance::SetLinearVelocity`): `AddImpulse` refuses a query-only
+  mesh, every thug's driver, and threw every thug's kick away until now.
+- A reaction never simulates a body with no body above it (a component follows its root body): on Kate's Sparrow, which has
+  no pelvis body, that carried her whole look off her capsule a metre per punch she took. Such a body stays on the
+  animation and the bodies under it take the kick. A ragdoll owns the body only when its pelvis simulates.
+- Hit-stop: `Lerp(0.05, 0.09, weight)` real seconds (her light 62 ms, the heavy 90). A blow landing within 0.15 s (real) of
+  the last stop's start gets none: stops never stack.
+- Knockout: once he is down (0.4 s after the knockout at the earliest, the pelvis within 40 cm of the floor) the damping
+  rises from 0.6 / 1.5 to 4 / 8 over 0.5 s: he lands with weight and stops instead of rolling on. A body thrown off a roof
+  falls at full speed until it is down.
+- Buffering: a light pressed in the last 0.3 s of any recovery (a heavy's, a light whose chain is over) goes the moment that
+  swing ends, starting a fresh chain. Inside a chain's window it is kept as before.
+- Not changed: the light starts on the button's release (a 0.4 s hold is the heavy), so a tap's own length comes before the
+  swing; the audit leaves that to Cameron.
 
 ## Attack tokens (built 2026-11-10; group pressure pass the same day)
 Rules in `Source/Hawkeye/Combat/CombatTokenRules.h` (pure, tested by `Hawkeye.Tokens.*`); the state is
