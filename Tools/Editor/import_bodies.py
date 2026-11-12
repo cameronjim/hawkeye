@@ -53,9 +53,18 @@ DEFAULT_ASSETS_ROOT = r"C:\Users\camer\code\hawkeye-assets"
 BODIES = "/Game/Characters/Bodies"
 LUCKY = "/Game/Characters/Lucky"
 MALE_MESH = BODIES + "/SK_Body_Male"
+FEMALE_MESH = BODIES + "/SK_Body_Female"
 
 BASE_DIR = ("quaternius-base-characters", "Universal Base Characters[Standard]", "Base Characters")
 MALE_GLTF = BASE_DIR + ("Godot - UE", "Superhero_Male_FullBody.gltf")
+# Kate's build is on the pack's female body: the same 65 bone names, but its own rest pose and proportions, so it is its
+# own skeleton (a mesh bound to one rest pose cannot go on another's).
+FEMALE_GLTF = BASE_DIR + ("Godot - UE", "Superhero_Female_FullBody.gltf")
+# Base body -> (glTF, mesh path, skeleton name, build tag prefix).
+BASE_BODIES = {
+    "male": (MALE_GLTF, MALE_MESH, "SKEL_Body_Male", "male-1"),
+    "female": (FEMALE_GLTF, FEMALE_MESH, "SKEL_Body_Female", "female-1"),
+}
 TEXTURES = BASE_DIR + ("Textures",)
 # Lucky, a golden retriever generated locally (TRELLIS.2 from a Z-Image-Turbo reference, rigged and animated in
 # Blender; docs/CREDITS.md): one skinned mesh, 30 bones, metres, faces +X, Z up, 58 cm at the shoulder, and four in-place
@@ -164,30 +173,32 @@ def _rename(asset, wanted_path):
     return asset
 
 
-def import_male():
-    """SK_Body_Male from the glTF (no materials, no physics asset). Returns the mesh or None."""
-    path = source_file(MALE_GLTF)
+def import_base(key):
+    """SK_Body_Male or SK_Body_Female (BASE_BODIES) from the pack's glTF (no materials, no physics asset). Returns the
+    mesh or None."""
+    parts, full, skeleton_name, prefix = BASE_BODIES[key]
+    path = source_file(parts)
     if not os.path.isfile(path):
-        c.log("skipped", MALE_MESH, "no " + path)
+        c.log("skipped", full, "no " + path)
         return None
-    stamp = "male-1|" + _file_stamp(path)
-    existing = c.load_or_none(MALE_MESH)
+    stamp = prefix + "|" + _file_stamp(path)
+    existing = c.load_or_none(full)
     if existing is not None and tag_of(existing) == stamp:
-        c.log("exists", MALE_MESH)
+        c.log("exists", full)
         return existing
-    staging = BODIES + "/Import_Male"
+    staging = BODIES + "/Import_" + key.capitalize()
     c.ensure_directory(staging)
     ok, objects = _interchange_import(path, staging, _interchange_pipeline(materials=False, animations=False))
     found = [a for a in _assets_under(staging)]
     mesh = next((a for a in found if isinstance(a, unreal.SkeletalMesh)), None)
     skeleton = next((a for a in found if isinstance(a, unreal.Skeleton)), None)
     if mesh is None:
-        c.log("FAILED", MALE_MESH, "the import made no skeletal mesh (ok={0}, {1} objects, {2} in the folder)".format(
+        c.log("FAILED", full, "the import made no skeletal mesh (ok={0}, {1} objects, {2} in the folder)".format(
             ok, len(objects), len(found)))
         return None
     if skeleton is not None:
-        skeleton = _rename(skeleton, BODIES + "/SKEL_Body_Male")
-    mesh = _rename(mesh, MALE_MESH)
+        skeleton = _rename(skeleton, BODIES + "/" + skeleton_name)
+    mesh = _rename(mesh, full)
     for leftover in _assets_under(staging):
         unreal.EditorAssetLibrary.delete_asset(leftover.get_path_name().split(".")[0])
     unreal.EditorAssetLibrary.delete_directory(staging)
@@ -196,8 +207,12 @@ def import_male():
     c.save(mesh)
     if skeleton is not None:
         c.save(skeleton)
-    c.log("imported", MALE_MESH, "from " + os.path.basename(path))
+    c.log("imported", full, "from " + os.path.basename(path))
     return mesh
+
+
+def import_male():
+    return import_base("male")
 
 
 def _texture_settings(texture, kind):
@@ -620,8 +635,11 @@ M_BUILT = BUILT + "/M_BuiltLook"
 M_BUILT_MASKED = BUILT + "/M_BuiltLookMasked"
 BUILT_MATERIAL_BUILD = "built-material-1"   # bump when the graph below changes
 BUILT_LODS = 4   # LOD0 as built, then the engine's reductions at 50, 25 and 12.5 per cent of the triangles
-# The painted look's MI -> the built folder (<assets root>\built\<who>) whose SK_<Who>.glb replaces it.
-BUILT_LOOKS = {"MI_Body_Thug": "thug", "MI_Body_Heavy": "heavy", "MI_Body_Clint": "clint"}
+# The look it replaces (the painted look's MI, or KATE_LOOK_KEY for Sparrow) -> (the built folder, <assets
+# root>\built\<who>, whose SK_<Who>.glb replaces it; the base body, BASE_BODIES, whose skeleton it was built on).
+KATE_LOOK_KEY = "Kate"
+BUILT_LOOKS = {"MI_Body_Thug": ("thug", "male"), "MI_Body_Heavy": ("heavy", "male"), "MI_Body_Clint": ("clint", "male"),
+               KATE_LOOK_KEY: ("kate", "female")}
 WHITE_TEX = "/Engine/EngineResources/WhiteSquareTexture"
 FLAT_NORMAL_TEX = "/Engine/EngineMaterials/FlatNormal"
 
@@ -648,9 +666,10 @@ def _generate_lods(mesh):
 
 
 def import_built(who, skeleton):
-    """SK_Built_<Who> from built/<who>/SK_<Who>.glb, on SKEL_Body_Male: the same 65 bones, so IK_Body_Male, the
-    retargeters and the AnimBPs drive it unchanged. None (the painted body stays) when the file is missing or the
-    import did not land on that skeleton."""
+    """SK_Built_<Who> from built/<who>/SK_<Who>.glb, on the skeleton of the body it was built on (SKEL_Body_Male, or
+    SKEL_Body_Female for Kate): the same bones and rest pose, so that body's IK rig, the retargeters and the AnimBPs
+    drive it unchanged. None (the painted body, or Kate's Sparrow, stays) when the file is missing or the import did
+    not land on that skeleton."""
     path = built_file(who, "SK_{0}.glb".format(who.capitalize()))
     full = "{0}/SK_Built_{1}".format(BUILT, who.capitalize())
     if not os.path.isfile(path):
@@ -782,10 +801,20 @@ def built_materials(who, mesh, textures):
     return out
 
 
-def ensure_built(skeleton, textures):
-    """{painted look MI name: (built mesh, its materials)} for every built costume on disk and imported whole."""
+def built_on_disk(who):
+    return os.path.isfile(built_file(who, "SK_{0}.glb".format(who.capitalize())))
+
+
+def ensure_built(skeletons, textures):
+    """{look key (BUILT_LOOKS): (built mesh, its materials)} for every built costume on disk and imported whole.
+    skeletons: {base body key: its Skeleton}; a build whose base body did not import is skipped."""
     out = {}
-    for look_mi, who in BUILT_LOOKS.items():
+    for look_mi, (who, base) in BUILT_LOOKS.items():
+        skeleton = skeletons.get(base)
+        if skeleton is None:
+            if built_on_disk(who):
+                c.log("skipped", "{0}/SK_Built_{1}".format(BUILT, who.capitalize()), "no {0} body imported".format(base))
+            continue
         mesh = import_built(who, skeleton)
         if mesh is None:
             continue
@@ -898,6 +927,55 @@ def ensure_looks(mesh, materials, built=None):
         apply_look(bp_path, None, None, [])
 
 
+FEMALE_RIG = BODIES + "/IK_Body_Female"
+KATE_LOOK = "/Game/Characters/Kate/Look"
+KATE_BP = "/Game/Blueprints/Player/BP_Kate"
+
+
+def ensure_kate(female, built):
+    """Kate's built look: IK_Body_Female on the female body, RTG_Kate_To_Body from her driver (IK_Kate_UEFN, the
+    same source as Clint's), ABP_Kate_Body, and BP_Kate.BodyLook on SK_Built_Kate. No build on disk, or any step
+    failing: create_kate_look's Sparrow (when Paragon is in Content), as before. True when the built look is on."""
+    import create_kate_look as kl  # noqa: PLC0415
+    import import_combat_anims as ica  # noqa: PLC0415
+
+    def fallback(why):
+        c.log("skipped", KATE_BP + ".BodyLook (built Kate)", why + "; Sparrow, as before")
+        kl.run(apply=True)
+        return False
+
+    if KATE_LOOK_KEY not in built:
+        if built_on_disk("kate"):
+            return fallback("the built Kate is on disk but did not import whole")
+        return False
+    if female is None:
+        return fallback("no female body")
+    manifest = ica.load_manifest()
+    chain_maps = manifest["chain_maps"]
+    rig = kl.ensure_rig(female, chain_maps["ue4"], path=FEMALE_RIG)
+    source = ica.ensure_target("uefn", manifest["targets"]["uefn"], chain_maps) if rig is not None else None
+    if source is None:
+        return fallback("no IK rig on the female body or no driver rig (IK_Kate_UEFN)")
+    c.ensure_directory(KATE_LOOK)
+    rtg = kl.ensure_retargeter(source["rig"], source["mesh"], rig, female, path=KATE_LOOK + "/RTG_Kate_To_Body")
+    abp = kl.ensure_anim_bp(female, rtg, path=KATE_LOOK + "/ABP_Kate_Body") if rtg is not None else None
+    if abp is None:
+        return fallback("no retargeter or AnimBP")
+    mesh, materials = built[KATE_LOOK_KEY]
+    apply_look(KATE_BP, mesh, abp.generated_class(), materials)
+    return True
+
+
+def _sparrow_if_built_kate(why):
+    """create_kate_look leaves BP_Kate alone when the built Kate is on disk (this script sets her look); when this
+    script stops before her, she gets Sparrow as before."""
+    if built_on_disk("kate"):
+        import create_kate_look as kl  # noqa: PLC0415
+
+        c.log("skipped", KATE_BP + ".BodyLook (built Kate)", why + "; Sparrow, as before")
+        kl.run(apply=True)
+
+
 def run():
     root = assets_root()
     if not os.path.isdir(root):
@@ -911,14 +989,23 @@ def run():
         report_mesh(lucky)
     mesh = import_male()
     if mesh is None:
+        _sparrow_if_built_kate("no male body")
         return None
     report_mesh(mesh)
     textures = import_textures()
     materials = ensure_materials(textures)
     if materials is None:
+        _sparrow_if_built_kate("no body materials")
         return None
-    built = ensure_built(mesh.get_editor_property("skeleton"), textures)
+    female = import_base("female") if built_on_disk("kate") else None
+    if female is not None:
+        report_mesh(female)
+    skeletons = {"male": mesh.get_editor_property("skeleton")}
+    if female is not None:
+        skeletons["female"] = female.get_editor_property("skeleton")
+    built = ensure_built(skeletons, textures)
     ensure_looks(mesh, materials, built)
+    ensure_kate(female, built)
     return mesh
 
 

@@ -278,7 +278,19 @@ def apply_to_kate(mesh, abp, materials):
     return True
 
 
-def run():
+def built_kate_on_disk():
+    """The built Kate (Tools/Blender/build_kate.py) is on disk: import_bodies.py, the next step, sets BP_Kate's look to
+    it, and falls back to Sparrow itself (run(apply=True)) when it cannot."""
+    import import_bodies as ib  # noqa: PLC0415
+
+    return ib.built_on_disk("kate")
+
+
+def run(apply=None):
+    """Builds Sparrow's rig, retargeter, AnimBP and instances; puts them on BP_Kate when apply (default: unless the
+    built Kate is on disk)."""
+    if apply is None:
+        apply = not built_kate_on_disk()
     if not sparrow_present():
         c.log("skipped", "Kate's look", "Paragon: Sparrow is not at {0}; BP_Kate keeps the mannequin look".format(SPARROW_MESH))
         return None
@@ -296,7 +308,10 @@ def run():
     if abp is None:
         return None
     materials = ensure_materials(mesh)
-    apply_to_kate(mesh, abp, materials)
+    if apply:
+        apply_to_kate(mesh, abp, materials)
+    else:
+        c.log("skipped", KATE + ".BodyLook (Sparrow)", "the built Kate is on disk; import_bodies sets her look")
     return abp
 
 
