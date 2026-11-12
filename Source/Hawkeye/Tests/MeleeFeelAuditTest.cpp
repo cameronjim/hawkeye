@@ -157,6 +157,8 @@ namespace HawkeyeMeleeAudit
 		double DamageReal = 0.0;
 		double StopStartReal = 0.0;
 		int32 VictimSimulatingBefore = 0;
+		float AttackerSeenHandOffset = -1.f;
+		float VictimSeenHeadOffset = -1.f;
 	};
 
 	struct FKnockout
@@ -630,6 +632,8 @@ namespace HawkeyeMeleeAudit
 		Row->SetNumberField(TEXT("flash_frame"), B.FlashFrame);
 		Row->SetNumberField(TEXT("sound_frame"), B.SoundFrame);
 		Row->SetNumberField(TEXT("victim_bodies_simulating_before"), B.VictimSimulatingBefore);
+		Row->SetNumberField(TEXT("attacker_seen_hand_off_driver_cm"), B.AttackerSeenHandOffset);
+		Row->SetNumberField(TEXT("victim_seen_head_off_driver_cm"), B.VictimSeenHeadOffset);
 		return Row;
 	}
 
@@ -685,6 +689,19 @@ namespace HawkeyeMeleeAudit
 					B.DriverLimbGap =
 						NearestLimbGap(Cast<ACharacter>(Attacker)->GetMesh(), DriverBody(Victim), B.DriverLimb);
 					B.SeenLimbGap = NearestLimbGap(SeenMesh(Attacker), SeenMesh(Victim), B.SeenLimb);
+					// How far each seen body's bones sit off its driver's: a look that has come apart from its driver.
+					auto Offset = [](AActor* Actor, const TCHAR* Bone)
+					{
+						FVector Seen;
+						FVector Driver;
+						const ACharacter* Character = Cast<ACharacter>(Actor);
+						return Character && BonePos(SeenMesh(Actor), Bone, Seen) &&
+								BonePos(Character->GetMesh(), Bone, Driver)
+							? static_cast<float>(FVector::Dist(Seen, Driver))
+							: -1.f;
+					};
+					B.AttackerSeenHandOffset = Offset(Attacker, TEXT("hand_r"));
+					B.VictimSeenHeadOffset = Offset(Victim, TEXT("head"));
 					const FVector To = (Victim->GetActorLocation() - Attacker->GetActorLocation()).GetSafeNormal2D();
 					B.FacingDegrees = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
 						FVector::DotProduct(Attacker->GetActorForwardVector().GetSafeNormal2D(), To), -1.f, 1.f)));
@@ -1192,6 +1209,15 @@ bool FHawkeyeMeleeAuditRun::Run(UWorld* World, AHawkeyeCharacter* Kate)
 				{
 					FinishSmooth(World, Kate);
 				}
+				if (Trial.Kind == EKind::ThugFists && Trial.Angle > 0.f)
+				{
+					// After his punches: is her look still on her (it once drifted a metre off per punch)?
+					FrameKnockout(
+						World, World->GetFirstPlayerController(), Kate->GetActorLocation() - S.Along * 120.f, S.Along);
+					HawkeyeShots::Request(Test, ShotPath(TEXT("kate_after_his_punches.png")), false);
+					Advance();
+					return false;
+				}
 				return true;
 			}
 			// The knockout: frames at 0.1, 0.3, 0.7, 1.5 s after he went limp, then until settled (6 s at most).
@@ -1248,7 +1274,10 @@ bool FHawkeyeMeleeAuditRun::Run(UWorld* World, AHawkeyeCharacter* Kate)
 			{
 				return false;
 			}
-			FinishKnockout();
+			if (IsKnockout(Trial.Kind))
+			{
+				FinishKnockout();
+			}
 			return true;
 	}
 }
@@ -1262,6 +1291,30 @@ void FHawkeyeMeleeAuditRun::FinishBlow()
 	const FTrial& Trial = S.Trials[S.Index];
 	S.Rows.Add(MakeShared<FJsonValueObject>(BlowJson(Trial, S.Current)));
 	const FBlow& B = S.Current;
+	if (UWorld* World = FindWorld(); World && FindKate(World))
+	{
+		// Where her look sits against her driver: it is attached at the identity.
+		AHawkeyeCharacter* Kate = FindKate(World);
+		const USkeletalMeshComponent* Look = Kate->GetBodyMesh();
+		const USkeletalMeshComponent* Driver = Kate->GetMesh();
+		if (Look && Driver && Look != Driver)
+		{
+			int32 Simulating = 0;
+			for (const FBodyInstance* Body : Look->Bodies)
+			{
+				Simulating +=
+					Body && Body->BodySetup.IsValid() && Look->IsSimulatingPhysics(Body->BodySetup->BoneName) ? 1 : 0;
+			}
+			Test->AddInfo(FString::Printf(
+				TEXT("Melee audit: Kate's look: relative %s, %.1f cm off the driver component, attached to %s, "
+					 "%d bodies simulating, root body %s, collision %d."),
+				*Look->GetRelativeLocation().ToCompactString(),
+				FVector::Dist(Look->GetComponentLocation(), Driver->GetComponentLocation()),
+				*GetNameSafe(Look->GetAttachParent()), Simulating,
+				Look->Bodies.Num() > 0 ? *FString::FromInt(Look->Bodies.Num()) : TEXT("no bodies"),
+				static_cast<int32>(Look->GetCollisionEnabled())));
+		}
+	}
 	Test->AddInfo(FString::Printf(
 		TEXT("Melee audit: %s %s from %.0f cm at %.0f deg: %s at %.2f s (%d frames), capsules %.0f cm, "
 			 "driver %s %.0f cm off his body, seen %s %.0f cm, facing %.0f deg; after: stop f%d %.0f ms, clip f%d %s "
@@ -1428,6 +1481,12 @@ void FHawkeyeMeleeAuditRun::Write(UWorld* World, AHawkeyeCharacter* Kate)
 	// lands, a fall that stays a fall.
 	for (const FBlow& B : S.Blows)
 	{
+		if (B.AttackerSeenHandOffset > 30.f || B.VictimSeenHeadOffset > 30.f)
+		{
+			Test->AddError(FString::Printf(
+				TEXT("Melee audit: %s: a seen body has come off its driver (hand %.0f cm, head %.0f cm)."), *B.Attack,
+				B.AttackerSeenHandOffset, B.VictimSeenHeadOffset));
+		}
 		if (B.bLanded && B.Attack != TEXT("arrow") && B.Attack != TEXT("finisher") && B.DriverLimbGap > 25.f)
 		{
 			Test->AddError(
