@@ -90,7 +90,11 @@ hem at the hips (no blouson), sleeves with a tube over the upper arm only that n
 the wrist ended in a fat disc above the cuff, the balloon), ribbed cuffs, a short stand collar, a metal zip and pull, two white stripes from the collar down each
 sleeve (on top of the T-posed arm, the outside when it hangs); trousers with two white stripes down the outside of each
 leg and ribbed ankles that rest on the trainers' collars (`ANKLE_Z` 0.072; at 0.092 a gap showed); white trainers with a thick cupsole, a grey midsole line, black side panels
-and collar, laces and a heel tab. Buzzed black hair, bare hands. About 47k triangles, 12 materials.
+and collar, laces and a heel tab. Buzzed black hair, bare hands. About 47k triangles, 12 materials. Since
+2026-11-12 the suit is matte (roughness 0.86; at 0.62 it read as vinyl in the engine's sun), the ribbed hem and cuffs
+are the suit's own red (darker, they read as a seam band), the jacket hangs closer to the chest and draws in toward
+the hem (pad 0.012, `hem_in` 0.08), and the trousers' crotch takes most of its weight from the pelvis, smoothed hard
+(`crotch_weights`): each vertex there had followed the nearer thigh, so a wide stance tore it into a stepped crease.
 
 **Heavy** (`build_heavy.py`). The thug's tracksuit with a glossy black quilted puffer vest over it (channels every
 7 cm, a zip, a stand collar), a black knit balaclava with one eye slot, and the black combat boots with the trousers
