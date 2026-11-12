@@ -36,6 +36,7 @@
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/InventoryComponent.h"
+#include "Player/ParkourComponent.h"
 #include "Save/HawkeyeSaveSubsystem.h"
 #include "Settings/DifficultySubsystem.h"
 #include "SpudSubsystem.h"
@@ -88,6 +89,8 @@ namespace HawkeyeSocialLap
 	static const TCHAR* MeleePath = TEXT("/Game/Input/IA_Melee.IA_Melee");
 	static const TCHAR* TakedownPath = TEXT("/Game/Input/IA_Takedown.IA_Takedown");
 	static const TCHAR* GrapplePath = TEXT("/Game/Input/IA_Grapple.IA_Grapple");
+	static const TCHAR* JumpPath = TEXT("/Game/Input/IA_Jump.IA_Jump");
+	static const TCHAR* CrouchPath = TEXT("/Game/Input/IA_Crouch.IA_Crouch");
 	static const TCHAR* Chapter = TEXT("DA_CH04_SocialClub");
 	static const TCHAR* Slot = TEXT("HawkeyeSocialClubLap");
 	static constexpr int32 SlotStandard = 1;
@@ -272,6 +275,8 @@ private:
 	double MeleeHeldSince = 0.0;
 	double NextActionAt = 0.0;
 	double LastParryTap = -10.0;
+	/** When she first hung from a ledge in the fight (-1: not hanging). */
+	double HangSince = -1.0;
 	double GrapplePressedAt = -10.0;
 	int32 GrapplePresses = 0;
 	int32 Zips = 0;
@@ -672,6 +677,22 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 		return;
 	}
 	const FBossPhaseDefinition& Phase = Def->Phases[Fight->GetPhaseIndex()];
+	// Tomas's haymaker can knock her 200 cm over the roof's edge onto a ledge (2026-11-12: she hung there, shimmying at
+	// him, until the lap timed out). A player climbs back up (jump), and lets go (crouch) when the top will not take her.
+	if (const UParkourComponent* Parkour = Kate->GetParkourComponent(); Parkour && Parkour->IsHanging())
+	{
+		Move(PC, FVector2D::ZeroVector);
+		if (Now >= NextActionAt)
+		{
+			const bool bLetGo = HangSince >= 0.0 && Now - HangSince > 1.0;
+			Timeline.Add(FString::Printf(TEXT("%.1f %s a ledge the knockback put her on"), Now - LapStart, bLetGo ? TEXT("lets go of") : TEXT("climbs")));
+			Tap(PC, bLetGo ? CrouchPath : JumpPath);
+			HangSince = HangSince < 0.0 ? Now : HangSince;
+			NextActionAt = Now + 0.5;
+		}
+		return;
+	}
+	HangSince = -1.0;
 	TArray<AThugCharacter*> Targets;
 	for (AThugCharacter* Thug : Fight->GetCrew())
 	{
