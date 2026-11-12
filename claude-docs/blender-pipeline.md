@@ -78,18 +78,18 @@ bands, cuffs, the side seams and a curved line from each shoulder to the panel. 
 trousers, a little loose, tucked into tall lace-up combat boots (toe cap, heel counter, sole with a heel, strap and
 buckle, pull tab). Leather gloves. A rigid guard with two straps on the bow (left) forearm over the sleeve. A black
 quiver across the back, mouth over the left shoulder, ten arrows with nocks and vanes, its strap across the chest.
-Parted brown hair and the pack's beard (an original face comes later through MetaHuman). About 75k triangles, 19
+Parted brown hair and the pack's beard (an original face comes later through MetaHuman). About 77k triangles, 19
 materials.
 
 **Thug** (`build_thug.py`). The Tracksuit Mafia in dark red: a loose zip jacket hanging straight from the chest to a
 ribbed hem, ribbed cuffs, a short stand collar, a metal zip and pull, two white stripes from the collar down each
 sleeve (on top of the T-posed arm, the outside when it hangs); baggy trousers with two white stripes down the outside
 of each leg and gathered ribbed ankles; white trainers with a thick cupsole, a grey midsole line, black side panels
-and collar, laces and a heel tab. Buzzed black hair, bare hands. About 59k triangles, 12 materials.
+and collar, laces and a heel tab. Buzzed black hair, bare hands. About 47k triangles, 12 materials.
 
 **Heavy** (`build_heavy.py`). The thug's tracksuit with a glossy black quilted puffer vest over it (channels every
 7 cm, a zip, a stand collar), a black knit balaclava with one eye slot, and the black combat boots with the trousers
-tucked in. About 78k triangles, 14 materials.
+tucked in. About 60k triangles, 14 materials.
 
 ## Unreal side (written, not yet run)
 
@@ -107,6 +107,8 @@ watched for `FAILED` lines under `/Game/Characters/Bodies/Built`, and `Hawkeye.S
 
 - No cloth simulation: Clint's skirt is skinned. It swings in a stride, but in a deep crouch the front panels fold
   into the boots. A cloth asset (Chaos Cloth) on the skirt would fix it in the engine.
-- Triangle counts are high for enemies (59k and 78k); a LOD pass (or a lower `decimate` budget) is the next step.
+- Triangle counts are still high for enemies (47k and 60k; most of it is the doubled shell from Solidify and the
+  stripe cuts); engine LODs (or lower `JACKET_TRIS` / `TROUSER_TRIS`) are the next step.
+- Faint upper-back muscle relief still shows through Clint's coat between the shoulder blades in flat light.
 - The face is the pack's single male face; hair, beard and the balaclava are what tell them apart.
 - The pack's hands are large and its eyebrow and beard cards are coarse.
