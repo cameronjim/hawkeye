@@ -448,6 +448,13 @@ private:
 				KateRef->TeleportTo(Feet + Side * 45.f + FVector(0.f, 0.f, KateRef->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
 					Along.Rotation(), false, true);
 				KateRef->SetActorRotation(Along.Rotation());
+				// A teleport puts a character with no movement mode back to falling; with her collision off she would fall
+				// through the street. Held where she is instead.
+				if (UCharacterMovementComponent* Movement = KateRef->GetCharacterMovement())
+				{
+					Movement->DisableMovement();
+					Movement->StopMovementImmediately();
+				}
 				// Her own camera is not the view: stop her tick so its close-up hide cannot hide her from this one.
 				KateRef->SetActorTickEnabled(false);
 				if (USkeletalMeshComponent* Body = KateRef->GetBodyMesh())
@@ -516,6 +523,14 @@ private:
 		if (Subject == LuckyShot || Subject == LuckyKateShot)
 		{
 			CheckLucky(FString(Names[Subject]) + TEXT(".png"));
+			if (Subject == LuckyKateShot && KateRef.IsValid())
+			{
+				const USkeletalMeshComponent* Body = KateRef->GetBodyMesh();
+				Test->AddInfo(FString::Printf(TEXT("body_lucky_kate.png: Kate at %s (%.0f cm from Lucky), hidden %d, body %s visible %d owner-no-see %d."),
+					*KateRef->GetActorLocation().ToCompactString(), Current.IsValid() ? FVector::Dist(KateRef->GetActorLocation(), Current->GetActorLocation()) : -1.f,
+					KateRef->IsHidden() ? 1 : 0, *GetNameSafe(Body ? Body->GetSkeletalMeshAsset() : nullptr), Body && Body->IsVisible() ? 1 : 0,
+					Body && Body->bOwnerNoSee ? 1 : 0));
+			}
 		}
 		else if (Subject >= PunchShot)
 		{
