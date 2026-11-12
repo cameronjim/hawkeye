@@ -133,6 +133,50 @@ FName UHitReactionComponent::FindStruckBody(const USkeletalMeshComponent& Mesh, 
 	return Best;
 }
 
+TArray<FName> UHitReactionComponent::FindTopBodiesBelow(const USkeletalMeshComponent& Mesh, FName Bone) const
+{
+	TArray<FName> Top;
+	for (const FBodyInstance* Body : Mesh.Bodies)
+	{
+		const FName Name = Body && Body->BodySetup.IsValid() ? Body->BodySetup->BoneName : NAME_None;
+		if (Name.IsNone() || (Name != Bone && !Mesh.BoneIsChildOf(Name, Bone)))
+		{
+			continue;
+		}
+		bool bBodyAbove = false;
+		for (FName Parent = Mesh.GetParentBone(Name); !Parent.IsNone() && !bBodyAbove; Parent = Mesh.GetParentBone(Parent))
+		{
+			bBodyAbove = Mesh.GetBodyInstance(Parent) != nullptr;
+		}
+		if (!bBodyAbove)
+		{
+			Top.Add(Name);
+		}
+	}
+	return Top;
+}
+
+bool UHitReactionComponent::IsPelvisNearFloor(const USkeletalMeshComponent& Mesh) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || Mesh.GetBoneIndex(PelvisBone) == INDEX_NONE)
+	{
+		return true;
+	}
+	const FVector Pelvis = Mesh.GetBoneLocation(PelvisBone);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeKnockoutFloor), /*bTraceComplex=*/false, GetOwner());
+	FHitResult Hit;
+	return World->LineTraceSingleByChannel(Hit, Pelvis, Pelvis - FVector(0.f, 0.f, Knockout.GroundedHeight), ECC_Visibility, Params);
+}
+
+bool UHitReactionComponent::IsRagdollOwned(const USkeletalMeshComponent& Mesh) const
+{
+	// The pelvis simulating is a knockdown or a death. Not "the root body simulating": on a physics asset with no pelvis
+	// body (Kate's Sparrow) the root body is spine_01, the reaction's own chain, which once cancelled every reaction of hers
+	// on its first tick and left her chest simulating for good (the melee feel audit, 2026-11-12).
+	return Mesh.GetBodyInstance(PelvisBone) != nullptr && Mesh.IsSimulatingPhysics(PelvisBone);
+}
+
 FName UHitReactionComponent::FindChainRoot(const USkeletalMeshComponent& Mesh, FName Bone) const
 {
 	FName Current = Bone;
@@ -159,7 +203,7 @@ void UHitReactionComponent::StartQueuedReaction()
 	}
 	++ReactionCount;
 	// A body already simulating (a knockdown, a get-up, a death) is the ragdoll's: the reaction leaves it alone.
-	if (!Mesh || (Health && !Health->IsAlive()) || Mesh->IsAnySimulatingPhysics() || !PrepareMesh(*Mesh))
+	if (!Mesh || (Health && !Health->IsAlive()) || IsRagdollOwned(*Mesh) || !PrepareMesh(*Mesh))
 	{
 		return;
 	}
@@ -179,9 +223,47 @@ void UHitReactionComponent::StartQueuedReaction()
 	PhysicalAnimation->ApplyPhysicalAnimationSettingsBelow(Root, Motors, /*bIncludeSelf=*/true);
 	Mesh->SetAllBodiesBelowSimulatePhysics(Root, true, /*bIncludeSelf=*/true);
 	Mesh->SetAllBodiesBelowPhysicsBlendWeight(Root, 0.f, false, /*bIncludeSelf=*/true);
+	// Never a body with no body above it: a component follows its root body while that simulates, and on Kate's Sparrow
+	// (no pelvis body) the topmost spine body is the root, inside the chain. Every punch she took carried her whole look
+	// off her capsule and left it there, about a metre further each time, until she was gone from the street (the melee
+	// feel audit, 2026-11-12, kate_after_his_punches.png). That body stays on the animation; the ones under it react.
+	KeptKinematic = FindTopBodiesBelow(*Mesh, Root);
+	for (const FName Bone : KeptKinematic)
+	{
+		if (FBodyInstance* Body = Mesh->GetBodyInstance(Bone))
+		{
+			Body->SetInstanceSimulatePhysics(false);
+			Body->PhysicsBlendWeight = 0.f;
+		}
+	}
 	const FVector Kick = UHawkeyeHitContactRules::ComputeReactionImpulse(QueuedImpact.Direction, QueuedImpact.Weight,
 		bReactionGuarding, Reaction);
-	Mesh->AddImpulse(Kick, Struck, /*bVelChange=*/true);
+	// The struck body's velocity, set on the body itself: AddImpulse refuses a mesh whose collision is query only (every
+	// thug's driver, CharacterMesh), and dropped every thug's kick until 2026-11-12 (the melee feel audit).
+	if (!KeptKinematic.Contains(Struck))
+	{
+		if (FBodyInstance* Body = Mesh->GetBodyInstance(Struck))
+		{
+			Body->SetLinearVelocity(Kick, /*bAddToCurrent=*/true);
+		}
+	}
+	else
+	{
+		// The struck body is held on the animation: the bodies hanging straight off it (her neck, her arms) take the kick.
+		for (FBodyInstance* Body : Mesh->Bodies)
+		{
+			const FName Name = Body && Body->BodySetup.IsValid() ? Body->BodySetup->BoneName : NAME_None;
+			FName Above = Name.IsNone() ? NAME_None : Mesh->GetParentBone(Name);
+			while (!Above.IsNone() && !Mesh->GetBodyInstance(Above))
+			{
+				Above = Mesh->GetParentBone(Above);
+			}
+			if (Above == Struck)
+			{
+				Body->SetLinearVelocity(Kick, /*bAddToCurrent=*/true);
+			}
+		}
+	}
 
 	bReacting = true;
 	ReactionElapsed = 0.f;
@@ -195,8 +277,8 @@ void UHitReactionComponent::StartQueuedReaction()
 void UHitReactionComponent::FinishReaction()
 {
 	USkeletalMeshComponent* Mesh = ReactionMesh.Get();
-	// A ragdoll that took the body over mid-reaction (the root simulating) keeps it.
-	if (bReacting && Mesh && !ReactionRoot.IsNone() && !Mesh->IsSimulatingPhysics())
+	// A ragdoll that took the body over mid-reaction (the pelvis simulating) keeps it.
+	if (bReacting && Mesh && !ReactionRoot.IsNone() && !IsRagdollOwned(*Mesh))
 	{
 		Mesh->SetAllBodiesBelowPhysicsBlendWeight(ReactionRoot, 0.f, false, true);
 		Mesh->SetAllBodiesBelowSimulatePhysics(ReactionRoot, false, true);
@@ -240,6 +322,7 @@ void UHitReactionComponent::BeginKnockout(USkeletalMeshComponent* Ragdoll, bool 
 	bKnockoutSettled = false;
 	KnockoutElapsed = 0.f;
 	KnockoutStillSeconds = 0.f;
+	KnockoutGroundedAt = -1.f;
 	KnockoutBoneVelocity = FVector::ZeroVector;
 	KnockoutBodyVelocity = FVector::ZeroVector;
 
@@ -304,7 +387,7 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	if (bReacting)
 	{
 		USkeletalMeshComponent* Mesh = ReactionMesh.Get();
-		if (!Mesh || Mesh->IsSimulatingPhysics())
+		if (!Mesh || IsRagdollOwned(*Mesh))
 		{
 			CancelReaction();
 		}
@@ -314,6 +397,13 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 			ReactionBlend = UHawkeyeHitContactRules::ComputeReactionBlend(ReactionElapsed, QueuedImpact.Weight, bReactionGuarding,
 				Reaction);
 			Mesh->SetAllBodiesBelowPhysicsBlendWeight(ReactionRoot, ReactionBlend, false, true);
+				for (const FName Bone : KeptKinematic)
+				{
+					if (FBodyInstance* Body = Mesh->GetBodyInstance(Bone))
+					{
+						Body->PhysicsBlendWeight = 0.f;
+					}
+				}
 			if (ReactionElapsed >= Reaction.RecoverSeconds)
 			{
 				FinishReaction();
@@ -338,6 +428,26 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 				{
 					bKnockoutBlending = false;
 					Ragdoll->SetEnablePhysicsBlending(true);
+				}
+			}
+			// Down, the damping climbs: the body lands with weight and stops instead of rolling on. Not in the air: a body
+			// off a roof falls at full speed.
+			if (KnockoutGroundedAt < 0.f && KnockoutElapsed >= Knockout.GroundedAfterSeconds && IsPelvisNearFloor(*Ragdoll))
+			{
+				KnockoutGroundedAt = KnockoutElapsed;
+			}
+			const float SecondsGrounded = KnockoutGroundedAt < 0.f ? -1.f : KnockoutElapsed - KnockoutGroundedAt;
+			if (SecondsGrounded >= 0.f && SecondsGrounded <= Knockout.GroundedBlendSeconds + Step)
+			{
+				const FVector2D Damping = UHawkeyeHitContactRules::ComputeKnockoutDamping(SecondsGrounded, Knockout);
+				for (FBodyInstance* Body : Ragdoll->Bodies)
+				{
+					if (Body)
+					{
+						Body->LinearDamping = Damping.X;
+						Body->AngularDamping = Damping.Y;
+						Body->UpdateDampingProperties();
+					}
 				}
 			}
 			const float Speed = Ragdoll->GetPhysicsLinearVelocity(PelvisBone).Size();

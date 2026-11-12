@@ -112,6 +112,15 @@ protected:
 	/** The physics state the reaction needs on Mesh (a collision-less look gets physics-only bodies that touch nothing). */
 	bool PrepareMesh(USkeletalMeshComponent& Mesh);
 
+	/** Bodies at or under Bone with no body above them on the way to the skeleton's root (the physics asset's topmost). */
+	TArray<FName> FindTopBodiesBelow(const USkeletalMeshComponent& Mesh, FName Bone) const;
+
+	/** The knockout's pelvis is within GroundedHeight of the floor (no pelvis or no world: true). */
+	bool IsPelvisNearFloor(const USkeletalMeshComponent& Mesh) const;
+
+	/** A knockdown or a death's ragdoll has the body (its pelvis simulates): a reaction leaves it alone. */
+	bool IsRagdollOwned(const USkeletalMeshComponent& Mesh) const;
+
 	/** The child of the pelvis the struck bone hangs under (spine_01 for the torso, a thigh for a leg). */
 	FName FindChainRoot(const USkeletalMeshComponent& Mesh, FName Bone) const;
 
@@ -134,6 +143,8 @@ protected:
 	float ReactionElapsed = 0.f;
 	float ReactionBlend = 0.f;
 	FName ReactionRoot;
+	/** Bodies of the chain held on the animation: those with no body above them (the component follows its root body). */
+	TArray<FName> KeptKinematic;
 	FName ReactionBone;
 	int32 ReactionCount = 0;
 
@@ -142,6 +153,8 @@ protected:
 	bool bKnockoutBlending = false;
 	float KnockoutElapsed = 0.f;
 	float KnockoutStillSeconds = 0.f;
+	/** KnockoutElapsed when he was first down (the grounded damping starts), -1 until then. */
+	float KnockoutGroundedAt = -1.f;
 	FVector KnockoutBoneVelocity = FVector::ZeroVector;
 	FVector KnockoutBodyVelocity = FVector::ZeroVector;
 

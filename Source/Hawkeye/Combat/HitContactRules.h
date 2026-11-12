@@ -146,13 +146,20 @@ struct HAWKEYE_API FHawkeyeHitStopTuning
 {
 	GENERATED_BODY()
 
-	/** At weight 0, real seconds. */
+	/** At weight 0, real seconds (2026-11-12: 0.02, which left her light at 0.035 s, two frames that did not read). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0"))
-	float MinSeconds = 0.02f;
+	float MinSeconds = 0.05f;
 
 	/** At weight 1. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0"))
-	float MaxSeconds = 0.07f;
+	float MaxSeconds = 0.09f;
+
+	/**
+	 * A blow landing within this long (real seconds) of the last stop's start gets none of its own: two blows at once
+	 * (two thugs, or hers and his) never stack into a freeze.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0"))
+	float MinGapSeconds = 0.15f;
 
 	/** The world's time while it holds. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -238,11 +245,11 @@ struct HAWKEYE_API FHawkeyeKnockoutTuning
 	float SettleSpeed = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
-	float SettleHoldSeconds = 0.5f;
+	float SettleHoldSeconds = 0.3f;
 
-	/** ...or at the latest this long after it went down, s. */
+	/** ...or at the latest this long after it went down, s (4 before the audit; a body still crawling at 3 s is a defect). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.5"))
-	float SettleMaxSeconds = 4.f;
+	float SettleMaxSeconds = 3.f;
 
 	/** Linear and angular damping on every body while it falls (the physics asset's own are near zero). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
@@ -250,6 +257,26 @@ struct HAWKEYE_API FHawkeyeKnockoutTuning
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
 	float AngularDamping = 1.5f;
+
+	/**
+	 * Once he is down (at least this long after the knockout, his pelvis within GroundedHeight of the floor), the damping
+	 * rises to the grounded values over GroundedBlendSeconds: a body lands with weight and stops, it does not roll and slide
+	 * on (the audit: still 150 to 290 cm/s 1.5 s in).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
+	float GroundedAfterSeconds = 0.4f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
+	float GroundedHeight = 40.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.01"))
+	float GroundedBlendSeconds = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
+	float GroundedLinearDamping = 4.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Knockout", meta = (ClampMin = "0.0"))
+	float GroundedAngularDamping = 8.f;
 };
 
 /**
@@ -303,6 +330,12 @@ public:
 	static float ComputeHitStopSeconds(float Weight, const FHawkeyeHitStopTuning& Tuning);
 
 	/**
+	 * The same for a blow landing SecondsSinceLastStop (real) after the last stop began (negative: there was none): 0
+	 * inside the tuning's MinGapSeconds, so stops never stack.
+	 */
+	static float ComputeHitStopSecondsAfter(float Weight, const FHawkeyeHitStopTuning& Tuning, float SecondsSinceLastStop);
+
+	/**
 	 * Whether a party of a landed blow plays its reaction after the hit-stop (alive, not winding up a swing: a boss
 	 * swinging through a light keeps his swing's pose).
 	 */
@@ -321,6 +354,13 @@ public:
 	 */
 	static void ComputeKnockoutImpulse(const FVector& Direction, float Weight, EHawkeyeImpactSource Source,
 		const FHawkeyeKnockoutTuning& Tuning, FVector& OutBone, FVector& OutBody);
+
+	/**
+	 * A knocked-out body's damping SecondsGrounded after it was first down (negative: still falling, or not yet
+	 * GroundedAfterSeconds in): the falling values, then up to the grounded ones over GroundedBlendSeconds (smoothstepped),
+	 * so a body thrown off a roof still falls at full speed. X linear, Y angular.
+	 */
+	static FVector2D ComputeKnockoutDamping(float SecondsGrounded, const FHawkeyeKnockoutTuning& Tuning);
 
 	/** The camera kick for a landed blow of Weight: Light cm at 0, Heavy cm at 1. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Contact")

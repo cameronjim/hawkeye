@@ -128,6 +128,15 @@ float UHawkeyeHitContactRules::ComputeHitStopSeconds(float Weight, const FHawkey
 	return FMath::Max(FMath::Lerp(Tuning.MinSeconds, Tuning.MaxSeconds, FMath::Clamp(Weight, 0.f, 1.f)), 0.f);
 }
 
+float UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(float Weight, const FHawkeyeHitStopTuning& Tuning, float SecondsSinceLastStop)
+{
+	if (SecondsSinceLastStop >= 0.f && SecondsSinceLastStop < Tuning.MinGapSeconds)
+	{
+		return 0.f;
+	}
+	return ComputeHitStopSeconds(Weight, Tuning);
+}
+
 bool UHawkeyeHitContactRules::ShouldHitStop(bool bAlive, bool bWindingUp)
 {
 	return bAlive && !bWindingUp;
@@ -184,6 +193,14 @@ void UHawkeyeHitContactRules::ComputeKnockoutImpulse(const FVector& Direction, f
 	OutBone = (BoneAlong * Tuning.BoneSpeed * Share).GetClampedToMaxSize(Tuning.MaxBoneSpeed);
 	OutBody = (Flat * Tuning.BodySpeed * Share + FVector(0.f, 0.f, bArrow ? 0.f : Tuning.Lift * Share))
 		.GetClampedToMaxSize(Tuning.MaxBodySpeed);
+}
+
+FVector2D UHawkeyeHitContactRules::ComputeKnockoutDamping(float SecondsGrounded, const FHawkeyeKnockoutTuning& Tuning)
+{
+	const float Alpha = SecondsGrounded < 0.f ? 0.f : FMath::SmoothStep(0.f, 1.f,
+		FMath::Clamp(SecondsGrounded / FMath::Max(Tuning.GroundedBlendSeconds, 0.01f), 0.f, 1.f));
+	return FVector2D(FMath::Lerp(Tuning.LinearDamping, Tuning.GroundedLinearDamping, Alpha),
+		FMath::Lerp(Tuning.AngularDamping, Tuning.GroundedAngularDamping, Alpha));
 }
 
 float UHawkeyeHitContactRules::ComputeCameraKick(float Weight, float LightDistance, float HeavyDistance)

@@ -178,7 +178,15 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Clamped above 1"), UHawkeyeHitContactRules::ComputeHitStopSeconds(3.f, Tuning), Tuning.MaxSeconds, 0.0001f);
 	TestTrue(TEXT("Heavier, longer"), UHawkeyeHitContactRules::ComputeHitStopSeconds(0.3f, Tuning)
 		< UHawkeyeHitContactRules::ComputeHitStopSeconds(0.6f, Tuning));
-	TestTrue(TEXT("A few frames: two to five at 60"), Tuning.MinSeconds >= 0.015f && Tuning.MaxSeconds <= 0.09f);
+	TestTrue(TEXT("50 to 90 ms: three to five frames at 60"), Tuning.MinSeconds >= 0.05f - 0.0001f && Tuning.MaxSeconds <= 0.09f + 0.0001f);
+	// Two blows at once never stack into a freeze: the second, inside the gap, gets none of its own.
+	TestEqual(TEXT("No stop before: the full one"), UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(1.f, Tuning, -1.f),
+		Tuning.MaxSeconds, 0.0001f);
+	TestEqual(TEXT("Inside the gap after the last: none"),
+		UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(1.f, Tuning, Tuning.MinGapSeconds * 0.5f), 0.f);
+	TestEqual(TEXT("Past it: its own again"),
+		UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(0.3f, Tuning, Tuning.MinGapSeconds + 0.01f),
+		UHawkeyeHitContactRules::ComputeHitStopSeconds(0.3f, Tuning), 0.0001f);
 
 	TestTrue(TEXT("Alive and not winding up: reacts after the stop"), UHawkeyeHitContactRules::ShouldHitStop(true, false));
 	TestFalse(TEXT("Winding up a swing: keeps his swing"), UHawkeyeHitContactRules::ShouldHitStop(true, true));
@@ -191,9 +199,9 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 		AddError(TEXT("Failed to spawn Kate."));
 		return false;
 	}
-	// Her light (weight 0.3) about two frames, her heavy (1.0) about four, as before the per-body stop.
-	TestEqual(TEXT("Her light"), Kate->GetMeleeHitStopSeconds(false), 0.035f, 0.001f);
-	TestEqual(TEXT("Her heavy"), Kate->GetMeleeHitStopSeconds(true), 0.07f, 0.001f);
+	// Her light (weight 0.3) 62 ms, her heavy (1.0) 90 ms (2026-11-12: 35 and 70, the light too short to read).
+	TestEqual(TEXT("Her light"), Kate->GetMeleeHitStopSeconds(false), 0.062f, 0.001f);
+	TestEqual(TEXT("Her heavy"), Kate->GetMeleeHitStopSeconds(true), 0.09f, 0.001f);
 
 	// The stop is the world's, as the parry's, so every clock holds together; the body only remembers it.
 	Kate->ApplyHitStop(0.05f, FHawkeyeHitStopTuning().Dilation);

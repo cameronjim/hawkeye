@@ -213,8 +213,8 @@ bool FHawkeyeHitReadRules::RunTest(const FString& Parameters)
 {
 	using namespace HawkeyeCombatReadability;
 	const AHawkeyeCharacter* Kate = GetDefault<AHawkeyeCharacter>();
-	TestEqual(TEXT("A light (weight 0.3): two frames of hit-stop"), Kate->GetMeleeHitStopSeconds(false), 0.035f, 0.001f);
-	TestEqual(TEXT("A heavy (weight 1): four, as the parry"), Kate->GetMeleeHitStopSeconds(true), 0.07f, 0.001f);
+	TestEqual(TEXT("A light (weight 0.3): 62 ms of hit-stop"), Kate->GetMeleeHitStopSeconds(false), 0.062f, 0.001f);
+	TestEqual(TEXT("A heavy (weight 1): 90 ms"), Kate->GetMeleeHitStopSeconds(true), 0.09f, 0.001f);
 
 	const FHawkeyeTelegraphLook Start = ComputeTelegraphLook(0.f, 0.6f);
 	const FHawkeyeTelegraphLook End = ComputeTelegraphLook(0.6f, 0.6f, 0.f);
