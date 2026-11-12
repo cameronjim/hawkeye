@@ -16,6 +16,24 @@ standalone laps, and screenshots read by eye.
 
 Open the editor before we talk so the Unreal MCP tools can connect.
 
+## Not on main
+- **Melee feel: measured, mostly fixed, held on `wip/melee-feel` because one lap fails its fight-length check.** Your
+  note was "punches don't land properly, ragdoll physics are off". A new standalone audit (`Hawkeye.Audit.MeleeFeel`,
+  `docs/playtests/2026-11-11-melee-feel-audit.md`) found the punches do reach the body on time (fist 0 to 16 cm off him,
+  facing him, at every distance to 250 cm), but nothing happened when they did: every thug's physical kick was refused by
+  the engine on his query-only mesh, and aimed at his guarding hand; Kate's look slid off her a metre per punch she took
+  and after three she was gone from the street (only her bow left in the frame); her light's hit-stop was two frames.
+  The finisher threw bodies 8 m and knocked-out bodies rolled on for 2 to 4 s. Magnetism pulled her through a wall and off
+  a ledge. Fixed: the kick lands on the region aimed at, her look stays on her, hit-stop 50 to 90 ms that never stacks,
+  no pull through walls or over drops and a closing speed cap (data), the finisher's throw through the knockout caps
+  (now 1.3 to 1.6 m), bodies damp once down (most still by 2.3 s), a light pressed late in a heavy's recovery is kept,
+  and the bodies shots stand on level ground. Kate's own physical flinch is switched off: once it really ran, it crashed
+  the engine now and then. Gate: both builds, 597 tests, Python, content twice, city, content verify and traversal audit
+  all pass; laps 12 of 13: `Hawkeye.Lap.SocialClub` ends the fight at 85.5 s against its 90 s floor (2 of 3 runs; 95.9 in
+  the third; 95.0 before this pass). **Your call:** accept a shorter Tomas fight, or I find what makes the bot's heavies land
+  in more of his winded windows. **Feel check with a pad:** the light still starts on the button's release (a tap's own
+  length before the swing); does the warp look like sliding; the finisher throws him over backward, legs high.
+
 ## On main
 - **The Santa flake is fixed, the thug's suit is matte, Lucky sits better; the bodies are merged.** The grotto
   laps' scripted player was losing to Santa by a hair: the two passes that night ended the fight on 2.7 and 3.4 of

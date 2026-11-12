@@ -36,10 +36,10 @@ street by the PlayerStart (a flat stretch, no kerb), AI off, a fresh fists thug 
 | 6 | Magnetism over a ledge | lunged off a 150 cm block to a thug on the street and hit him | not picked, moved 5 cm, stays on the block | no pull over a drop | **Fixed** |
 | 7 | The thug's physical reaction | the kick refused on every blow ("has to have 'CollisionEnabled' ... to AddImpulse", 76 lines in the run); his bodies only blended against the clip | 0 warnings; the struck body is given its kick, reaction from frame 6 to 12 (after the stop) | the struck part snaps with the blow | **Fixed** |
 | 8 | Which of his bodies a blow moves | nearest the fist: hand_l, lowerarm_l, spine_02, thigh_l (his guarding hand for a jab at the face) | the region aimed at: head for a jab, spine_03 for the roundhouse | the region aimed at | **Fixed** |
-| 9 | Kate after his punches | her look has no pelvis body, so its root body is a spine body inside the reaction's chain: the reaction cancelled on its first tick, left her chest simulating, and the look component followed that body away. Her look's head 108, 184, 261 cm off her after 1, 2, 3 punches; in `kate_after_his_punches.png` only her bow is left on the street | head 11.6 cm off at most (Sparrow against the mannequin, as standing); a physical flinch each punch (frame 8); she is in the picture | she flinches and stays herself | **Fixed** (likely the "ragdoll physics are off") |
+| 9 | Kate after his punches | her look has no pelvis body, so its root body is a spine body inside the reaction's chain: the reaction cancelled on its first tick, left her chest simulating, and the look component followed that body away. Her look's head 108, 184, 261 cm off her after 1, 2, 3 punches; in `kate_after_his_punches.png` only her bow is left on the street | look 0.0 cm off her driver after every punch; she is in the picture. Her physical reaction is now off: with the drift fixed it ran, and crashed the game now and then inside the engine's physics blend on her look ("index 29 from an array of size 0": one lap in thirteen, three audit runs); on her driver it once stalled the game. Her hit clip (frame 0, side right) and lean remain | she reacts and stays herself | **Fixed** (likely the "ragdoll physics are off"); the physical flinch is not there |
 | 10 | Hit-stop | light 35 to 46 ms, heavy 72 to 77, at frame 0; back-to-back stops unguarded | light 61 to 69 ms, heavy 90 to 98 (frame rounding at dilation 0.1), frame 0; a second blow within 0.15 s gets none | 50 to 90 ms by weight, never stacking | **Fixed** |
 | 11 | Reaction clip, flash, sound | all on frame 0; his clip side Front for straight punches, Right for her hook; hers Front | same | within 1 to 2 frames, side matches | OK |
-| 12 | Physical reaction timing | frame 4 (light), 9 (heavy): it waits out the stop (on thugs only, and with no kick) | frame 6 to 8 (light), 11 to 12 (heavy), on both | after the stop | OK |
+| 12 | Physical reaction timing | frame 4 (light), 9 (heavy): it waits out the stop (on thugs only, and with no kick) | thugs: frame 6 to 8 (light), 11 to 12 (heavy), with the kick; Kate: none (9) | after the stop | OK |
 | 13 | Knockout throw | light: bone 302 / body 127 cm/s; heavy 520 / 219; arrow 164 / 63; finisher 900 + 450 up on every body | the same, the finisher now 520 / 219 | capped, along the blow | **Fixed** (finisher) |
 | 14 | Velocity from the animation | pelvis 1 to 2 cm/s standing, 79 in the finisher's clip; first sim frame 443 to 747 cm/s (1,271 finisher) | first sim frame 446 to 706 (534 to 621 finisher) | the body keeps its motion | OK |
 | 15 | Finisher's travel | 790 and 829 cm | 127 to 161 cm | a man falls 1 to 2 m | **Fixed** |
@@ -66,7 +66,8 @@ went through walls and off ledges (5, 6).
   Motion warping (the engine plugin, already on Kate from the Game Animation Sample) still does the moving.
 - **B. Hit confirmation.** Hit-stop `Lerp(0.05, 0.09, weight)`, none for a blow within 0.15 s of the last stop. The kick is
   set on the struck body directly; the struck body is the region aimed at; a reaction never simulates a body with no body
-  above it (Kate's look).
+  above it (what carried Kate's look away). Kate's and Clint's physical reaction is then switched off
+  (`bPhysicalReaction`) because running it crashed the engine now and then.
 - **C. Ragdoll.** The finisher throws through the knockout rule; bodies damp to 4 / 8 once down (never mid-air); settle
   after 0.3 s still, 3 s at most.
 - **D. Smoothness.** A light pressed late in any recovery is kept.
@@ -78,6 +79,16 @@ her. `ko_heavy_*`: falls back with his arms up, lies on his back about 1.5 m off
 legs high (a flip; the throw's bone kick at the chest still turns him over). `ko_ledge_03`: on the street below the block.
 `ko_light_04`, `ko_arrow_04`: lying where they fell. The frame labels say 0.6 s for the first two: the audit only starts
 capturing once it has watched the blow 0.6 s; the measurements are per frame and unaffected.
+
+## Gate (2026-11-12): not green, not merged
+Both builds clean; 597 headless tests (591 + 6 new); 225 Python tests, ruff clean; `create-content.ps1` twice, nothing to
+commit after the second; city verify, `verify_content` PASS, traversal audit exit 0. Laps: the first set ran 12 of 13 with
+`Hawkeye.Lap.CrimeRooftop` crashing (the engine crash in row 9); with Kate's reaction off, the second set ran 12 of 13 with
+`Hawkeye.Lap.SocialClub` failing its own fight-length check: "The fight takes 90 to 150 s on Normal (85.5)". Two more runs
+of it: 95.9 s (pass) and 86.7 s (fail). The one pre-change run on record (the last gate) was 95.0 s. In the failing runs
+Kate lands a full heavy (35 or 42) inside more of Tomas's winded windows before the finisher (heavy damage on him 286
+against 231 before), so his first phase ends about 8 s sooner. The cause inside this pass is not pinned down; Tomas's health
+stays 820 and the floor stays 90, so it stays on the branch.
 
 ## Left for a human
 - Input on release (20): the light could start on the press with the heavy as a hold that cancels its wind-up, as in
