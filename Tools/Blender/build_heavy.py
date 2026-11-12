@@ -62,7 +62,7 @@ def build_vest(body, mats, vmats):
         return 0.008 * (ch - 0.7) * (np.abs(co[:, 0]) < 0.3)
 
     cs.displace(vest, quilt)
-    cs.decimate(vest, tris=6000)
+    cs.decimate(vest, tris=4000)
     pieces.snap_neckline(body, vest, pad=0.062)
     for sx in (1, -1):
         cs.bisect(vest, (sx * 0.005, 0, 0), (1, 0, 0), lambda c, n: (c[:, 1] < cy) & (np.abs(c[:, 0]) < 0.05))
@@ -102,7 +102,7 @@ def build_mask(body, vmats):
     c, n = cs.face_data(mask)
     cs.delete_faces(mask, (c[:, 1] < -0.02) & (np.abs(c[:, 0]) < hw) & (c[:, 2] > lo) & (c[:, 2] < hi))
     pieces.keep_largest(mask)
-    cs.decimate(mask, tris=3000)
+    cs.decimate(mask, tris=2000)
     cs.set_material(mask, vmats["mask"])
     cs.solidify(mask, 0.003)
     cs.box_uv(mask, 0.02)

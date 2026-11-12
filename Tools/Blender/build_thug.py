@@ -32,6 +32,9 @@ ANKLE_Z = 0.092
 TROUSER_TOP = 1.0
 
 RED = (0.065, 0.0045, 0.006)
+# Decimation budgets (triangles before thickness, which roughly doubles them): enemies are many on screen.
+JACKET_TRIS = 5000
+TROUSER_TRIS = 4000
 
 
 def make_materials(out, who="Thug", red=RED):
@@ -87,11 +90,11 @@ def build_jacket(body, mats):
     # Sleeves sag underneath (loose polyester hanging off a T-posed arm).
     off = off + 0.008 * np.clip(-body.normals[:, 2], 0, 1) * cs.smoothstep(0.22, 0.4, np.abs(body.co[:, 0])) \
         * (fam["arm"] > 0.5)
-    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.36, pad=0.03, hem_in=0.03)
+    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=0.03, hem_in=0.03)
     sleeves = pieces.arm_tubes(body, 0.26, CUFF_X - CUFF_W - 0.01, pad0=0.022, pad1=0.03, sag=0.012)
     jacket = pieces.shell(body, "Jacket", off, extras=[hang] + sleeves, voxel=0.009, smooth=6,
                           keep=body.co[:, 2] > 0.75)
-    pieces.iron(body, jacket, torso_iters=40, limb_iters=20)
+    pieces.iron(body, jacket, torso_iters=60, limb_iters=20, z_range=(0.9, 1.52))
     cs.cut_and_delete(jacket, (0, 0, HEM_Z), (0, 0, 1), lambda c, n: c[:, 2] < HEM_Z)
     for sx in (1, -1):
         cs.cut_and_delete(jacket, (sx * CUFF_X, 0, 0), (1, 0, 0), lambda c, n, sx=sx: sx * c[:, 0] > CUFF_X)
@@ -123,7 +126,7 @@ def build_jacket(body, mats):
         return d
 
     cs.displace(jacket, shape)
-    cs.decimate(jacket, tris=8000)
+    cs.decimate(jacket, tris=JACKET_TRIS)
     pieces.snap_neckline(body, jacket)
     # Trim: the zip, the ribbed hem and cuffs, the sleeve stripes, all on clean planes.
     for sx in (1, -1):
@@ -143,7 +146,7 @@ def build_jacket(body, mats):
     stripe = np.zeros(len(c), bool)
     for lo, hi in STRIPES_ARM:
         stripe |= (c[:, 1] > lo) & (c[:, 1] < hi)
-    stripe &= (ax > STRIPE_FROM_X) & (ax < CUFF_X - CUFF_W) & (n[:, 2] > 0.2)
+    stripe &= (ax > STRIPE_FROM_X) & (ax < CUFF_X - CUFF_W) & (n[:, 2] > 0.2) & (c[:, 2] > 1.4)
     cs.set_material(jacket, mats["stripe"], stripe)
     zipper = (ax < ZIP_X) & (c[:, 1] < cy)
     cs.set_material(jacket, mats["zip"], zipper)
@@ -170,7 +173,7 @@ def build_jacket(body, mats):
         pull = cs.box("ZipPull", hit + nrm * 0.004 - np.array([0, 0, 0.012]), (0.008, 0.003, 0.024))
         cs.set_material(pull, mats["zip"])
         out.append((pull, body.transfer(cs.get_co(pull))))
-    collar = pieces.stand_collar(body, mats["suit"], mats["suit"], z1=1.545, front_drop=0.035, gap_deg=6.0,
+    collar = pieces.stand_collar(body, mats["suit"], mats["suit"], z1=1.58, front_drop=0.04, gap_deg=6.0,
                                  pad0=0.05, pad1=0.05, thickness=0.005, name="TrackCollar")
     out.append(collar)
     return out
@@ -210,7 +213,7 @@ def build_trousers(body, mats, boots=None, boot_top=0.0):
     if boots is not None:
         pieces.tuck(tr, boots, axes, boot_top, blouse=0.014)
         cs.taubin(tr, 2)
-    cs.decimate(tr, tris=6000)
+    cs.decimate(tr, tris=TROUSER_TRIS)
     for band in STRIPES_LEG:
         for y0 in band:
             cs.bisect(tr, (0, y0, 0), (0, 1, 0), lambda c, n: np.sign(n[:, 0]) * np.sign(c[:, 0]) > 0.3)
