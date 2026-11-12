@@ -40,13 +40,13 @@ street by the PlayerStart (a flat stretch, no kerb), AI off, a fresh fists thug 
 | 10 | Hit-stop | light 35 to 46 ms, heavy 72 to 77, at frame 0; back-to-back stops unguarded | light 61 to 69 ms, heavy 90 to 98 (frame rounding at dilation 0.1), frame 0; a second blow within 0.15 s gets none | 50 to 90 ms by weight, never stacking | **Fixed** |
 | 11 | Reaction clip, flash, sound | all on frame 0; his clip side Front for straight punches, Right for her hook; hers Front | same | within 1 to 2 frames, side matches | OK |
 | 12 | Physical reaction timing | frame 4 (light), 9 (heavy): it waits out the stop (on thugs only, and with no kick) | thugs: frame 6 to 8 (light), 11 to 12 (heavy), with the kick; Kate: none (9) | after the stop | OK |
-| 13 | Knockout throw | light: bone 302 / body 127 cm/s; heavy 520 / 219; arrow 164 / 63; finisher 900 + 450 up on every body | the same, the finisher now 520 / 219 | capped, along the blow | **Fixed** (finisher) |
-| 14 | Velocity from the animation | pelvis 1 to 2 cm/s standing, 79 in the finisher's clip; first sim frame 443 to 747 cm/s (1,271 finisher) | first sim frame 446 to 706 (534 to 621 finisher) | the body keeps its motion | OK |
-| 15 | Finisher's travel | 790 and 829 cm | 127 to 161 cm | a man falls 1 to 2 m | **Fixed** |
-| 16 | Travel (pelvis from his feet) | light 81 to 105 cm, heavy 87 to 269, arrow 44, ledge 146 to 237 | light 74 to 143, heavy 69 to 150, arrow 43 to 50, ledge 165 | 1 to 2 m | **Fixed** (heavy no longer 2.7 m) |
-| 17 | Still moving late | 1.5 s in: 14 to 290 cm/s; slid 35 to 138 cm on the ground; settled 2.0 to 3.9 s | 1.5 s in: 28 to 276 cm/s; slid 6 to 64 cm; settled 1.96 to 3.0 s (median about 2.3) | still by ~2 s | **Better, not done**: most settle by 2.3 s, a heavy can roll to the 3 s cap |
-| 18 | Stretch, tunnelling, pop | stretch 1 to 2 cm; 0.1 cm under the floor; seen body 1.7 to 2.0 cm off the driver's pelvis | stretch under 2 cm; 0 to 0.6 cm under the street, one ledge fall 13 cm under for a frame on landing; seen body 1.7 to 2.0 cm | none | OK; the ledge landing's one-frame dip is noted |
-| 19 | Ragdoll setup | SK_Mannequin_PhysicsAsset, 19 bodies of 1 kg (19 kg), damping 0.01 (0.6 / 1.5 falling), no depenetration overrides; world: no substepping, 8 position / 2 velocity iterations; Kate walks through bodies | falling 0.6 / 1.5, then 4 / 8 once down; settle 0.3 s still, 3 s at most | | equal masses noted, not changed |
+| 13 | Knockout throw | light: bone 302 / body 127 cm/s; heavy 520 / 219; arrow 164 / 63; finisher 900 + 450 up on every body | second pass: bone 260 at weight 1 (cap 350), body 200 + 40 up (cap 300); the finisher at spine_01, 0.6 of the bone throw and 0.25 of the lift | capped, along the blow | **Fixed** |
+| 14 | Velocity at the knockout | first sim frame 443 to 747 cm/s for strikes (1,271 finisher), an arrow 79: the killing blow starts the hit-stop, and at its 0.1 dilation the solver's first joint corrections came out at 4 to 9 m/s | the ragdoll waits asleep until the stop is over, then takes its throw: peak 271 to 305 cm/s (light, heavy), finisher 495 to 532 (released in its 0.25 slow motion), arrow 204 to 229 | the throw, no pop | **Fixed** (second pass) |
+| 15 | Finisher's travel | 790 and 829 cm, over head first, legs high | 112 to 113 cm, down on his back | a man falls 1 to 2 m | **Fixed** |
+| 16 | Travel (pelvis from his feet) | light 81 to 105 cm, heavy 87 to 269, arrow 44, ledge 146 to 237 | light 108 to 116, heavy 138 to 143, arrow 51 to 60, ledge 150 to 161 (with the 150 cm drop) | 1 to 2 m | **Fixed** |
+| 17 | Still moving late | 1.5 s in: 14 to 290 cm/s; slid 35 to 138 cm on the ground; settled 2.0 to 3.9 s | 1.5 s in: 0 to 18 cm/s; slid 18 to 33 cm; settled 1.06 to 1.86 s | still by ~2 s | **Fixed** (second pass) |
+| 18 | Stretch, tunnelling, pop | stretch 1 to 2 cm; 0.1 cm under the floor; seen body 1.7 to 2.0 cm off the driver's pelvis | stretch under 2 cm; 0 cm under the floor; seen body 1.7 to 2.0 cm | none | OK |
+| 19 | Ragdoll mass | SK_Mannequin_PhysicsAsset (a feature-pack asset, no script builds it): 19 bodies of 1 kg, 19 kg in all; depenetration unlimited | 78 kg set on the bodies as a reaction or ragdoll starts (`RagdollMassKg`, the heavy 100), pelvis 8.6 kg, hands 2 kg (by `BodyMassShares`); depenetration capped at 120 cm/s. The anthropometric spread (pelvis 20 hands) made the joints jitter and stood a body up a metre in the air: the spread is held to about 4.5 to 1 | believable mass by part | **Fixed** (second pass) |
 | 20 | Input to swing | the light starts on the button's release (a 0.4 s hold is the heavy): a tap adds its own length (typically 70 to 120 ms); then 0.25 s to the hit | unchanged | under ~50 ms to the first frame | **Design**: left for Cameron |
 | 21 | Buffering | a light in a chain's recovery goes 0.08 s later; a light pressed in the heavy's recovery was dropped | the chain's the same (0.08 s); one in the last 0.3 s of any recovery goes as it ends | buffered | **Fixed** |
 | 22 | Slide and snap | light from 200 cm: top speed 1,389 cm/s, worst one-frame speed change 404 to 463 cm/s | top 1,389 cm/s, worst change 274; closing capped at 1,100 cm/s on average (thugs 550) | no glide | **Partly**: the cap is data, the clip's own root curve still peaks |
@@ -68,32 +68,48 @@ went through walls and off ledges (5, 6).
   set on the struck body directly; the struck body is the region aimed at; a reaction never simulates a body with no body
   above it (what carried Kate's look away). Kate's and Clint's physical reaction is then switched off
   (`bPhysicalReaction`) because running it crashed the engine now and then.
-- **C. Ragdoll.** The finisher throws through the knockout rule; bodies damp to 4 / 8 once down (never mid-air); settle
-  after 0.3 s still, 3 s at most.
+- **C. Ragdoll.** The finisher throws through the knockout rule, low on the back; bodies damp to 4 / 8 once down (never
+  mid-air); settle after 0.3 s still, 3 s at most. Second pass: a thug's ragdoll weighs 78 kg (the heavy 100) spread by
+  body part; the struck body falls back to the first bone above it with a body (the mannequin has none on spine_03); the
+  ragdoll is held asleep until the hit-stop is over, then thrown, with the capsule's motion and not the bodies' own; the
+  throw at the bone 260 cm/s and the lift 40 (were 520 and 90: tuned against the held release and the masses);
+  depenetration capped at 120 cm/s.
 - **D. Smoothness.** A light pressed late in any recovery is kept.
 - Also: `Hawkeye.Screenshot.Bodies` stands its subjects on level ground (it straddled the kerb).
 
-## Seen in the frames (read by eye)
-`kate_after_his_punches.png`: before the fix only her bow on the street; after, Kate standing, Lucky and the thug beside
-her. `ko_heavy_*`: falls back with his arms up, lies on his back about 1.5 m off. `ko_finisher_02`: thrown over backward,
-legs high (a flip; the throw's bone kick at the chest still turns him over). `ko_ledge_03`: on the street below the block.
-`ko_light_04`, `ko_arrow_04`: lying where they fell. The frame labels say 0.6 s for the first two: the audit only starts
-capturing once it has watched the blow 0.6 s; the measurements are per frame and unaffected.
+## Seen in the frames (read by eye, second pass)
+kate_after_his_punches.png: before the fix only her bow on the street; after, Kate standing, Lucky and the thug beside
+her. ko_heavy_00: folding back off his feet at hip height; ko_heavy_04: on his back about 1.4 m off. ko_finisher_00
+and _01: flat on his back, about 1.1 m off, no flip. ko_light_01: buckling forward and down. ko_ledge_02: dropping
+off the block's edge; settled on the street below. ko_arrow_03: lying where he fell. The first frames before the
+masses and the held release (ko_heavy_02 in that run) showed him upright a metre in the air. The audit no longer slows
+the world for a capture: its crawl (0.02) disturbed the ragdolls it caught the same way the hit-stop did. Frame labels
+read 0.6 s for the first two: the audit starts capturing once it has watched the blow 0.6 s.
 
-## Gate (2026-11-12): not green, not merged
-Both builds clean; 597 headless tests (591 + 6 new); 225 Python tests, ruff clean; `create-content.ps1` twice, nothing to
-commit after the second; city verify, `verify_content` PASS, traversal audit exit 0. Laps: the first set ran 12 of 13 with
-`Hawkeye.Lap.CrimeRooftop` crashing (the engine crash in row 9); with Kate's reaction off, the second set ran 12 of 13 with
-`Hawkeye.Lap.SocialClub` failing its own fight-length check: "The fight takes 90 to 150 s on Normal (85.5)". Two more runs
-of it: 95.9 s (pass) and 86.7 s (fail). The one pre-change run on record (the last gate) was 95.0 s. In the failing runs
-Kate lands a full heavy (35 or 42) inside more of Tomas's winded windows before the finisher (heavy damage on him 286
-against 231 before), so his first phase ends about 8 s sooner. The cause inside this pass is not pinned down; Tomas's health
-stays 820 and the floor stays 90, so it stays on the branch.
+## SocialClub pacing (second pass)
+The lap's player throws every third strike it makes as a heavy (`Strikes % 3`), and Tomas is winded after every third
+swing. The two lock: on some runs the heavy lands as nearly every winded window opens (heavy and finisher, about twice a
+window's damage), on others a light does and only the finisher lands. Per run, counted from the log: windows that opened on
+a full heavy against the fight's length:
 
+| Build | Runs (s of fighting, full-heavy windows) |
+|---|---|
+| main (5) | 95.0 (5 of 10), 106.8 (3 of 12), 90.9 (5 of 8), 105.7 (3 of 11), 96.2 (4 of 10) |
+| branch (3) | 85.5 (7 of 9), 95.9 (3 of 10), 86.7 (6 of 9) |
+| branch, light buffer off (3) | 95.6 (4 of 11), 95.9 (3 of 11), 87.6 (6 of 9) |
+| branch, old hit-stop (4) | 115.6 (2 of 11), 103.3 (2 of 12), 86.6 (5 of 9), one hung (below) |
+
+Both builds have both modes; main's lowest was 90.9 s, on the floor. No single change of this pass brings the branch back
+(the buffer and the old hit-stop each still gave an 86 to 88 s run); the per-cycle timing shifts by a few hundredths of a
+second decide which mode a run falls into, and the parries (2 to 3 in short runs, 4 to 8 in long ones) shift it most. It
+is not a bug in the game; the lap's player plays better when it locks. Tomas's pacing is restored in his data: his
+winded damage 1.5 to 1.25 (Tools/Editor/create_boss.py, DA_Boss_CH04_Tomas). Five runs after: 112.2, 104.6, 107.1,
+104.6, 106.5 s. Santa's fight (no pacing check in the grotto laps): 57.5 s on main, 54.5 and 54.7 s on the branch.
+One old-hit-stop run hung: the haymaker knocked Kate 200 cm over the roof's edge onto a ledge and the lap's player
+shimmied there until the lap timed out. The player now climbs back (jump) and lets go (crouch) after a second.
 ## Left for a human
 - Input on release (20): the light could start on the press with the heavy as a hold that cancels its wind-up, as in
   most brawlers, but that changes the control scheme; Cameron's call.
 - The warp's peak speed (22): the clip's root motion moves late, so the warp's speed peaks near 1,400 cm/s even under
   the average cap; a dash-in or re-authored root curves would smooth it. Does it look like sliding with a pad?
-- The finisher's flip (ko_finisher_02) and a heavy rolling up to the 3 s cap (17).
-- Equal 1 kg masses (19): a heavier torso would make bodies drop with more weight; not changed.
+- Ragdoll mass (19) is spread by body part but compressed to about 4.5 to 1 so the joints hold; whether that reads as weight is a judgement with a pad.

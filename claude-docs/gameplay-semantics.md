@@ -929,8 +929,9 @@ gone from the code, and so from this file. Every section below describes code th
   0.85, 1.0; 260 lm over 380 cm) riding in front of him so he reads at night.
 - Combo: a jab (12 damage, 0.75 s wind-up, 0.5 s recovery, 150 cm; parryable), a jab (12, 0.6 s, 0.5 s; parryable), a
   haymaker (22, 1.1 s wind-up, 0.8 s recovery, 170 cm, shoves 200 cm; unblockable: dodge it); 0.6 s between swings;
-  winded after 3 swings for 3 s; 1.5 times damage winded; the finisher only in that window, taking 0.05 of his max (34,
-  51 winded; it was 0.15, which with parry-finishers made him a thug with more health); a parry staggers him 0.6 s;
+  winded after 3 swings for 3 s; 1.25 times damage winded (1.5 until 2026-11-12: see "Melee feel", SocialClub pacing);
+  the finisher only in that window, taking 0.05 of his max (41, 51 winded; it was 0.15, which with parry-finishers made him a
+  thug with more health); a parry staggers him 0.6 s;
   stagger threshold 40; resists the heavy's knockdown; walks at 380.
 - Phases: "Crew" (he watches, out of the fight; four of his guys: two bats, which are candy canes
   (`BP_Thug_CandyCane`), fists, a shield; `beat_crew`), "Tomas" (opened by the crew going down; 1.5 s protected
@@ -1721,6 +1722,7 @@ on every `FHawkeyeMeleeAttack`, the hit-stop, reaction and knockout tuning on th
   over the animation rises to 0.8 of that share in 0.04 s and eases back to none by 0.4 s. A guard (incoming damage
   scaled under 1) takes it at 0.35. A body already simulating (a knockdown, a get-up) is left alone. Arrows react too
   (weight `ImpactWeight`, 0.5).
+- (2026-11-12: the throw's bone speed, lift, caps, masses and the release after the hit-stop changed; see "Melee feel".)
 - Knockout: when a thug dies of a strike or an arrow, the ragdoll gets the impact's throw (`ComputeKnockoutImpulse`): the
   struck bone 520 cm/s along the blow, the whole body 200 along it plus 90 up, times `Lerp(0.4, 1, weight)`; an arrow 0.45
   of that along the arrow with no lift and never into the floor; capped at 650 and 300 cm/s. Damping 0.6 / 1.5 while it
@@ -1773,8 +1775,33 @@ component, Kate's `MeleeAssistRange` / `MeleeAssistAngleDegrees` / `MeleeAssistN
 - Knockout: once he is down (0.4 s after the knockout at the earliest, the pelvis within 40 cm of the floor) the damping
   rises from 0.6 / 1.5 to 4 / 8 over 0.5 s: he lands with weight and stops instead of rolling on. A body thrown off a roof
   falls at full speed until it is down.
+- Ragdoll masses: a thug's ragdoll weighs `RagdollMassKg` (78 kg; the heavy `HeavyRagdollMassKg`, 100), spread by
+  `BodyMassShares` (pelvis 11%, each spine body 9%, head 6%, thighs 8%, calves 5%, upper arms 4%, forearms and feet 3%,
+  hands 2.5%; a body not listed shares the rest), set on his bodies as a reaction, a knockdown ragdoll or a knockout
+  starts (`ApplyBodyMasses`). The UE mannequin's physics asset (a feature-pack asset no script builds) gives every body
+  1 kg, 19 kg in all. The spread is held to about 4.5 to 1: the real one (a pelvis 20 hands) made the joints jitter and once
+  threw a body upright a metre into the air.
+- The struck body is the aimed-at bone or the first bone above it with a body (no body on the mannequin's spine_03: a
+  roundhouse to the ribs had moved his guarding hand).
+- A finisher's throw is low on the back (spine_01) with `FinisherBoneScale` (0.6) of the strike's bone throw and
+  `FinisherLiftScale` (0.25) of its lift: he folds down and back. From the chest at full lift he went over head first,
+  legs high.
+- Knockout throw (2026-11-12, with the masses): the struck bone 260 cm/s (520 before) capped at 350 (650), the lift 40
+  (90); the whole body's 200, capped 300, unchanged. Each body is pushed out of the floor no faster than
+  `MaxDepenetrationSpeed` (120 cm/s; the project has no limit).
+- A knockout's ragdoll waits, asleep in the pose the blow caught, until the world's time dilation is
+  `ReleaseMinTimeDilation` (0.2) or more, then gets its throw: a killing blow starts the hit-stop (0.1), and the solver's first
+  joint corrections over a tenth of a step became 4 to 9 m/s and threw a punched man head high. The finisher's slow motion
+  (0.25) releases at once. The body's own velocity is not inherited (it read wrong under the stop); the capsule's is
+  (`SetKnockoutCarryVelocity`, set in `GoLimp`). Measured after: travel 0.5 to 1.5 m (an arrow 0.5), settled 1.0 to 1.9 s.
 - Buffering: a light pressed in the last 0.3 s of any recovery (a heavy's, a light whose chain is over) goes the moment that
   swing ends, starting a fresh chain. Inside a chain's window it is kept as before.
+- SocialClub pacing (2026-11-12): the lap's player throws every third strike as a heavy, and Tomas is winded after every
+  third swing, so the two lock: on some runs a heavy opens almost every winded window (with the finisher, about twice a
+  window's damage), on others a light does. Both builds show both (main 90.9 to 106.8 s, the melee branch 85.5 to 115.6 s);
+  turning off the light buffer or the longer hit-stop alone left short runs (87.6, 86.6 s). His winded damage went from
+  1.5 to 1.25 in `create_boss.py`; five runs then took 104.6 to 112.2 s. The lap's player also climbs back up (jump), or
+  lets go (crouch) after a second, when the haymaker's knockback hangs her off a ledge (a run hung there until it timed out).
 - Not changed: the light starts on the button's release (a 0.4 s hold is the heavy), so a tap's own length comes before the
   swing; the audit leaves that to Cameron.
 
