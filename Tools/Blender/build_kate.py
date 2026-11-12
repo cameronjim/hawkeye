@@ -47,9 +47,11 @@ STRIPE_Y = (0.034, 0.043)   # the trousers' purple stripe, on the outside of the
 THIGH_STRAP_Z = 0.70
 GAME_SCALE = 0.93      # BP_Kate's driver scale; the look takes it (claude-docs/animation.md)
 
-# The suit's purple: sRGB #541A84 in linear, #5B2A86 with less green (that read lavender under the studio's lights
-# and AgX). A darker one for the lining, a lighter one for piping and stripes.
-PURPLE = (0.090, 0.010, 0.228)
+# The suit's purple, aimed at sRGB #5B2A86 as the game draws it. #541A84 in linear (0.090, 0.010, 0.228) rendered
+# lavender in the studio and #7539AF to #8649BE on the street by day in the engine (body_kate_front_day), the same hue
+# but too light; this is it times 0.55, which the engine's daylight brings to about #5B2A86. A darker one for the
+# lining, a lighter one for piping and stripes.
+PURPLE = (0.050, 0.0055, 0.125)
 PURPLE_DARK = (0.042, 0.009, 0.098)
 PURPLE_LIGHT = (0.27, 0.107, 0.55)
 BLACK = (0.012, 0.011, 0.014)
@@ -233,7 +235,7 @@ def build_top(body, mats):
     W = cs.smooth_values(W, edges, 12, 0.5, mask=armpit)
     out = [(top, W)]
     # Zipped to the top: a hairline gap (the zip), no skin showing down the front.
-    out.append(pieces.stand_collar(body, mats["top"], mats["lining"], z0=1.392, z1=1.552, front_drop=0.012,
+    out.append(pieces.stand_collar(body, mats["top"], mats["lining"], z0=1.392, z1=1.534, front_drop=0.012,
                                    gap_deg=0.6, pad0=0.034, pad1=0.026, thickness=0.004, name="Collar"))
     return out
 
