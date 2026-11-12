@@ -235,4 +235,35 @@ bool FHawkeyeKnockoutGroundedDamping::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeMeleeBufferAfterHeavy, "Hawkeye.Melee.LightBufferedAfterHeavy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeMeleeBufferAfterHeavy::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeMeleeMagnetismTest;
+	FHawkeyeTestWorld TestWorld;
+	AHawkeyeCharacter* Kate = SpawnKate(TestWorld, FVector::ZeroVector);
+	if (!Kate)
+	{
+		AddError(TEXT("Failed to spawn Kate."));
+		return false;
+	}
+	UMeleeComponent* Melee = Kate->GetMeleeComponent();
+	// Pressed in the heavy's wind-up: refused, as before.
+	TestTrue(TEXT("The heavy starts"), Kate->StartHeavyAttack());
+	Melee->AdvanceAttack(0.1f);
+	TestFalse(TEXT("A light in its wind-up is refused"), Kate->StartLightAttack());
+	// Pressed in the last 0.3 s of its recovery: kept, and it goes the moment the heavy is over.
+	Melee->AdvanceAttack(Melee->GetCurrentAttack().WindupSeconds - 0.1f + 0.05f);
+	TestEqual(TEXT("In the recovery"), Melee->GetPhase(), EMeleePhase::Recover);
+	TestTrue(TEXT("Inside the buffer"), Melee->GetPhaseRemaining() <= 0.3f);
+	TestTrue(TEXT("The press is kept"), Kate->StartLightAttack());
+	TestEqual(TEXT("Not yet swung"), Melee->GetCurrentAttack().Name, FName(TEXT("heavy")));
+	Melee->AdvanceAttack(1.f);
+	Kate->AdvanceMeleeFlow(0.f);
+	TestEqual(TEXT("The light goes as the heavy ends"), Melee->GetCurrentAttack().Name, FName(TEXT("light")));
+	TestTrue(TEXT("Winding up"), Melee->IsWindingUp());
+	return true;
+}
+
 #endif

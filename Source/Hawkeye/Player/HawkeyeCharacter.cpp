@@ -2196,6 +2196,14 @@ bool AHawkeyeCharacter::StartLightAttack()
 			bLightBuffered = true;
 			return true;
 		}
+		// The end of any other recovery (a heavy's, a light's whose chain has closed): the press is kept and goes the moment
+		// the swing is over, a fresh chain, instead of being dropped (the melee feel audit: a light pressed in the heavy's
+		// recovery did nothing).
+		if (MeleeComponent->GetPhase() == EMeleePhase::Recover && MeleeComponent->GetPhaseRemaining() <= LightBufferSeconds)
+		{
+			bLightBuffered = true;
+			return true;
+		}
 		return false;
 	}
 	return StartComboLight();
@@ -2562,10 +2570,8 @@ void AHawkeyeCharacter::AdvanceMeleeFlow(float DeltaSeconds)
 	if (bLightBuffered && MeleeComponent && MeleeComponent->CanStartAttack())
 	{
 		bLightBuffered = false;
-		if (Combo.IsChainOpen())
-		{
-			StartComboLight();
-		}
+		// The chain's next light, or (pressed late in a recovery that ended the chain) a fresh one.
+		StartComboLight();
 	}
 	StrikePose.Advance(DeltaSeconds);
 	HitLean.Advance(DeltaSeconds);

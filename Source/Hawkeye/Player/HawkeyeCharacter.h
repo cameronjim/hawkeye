@@ -1393,6 +1393,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee")
 	FHawkeyeHitLeanClock HitLean;
 
+	/**
+	 * A light pressed this close to the end of any swing's recovery (a heavy's included) is kept and goes as the swing ends,
+	 * s. (Inside a light chain's window it is kept whenever pressed, as before.)
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
+	float LightBufferSeconds = 0.3f;
+
 	/** V held this long becomes the heavy; let go sooner and it was a tap. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
 	float HeavyHoldSeconds = 0.4f;
