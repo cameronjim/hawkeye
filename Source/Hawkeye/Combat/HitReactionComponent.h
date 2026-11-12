@@ -15,7 +15,8 @@ class USkeletalMeshComponent;
  * ragdoll throw and settle. Rules and numbers are UHawkeyeHitContactRules and the tuning structs below (data).
  *
  * The body it moves is the one people see: Kate's look (Sparrow) when she has one, else the character's mesh. A mesh
- * with no physics asset (tests, a greybox) keeps every rule's bookkeeping and moves nothing.
+ * with no physics asset (tests, a greybox) keeps every rule's bookkeeping and moves nothing. bPhysicalReaction off (Kate
+ * and Clint since 2026-11-12) keeps the bookkeeping and moves nothing too: their hit clips and lean read the blow.
  */
 UCLASS(Blueprintable, BlueprintType, ClassGroup = (Hawkeye), meta = (BlueprintSpawnableComponent))
 class HAWKEYE_API UHitReactionComponent : public UActorComponent
@@ -89,6 +90,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
 	FHawkeyeKnockoutTuning Knockout;
+
+	/**
+	 * Whether a blow's physical reaction runs at all (the hit-stop and the knockout are unaffected). Off on Kate and Clint
+	 * (2026-11-12): on Kate's look it carried her body off her (fixed), and then crashed the game now and then inside the
+	 * engine's physics blend on that secondary mesh (the melee feel audit; one lap in thirteen). Their hit clips and lean
+	 * still read every blow. On by default: every thug's driver reacts.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
+	bool bPhysicalReaction = true;
 
 	/** The bone whose children a reaction moves; the chain from it down to the struck bone simulates. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hit Reaction")

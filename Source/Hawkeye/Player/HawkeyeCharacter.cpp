@@ -214,6 +214,8 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 
 	FinisherComponent = CreateDefaultSubobject<UFinisherComponent>(TEXT("FinisherComponent"));
 	HitReactionComponent = CreateDefaultSubobject<UHitReactionComponent>(TEXT("HitReaction"));
+	// Her hit clip and lean read a blow; the physical reaction on her look is off (UHitReactionComponent::bPhysicalReaction).
+	HitReactionComponent->bPhysicalReaction = false;
 
 	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 	GrappleComponent = CreateDefaultSubobject<UGrappleComponent>(TEXT("GrappleComponent"));

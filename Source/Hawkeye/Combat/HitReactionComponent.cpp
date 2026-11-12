@@ -202,6 +202,10 @@ void UHitReactionComponent::StartQueuedReaction()
 		FinishReaction();
 	}
 	++ReactionCount;
+	if (!bPhysicalReaction)
+	{
+		return;
+	}
 	// A body already simulating (a knockdown, a get-up, a death) is the ragdoll's: the reaction leaves it alone.
 	if (!Mesh || (Health && !Health->IsAlive()) || IsRagdollOwned(*Mesh) || !PrepareMesh(*Mesh))
 	{

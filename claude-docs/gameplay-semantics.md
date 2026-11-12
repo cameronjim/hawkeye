@@ -1763,6 +1763,11 @@ component, Kate's `MeleeAssistRange` / `MeleeAssistAngleDegrees` / `MeleeAssistN
 - A reaction never simulates a body with no body above it (a component follows its root body): on Kate's Sparrow, which has
   no pelvis body, that carried her whole look off her capsule a metre per punch she took. Such a body stays on the
   animation and the bodies under it take the kick. A ragdoll owns the body only when its pelvis simulates.
+- Kate's and Clint's physical reaction is off (`bPhysicalReaction` false on their hit reaction component): once it ran on
+  Kate's look it crashed the game now and then inside the engine's physics blend on that secondary mesh ("Array index out of
+  bounds: 29 from an array of size 0", one lap in thirteen and three audit runs), and on her driver it once stalled the game.
+  Their hit clip for the side the blow came from, the lean and the hit-stop read every blow; the thugs' drivers react as
+  above. Before this pass her reaction never ran past its first tick anyway (it read her own chain as a ragdoll).
 - Hit-stop: `Lerp(0.05, 0.09, weight)` real seconds (her light 62 ms, the heavy 90). A blow landing within 0.15 s (real) of
   the last stop's start gets none: stops never stack.
 - Knockout: once he is down (0.4 s after the knockout at the earliest, the pelvis within 40 cm of the floor) the damping
