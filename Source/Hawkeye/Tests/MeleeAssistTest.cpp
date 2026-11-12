@@ -98,11 +98,13 @@ bool FHawkeyeMeleeAssistPick::RunTest(const FString& Parameters)
 		FVector::DotProduct(Kate->GetMeleeComponent()->GetSwingDirection(), -FVector::RightVector) > 0.99f);
 	Kate->GetMeleeComponent()->AdvanceAttack(1.f);
 
-	// Out of reach, or behind: nobody.
+	// Nobody down the stick: the camera's pick (2026-11-12, "Melee feel"); nobody there either, nobody past the near range.
 	Left->SetActorLocation(FVector(0.f, -400.f, 0.f));
-	TestNull(TEXT("At 400 he is past the 350"), Kate->FindMeleeAssistTarget());
-	Left->SetActorLocation(FVector(0.f, 250.f, 0.f));
-	TestNull(TEXT("Behind the stick, nobody"), Kate->FindMeleeAssistTarget());
+	Kate->SetMoveInputDirectionForTest(-FVector::RightVector);
+	TestTrue(TEXT("At 400 he is past the 350: the camera's one ahead instead"), Kate->FindMeleeAssistTarget() == Ahead);
+	Ahead->SetActorLocation(FVector(0.f, 250.f, 0.f));
+	Kate->SetMoveInputDirectionForTest(-FVector::RightVector);
+	TestNull(TEXT("One behind the stick and off the camera, 250 out (past the 150 near range): nobody"), Kate->FindMeleeAssistTarget());
 	return true;
 }
 
@@ -114,7 +116,7 @@ bool FHawkeyeMeleeAssistCloses::RunTest(const FString& Parameters)
 	using namespace HawkeyeMeleeAssistTest;
 	FHawkeyeTestWorld TestWorld;
 	AHawkeyeCharacter* Kate = SpawnKate(TestWorld);
-	AThugCharacter* Thug = SpawnThug(TestWorld, FVector(300.f, 0.f, 0.f));
+	AThugCharacter* Thug = SpawnThug(TestWorld, FVector(160.f, 0.f, 0.f));
 	if (!Kate || !Thug)
 	{
 		AddError(TEXT("Failed to spawn Kate and a thug."));
@@ -124,7 +126,16 @@ bool FHawkeyeMeleeAssistCloses::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Her swings are assisted"), Melee->bAssistSwings);
 	TestTrue(TEXT("The light starts"), Kate->StartLightAttack());
 	TestEqual(TEXT("Her sweep is 60 cm"), Melee->GetCurrentAttack().Radius, 60.f);
-	TestEqual(TEXT("The step closes to her light's 66 cm contact distance from him (234)"), Melee->GetLastLungeDistance(), 234.f, 0.5f);
+	TestEqual(TEXT("The step closes to her light's 66 cm contact distance from him (94)"), Melee->GetLastLungeDistance(), 94.f, 0.5f);
+	Melee->AdvanceAttack(1.f);
+
+	// The closing speed cap: the procedural light lands 0.1 s in, so 1100 cm/s closes 110 cm at most. 300 off asks for 234:
+	// it whiffs honestly, her own step only.
+	Thug->SetActorLocation(FVector(300.f, 0.f, 0.f));
+	TestTrue(TEXT("A light at 300"), Kate->StartLightAttack());
+	TestTrue(TEXT("Past the cap: a whiff"), Melee->IsContactWhiff());
+	TestEqual(TEXT("Named"), Melee->GetContactPlan().WhiffReason, FName(TEXT("too far")));
+	TestEqual(TEXT("Her own 20 cm step"), Melee->GetLastLungeDistance(), Melee->GetCurrentAttack().LungeDistance, 0.5f);
 	Melee->AdvanceAttack(1.f);
 
 	// Close in, the lunge is the attack's own.
@@ -185,8 +196,8 @@ bool FHawkeyeMeleeAssistForgives::RunTest(const FString& Parameters)
 	TestEqual(TEXT("40 degrees off: no damage"), Health->GetCurrentHealth(), 85.f);
 	Melee->AdvanceAttack(1.f);
 
-	// Never a valid pick (behind her at the press): the forgiveness does not reach round for him.
-	Thug->SetActorLocation(FVector(-150.f, 0.f, 0.f));
+	// Never a valid pick (behind her at the press, past the 150 cm near range): the forgiveness does not reach round for him.
+	Thug->SetActorLocation(FVector(-200.f, 0.f, 0.f));
 	TestTrue(TEXT("A light at the air"), Kate->StartLightAttack());
 	TestNull(TEXT("Nobody picked"), Melee->GetSwingTarget());
 	Thug->SetActorLocation(FVector(Reach * 1.3f + Radius - 10.f, 0.f, 0.f));

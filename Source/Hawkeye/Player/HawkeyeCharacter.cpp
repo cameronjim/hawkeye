@@ -2471,17 +2471,27 @@ AActor* AHawkeyeCharacter::FindMeleeAssistTarget() const
 	}
 	TArray<AThugCharacter*> Thugs;
 	TArray<FVector> Where;
+	TArray<bool> Clear;
+	const FVector Here = GetActorLocation();
 	for (TActorIterator<AThugCharacter> It(World); It; ++It)
 	{
 		const UHealthComponent* Health = It->GetHealthComponent();
-		if (Health && Health->IsAlive() && !It->IsLimp())
+		const FVector There = It->GetActorLocation();
+		if (Health && Health->IsAlive() && !It->IsLimp() && FVector::Dist2D(There, Here) <= MeleeAssistRange + 1.f)
 		{
 			Thugs.Add(*It);
-			Where.Add(It->GetActorLocation());
+			Where.Add(There);
+			// Where her light would stand to hit him: nobody behind a wall or across a gap or a ledge is a pick.
+			const FVector Toward = (There - Here).GetSafeNormal2D();
+			const float Stand = FMath::Max(FVector::Dist2D(There, Here) - LightAttack.Contact.ContactDistance, 0.f);
+			Clear.Add(!MeleeComponent || MeleeComponent->IsStrikePathClear(**It, Here + Toward * Stand));
 		}
 	}
-	const int32 Pick = UHawkeyeMeleeRules::SelectMeleeAssistIndex(GetActorLocation(), GetMeleeAssistDirection(), Where,
-		MeleeAssistRange, MeleeAssistAngleDegrees, 200.f);
+	const double Now = World->GetTimeSeconds();
+	const bool bStick = LastMoveInputSeconds >= 0.0 && Now - LastMoveInputSeconds <= MeleeAssistInputSeconds
+		&& !LastMoveWorldDirection.IsNearlyZero();
+	const int32 Pick = UHawkeyeMeleeRules::SelectStrikeTarget(Here, bStick, LastMoveWorldDirection, GetViewForward(), Where, Clear,
+		MeleeAssistRange, MeleeAssistAngleDegrees, MeleeAssistNearRange, 200.f);
 	return Thugs.IsValidIndex(Pick) ? Thugs[Pick] : nullptr;
 }
 

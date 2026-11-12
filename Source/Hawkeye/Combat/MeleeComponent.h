@@ -92,6 +92,40 @@ struct HAWKEYE_API FHawkeyeMeleeAttack
 	float GetTotalSeconds() const { return WindupSeconds + RecoverSeconds; }
 };
 
+/**
+ * How hard a swing is pulled onto its target and what stops the pull (gameplay-semantics.md, "Melee feel"): data on the
+ * melee component, Kate's bigger than a thug's.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FHawkeyeStrikeMagnetism
+{
+	GENERATED_BODY()
+
+	/** The fastest the warp, lunge or slide closes on him, cm/s, averaged over the time left to the hit. 0: no cap. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism", meta = (ClampMin = "0.0"))
+	float MaxClosingSpeed = 1100.f;
+
+	/** A rise in the floor on the way higher than this stops the pull, cm (a wall, a crate, a step up onto a roof). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism", meta = (ClampMin = "0.0"))
+	float MaxStep = 45.f;
+
+	/** A drop deeper than this on the way stops it, cm (a gap between roofs, a ledge, the edge of a dock). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism", meta = (ClampMin = "0.0"))
+	float MaxDrop = 60.f;
+
+	/** The floor is sampled this far apart along the way, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism", meta = (ClampMin = "5.0"))
+	float FloorSpacing = 25.f;
+
+	/** The sight line chest to chest is swept with this radius; anything solid on it (a wall, a fence) stops the pull, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism", meta = (ClampMin = "0.0"))
+	float SightRadius = 8.f;
+
+	/** The sight line's height over each capsule's centre, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism")
+	float SightHeight = 40.f;
+};
+
 UENUM(BlueprintType)
 enum class EMeleePhase : uint8
 {
@@ -357,8 +391,26 @@ public:
 	 */
 	FVector ComputeContactPoint(const AActor& Target, const FHawkeyeStrikeContact& InContact) const;
 
-	/** The plan for the current swing on its target from where the owner is now, scaled by the owner's size. */
+	/**
+	 * The plan for the current swing on its target from where the owner is now, scaled by the owner's size: past the slide
+	 * cap (the attack's MaxSlide, or what Magnetism's closing speed covers over the wind-up, or over the slide's own
+	 * ApproachSeconds for an in-place swing), through a wall or
+	 * over a gap or a ledge it is not reachable and the swing whiffs.
+	 */
 	FHawkeyeContactPlan PlanCurrentContact() const;
+
+	/** The pull: its speed cap and what stops it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Magnetism")
+	FHawkeyeStrikeMagnetism Magnetism;
+
+	/**
+	 * Whether a swing may pull the owner from where he stands to StandPoint, on Target: nothing solid on the sight line
+	 * between them, and a floor all the way he can walk (Magnetism's MaxStep and MaxDrop). OutWhy says which failed.
+	 */
+	bool IsStrikePathClear(const AActor& Target, const FVector& StandPoint, FName* OutWhy = nullptr) const;
+
+	/** Nothing solid on the sight line from the owner's chest to Target's. */
+	bool HasStrikeSight(const AActor& Target) const;
 
 	/** The motion warping target a strike clip is warped to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Melee|Animation")
@@ -521,6 +573,9 @@ protected:
 
 	/** Game time the current swing started, for the log line when its hit window opens. */
 	double SwingStartTime = 0.0;
+
+	/** Game time the current swing's hit is due (its clip's hit window, or the wind-up), for the closing speed cap. */
+	double SwingHitDueTime = 0.0;
 
 	/** Counts swings, so a cut montage's end event is not taken for the swing that cut it. */
 	int32 SwingSerial = 0;

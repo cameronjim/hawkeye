@@ -636,6 +636,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float TakedownImpactWeight = 0.15f;
 
+	/** How hard a finisher throws his body (the knockout's weight, along the finisher's way; its caps hold). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float FinisherImpactWeight = 1.f;
+
 	/** True while he is down in (or getting up through) his knockdown clip rather than the ragdoll. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Animation")
 	bool IsKnockdownFromClip() const { return bKnockdownClip || bGetUpFromClip; }

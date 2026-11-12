@@ -63,6 +63,7 @@ bool UMeleeComponent::StartAttack(const FHawkeyeMeleeAttack& Attack)
 	Phase = EMeleePhase::Windup;
 	PhaseRemaining = Attack.WindupSeconds;
 	SwingStartTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	SwingHitDueTime = SwingStartTime + Attack.WindupSeconds;
 
 	UE_LOG(LogHawkeye, Log, TEXT("%s: %s swing winds up (%.2f s, %.0f damage)."),
 		*GetNameSafe(GetOwner()), *Attack.Name.ToString(), Attack.WindupSeconds, Attack.Damage);
@@ -147,6 +148,11 @@ bool UMeleeComponent::TryPlaySwingClip(const FHawkeyeMeleeAttack& Attack, float&
 
 	CurrentMontage = Montage;
 	bClipMovesOwner = HawkeyeCombatAnim::DrivesRootMotion(Mesh, Montage);
+	if (bHasHit)
+	{
+		// The warp's closing speed is capped over the time to this clip's hit, not the attack's own timer.
+		SwingHitDueTime = SwingStartTime + Fit.HoldSeconds + FMath::Max(HitStart - Fit.StartAtSeconds, 0.f) / FMath::Max(Rate, 0.05f);
+	}
 	UpdateWarpTarget();
 	UAnimInstance* Instance = HawkeyeCombatAnim::Play(Mesh, Montage, Rate, Fit.StartAtSeconds);
 	if (!Instance)
@@ -263,8 +269,120 @@ FHawkeyeContactPlan UMeleeComponent::PlanCurrentContact() const
 	// A bigger body (a boss drawn 1.15 times a thug) lands its blow from further off.
 	const float Scale = FMath::Max(Owner->GetActorScale3D().X, 0.1f);
 	const FHawkeyeStrikeContact& C = CurrentAttack.Contact;
-	return UHawkeyeHitContactRules::PlanContact(Owner->GetActorLocation(), Owner->GetActorForwardVector(),
-		ComputeContactPoint(*Target, C), C.ContactDistance * Scale, C.MaxSlide, C.MaxTurnDegrees);
+	// The pull never closes faster than the magnetism's speed: over the whole wind-up for a warp or a lunge (re-planned
+	// every tick as he moves, against the same budget, or a warp whose clip moves late would be refused half way), over
+	// the slide's own stretch for an in-place swing.
+	const bool bSlides = !bAssistSwings && !bClipMovesOwner && CurrentAttack.LungeDistance <= 0.f;
+	const float PullSeconds = bSlides ? C.ApproachSeconds : static_cast<float>(SwingHitDueTime - SwingStartTime);
+	const float SlideCap = UHawkeyeMeleeRules::ComputeSlideCap(C.MaxSlide, Magnetism.MaxClosingSpeed, FMath::Max(PullSeconds, 0.05f));
+	FHawkeyeContactPlan Plan = UHawkeyeHitContactRules::PlanContact(Owner->GetActorLocation(), Owner->GetActorForwardVector(),
+		ComputeContactPoint(*Target, C), C.ContactDistance * Scale, SlideCap, C.MaxTurnDegrees);
+	// Never through a wall, never over a gap or off a ledge: the swing turns and whiffs instead.
+	FName Why;
+	if (Plan.bReachable && Plan.Slide >= 1.f && !IsStrikePathClear(*Target, Plan.StandPoint, &Why))
+	{
+		Plan.bReachable = false;
+		Plan.WhiffReason = Why;
+	}
+	return Plan;
+}
+
+bool UMeleeComponent::HasStrikeSight(const AActor& Target) const
+{
+	const AActor* Owner = GetOwner();
+	const UWorld* World = GetWorld();
+	if (!Owner || !World)
+	{
+		return true;
+	}
+	const FVector From = Owner->GetActorLocation() + FVector(0.f, 0.f, Magnetism.SightHeight);
+	const FVector To = Target.GetActorLocation() + FVector(0.f, 0.f, Magnetism.SightHeight);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeStrikeSight), /*bTraceComplex=*/false, Owner);
+	Params.AddIgnoredActor(&Target);
+	// Bodies (anyone's capsule or mesh, a ragdoll) are not walls: they are stepped past and traced through.
+	for (int32 Try = 0; Try < 6; ++Try)
+	{
+		FHitResult Hit;
+		const bool bHit = Magnetism.SightRadius > 0.f
+			? World->SweepSingleByChannel(Hit, From, To, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(Magnetism.SightRadius),
+				Params)
+			: World->LineTraceSingleByChannel(Hit, From, To, ECC_Visibility, Params);
+		if (!bHit)
+		{
+			return true;
+		}
+		const AActor* Blocker = Hit.GetActor();
+		if (!Blocker || !Blocker->IsA<APawn>())
+		{
+			return false;
+		}
+		Params.AddIgnoredActor(Blocker);
+	}
+	return true;
+}
+
+bool UMeleeComponent::IsStrikePathClear(const AActor& Target, const FVector& StandPoint, FName* OutWhy) const
+{
+	const AActor* Owner = GetOwner();
+	const UWorld* World = GetWorld();
+	if (!Owner || !World)
+	{
+		return true;
+	}
+	if (!HasStrikeSight(Target))
+	{
+		if (OutWhy)
+		{
+			*OutWhy = FName(TEXT("a wall between"));
+		}
+		return false;
+	}
+	// The floor under the owner and at every sample to where the swing stands him.
+	float HalfHeight = 0.f;
+	float Radius = 0.f;
+	Owner->GetSimpleCollisionCylinder(Radius, HalfHeight);
+	const FVector Start = Owner->GetActorLocation();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeStrikeFloor), /*bTraceComplex=*/false, Owner);
+	Params.AddIgnoredActor(&Target);
+	auto FloorAt = [&](const FVector& XY, float FeetZ) -> TOptional<float>
+	{
+		const FVector Top(XY.X, XY.Y, FeetZ + Magnetism.MaxStep + 5.f);
+		const FVector Bottom(XY.X, XY.Y, FeetZ - Magnetism.MaxDrop - 5.f);
+		FHitResult Hit;
+		FCollisionQueryParams Walk = Params;
+		for (int32 Try = 0; Try < 6; ++Try)
+		{
+			if (!World->LineTraceSingleByChannel(Hit, Top, Bottom, ECC_Visibility, Walk))
+			{
+				return TOptional<float>();
+			}
+			const AActor* Blocker = Hit.GetActor();
+			if (!Blocker || !Blocker->IsA<APawn>())
+			{
+				return TOptional<float>(Hit.ImpactPoint.Z);
+			}
+			Walk.AddIgnoredActor(Blocker);
+		}
+		return TOptional<float>();
+	};
+	const float FeetZ = Start.Z - HalfHeight;
+	const TOptional<float> From = FloorAt(Start, FeetZ);
+	TArray<TOptional<float>> Along;
+	const FVector Flat(StandPoint.X - Start.X, StandPoint.Y - Start.Y, 0.f);
+	const int32 Samples = FMath::Max(FMath::CeilToInt(Flat.Size() / FMath::Max(Magnetism.FloorSpacing, 5.f)), 1);
+	for (int32 Index = 1; Index <= Samples; ++Index)
+	{
+		Along.Add(FloorAt(Start + Flat * (static_cast<float>(Index) / Samples), FeetZ));
+	}
+	if (!UHawkeyeMeleeRules::IsSlideFloorWalkable(From, Along, Magnetism.MaxStep, Magnetism.MaxDrop))
+	{
+		if (OutWhy)
+		{
+			*OutWhy = FName(TEXT("no floor on the way"));
+		}
+		return false;
+	}
+	return true;
 }
 
 void UMeleeComponent::MarkContactWhiff(const TCHAR* Where)
@@ -435,6 +553,17 @@ FHawkeyeStrikeImpact UMeleeComponent::BuildImpact(const AActor& Target, const FV
 	const AActor* Owner = GetOwner();
 	const FVector From = Owner ? Owner->GetActorLocation() : Target.GetActorLocation() - GetSwingDirection() * 100.f;
 	Impact.Direction = UHawkeyeHitContactRules::ComputeStrikeDirection(LimbVelocity, Target.GetActorLocation() - From, 150.f);
+	// The body the blow moves is the region it was aimed at (his head for a jab, his ribs for the roundhouse), not whichever
+	// body lay nearest the fist: that was his own guarding hand, so a punch to the face flapped his arm (the audit).
+	if (const ACharacter* Struck = Cast<ACharacter>(&Target); Struck && Struck->GetMesh() && Struck->GetMesh()->GetSkeletalMeshAsset())
+	{
+		const AThugCharacter* Thug = Cast<AThugCharacter>(&Target);
+		const bool bDown = Thug && (Thug->IsKnockedDown() || Thug->IsLimp());
+		const USkeletalMeshComponent* Body = Struck->GetMesh();
+		Impact.Bone = UHawkeyeHitContactRules::SelectRegionBone(
+			UHawkeyeHitContactRules::SelectContactRegion(CurrentAttack.Contact.Region, bDown),
+			[Body](FName Name) { return Body->GetBoneIndex(Name) != INDEX_NONE; });
+	}
 	if (LimbPoint)
 	{
 		Impact.Point = *LimbPoint;
@@ -474,7 +603,9 @@ void UMeleeComponent::DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& 
 		Hawkeye = Cast<AHawkeyeCharacter>(&Target);
 	}
 	const FHawkeyeHitStopTuning Tuning = Mine ? Mine->HitStop : (Theirs ? Theirs->HitStop : FHawkeyeHitStopTuning());
-	const float Seconds = UHawkeyeHitContactRules::ComputeHitStopSeconds(Impact.Weight, Tuning);
+	// Two blows at once (two thugs, hers and his) never stack into a freeze: the second gets no stop of its own.
+	const float Seconds = UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(Impact.Weight, Tuning,
+		Hawkeye ? Hawkeye->GetSecondsSinceHitStop() : -1.f);
 	if (Hawkeye && Seconds > 0.f)
 	{
 		Hawkeye->ApplyHitStop(Seconds, Tuning.Dilation);
@@ -806,6 +937,11 @@ AActor* UMeleeComponent::FindForgivenTarget() const
 	{
 		return nullptr;
 	}
+	// Never through a wall: the forgiveness is for a step back, not for a punch that went into the brick.
+	if (!HasStrikeSight(*Target))
+	{
+		return nullptr;
+	}
 	float TargetRadius = 0.f;
 	float TargetHalfHeight = 0.f;
 	Target->GetSimpleCollisionCylinder(TargetRadius, TargetHalfHeight);
@@ -910,8 +1046,12 @@ void UMeleeComponent::ApplyLunge(const FHawkeyeMeleeAttack& Attack, float HitDel
 		ContactPlan = PlanCurrentContact();
 		if (!ContactPlan.bReachable)
 		{
-			// Out of the caps: her own step, through the air.
+			// Out of the caps: her own step, through the air; none at all at a wall or a drop.
 			MarkContactWhiff(TEXT("lunge"));
+			if (ContactPlan.WhiffReason == FName(TEXT("no floor on the way")) || ContactPlan.WhiffReason == FName(TEXT("a wall between")))
+			{
+				Distance = 0.f;
+			}
 		}
 		else if (bAssistSwings)
 		{

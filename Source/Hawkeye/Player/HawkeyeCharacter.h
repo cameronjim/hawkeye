@@ -609,7 +609,17 @@ public:
 	float GetMeleeHitStopSeconds(bool bHeavy) const;
 
 	/** A landed blow's hit-stop: the world at Dilation for RealSeconds (ApplyTimeWarp; never cuts a finisher's slow motion). */
-	void ApplyHitStop(float RealSeconds, float Dilation) { ApplyTimeWarp(RealSeconds, Dilation); }
+	void ApplyHitStop(float RealSeconds, float Dilation)
+	{
+		LastHitStopRealSeconds = FPlatformTime::Seconds();
+		ApplyTimeWarp(RealSeconds, Dilation);
+	}
+
+	/** Real seconds since the last landed blow's hit-stop began; -1 when there has been none. */
+	float GetSecondsSinceHitStop() const
+	{
+		return LastHitStopRealSeconds < 0.0 ? -1.f : static_cast<float>(FPlatformTime::Seconds() - LastHitStopRealSeconds);
+	}
 
 	/** The hit-stop, the physical reaction to a blow (on the body people see) and the knockout's throw. */
 	UHitReactionComponent* GetHitReactionComponent() const { return HitReactionComponent; }
@@ -1402,6 +1412,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee|Assist", meta = (ClampMin = "1.0", ClampMax = "180.0"))
 	float MeleeAssistAngleDegrees = 60.f;
 
+	/** With nobody in the stick's or the camera's cone, the nearest thug this close is the pick, whatever the angle (cm). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee|Assist", meta = (ClampMin = "0.0"))
+	float MeleeAssistNearRange = 150.f;
+
 	/** The stick counts as where she means to strike when it was pushed this recently, s. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee|Assist", meta = (ClampMin = "0.0"))
 	float MeleeAssistInputSeconds = 0.15f;
@@ -2095,6 +2109,9 @@ protected:
 private:
 	FTimerHandle NoiseTimerHandle;
 	FTimerHandle HitStopTimerHandle;
+
+	/** FPlatformTime of the last landed blow's hit-stop, -1 for none (stops never stack). */
+	double LastHitStopRealSeconds = -1.0;
 
 	/** The debug line's traversal speed: how fast the actor really moves, smoothed (a hang has no velocity). */
 	void UpdateMovementDebugSample(float DeltaSeconds);

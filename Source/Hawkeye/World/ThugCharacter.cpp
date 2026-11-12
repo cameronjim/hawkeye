@@ -67,6 +67,9 @@ AThugCharacter::AThugCharacter()
 	MeleeComponent->IgnoreTag = FName(TEXT("Thug"));
 	// His clips stretch so the hit still lands at the end of the telegraph: the parry and dodge windows hold.
 	MeleeComponent->bFitClipToWindup = true;
+	// A smaller pull than Kate's (gameplay-semantics.md, "Melee feel"): his telegraphed punch lands where he aimed it, but a
+	// step back or a dodge gets her out of it; never through a wall or over a drop.
+	MeleeComponent->Magnetism.MaxClosingSpeed = 550.f;
 
 	HitReactionComponent = CreateDefaultSubobject<UHitReactionComponent>(TEXT("HitReaction"));
 
@@ -878,13 +881,26 @@ bool AThugCharacter::ReceiveFinisher(AActor* By, FVector Velocity)
 	const float Blow = FinisherDamageFraction > 0.f
 		? UBossRules::FinisherDamage(HealthComponent->GetCurrentHealth(), HealthComponent->GetMaxHealth(), FinisherDamageFraction)
 		: HealthComponent->GetCurrentHealth() + HealthComponent->GetMaxHealth();
-	HealthComponent->ApplyDamage(Blow, By);
-	const bool bKilled = !HealthComponent->IsAlive();
-	if (bKilled && IsRagdolling())
+	// The throw is a knockout's, at full weight, along the finisher's way (gameplay-semantics.md, "Melee feel"): the
+	// knockout's caps hold. Setting every body to Velocity (900 cm/s on, 450 up) sent him 8 m down the street.
+	const bool bHadPending = HitReactionComponent && HitReactionComponent->GetPendingImpact().bValid;
+	if (HitReactionComponent && !bHadPending && !Velocity.IsNearlyZero())
 	{
-		GetMesh()->SetAllPhysicsLinearVelocity(Velocity, /*bAddToCurrent=*/false);
+		FHawkeyeStrikeImpact Throw;
+		Throw.bValid = true;
+		Throw.Source = EHawkeyeImpactSource::Finisher;
+		Throw.Weight = FinisherImpactWeight;
+		Throw.Direction = Velocity.GetSafeNormal2D().IsNearlyZero() ? GetActorForwardVector() * -1.f : Velocity.GetSafeNormal2D();
+		Throw.Bone = FName(TEXT("spine_03"));
+		Throw.Point = GetActorLocation();
+		HitReactionComponent->SetPendingImpact(Throw);
 	}
-	return bKilled;
+	HealthComponent->ApplyDamage(Blow, By);
+	if (HitReactionComponent && !bHadPending)
+	{
+		HitReactionComponent->ClearPendingImpact();
+	}
+	return !HealthComponent->IsAlive();
 }
 
 void AThugCharacter::StartHitLean(const AActor* HitBy)
