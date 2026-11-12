@@ -68,7 +68,10 @@ BODY_SCALE = 1.12
 COMBO = [("tomas_jab", 12.0, 0.75, 0.5, 150.0, 0.0, 30.0, False),
          ("tomas_jab_2", 12.0, 0.6, 0.5, 150.0, 0.0, 30.0, False),
          ("tomas_haymaker", 22.0, 1.1, 0.8, 170.0, 200.0, 60.0, True)]
-MOVES = {"winded_after_swings": 3, "winded_seconds": 3.0, "winded_damage_scale": 1.5, "finisher_damage_fraction": 0.05,
+# Winded damage 1.25 (1.5 until 2026-11-12): the lap's player locks into a heavy as each winded window opens on about half
+# its runs (on main too, 90.9 s once), which put his fight at 85 to 87 s against its 90 s floor; at 1.25 a window
+# is worth about a sixth less (docs/playtests/2026-11-11-melee-feel-audit.md, "SocialClub pacing").
+MOVES = {"winded_after_swings": 3, "winded_seconds": 3.0, "winded_damage_scale": 1.25, "finisher_damage_fraction": 0.05,
          "stagger_threshold": 40.0, "swing_cooldown_seconds": 0.6, "rush_speed": 380.0, "finisher_only_when_winded": True,
          "parry_stagger_seconds": 0.6}
 HAZARD = {"first_delay_seconds": 2.0, "telegraph_seconds": 1.5, "sweep_seconds": 2.5, "rest_seconds": 3.5, "damage": 20.0,
