@@ -68,6 +68,31 @@ public:
 		float Range, float HalfAngleDegrees, float MaxHeight);
 
 	/**
+	 * Who a strike goes at (gameplay-semantics.md, "Melee feel"), in order: the best (SelectMeleeAssistIndex) inside
+	 * HalfAngleDegrees of the stick when it was pushed (bHaveStick), else of the camera's forward; with nobody in either
+	 * cone, the nearest within NearRange whatever the angle. Only candidates whose Clear entry is true count (a wall
+	 * between them, or a gap or a ledge on the way, rules him out); a missing entry counts as clear. INDEX_NONE if none.
+	 */
+	static int32 SelectStrikeTarget(const FVector& Origin, bool bHaveStick, const FVector& Stick, const FVector& CameraForward,
+		const TArray<FVector>& Candidates, const TArray<bool>& Clear, float Range, float HalfAngleDegrees, float NearRange,
+		float MaxHeight);
+
+	/**
+	 * Whether the floor along a strike's slide or warp can be walked: FloorFrom is the floor's height under the striker
+	 * (unset: she has none, so there is nothing to keep her on and the rule passes), FloorAlong its height at points along
+	 * the way (unset where there is no floor within MaxDrop below). False at a drop deeper than MaxDrop (a gap, a ledge)
+	 * or a rise higher than MaxStep (something she would have to climb).
+	 */
+	static bool IsSlideFloorWalkable(const TOptional<float>& FloorFrom, const TArray<TOptional<float>>& FloorAlong, float MaxStep,
+		float MaxDrop);
+
+	/**
+	 * The farthest a swing may move its striker to close on the target: the attack's MaxSlide, and no more than
+	 * MaxClosingSpeed over the SecondsToHit left (0 speed: no speed cap). Pure.
+	 */
+	static float ComputeSlideCap(float MaxSlide, float MaxClosingSpeed, float SecondsToHit);
+
+	/**
 	 * The gap-closing step for a strike at a target DistanceToTarget away (flat, centre to centre): far
 	 * enough to stop StandOff short of him, never less than the attack's own MinLunge, never more than
 	 * MaxClose. Pure.

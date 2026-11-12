@@ -117,6 +117,73 @@ int32 UHawkeyeMeleeRules::SelectMeleeAssistIndex(const FVector& Origin, const FV
 	return Best;
 }
 
+int32 UHawkeyeMeleeRules::SelectStrikeTarget(const FVector& Origin, bool bHaveStick, const FVector& Stick,
+	const FVector& CameraForward, const TArray<FVector>& Candidates, const TArray<bool>& Clear, float Range, float HalfAngleDegrees,
+	float NearRange, float MaxHeight)
+{
+	// Only the clear ones take part; their indices map back to Candidates.
+	TArray<FVector> Open;
+	TArray<int32> Map;
+	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+	{
+		if (!Clear.IsValidIndex(Index) || Clear[Index])
+		{
+			Open.Add(Candidates[Index]);
+			Map.Add(Index);
+		}
+	}
+	auto Back = [&Map](int32 Pick) { return Map.IsValidIndex(Pick) ? Map[Pick] : INDEX_NONE; };
+	if (bHaveStick && !Stick.GetSafeNormal2D().IsNearlyZero())
+	{
+		const int32 Pick = SelectMeleeAssistIndex(Origin, Stick, Open, Range, HalfAngleDegrees, MaxHeight);
+		if (Pick != INDEX_NONE)
+		{
+			return Back(Pick);
+		}
+	}
+	const int32 Ahead = SelectMeleeAssistIndex(Origin, CameraForward, Open, Range, HalfAngleDegrees, MaxHeight);
+	if (Ahead != INDEX_NONE)
+	{
+		return Back(Ahead);
+	}
+	int32 Nearest = INDEX_NONE;
+	float NearestDistance = TNumericLimits<float>::Max();
+	for (int32 Index = 0; Index < Open.Num(); ++Index)
+	{
+		const FVector To = Open[Index] - Origin;
+		const float Distance = To.Size2D();
+		if (Distance <= NearRange && FMath::Abs(To.Z) <= MaxHeight && Distance < NearestDistance)
+		{
+			Nearest = Index;
+			NearestDistance = Distance;
+		}
+	}
+	return Back(Nearest);
+}
+
+bool UHawkeyeMeleeRules::IsSlideFloorWalkable(const TOptional<float>& FloorFrom, const TArray<TOptional<float>>& FloorAlong,
+	float MaxStep, float MaxDrop)
+{
+	if (!FloorFrom.IsSet())
+	{
+		return true;
+	}
+	for (const TOptional<float>& Floor : FloorAlong)
+	{
+		if (!Floor.IsSet() || FloorFrom.GetValue() - Floor.GetValue() > MaxDrop || Floor.GetValue() - FloorFrom.GetValue() > MaxStep)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+float UHawkeyeMeleeRules::ComputeSlideCap(float MaxSlide, float MaxClosingSpeed, float SecondsToHit)
+{
+	const float Slide = FMath::Max(MaxSlide, 0.f);
+	return MaxClosingSpeed > 0.f ? FMath::Min(Slide, MaxClosingSpeed * FMath::Max(SecondsToHit, 0.f)) : Slide;
+}
+
 float UHawkeyeMeleeRules::ComputeGapCloseDistance(float DistanceToTarget, float StandOff, float MinLunge, float MaxClose)
 {
 	const float Wanted = FMath::Max(DistanceToTarget - FMath::Max(StandOff, 0.f), 0.f);
