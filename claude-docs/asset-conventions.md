@@ -54,6 +54,9 @@ Content/
                         MI_Kate_Sparrow_<Part>. Never edit Paragon's own assets; tint with an MI here.
   Characters/Bodies/    The Quaternius body (SK_Body_Male, SKEL_, T_Body_*, M_BodyLook, MI_Body_<Who>, IK_Body_Male),
                         imported and built by import_bodies.py; git-ignored
+  Characters/Bodies/Built/
+                        The Blender-built costumes (blender-pipeline.md) when on disk: SK_Built_<Who> (on
+                        SKEL_Body_Male), M_BuiltLook, M_BuiltLookMasked, <Who>/MI_<slot>, <Who>/T_<Who>_*; git-ignored
   Characters/Thug/Look/, Characters/Clint/Look/
                         RTG_<Who>_To_Body, ABP_<Who>_Body (git-ignored)
   Characters/Lucky/     SK_Lucky and its A_Lucky_ clips, M_Lucky_Coat, MI_Lucky_Golden* (a stand-in pug; git-ignored)
@@ -148,7 +151,10 @@ committed, and a clone without the pack falls back to the animated mesh. Details
 visible mesh". The thugs (`AThugCharacter::BodyLook`), the heavy and Clint wear Quaternius's CC0 body the same way
 (`import_bodies.py`, `animation.md`, "Bodies"). CC0 content could be committed; it is git-ignored because its
 retargets hang off rigs that are git-ignored too, and it is re-imported from the packs outside the repo. A look mesh
-with no physics asset leaves hit reactions and the ragdoll to the driver and follows them.
+with no physics asset leaves hit reactions and the ragdoll to the driver and follows them. Modelled costumes for those
+wearers are built in Blender by `Tools/Blender/build_<who>.py` (`blender-pipeline.md`), on the same skeleton: a new
+costume is a new build script and a `BUILT_LOOKS` line, not a new class. Blender material names become the slot
+names (`M_<Who>_<Part>`).
 
 ## Blueprint hygiene
 - Parent class is the C++ class when one exists. `BP_Guard` derives `AGuardCharacter`,

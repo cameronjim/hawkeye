@@ -367,7 +367,14 @@ and still reacts herself). `AThugCharacter::GetBodyMesh()` is what is drawn; his
 instances are made on it.
 
 Who wears what: `BP_Thug` (fists, bat, gunner) the dark red tracksuit; `BP_Thug_Heavy` the tracksuit, vest, ski mask and
-boots; `BP_Clint` black. Every other child of `BP_Thug` (the archer, elves, reindeer, candy cane, Santa, Tomas) is
+boots; `BP_Clint` black.
+
+**Built costumes.** Modelled clothes from Blender replace the painted ones per wearer when they are on disk
+(`blender-pipeline.md`): `Tools/Blender/build_<who>.py` writes `<assets root>\built\<who>\SK_<Who>.glb` on the body's
+own armature, and `import_bodies.py` (`ensure_built`) imports it onto `SKEL_Body_Male` as
+`/Game/Characters/Bodies/Built/SK_Built_<Who>` with `MI_<slot>` instances of `M_BuiltLook`, then sets that wearer's
+`BodyLook` to it with the same `ABP_<Driver>_Body`. No build on disk, or any step failing: the painted body as before.
+Written 2026-11-11 without an engine run; see that doc's "Unreal side". Every other child of `BP_Thug` (the archer, elves, reindeer, candy cane, Santa, Tomas) is
 written an empty look by the script, so it keeps its own mannequin colours rather than inheriting BP_Thug's.
 
 **Fallback.** Without the packs the script logs one `skipped` line. The Blueprints keep their soft references;
@@ -380,7 +387,8 @@ follows the ragdoll.
 **Not done.** The get-up clip: UAL2's `LayToIdle` (a get-up from lying down) and `Hit_Knockback` are on the same rig
 and would retarget with the `ue4` chain map, but `import_combat_anims.py` has no glTF source type; adding one, a
 manifest `GetUp` line for the thugs and checking the Mixamo knockdown's last pose meets the get-up's first is the work
-(the thug's `GetUp` role and `PlayRole` path already exist). Hair meshes from the pack are not used (hair is painted);
+(the thug's `GetUp` role and `PlayRole` path already exist). The painted body does not use the pack's hair meshes
+(hair is painted; the built costumes do);
 arrows stuck in a thug sit on the hidden driver's surface, a few cm off the body's.
 
 ## Known limits

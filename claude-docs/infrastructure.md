@@ -219,6 +219,12 @@ committing it, but the retargets depend on rigs that are git-ignored too, and LF
 packs logs one `skipped` line and keeps the mannequins; `verify_content.py` reports which is in use. An import is
 skipped when the asset's build tag carries the source file's size and time, so a second run saves nothing.
 
+`hawkeye-assets\built\<who>\` (`clint`, `thug`, `heavy`) holds the modelled costumes Blender builds
+(`Tools\Blender\build_<who>.py`, headless, Blender 5.3 at `C:\Program Files\Blender Foundation\Blender 5.3`; see
+`blender-pipeline.md`): `SK_<Who>.glb`, `<who>.slots.json`, `<who>.blend`, generated textures. Rebuild them before
+`create-content.ps1` when a build script changes; `import_bodies.py` uses one when it is there and the painted body
+when it is not. Their renders go to `Saved\Screenshots\Blender\`.
+
 ## Combat clips (not in git)
 
 Mixamo FBX downloads go in `Tools/Data/Anims/Mixamo/`; Paragon Sparrow is read from the Game
