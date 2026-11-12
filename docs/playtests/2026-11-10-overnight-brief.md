@@ -17,6 +17,30 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Modelled costumes in the game, and Lucky follows Kate. On `wip/bodies`, not merged: one
+  lap failed the gate.** The Blender-built thug, heavy and Clint now import and are what the
+  game draws: posed by their mannequins, the right size and way round, materials right, the
+  hair masked, the thug's hit flash and telegraph glow still on, the body still riding the
+  ragdoll. Each gets four LODs from the engine (the thug is about 4k vertices at the last one).
+  Clint's coat is shorter and fitted at the waist, its skirt tapers and parts at the front, the
+  back is smooth and the forearm guard is slimmer. The thug's sleeves no longer balloon above
+  the cuffs and his trousers reach his trainers. Lucky is the generated golden retriever: he
+  stands beside the start of the district, walks or trots after Kate when she is within 12 m,
+  stops about 2 m from her and sits when she stands still for 3 s. Shots in
+  `Saved/Screenshots/Bodies/` (new: the punch, the flash, Clint drawing, Lucky with Kate).
+  Gate: both builds clean, 590 tests and 225 Python tests pass, ruff clean, the second content
+  run left nothing to commit, the city verify, content verify and traversal audit pass, and 12
+  of 13 laps passed. `Hawkeye.Lap.Grotto` failed once: Santa beat the scripted player (Kate
+  downed, the reload, then timed out after 150 s with Santa on 76 of 640 health). Nothing from
+  this work is in that interior: Santa and the elves keep their mannequins and there is no
+  Lucky there. It passed the next two runs (Santa down in 42.6 s and 42.7 s). That is the same
+  flake as the seen grotto lap, but the gate's exception covers only that lap, so `main` was
+  left alone. **Rough:** the thug's trousers show a stepped crease at the crotch in a wide
+  stance, his upper sleeves are still full, Clint's skirt is still fairly straight at the sides,
+  and the LOD distances are the engine's defaults. **Not seen:** Lucky following Kate in play
+  (only his rules are tested, and he stood and sat correctly in the shots), the bodies at
+  night, and Lucky's mesh is not cleared to ship until you sign off Meta's DINOv3 licence
+  (`docs/CREDITS.md`).
 - **Thugs and Clint have real bodies; Lucky has a stand-in.** Street thugs, the heavy and Clint
   are drawn as Quaternius's CC0 base male, retargeted every frame from the mannequins that still
   run every clip, hit contact and ragdoll underneath. Thugs wear a dark red tracksuit with white
@@ -169,6 +193,8 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   no longer say first-person shooter.
 
 ## Needs you
+- Sign off (or not) on Meta's DINOv3 licence, which TRELLIS.2 depends on, before Lucky's
+  generated mesh ships (`docs/CREDITS.md`). Then decide whether `wip/bodies` goes to `main`.
 - Feel checks above.
 - Edit or replace the draft lines in `ACT1-script.md`.
 - The download list below. One "yes" covers what you want; logins and licence clicks are yours.
