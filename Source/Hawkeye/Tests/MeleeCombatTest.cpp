@@ -312,6 +312,54 @@ bool FHawkeyeDodgeInvulnerability::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeDodgeTiming, "Hawkeye.Dodge.LateDodgeOutlastsTheSwing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+/**
+ * Where she stands, a dodge beats a swing only if her invulnerability is still on when it lands: one started inside
+ * the swing's last 0.25 s does, one started earlier does not (gameplay-semantics.md, "Dodge"). The grotto lap's bot
+ * dodged 0.3 s out and Santa's slam sometimes caught her a frame after it ran out (2026-11-12).
+ */
+bool FHawkeyeDodgeTiming::RunTest(const FString& Parameters)
+{
+	FHawkeyeTestWorld TestWorld;
+	AThugCharacter* Thug = HawkeyeMeleeTest::SpawnThug(TestWorld, FVector::ZeroVector, 0.f);
+	AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(TestWorld.SpawnActor(
+		AHawkeyeAimTestCharacter::StaticClass(), FVector(100.f, 0.f, 0.f), FRotator(0.f, 180.f, 0.f)));
+	UHealthComponent* Health = Kate ? Kate->GetHealthComponent() : nullptr;
+	if (!Thug || !Thug->GetMeleeComponent() || !Health)
+	{
+		AddError(TEXT("Failed to spawn the thug and Kate."));
+		return false;
+	}
+	UMeleeComponent* Melee = Thug->GetMeleeComponent();
+	const FHawkeyeMeleeAttack Attack = Thug->GetMeleeAttack();
+
+	struct FCase
+	{
+		float Lead;
+		bool bHit;
+	};
+	for (const FCase Case : {FCase{0.18f, false}, FCase{0.3f, true}})
+	{
+		Health->SetMaxHealth(100.f, true);
+		TestTrue(TEXT("The swing starts"), Melee->StartAttack(Attack));
+		Melee->AdvanceAttack(Attack.WindupSeconds - Case.Lead);
+		TestTrue(
+			FString::Printf(TEXT("%.2f s out: the dodge starts"), Case.Lead), Kate->TryDodge(FVector(0.f, 1.f, 0.f)));
+		// Her clock and his run together to the blow.
+		Kate->TestTickDodge(Case.Lead + 0.01f);
+		Melee->AdvanceAttack(Case.Lead + 0.01f);
+		TestEqual(FString::Printf(
+					  TEXT("%.2f s out: the swing %s"), Case.Lead, Case.bHit ? TEXT("lands") : TEXT("does nothing")),
+			Health->GetCurrentHealth(), Case.bHit ? 100.f - Attack.Damage : 100.f);
+		Melee->AdvanceAttack(Attack.RecoverSeconds + 0.01f);
+		Kate->TestTickDodge(1.f);
+		TestWorld.AdvanceClock(1.f);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLowHealthAlpha, "Hawkeye.Health.LowHealthDesaturation",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
