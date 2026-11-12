@@ -370,7 +370,12 @@ def check_thug_presentation():
 
 BODY_MESH = "/Game/Characters/Bodies/SK_Body_Male"
 BODY_WEARERS = [("/Game/Blueprints/AI", "BP_Thug"), ("/Game/Blueprints/AI", "BP_Thug_Heavy"),
-                ("/Game/Blueprints/Player", "BP_Clint")]
+                ("/Game/Blueprints/Player", "BP_Clint"), ("/Game/Blueprints/Player", "BP_Kate")]
+# Kate's built look (import_bodies.ensure_kate): when SK_Built_Kate is on disk, all of these are and BP_Kate wears it.
+BUILT_KATE = "/Game/Characters/Bodies/Built/SK_Built_Kate"
+BUILT_KATE_PARTS = ["/Game/Characters/Bodies/SK_Body_Female", "/Game/Characters/Bodies/SKEL_Body_Female",
+                    "/Game/Characters/Bodies/IK_Body_Female", "/Game/Characters/Kate/Look/RTG_Kate_To_Body",
+                    "/Game/Characters/Kate/Look/ABP_Kate_Body"]
 BODY_KEEP_MANNEQUIN = [("/Game/Blueprints/AI", "BP_Thug_Elf"), ("/Game/Blueprints/AI", "BP_Thug_Reindeer"),
                        ("/Game/Blueprints/Bosses", "BP_Archer"), ("/Game/Blueprints/Bosses", "BP_Boss_Santa"),
                        ("/Game/Blueprints/Bosses", "BP_Boss_Tomas"), ("/Game/Blueprints/Bosses", "BP_Thug_CandyCane")]
@@ -433,6 +438,7 @@ def check_bodies():
             base = base_material(c.load_or_none(material_path)) if material_path and c.exists(material_path) else None
             if base is not None and not bool(prop(base, "used_with_skeletal_mesh")):
                 fail("{0}'s body material {1} has no SkeletalMesh usage flag".format(name, material_path))
+    check_built_kate()
     for path, name in BODY_KEEP_MANNEQUIN:
         cdo = _default_object(path, name)
         look = prop(cdo, "body_look") if cdo is not None else None
@@ -440,6 +446,43 @@ def check_bodies():
         say("  {0}: {1}".format(name, "body look " + mesh if mesh else "its own mannequin"))
         if mesh:
             fail("{0} wears {1}; it should keep its own mannequin colours".format(name, mesh))
+
+
+def check_built_kate():
+    """When the built Kate is imported: her female body, its skeleton (the built mesh on it), IK rig, retargeter and
+    AnimBP are on disk, the mesh has LODs and a material per slot, and BP_Kate wears it. Without it: Sparrow or the
+    mannequin, either a pass."""
+    if not c.exists(BUILT_KATE):
+        say("  Kate: no SK_Built_Kate (the built Kate is not on disk); BP_Kate keeps Sparrow or the mannequin")
+        return
+    missing = [p for p in BUILT_KATE_PARTS if not c.exists(p)]
+    if missing:
+        fail("Kate: SK_Built_Kate is on disk but not " + ", ".join(missing))
+    mesh = c.load_or_none(BUILT_KATE)
+    skeleton = prop(mesh, "skeleton") if mesh is not None else None
+    if name_of(skeleton) != "SKEL_Body_Female":
+        fail("Kate: SK_Built_Kate is on {0}, expected SKEL_Body_Female".format(name_of(skeleton)))
+    lods = 0
+    try:
+        lods = unreal.SkeletalMeshEditorSubsystem().get_lod_count(mesh)
+    except Exception:  # noqa: BLE001
+        lods = -1
+    slots = len(list(prop(mesh, "materials") or [])) if mesh is not None else 0
+    cdo = _default_object("/Game/Blueprints/Player", "BP_Kate")
+    look = prop(cdo, "body_look") if cdo is not None else None
+    worn = _soft_path(prop(look, "mesh")) if look is not None else ""
+    materials = [_soft_path(x) for x in list(prop(look, "materials") or [])] if look is not None else []
+    say("  Kate: SK_Built_Kate on {0}, {1} LODs, {2} slots; BP_Kate wears {3} with {4} materials".format(
+        name_of(skeleton), lods, slots, worn or "nothing", len([x for x in materials if x])))
+    if worn != BUILT_KATE:
+        fail("Kate: SK_Built_Kate is imported but BP_Kate wears {0}".format(worn or "no look"))
+    if lods == 0 or lods == 1:
+        fail("Kate: SK_Built_Kate has {0} LOD; import_bodies generates {1}".format(lods, 4))
+    if len([x for x in materials if x]) != slots:
+        fail("Kate: {0} of SK_Built_Kate's {1} slots have a material in BP_Kate's look".format(
+            len([x for x in materials if x]), slots))
+    for path in (look and list(prop(look, "hidden_bones") or [])) or []:
+        fail("Kate: the built look hides bone {0} (Sparrow's list does not apply)".format(path))
 
 
 def check_third_person():
