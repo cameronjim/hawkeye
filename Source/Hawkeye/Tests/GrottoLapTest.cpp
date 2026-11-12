@@ -5,6 +5,7 @@
 #include "Combat/FinisherComponent.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
+#include "Combat/MeleeRules.h"
 #include "Combat/ReturningArrowProjectile.h"
 #include "Combat/TakedownComponent.h"
 #include "Components/BoxComponent.h"
@@ -93,6 +94,8 @@ namespace HawkeyeGrottoLap
 	static constexpr int32 SlotStandard = 1;
 	static constexpr int32 SlotFoam = 3;
 	static constexpr int32 SlotBoomerang = 4;
+	/** The bot dodges a swing this long before it lands: inside her 0.25 s of invulnerability, a frame to spare. */
+	static constexpr float DodgeLeadSeconds = 0.18f;
 
 	/** Grotto.json's places (the interior map's frame, floor at 0). */
 	static const FVector HallEast(1050.f, 260.f, 0.f);
@@ -218,6 +221,8 @@ namespace HawkeyeGrottoLap
 		double DrawStart = 0.0;
 		TWeakObjectPtr<AThugCharacter> DrawTarget;
 		double NextActionAt = 0.0;
+		/** The last parry press, so one telegraph gets one press, not one a frame. */
+		double ParryTapAt = 0.0;
 
 		/** The boomerang: when it was loosed, how it came home. */
 		int32 CaughtAtStart = 0;
@@ -503,6 +508,93 @@ namespace HawkeyeGrottoLap
 		}
 		AThugCharacter* Target = bDrawing && DrawTarget.IsValid() && !IsDown(DrawTarget.Get()) ? DrawTarget.Get() : Nearest;
 		AimCamera(PC, Kate, Target->GetActorLocation() + FVector(0.f, 0.f, 30.f));
+
+		// Telegraphs first, whatever she is doing, the way a player answers them (2026-11-12, the Santa flake: the bot
+		// checked them only when idle, so a heavy it had started ate the second sack swing, a jab it threw into the
+		// slam ate the slam, and it dodged 0.3 s out, past her 0.25 s of invulnerability, so whether the slam reached
+		// her depended on where a frame fell; it came out of most fights on 3 health and some on none).
+		const AThugCharacter* Landing = nullptr;
+		const AThugCharacter* Parryable = nullptr;
+		const AThugCharacter* Unblockable = nullptr;
+		for (const AThugCharacter* T : Group)
+		{
+			const UMeleeComponent* Melee = T && !IsDown(T) ? T->GetMeleeComponent() : nullptr;
+			if (!Melee || T->IsGunner() || T->IsArcher() || !Melee->IsWindingUp() || T->IsIncapacitated() ||
+				FVector::Dist2D(T->GetActorLocation(), Kate->GetActorLocation()) >
+					Melee->GetCurrentAttack().Range + 120.f)
+			{
+				continue;
+			}
+			Landing = Melee->GetPhaseRemaining() <= DodgeLeadSeconds ? T : Landing;
+			if (UHawkeyeMeleeRules::IsUnblockableWindup(T))
+			{
+				Unblockable = T;
+			}
+			else
+			{
+				Parryable = T;
+			}
+		}
+		const bool bCanReact = !Kate->IsDodging() && !Kate->IsStaggered() && !Kate->IsLockedOutByTakedown();
+		// A swing about to land: dodge it (the dodge cancels her own swing), late enough that her invulnerability
+		// covers the blow wherever the dash has taken her.
+		if (Landing && bCanReact && Kate->GetDodgeCooldownRemaining() <= 0.f)
+		{
+			if (bMeleeHeld)
+			{
+				Hold(PC, MeleePath, false);
+				bMeleeHeld = false;
+			}
+			if (bDrawing)
+			{
+				Hold(PC, FirePath, false);
+				bDrawing = false;
+				if (Bow)
+				{
+					Bow->ClearAimOverride();
+				}
+			}
+			const FVector Away = (Kate->GetActorLocation() - Landing->GetActorLocation()).GetSafeNormal2D();
+			if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
+			{
+				++Dodges;
+				NextActionAt = Now + 0.3;
+				return EStep::Running;
+			}
+		}
+		// A parryable swing winding up: the light press is the parry. Let go of a heavy still charging (the release is
+		// that press), or tap during her own recovery (the parry cuts it short); never inside her own wind-up.
+		const bool bOwnWindup = Kate->GetMeleeComponent() && Kate->GetMeleeComponent()->IsWindingUp();
+		if (Parryable && !Unblockable && bCanReact && !bOwnWindup && !bDrawing && Now >= ParryTapAt)
+		{
+			if (bMeleeHeld)
+			{
+				Hold(PC, MeleePath, false);
+				bMeleeHeld = false;
+			}
+			else
+			{
+				Tap(PC, MeleePath);
+			}
+			StopMoving(PC);
+			++LightSwings;
+			ParryTapAt = Now + 0.25;
+			NextActionAt = Now + 0.2;
+			return EStep::Running;
+		}
+		// An unblockable winding up: nothing to throw into it; wait for the moment to dodge.
+		if (Unblockable && !bDrawing)
+		{
+			if (bMeleeHeld && !Kate->IsMeleeAttacking())
+			{
+				// Still charging: a heavy started now would hold her in place under the slam. Letting go is a jab; the
+				// dodge cancels it.
+				Hold(PC, MeleePath, false);
+				bMeleeHeld = false;
+			}
+			StopMoving(PC);
+			return EStep::Running;
+		}
 		if (bMeleeHeld)
 		{
 			if (Now - MeleeHeldSince >= 0.45)
@@ -534,25 +626,6 @@ namespace HawkeyeGrottoLap
 			return EStep::Running;
 		}
 		const bool bBusy = Kate->IsMeleeAttacking() || Kate->IsDodging() || Kate->IsStaggered() || Kate->IsLockedOutByTakedown();
-		if (!bBusy && Kate->GetDodgeCooldownRemaining() <= 0.f)
-		{
-			for (const AThugCharacter* T : Group)
-			{
-				const UMeleeComponent* Melee = T && !IsDown(T) ? T->GetMeleeComponent() : nullptr;
-				if (!Melee || T->IsGunner() || T->IsArcher() || !Melee->IsWindingUp() || Melee->GetPhaseRemaining() > 0.3f
-					|| FVector::Dist2D(T->GetActorLocation(), Kate->GetActorLocation()) > Melee->GetCurrentAttack().Range + 120.f)
-				{
-					continue;
-				}
-				const FVector Away = (Kate->GetActorLocation() - T->GetActorLocation()).GetSafeNormal2D();
-				if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-				{
-					++Dodges;
-					NextActionAt = Now + 0.3;
-					return EStep::Running;
-				}
-			}
-		}
 		if (bBusy || Now < NextActionAt)
 		{
 			return EStep::Running;
