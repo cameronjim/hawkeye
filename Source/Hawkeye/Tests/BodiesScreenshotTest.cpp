@@ -88,6 +88,62 @@ namespace HawkeyeBodyShots
 	 * The standing checks on a character's look (see the file comment). Driver is GetMesh(), Seen the mesh people see.
 	 * Returns a one-line summary for the log.
 	 */
+	/**
+	 * The nearest ground to Start (stepping out 50 cm at a time, up to 8 m, along and across Along) where every point within
+	 * 150 cm, and the lens's side out to 4 m, is within 3 cm of its height: the subjects' feet are all on one flat surface.
+	 * Start itself when none is found.
+	 */
+	static FVector FindLevelGround(UWorld* World, const AActor* Ignore, const FVector& Start, const FVector& Along)
+	{
+		const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(BodyShotLevel), false, Ignore);
+		auto Probe = [World, &Query](const FVector& XY, float FromZ, FVector& Out)
+		{
+			FHitResult Hit;
+			if (!World->LineTraceSingleByChannel(Hit, FVector(XY.X, XY.Y, FromZ + 200.f), FVector(XY.X, XY.Y, FromZ - 400.f),
+					ECC_Visibility, Query))
+			{
+				return false;
+			}
+			Out = Hit.ImpactPoint;
+			return true;
+		};
+		for (int32 Ring = 0; Ring <= 16; ++Ring)
+		{
+			for (const FVector& Direction : { -Side, Side, Along, -Along })
+			{
+				FVector Centre;
+				if (!Probe(Start + Direction * (Ring * 50.f), Start.Z, Centre))
+				{
+					continue;
+				}
+				bool bLevel = true;
+				for (int32 Spoke = 0; Spoke < 12 && bLevel; ++Spoke)
+				{
+					const FVector Out = FRotator(0.f, Spoke * 30.f, 0.f).Vector();
+					for (const float Reach : { 40.f, 90.f, 150.f })
+					{
+						FVector At;
+						if (!Probe(Centre + Out * Reach, Centre.Z, At) || FMath::Abs(At.Z - Centre.Z) > 3.f)
+						{
+							bLevel = false;
+							break;
+						}
+					}
+				}
+				if (bLevel)
+				{
+					return Centre;
+				}
+				if (Ring == 0)
+				{
+					break;
+				}
+			}
+		}
+		return Start;
+	}
+
 	static FString CheckStanding(FAutomationTestBase* Test, const FString& Who, const ACharacter* Character,
 		const USkeletalMeshComponent* Driver, const USkeletalMeshComponent* Seen)
 	{
@@ -268,6 +324,9 @@ private:
 			{
 				Feet = Hit.ImpactPoint;
 			}
+			// The PlayerStart sits by the kerb: a subject on it straddled the step, one foot hidden behind the pavement slab.
+			// Move to the nearest spot where everything the shots stand on (1.5 m round, the camera's side included) is level.
+			Feet = FindLevelGround(World, Kate, Feet, Along);
 		}
 		KateRef = Kate;
 		// Kate steps out of the frame (and out of everyone's sight).
