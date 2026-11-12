@@ -38,6 +38,91 @@ def extents(body, z, band=0.015, families=("torso", "leg", "foot")):
     return pts[:, 0].min(), pts[:, 0].max(), pts[:, 1].min(), pts[:, 1].max()
 
 
+def superellipse(cx, cy, ax, ayf, ayb, z, n=96, p=2.6):
+    """A ring at height z: half width ax, front depth ayf (toward -Y), back depth ayb; p > 2 squares it off."""
+    a = np.linspace(0, 2 * math.pi, n, endpoint=False)
+    c, s = np.cos(a), np.sin(a)
+    x = cx + ax * np.sign(c) * np.abs(c) ** (2 / p)
+    y = cy + np.where(s < 0, ayf, ayb) * np.sign(s) * np.abs(s) ** (2 / p)
+    return np.column_stack([x, y, np.full(n, z)])
+
+
+def torso_solid(body, z_bottom, z_top, pad, name="TorsoSolid", chest=(1.22, 1.32), hem_in=0.0, p=2.4):
+    """A closed solid that hangs straight from the chest to z_bottom (narrowing by hem_in at the bottom): merged
+    into a top's volume it is the loose cloth falling past the waist instead of following the abs."""
+    cy = TORSO_AXIS[1]
+    ext = [extents(body, z, families=("torso",)) for z in np.linspace(chest[0], chest[1], 5)]
+    hx = max(max(-e[0], e[1]) for e in ext)
+    hx = min(hx, 0.21)   # the lats at most; never the arms
+    hyf = max(cy - e[2] for e in ext)
+    hyb = max(e[3] - cy for e in ext)
+    rings = []
+    for z in np.linspace(z_top, z_bottom, 16):
+        t = (z_top - z) / (z_top - z_bottom)
+        k = 1.0 - hem_in * t
+        rings.append(superellipse(0.0, cy, (hx + pad) * k, (hyf + pad) * k, (hyb + pad) * k, z, p=p))
+    return cs.loft(name, rings, closed=True, cap_start=True, cap_end=True)
+
+
+def leg_radius(body, side, z, band=0.02, q=75):
+    """A typical (q-th percentile) distance of a leg's skin from its bone line near height z."""
+    ax = leg_axis(body, side)
+    sx = 1 if side == "l" else -1
+    fam = body.family["leg"] + body.family["foot"]
+    sel = (np.abs(body.co[:, 2] - z) < band) & (fam > 0.5) & (np.sign(body.co[:, 0]) == sx)
+    pts = body.co[sel]
+    c = np.array(ax(z))
+    return float(np.percentile(np.linalg.norm(pts[:, :2] - c, axis=1), q))
+
+
+def arm_radius(body, x, band=0.02, q=80):
+    """A typical distance of the left arm's skin from its bone line at |x| (the arms are mirror images)."""
+    ay = arm_axis(body, "l")
+    sel = (np.abs(body.co[:, 0] - x) < band) & (body.family["arm"] > 0.5)
+    pts = body.co[sel]
+    c = np.array(ay(x))
+    return float(np.percentile(np.linalg.norm(pts[:, 1:] - c, axis=1), q))
+
+
+def arm_tubes(body, x0, x1, pad0, pad1, sag=0.0, name="ArmTubes", n=32):
+    """Two closed tubes along the T-posed arms from x0 (the shoulder) to x1 (the wrist): sleeves that taper
+    smoothly instead of showing biceps and forearm, dropped by `sag` (they hang under the arm)."""
+    parts = []
+    r0, r1 = arm_radius(body, x0 + 0.04), arm_radius(body, x1 - 0.03)
+    for sx in (1, -1):
+        rings = []
+        for x in np.linspace(x0, x1, 20):
+            t = (x - x0) / (x1 - x0)
+            r = (1 - t) * (r0 + pad0) + t * (r1 + pad1)
+            y, z = arm_axis(body, "l")(x)
+            a = np.linspace(0, 2 * math.pi, n, endpoint=False)
+            drop = sag * math.sin(math.pi * min(1.0, t * 1.2))
+            rings.append(np.column_stack([np.full(n, sx * x), y + r * np.cos(a),
+                                          z - drop * (1 - np.sin(a)) / 2 + r * np.sin(a)]))
+        parts.append(cs.loft(name + ("l" if sx > 0 else "r"), rings, closed=True, cap_start=True, cap_end=True))
+    return parts
+
+
+def leg_tubes(body, z_top, z_bottom, pad_top, pad_bottom, name="LegTubes", n=40):
+    """Two closed tubes round the legs, straight-ish from the thigh to z_bottom: trouser legs that hang instead of
+    following knee and calf."""
+    parts = []
+    r_top = None
+    for side in ("l", "r"):
+        ax = leg_axis(body, side)
+        r_top = leg_radius(body, side, z_top)
+        r_knee = leg_radius(body, side, 0.55)
+        rings = []
+        for z in np.linspace(z_top, z_bottom, 24):
+            t = (z_top - z) / (z_top - z_bottom)
+            r = (1 - t) * (r_top + pad_top) + t * (min(r_knee, r_top) * 0.9 + pad_bottom)
+            cx, cy = ax(z)
+            a = np.linspace(0, 2 * math.pi, n, endpoint=False)
+            rings.append(np.column_stack([cx + r * np.cos(a), cy + r * 1.05 * np.sin(a), np.full(n, z)]))
+        parts.append(cs.loft(name + side, rings, closed=True, cap_start=True, cap_end=True))
+    return parts
+
+
 def cap_holes(obj):
     with cs.Edit(obj) as bm:
         edges = [e for e in bm.edges if e.is_boundary]
@@ -250,8 +335,9 @@ def footwear_upper(body, name, top_z, foot_offset, shaft_offset, voxel=0.006, sm
         for side in ("l", "r"):
             mask = (np.sign(body.co[:, 0]) == (1 if side == "l" else -1)) & ((fam["leg"] + fam["foot"]) > 0.5)
             hangs.append((mask, leg_axis(body, side), top_z + 0.03, 0.20, 0.92, 1.0))
-    keep = body.co[:, 2] < top_z + 0.06
-    obj = shell(body, name, off, hangs=hangs, voxel=voxel, smooth=smooth, keep=keep)
+    # The whole body is remeshed (a cut and capped shin can leave a leg open, and an open mesh leaks in the voxel
+    # remesh); everything above top_z is cut away after.
+    obj = shell(body, name, off, hangs=hangs, voxel=voxel, smooth=smooth)
     co = cs.get_co(obj)
     co[:, 2] = np.maximum(co[:, 2], base_z)
     cs.set_co(obj, co)
@@ -335,15 +421,18 @@ def trainers(body, mats, prefix="Trainer"):
     top_z = 0.105
     upper = footwear_upper(body, prefix + "Upper", top_z, foot_offset=0.012, shaft_offset=0.016, hang_shaft=False)
     cs.decimate(upper, tris=4000)
-    cs.bisect(upper, (0, 0, 0.045), (0, 0, 1))
-    cs.bisect(upper, (0, 0, 0.065), (0, 0, 1))
+    # A side panel on the outside and inside of each shoe, and a padded collar round the top: clean cut lines.
+    for z0 in (0.045, 0.065, top_z - 0.022):
+        cs.bisect(upper, (0, 0, z0), (0, 0, 1))
+    for y0 in (-0.06, 0.07):
+        cs.bisect(upper, (0, y0, 0), (0, 1, 0))
     cs.set_material(upper, mats["trainer"])
     c, n = cs.face_data(upper)
-    stripe = (c[:, 2] > 0.045) & (c[:, 2] < 0.065) & (np.abs(n[:, 0]) > 0.5) & (c[:, 1] > -0.07) & (c[:, 1] < 0.08)
-    cs.set_material(upper, mats["trainer_accent"], stripe)
+    foot_x = np.where(c[:, 0] > 0, body.bone_head("foot_l")[0], body.bone_head("foot_r")[0])
+    stripe = (c[:, 2] > 0.045) & (c[:, 2] < 0.065) & (np.abs(c[:, 0] - foot_x) > 0.03) & (c[:, 1] > -0.06) \
+        & (c[:, 1] < 0.07)
+    cs.set_material(upper, mats["trainer_accent"], stripe | (c[:, 2] > top_z - 0.022))
     cs.raise_faces(upper, stripe, 0.001)
-    collar = c[:, 2] > top_z - 0.02
-    cs.set_material(upper, mats["trainer_accent"], collar & ~stripe)
     out = [(upper, body.transfer(cs.get_co(upper)))]
     surf = cs.Surface(upper)
     for side, sx in (("l", 1), ("r", -1)):
@@ -363,7 +452,7 @@ def trainers(body, mats, prefix="Trainer"):
             pts.append(a)
             dirs.append(d / np.linalg.norm(d))
         P, N, L, R = lace_path(surf, pts, dirs, half_width=0.012)
-        lace = laces(prefix + "Laces_" + side, L, R, N, radius=0.0024)
+        lace = laces(prefix + "Laces_" + side, L, R, N, radius=0.0024, bow=False)
         cs.set_material(lace, mats["trainer_lace"])
         out.append((lace, body.transfer(cs.get_co(lace))))
         x, y = leg_axis(body, side)(top_z)

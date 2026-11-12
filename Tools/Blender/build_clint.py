@@ -79,14 +79,6 @@ def head_materials(body, out, hair_tint, skin_file="T_Superhero_Male_Dark.png"):
     }
 
 
-def superellipse(cy, ax, ayf, ayb, z, n=96, p=2.6):
-    a = np.linspace(0, 2 * math.pi, n, endpoint=False)
-    c, s = np.cos(a), np.sin(a)
-    x = ax * np.sign(c) * np.abs(c) ** (2 / p)
-    y = cy + np.where(s < 0, ayf, ayb) * np.sign(s) * np.abs(s) ** (2 / p)
-    return np.column_stack([x, y, np.full(n, z)])
-
-
 def skirt_solid(body):
     """A closed flared solid from the ribs to below the hem: merged into the coat's volume, it is the skirt hanging
     clear of the legs."""
@@ -108,7 +100,7 @@ def skirt_solid(body):
             ax = hx + 0.03 + 0.05 * t
             ayf = hyf + 0.03 + 0.035 * t
             ayb = hyb + 0.03 + 0.045 * t
-        rings.append(superellipse(cy, ax, ayf, ayb, z))
+        rings.append(pieces.superellipse(0.0, cy, ax, ayf, ayb, z))
     return cs.loft("Skirt", rings, closed=True, cap_start=True, cap_end=True)
 
 

@@ -934,6 +934,18 @@ def skin(obj, body, W, max_influences=4):
     return obj
 
 
+def reassign(body, W, from_family, to_bone, mask=None):
+    """Move the weight a family of bones has (where mask is true) onto one bone: a vest hem the thighs should not
+    drag, say."""
+    W = np.array(W, np.float64)
+    cols = [body.bone_index[b] for b in body.bones if family_of(b) == from_family]
+    rows = np.ones(len(W), bool) if mask is None else np.asarray(mask, bool)
+    moved = W[np.ix_(rows, cols)].sum(axis=1)
+    W[np.ix_(rows, cols)] = 0.0
+    W[rows, body.bone_index[to_bone]] += moved
+    return W
+
+
 def rigid(body, n, bones):
     """Weights for n verts bound to bones {name: weight}."""
     W = np.zeros((n, len(body.bones)))
