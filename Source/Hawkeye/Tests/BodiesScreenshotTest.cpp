@@ -1,6 +1,9 @@
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Camera/CameraActor.h"
+#include "Combat/BowComponent.h"
+#include "Combat/MeleeComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
@@ -22,19 +25,24 @@
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
 #include "World/ThugAIController.h"
+#include "World/LuckyCharacter.h"
 #include "World/ThugCharacter.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The bodies (claude-docs/animation.md, "Bodies"): a street thug, the heavy, Clint and Lucky's mesh, each stood on the
+ * The bodies (claude-docs/animation.md, "Bodies"): a street thug, the heavy, Clint and Lucky, each stood on the
  * street by the PlayerStart and shot front-on to Saved/Screenshots/Bodies/ (body_thug.png, body_heavy.png,
- * body_clint.png, body_lucky.png), then a thug thrown into a ragdoll (body_thug_ragdoll.png).
+ * body_clint.png, body_lucky.png), then a thug thrown into a ragdoll (body_thug_ragdoll.png), a thug 0.4 s into his
+ * punch's wind-up with the telegraph glow on (body_thug_punch.png), a thug the frame a hit flashes him
+ * (body_thug_flash.png), Clint 0.7 s into a bow draw (body_clint_draw.png) and Lucky sitting by Kate
+ * (body_lucky_kate.png).
  *
  * Fails, for a character with a body look, when the look is not drawn over a hidden driver, a bone of it is more than
  * 150 cm from the actor (exploded), its hands are not well below its shoulders while he stands (a T-pose), its toes
  * point away from where he faces (turned), its head is more than 25 cm from the driver's (scaled or turned), or, in the
- * ragdoll, its pelvis is more than 25 cm from the driver's (the look not following the physics). A clone without the
+ * ragdoll, its pelvis is more than 25 cm from the driver's (the look not following the physics). Lucky fails when he is
+ * not 40 to 95 cm tall or his head is not toward where he faces. A clone without the
  * packs has no look: the shots are still taken and the checks are skipped with a note. Needs a real RHI:
  *
  *   UnrealEditor-Cmd.exe Hawkeye.uproject /Game/Maps/L_District_EastVillage -game -windowed -ResX=1280 -ResY=720
@@ -47,8 +55,6 @@ namespace HawkeyeBodyShots
 {
 	static const TCHAR* ThugClassPath = TEXT("/Game/Blueprints/AI/BP_Thug.BP_Thug_C");
 	static const TCHAR* HeavyClassPath = TEXT("/Game/Blueprints/AI/BP_Thug_Heavy.BP_Thug_Heavy_C");
-	static const TCHAR* LuckyMeshPath = TEXT("/Game/Characters/Lucky/SK_Lucky.SK_Lucky");
-	static const TCHAR* LuckyIdlePath = TEXT("/Game/Characters/Lucky/A_Lucky_Idle.A_Lucky_Idle");
 
 	static UWorld* FindWorld()
 	{
@@ -164,18 +170,74 @@ public:
 		{
 			return false;
 		}
+		// A moment shot (the punch, the flash, the draw) starts its action, waits its lead, then holds time on him.
+		if (ActionLead(Subject) >= 0.0)
+		{
+			if (ActionStart < 0.0)
+			{
+				StartAction(Subject);
+				ActionStart = Now;
+				return false;
+			}
+			if (Now - ActionStart < ActionLead(Subject))
+			{
+				return false;
+			}
+			if (Current.IsValid())
+			{
+				Current->CustomTimeDilation = 0.001f;
+			}
+		}
+		ActionStart = -1.0;
 		Shoot(Subject);
 		++Step;
 		return false;
 	}
 
 private:
-	static constexpr int32 NumSubjects = 5;
+	static constexpr int32 NumSubjects = 9;
+	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, FlashShot, DrawShot, LuckyKateShot };
 
 	static double SettleSeconds(int32 Subject)
 	{
-		// The ragdoll needs time to fall; the others only Lumen and the exposure.
-		return Subject == 4 ? 1.6 : 2.5;
+		// The ragdoll needs time to fall; the others only Lumen and the exposure. The punch, the flash and the draw are
+		// started at the end of their settle (Shoot), so the pose is the moment asked for.
+		return Subject == RagdollShot ? 1.6 : 2.5;
+	}
+
+	/** Seconds from the action to the shot, or -1 for a subject with no action. */
+	static double ActionLead(int32 Subject)
+	{
+		switch (Subject)
+		{
+		case PunchShot:
+			return 0.4;   // of the fists' 0.6 s wind-up: the arm back, the telegraph on
+		case FlashShot:
+			return 0.02;  // the frame after the hit
+		case DrawShot:
+			return 0.7;
+		default:
+			return -1.0;
+		}
+	}
+
+	void StartAction(int32 Subject)
+	{
+		AThugCharacter* Thug = Cast<AThugCharacter>(Current.Get());
+		if (Subject == PunchShot && Thug && Thug->GetMeleeComponent())
+		{
+			const bool bStarted = Thug->GetMeleeComponent()->StartAttack(Thug->GetMeleeAttack(0));
+			Test->TestTrue(TEXT("body_thug_punch: the swing started"), bStarted);
+		}
+		else if (Subject == FlashShot && Thug)
+		{
+			Thug->FlashHit();
+		}
+		else if (AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Current.Get()); Subject == DrawShot && Clint && Clint->GetBowComponent())
+		{
+			const bool bDrawing = Clint->GetBowComponent()->StartDraw();
+			Test->TestTrue(TEXT("body_clint_draw: the draw started"), bDrawing);
+		}
 	}
 
 	void Setup(UWorld* World, AHawkeyeCharacter* Kate)
@@ -189,6 +251,10 @@ private:
 			}
 		}
 		HawkeyeFreezePartner(World);
+		for (TActorIterator<ALuckyCharacter> It(World); It; ++It)
+		{
+			It->SetThinkingEnabled(false);
+		}
 		// The street at the PlayerStart (Kate may have loaded anywhere, a roof included).
 		Feet = Kate->GetActorLocation() - FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 		Along = Kate->GetActorForwardVector().GetSafeNormal2D();
@@ -203,6 +269,7 @@ private:
 				Feet = Hit.ImpactPoint;
 			}
 		}
+		KateRef = Kate;
 		// Kate steps out of the frame (and out of everyone's sight).
 		Kate->SetActorHiddenInGame(true);
 		Kate->SetActorEnableCollision(false);
@@ -276,82 +343,132 @@ private:
 		}
 	}
 
+	/** The district's Clint (benched in act 1), brought onto the spot; null when there is none. */
+	AHawkeyeCharacter* BringClint(UWorld* World, const FVector& At)
+	{
+		for (TActorIterator<AHawkeyePartnerController> It(World); It; ++It)
+		{
+			bWasBenched = It->IsBenched();
+			It->SetBenched(false);
+			Partner = *It;
+			It->SetThinkingEnabled(false);
+			It->StopMovement();
+			if (AHawkeyeCharacter* Clint = It->GetPartner())
+			{
+				if (UCharacterMovementComponent* Movement = Clint->GetCharacterMovement())
+				{
+					Movement->StopMovementImmediately();
+				}
+				Clint->TeleportTo(At + FVector(0.f, 0.f, Clint->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
+					Along.Rotation(), false, true);
+				Clint->SetActorRotation(Along.Rotation());
+				return Clint;
+			}
+		}
+		return nullptr;
+	}
+
+	/** Lucky on the spot At, facing the camera, not thinking, in State: the district's own, else a new one. */
+	ALuckyCharacter* BringLucky(UWorld* World, const FVector& At, const FRotator& Facing, ELuckyState State)
+	{
+		ALuckyCharacter* Dog = nullptr;
+		for (TActorIterator<ALuckyCharacter> It(World); It && !Dog; ++It)
+		{
+			Dog = *It;
+		}
+		if (!Dog)
+		{
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Dog = World->SpawnActor<ALuckyCharacter>(ALuckyCharacter::StaticClass(), FTransform(Facing, At + FVector(0.f, 0.f, 40.f)), Params);
+			if (Dog)
+			{
+				Spawned.Add(Dog);
+			}
+		}
+		if (!Dog)
+		{
+			return nullptr;
+		}
+		Dog->SetThinkingEnabled(false);
+		Dog->TeleportTo(At + FVector(0.f, 0.f, Dog->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 1.f), Facing, false, true);
+		Dog->SetActorRotation(Facing);
+		Dog->SetLuckyState(State);
+		return Dog;
+	}
+
 	void Stand(UWorld* World, APlayerController* PC, int32 Subject)
 	{
-		using namespace HawkeyeBodyShots;
 		Clear();
 		const FVector Chest = Feet + FVector(0.f, 0.f, 110.f);
+		const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
 		switch (Subject)
 		{
-		case 0:
-			Current = SpawnThug(World, ThugClassPath);
-			Frame(PC, Chest - FVector(0.f, 0.f, 20.f), 320.f, 50.f);
+		case ThugShot:
+		case FlashShot:
+			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
+			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			break;
-		case 1:
-			Current = SpawnThug(World, HeavyClassPath);
-			Frame(PC, Chest - FVector(0.f, 0.f, 20.f), 320.f, 50.f);
-			break;
-		case 2:
-			// The district's Clint. Act 1 benches him (out of sight); he is brought on for the shot and benched again after.
-			for (TActorIterator<AHawkeyePartnerController> It(World); It; ++It)
+		case PunchShot:
+			// From his left, so the swing's arm reads against the street.
+			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
+			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
+			if (Camera)
 			{
-				bWasBenched = It->IsBenched();
-				It->SetBenched(false);
-				Partner = *It;
-				It->SetThinkingEnabled(false);
-				It->StopMovement();
-				if (AHawkeyeCharacter* Clint = It->GetPartner())
-				{
-					if (UCharacterMovementComponent* Movement = Clint->GetCharacterMovement())
-					{
-						Movement->StopMovementImmediately();
-					}
-					Clint->TeleportTo(Feet + FVector(0.f, 0.f, Clint->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
-						Along.Rotation(), false, true);
-					Clint->SetActorRotation(Along.Rotation());
-					Current = Clint;
-				}
+				const FVector Eye = Chest - FVector(0.f, 0.f, 20.f) + Along * 180.f - Side * 250.f + FVector(0.f, 0.f, 20.f);
+				Camera->SetActorLocationAndRotation(Eye, (Chest - FVector(0.f, 0.f, 20.f) - Eye).Rotation());
 			}
+			break;
+		case HeavyShot:
+			Current = SpawnThug(World, HawkeyeBodyShots::HeavyClassPath);
+			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
+			break;
+		case ClintShot:
+		case DrawShot:
+			Current = BringClint(World, Feet);
 			if (!Current.IsValid())
 			{
 				Test->AddWarning(TEXT("body_clint.png: no Clint in the district."));
 			}
-			Frame(PC, Chest - FVector(0.f, 0.f, 20.f), 320.f, 50.f);
+			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			break;
-		case 3:
-		{
-			USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, LuckyMeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
-			if (!Mesh)
+		case LuckyShot:
+			if (ALuckyCharacter* Dog = BringLucky(World, Feet, Along.Rotation(), ELuckyState::Idle))
 			{
-				Test->AddInfo(TEXT("body_lucky.png: no SK_Lucky on this clone (the packs are not imported); the empty street is shot."));
+				Current = Dog;
 			}
-			else
+			Frame(PC, Feet + FVector(0.f, 0.f, 40.f), 280.f, 50.f);
+			break;
+		case LuckyKateShot:
+		{
+			// Kate back in the frame, Lucky sat at her left, both facing the camera.
+			if (KateRef.IsValid())
 			{
-				FActorSpawnParameters Params;
-				Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-				ASkeletalMeshActor* Dog = World->SpawnActor<ASkeletalMeshActor>(ASkeletalMeshActor::StaticClass(),
-					FTransform(Along.Rotation(), Feet), Params);
-				if (Dog)
+				KateRef->SetActorHiddenInGame(false);
+				KateRef->TeleportTo(Feet + Side * 45.f + FVector(0.f, 0.f, KateRef->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
+					Along.Rotation(), false, true);
+				KateRef->SetActorRotation(Along.Rotation());
+				// Her own camera is not the view: stop her tick so its close-up hide cannot hide her from this one.
+				KateRef->SetActorTickEnabled(false);
+				if (USkeletalMeshComponent* Body = KateRef->GetBodyMesh())
 				{
-					USkeletalMeshComponent* Body = Dog->GetSkeletalMeshComponent();
-					Body->SetSkeletalMeshAsset(Mesh);
-					if (UAnimSequence* Idle = LoadObject<UAnimSequence>(nullptr, LuckyIdlePath, nullptr, LOAD_NoWarn | LOAD_Quiet))
-					{
-						Body->PlayAnimation(Idle, /*bLooping=*/true);
-					}
-					Spawned.Add(Dog);
-					const FBoxSphereBounds Bounds = Body->Bounds;
-					Test->AddInfo(FString::Printf(TEXT("body_lucky.png: SK_Lucky %.0f cm tall, %.0f x %.0f cm, on the street at %s."),
-						Bounds.BoxExtent.Z * 2.f, Bounds.BoxExtent.X * 2.f, Bounds.BoxExtent.Y * 2.f, *Feet.ToCompactString()));
-					Test->TestTrue(TEXT("Lucky stands 20 to 60 cm tall"), Bounds.BoxExtent.Z * 2.f > 20.f && Bounds.BoxExtent.Z * 2.f < 60.f);
+					Body->SetOwnerNoSee(false);
+				}
+				if (AController* Controller = KateRef->GetController())
+				{
+					Controller->SetControlRotation(Along.Rotation());
 				}
 			}
-			Frame(PC, Feet + FVector(0.f, 0.f, 18.f), 110.f, 50.f);
+			if (ALuckyCharacter* Dog = BringLucky(World, Feet - Side * 45.f, Along.Rotation(), ELuckyState::Sit))
+			{
+				Current = Dog;
+			}
+			Frame(PC, Feet + FVector(0.f, 0.f, 80.f), 330.f, 50.f);
 			break;
 		}
 		default:
 		{
-			AThugCharacter* Thug = SpawnThug(World, ThugClassPath);
+			AThugCharacter* Thug = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
 			Current = Thug;
 			if (Thug)
 			{
@@ -364,13 +481,47 @@ private:
 		}
 	}
 
+	/** Lucky's checks: his size, and his head toward where he faces. */
+	void CheckLucky(const FString& Name)
+	{
+		const ALuckyCharacter* Dog = Cast<ALuckyCharacter>(Current.Get());
+		const USkeletalMeshComponent* Body = Dog ? Dog->GetMesh() : nullptr;
+		if (!Body || !Body->GetSkeletalMeshAsset())
+		{
+			Test->AddInfo(Name + TEXT(": no SK_Lucky on this clone (the packs are not imported); the empty street is shot."));
+			return;
+		}
+		const FBoxSphereBounds Bounds = Body->Bounds;
+		const float Tall = Bounds.BoxExtent.Z * 2.f;
+		FVector Head(0.f), Pelvis(0.f);
+		const bool bBones = HawkeyeBodyShots::Bone(Body, TEXT("head"), Head) && HawkeyeBodyShots::Bone(Body, TEXT("pelvis"), Pelvis);
+		const float Facing = bBones ? FVector::DotProduct((Head - Pelvis).GetSafeNormal2D(), Dog->GetActorForwardVector().GetSafeNormal2D()) : -1.f;
+		// Against his capsule's bottom, which the movement keeps on whatever is under him (the kerb, the road).
+		const float Ground = Bounds.Origin.Z - Bounds.BoxExtent.Z
+			- (Dog->GetActorLocation().Z - Dog->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		Test->AddInfo(FString::Printf(TEXT("%s: %s %.0f cm tall, %.0f x %.0f cm, head %.2f along his facing, lowest point %.0f cm off his capsule's bottom, state %d, clip %s."),
+			*Name, *GetNameSafe(Body->GetSkeletalMeshAsset()), Tall, Bounds.BoxExtent.X * 2.f, Bounds.BoxExtent.Y * 2.f, Facing, Ground,
+			static_cast<int32>(Dog->GetLuckyState()), *GetNameSafe(Body->GetSingleNodeInstance() ? Body->GetSingleNodeInstance()->GetAnimationAsset() : nullptr)));
+		Test->TestTrue(*FString::Printf(TEXT("%s: Lucky stands 40 to 95 cm tall (%.0f)"), *Name, Tall), Tall > 40.f && Tall < 95.f);
+		Test->TestTrue(*FString::Printf(TEXT("%s: his head is toward where he faces (%.2f)"), *Name, Facing), Facing > 0.5f);
+		Test->TestTrue(*FString::Printf(TEXT("%s: his feet are on the ground (%.0f cm off)"), *Name, Ground), FMath::Abs(Ground) < 15.f);
+	}
+
 	void Shoot(int32 Subject)
 	{
 		using namespace HawkeyeBodyShots;
 		static const TCHAR* Names[NumSubjects] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
-			TEXT("body_thug_ragdoll")};
+			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_thug_flash"), TEXT("body_clint_draw"), TEXT("body_lucky_kate")};
 		ACharacter* Character = Cast<ACharacter>(Current.Get());
-		if (Character && Subject != 3)
+		if (Subject == LuckyShot || Subject == LuckyKateShot)
+		{
+			CheckLucky(FString(Names[Subject]) + TEXT(".png"));
+		}
+		else if (Subject >= PunchShot)
+		{
+			ShootMoment(Subject, Names[Subject]);
+		}
+		else if (Character)
 		{
 			const USkeletalMeshComponent* Driver = Character->GetMesh();
 			const USkeletalMeshComponent* Seen = Driver;
@@ -382,7 +533,7 @@ private:
 			{
 				Seen = Hawkeye->GetBodyMesh();
 			}
-			if (Subject < 4)
+			if (Subject < RagdollShot)
 			{
 				Test->AddInfo(FString::Printf(TEXT("%s.png: %s"), Names[Subject],
 					*CheckStanding(Test, Names[Subject], Character, Driver, Seen)));
@@ -414,8 +565,62 @@ private:
 		HawkeyeShots::Request(Test, ShotPath(Names[Subject]), /*bShowUI=*/false);
 	}
 
+	/** The punch, the flash and the draw: what state he was caught in, and that the look is what is drawn. */
+	void ShootMoment(int32 Subject, const TCHAR* Name)
+	{
+		ACharacter* Character = Cast<ACharacter>(Current.Get());
+		if (!Character)
+		{
+			Test->AddWarning(FString::Printf(TEXT("%s.png: nobody to shoot."), Name));
+			return;
+		}
+		if (const AThugCharacter* Thug = Cast<AThugCharacter>(Character))
+		{
+			const UMeleeComponent* Melee = Thug->GetMeleeComponent();
+			const bool bWinding = Melee && Melee->IsWindingUp();
+			Test->AddInfo(FString::Printf(TEXT("%s.png: %s, winding up %d, hit flash %.2f, look %s."), Name, *GetNameSafe(Thug->GetBodyMesh()->GetSkeletalMeshAsset()),
+				bWinding ? 1 : 0, Thug->GetHitFlashAlpha(), Thug->GetBodyMesh() != Thug->GetMesh() ? TEXT("drawn") : TEXT("none (mannequin)")));
+			if (Subject == PunchShot)
+			{
+				Test->TestTrue(FString::Printf(TEXT("%s: caught in the wind-up (the telegraph glow is on)"), Name), bWinding);
+			}
+			else
+			{
+				Test->TestTrue(FString::Printf(TEXT("%s: caught in the flash (%.2f)"), Name, Thug->GetHitFlashAlpha()), Thug->GetHitFlashAlpha() > 0.5f);
+			}
+		}
+		else if (const AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Character))
+		{
+			const UBowComponent* Bow = Clint->GetBowComponent();
+			Test->AddInfo(FString::Printf(TEXT("%s.png: %s, drawing %d, draw %.2f."), Name, *GetNameSafe(Clint->GetBodyMesh()->GetSkeletalMeshAsset()),
+				Bow && Bow->IsDrawing() ? 1 : 0, Bow ? Bow->GetDrawFraction() : 0.f));
+		}
+	}
+
 	void Clear()
 	{
+		if (AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Current.Get()))
+		{
+			if (UBowComponent* Bow = Clint->GetBowComponent(); Bow && Bow->IsDrawing())
+			{
+				Bow->CancelDraw();
+			}
+		}
+		if (Current.IsValid())
+		{
+			Current->CustomTimeDilation = 1.f;
+		}
+		if (ALuckyCharacter* Dog = Cast<ALuckyCharacter>(Current.Get()))
+		{
+			// The district's dog is put back out of the frame (thinking stays off until the test ends).
+			Dog->TeleportTo(Feet - Along * 1200.f + FVector(0.f, 0.f, 60.f), Along.Rotation(), false, true);
+		}
+		if (KateRef.IsValid() && !KateRef->IsHidden())
+		{
+			KateRef->SetActorHiddenInGame(true);
+			KateRef->SetActorTickEnabled(true);
+			KateRef->TeleportTo(KateRef->GetActorLocation() - Along * 1200.f + FVector(0.f, 0.f, 800.f), Along.Rotation(), false, true);
+		}
 		// Clint is the district's own; he is walked off the spot and benched again, not destroyed.
 		if (AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Current.Get()))
 		{
@@ -458,6 +663,8 @@ private:
 	ACameraActor* Camera = nullptr;
 	APointLight* Light = nullptr;
 	TWeakObjectPtr<AActor> Current;
+	TWeakObjectPtr<AHawkeyeCharacter> KateRef;
+	double ActionStart = -1.0;
 	TWeakObjectPtr<AHawkeyePartnerController> Partner;
 	bool bWasBenched = false;
 	TArray<TWeakObjectPtr<AActor>> Spawned;
