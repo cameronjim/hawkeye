@@ -53,6 +53,8 @@ What gets built, all with Geometry Script from Python (the GeometryScripting plu
   thugs are also tagged StreetGroup.
 * the partner: ``City_ClintStart`` (an ATargetPoint 5 m behind the PlayerStart, toward the park)
   and ``City_Clint`` (BP_Clint) standing on it; BP_PartnerController possesses him at load.
+* Lucky: ``City_Lucky`` (ALuckyCharacter, C++) 3 m behind the PlayerStart and 1.5 m to its left, on the
+  pavement; he follows Kate a short way (claude-docs/gameplay-semantics.md, "Lucky").
 * grapple anchors (``City_Anchor_<n>``, BP_GrappleAnchor): on every building over 8 m, one on
   the parapet at each roof corner and one mid-edge on edges over 25 m, none within 4 m of
   another, each with its landing point on the roof clear of the parapet; then facade anchors (on
@@ -911,6 +913,40 @@ def ensure_clint(district, existing):
     changes += n
     c.log("updated" if changes else "exists", CLINT_LABEL, "at ({0:.0f}, {1:.0f}, {2:.0f}) yaw {3:.0f}, {4:.0f} cm behind the start".format(
         x, y, ground, yaw, CLINT_BEHIND_START))
+    return changes
+
+
+# Lucky (claude-docs/gameplay-semantics.md, "Lucky"): the C++ ALuckyCharacter itself, no Blueprint: his mesh and clips
+# are soft references to the git-ignored import (import_bodies.py), and a clone without them hides him.
+LUCKY_LABEL = "City_Lucky"
+LUCKY_BEHIND_START = 300.0         # cm behind the PlayerStart
+LUCKY_LEFT_OF_START = 150.0        # cm to its left
+LUCKY_HALF_HEIGHT = 36.0           # cm; ALuckyCharacter's capsule
+
+
+def lucky_start_transform(district):
+    """(x, y, yaw): LUCKY_BEHIND_START behind the PlayerStart and LUCKY_LEFT_OF_START to its left, facing its way."""
+    loc, rot = player_start_transform(district)
+    yaw = math.radians(rot.yaw)
+    fwd, left = (math.cos(yaw), math.sin(yaw)), (-math.sin(yaw), math.cos(yaw))
+    x = loc.x - fwd[0] * LUCKY_BEHIND_START + left[0] * LUCKY_LEFT_OF_START
+    y = loc.y - fwd[1] * LUCKY_BEHIND_START + left[1] * LUCKY_LEFT_OF_START
+    return x, y, rot.yaw
+
+
+def ensure_lucky(district, existing):
+    """City_Lucky (ALuckyCharacter) on the slab beside the PlayerStart. Idempotent by label."""
+    cls = getattr(unreal, "LuckyCharacter", None)
+    if cls is None:
+        c.log("FAILED", LUCKY_LABEL, "no ALuckyCharacter class (build the Hawkeye module)")
+        return 0
+    x, y, yaw = lucky_start_transform(district)
+    ground = ground_z(x, y, SIDEWALK_TOP, existing)
+    lucky, changes = _ensure_located(existing, LUCKY_LABEL, cls, unreal.Vector(x, y, ground + LUCKY_HALF_HEIGHT + 2.0), yaw)
+    if lucky is not None:
+        changes += _ensure_tags(lucky, ["City", "CityLucky"])
+    c.log("updated" if changes else "exists", LUCKY_LABEL, "at ({0:.0f}, {1:.0f}, {2:.0f}) yaw {3:.0f}".format(
+        x, y, ground, yaw))
     return changes
 
 
@@ -4140,6 +4176,7 @@ def run():
     changes += ensure_thugs(district, existing)
     changes += ensure_archers(district, existing)
     changes += ensure_clint(district, existing)
+    changes += ensure_lucky(district, existing)
     changes += ensure_street_lamps(district, existing)
     changes += ensure_ambience(district, existing)
     changes += ensure_lamp_buzz(district, existing)

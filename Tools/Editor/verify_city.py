@@ -32,6 +32,7 @@ Prints one line per check and a final ``[Hawkeye] verify_city PASS`` or ``FAIL``
   clearance of a lamp pole or head, no two landings overlapping; each has its rail ledge
   (Ledge_1 on the outer top rail within 5 cm) and the bars are drawn in M_SteelPainted
 * the partner: City_ClintStart and City_Clint (BP_Clint) 5 m behind the PlayerStart, on the navmesh.
+* Lucky: City_Lucky (ALuckyCharacter) beside the PlayerStart, on the navmesh.
 * chapter 1's fight: five City_Thug_ (one gunner, two bats, one fists, one heavy on BP_Thug_Heavy), the
   RoofPair on the cross_block roof, the street pair's two City_Patrol_ points 40 m apart and the
   heavy's two 20 m apart, the StreetGroup tag on the three street thugs, City_ThugGroup_clear_roof,
@@ -864,6 +865,26 @@ def check_clint(district, actors):
     check(ok, "Clint starts on the navmesh", "feet z {0:.0f}".format(feet.z))
 
 
+def check_lucky(district, actors):
+    """City_Lucky (ALuckyCharacter) beside the PlayerStart, his feet on the navmesh."""
+    lucky = actors.get(gen.LUCKY_LABEL)
+    check(lucky is not None and "LuckyCharacter" in c.class_name(lucky.get_class()), gen.LUCKY_LABEL + " is ALuckyCharacter",
+          c.class_name(lucky.get_class()) if lucky is not None else "missing")
+    if lucky is None:
+        return
+    x, y, _yaw = gen.lucky_start_transform(district)
+    loc = lucky.get_actor_location()
+    off = math.hypot(loc.x - x, loc.y - y)
+    check(off <= 1.0, "Lucky on his spot beside the PlayerStart", "{0:.1f} cm off".format(off))
+    world, built = build_navigation()
+    if not built:
+        return
+    feet = loc - unreal.Vector(0.0, 0.0, gen.LUCKY_HALF_HEIGHT)
+    result = unreal.HawkeyeNavigationLibrary.project_to_navigation(world, feet, NAV_QUERY_EXTENT)
+    ok = bool(result[0]) if isinstance(result, tuple) else result is not None
+    check(ok, "Lucky starts on the navmesh", "feet z {0:.0f}".format(feet.z))
+
+
 def _check_one_safehouse(actor, spot, label, safehouse_id, name, what):
     """The checks both safehouses share: placed on its facade point, facing out, on the pavement,
     tagged, the purple door, its id, its placeholder name and its address. Returns the location."""
@@ -1391,6 +1412,7 @@ def run():
     check_thugs(district, actors, records)
     check_archers(district, actors)
     check_clint(district, actors)
+    check_lucky(district, actors)
     check_safehouse(district, actors)
     check_challenges(district, actors)
     check_crimes(district, actors)
