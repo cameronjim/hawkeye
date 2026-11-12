@@ -11,6 +11,7 @@ import costume as cs
 
 TORSO_AXIS = (0.0, 0.02)
 LEG_REACH = 0.13   # rays onto one leg's garment start this far out: the other leg's is 0.16+ away
+NECK_FORWARD = 0.018
 
 
 def leg_axis(body, side):
@@ -499,7 +500,9 @@ def neck_shape(body):
     down the skin belongs to spine_03 and the trapezius would be measured instead)."""
     sel = (np.abs(body.co[:, 2] - 1.545) < 0.012) & (body.family["head"] > 0.5)
     pts = body.co[sel]
-    return (float(pts[:, 1].min() + pts[:, 1].max()) / 2, float(np.abs(pts[:, 0]).max()),
+    # Centred NECK_FORWARD in front of the measured middle: the neck leans forward, so a neckline cut round the
+    # middle would bite deep into the upper back and leave a notch behind the collar.
+    return (float(pts[:, 1].min() + pts[:, 1].max()) / 2 - NECK_FORWARD, float(np.abs(pts[:, 0]).max()),
             float(pts[:, 1].max() - pts[:, 1].min()) / 2)
 
 
@@ -563,6 +566,7 @@ def stand_collar(body, outer, inner, z0=1.43, z1=1.60, front_drop=0.05, gap_deg=
             ring.append(((rx + pad) * ca, cy + dy + (ry + pad) * sa, zz))
         rings.append(ring)
     obj = cs.loft(name, np.array(rings), closed=False)
+    cs.orient_outward(obj, (0.0, cy))
     cs.set_material(obj, outer)
     inner_mask = cs.solidify(obj, thickness)
     cs.set_material(obj, inner, inner_mask)

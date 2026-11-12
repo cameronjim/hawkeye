@@ -390,6 +390,16 @@ def recalc_normals(obj):
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 
 
+def orient_outward(obj, axis_xy):
+    """Point an open band's normals away from a vertical axis (recalc cannot tell inside from outside on a surface
+    with no inside; Solidify and the lining depend on it)."""
+    c, n = face_data(obj)
+    radial = c[:, :2] - np.asarray(axis_xy)
+    if (radial * n[:, :2]).sum() < 0:
+        with Edit(obj) as bm:
+            bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+
+
 # --------------------------------------------------------------------------------------------------
 # primitives
 # --------------------------------------------------------------------------------------------------

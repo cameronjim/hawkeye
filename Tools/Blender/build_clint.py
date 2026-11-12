@@ -131,10 +131,10 @@ def build_coat(body, mats):
     torso = (fam["torso"] > 0.5) & (np.abs(body.co[:, 0]) < 0.24)
     hangs = [(torso, lambda z: pieces.TORSO_AXIS, 1.37, 0.85, 0.97, 0.3)]
     sleeves = pieces.arm_tubes(body, 0.26, CUFF_X + 0.01, pad0=0.02, pad1=0.024, sag=0.006)
-    chest = pieces.torso_solid(body, 0.95, 1.36, pad=0.022, hem_in=0.06)
+    chest = pieces.torso_solid(body, 0.95, 1.42, pad=0.022, hem_in=0.06)
     coat = pieces.shell(body, "Coat", off, hangs=hangs, extras=[skirt_solid(body), chest] + sleeves, voxel=0.008,
                         smooth=6)
-    pieces.iron(body, coat, torso_iters=60, limb_iters=16)
+    pieces.iron(body, coat, torso_iters=60, limb_iters=16, z_range=(0.9, 1.52))
     cs.cut_and_delete(coat, (0, 0, HEM_Z), (0, 0, 1), lambda c, n: c[:, 2] < HEM_Z)
     for sx in (1, -1):
         cs.cut_and_delete(coat, (sx * CUFF_X, 0, 0), (1, 0, 0), lambda c, n, sx=sx: sx * c[:, 0] > CUFF_X)
@@ -169,7 +169,7 @@ def trim_coat(coat, mats):
         for x0 in (PLACKET_X, PANEL_X, PANEL_X + PIPE):
             cs.bisect(coat, (sx * x0, 0, 0), (1, 0, 0), lambda c, n: (c[:, 1] < 0.02) & (np.abs(c[:, 0]) < 0.2))
     for z0 in (YOKE_Z - PIPE, YOKE_Z):
-        cs.bisect(coat, (0, 0, z0), (0, 0, 1), lambda c, n: (np.abs(c[:, 0]) > 0.06)
+        cs.bisect(coat, (0, 0, z0), (0, 0, 1), lambda c, n: ((np.abs(c[:, 0]) > 0.06) | (c[:, 1] > 0.05))
                   & (np.abs(c[:, 0]) < YOKE_END_X + 0.02) & (c[:, 2] > 1.40))
     for sx in (1, -1):
         for x0 in (YOKE_END_X, YOKE_END_X + PIPE, ELBOW[0] - PIPE, ELBOW[0], ELBOW[1], ELBOW[1] + PIPE,
@@ -194,8 +194,10 @@ def trim_coat(coat, mats):
     front = (c[:, 1] < 0.0) & (n[:, 1] < 0.2)
     panel = front & (ax < PANEL_X) & (c[:, 2] < 1.5) & ~((ax < PLACKET_X) & (c[:, 2] > OPEN_Z))
     pipe = front & (ax > PANEL_X) & (ax < PANEL_X + PIPE) & (c[:, 2] < 1.5)
-    yoke = (c[:, 2] > YOKE_Z) & (ax > 0.06) & (ax < YOKE_END_X) & (n[:, 2] > -0.2)
-    pipe |= (c[:, 2] > YOKE_Z - PIPE) & (c[:, 2] < YOKE_Z) & (ax > 0.06) & (ax < YOKE_END_X + PIPE) & (n[:, 2] > -0.2)
+    # Over the shoulders and right across the back; in front it stops at the panels (the placket stays black).
+    yoke = (c[:, 2] > YOKE_Z) & ((ax > 0.06) | (c[:, 1] > 0.05)) & (ax < YOKE_END_X) & (n[:, 2] > -0.2)
+    pipe |= (c[:, 2] > YOKE_Z - PIPE) & (c[:, 2] < YOKE_Z) & ((ax > 0.06) | (c[:, 1] > 0.05)) \
+        & (ax < YOKE_END_X + PIPE) & (n[:, 2] > -0.2)
     pipe |= (ax > YOKE_END_X) & (ax < YOKE_END_X + PIPE) & (c[:, 2] > YOKE_Z - PIPE) & (n[:, 2] > -0.2)
     elbow = (ax > ELBOW[0]) & (ax < ELBOW[1])
     pipe |= ((ax > ELBOW[0] - PIPE) & (ax < ELBOW[0])) | ((ax > ELBOW[1]) & (ax < ELBOW[1] + PIPE))
