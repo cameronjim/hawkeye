@@ -17,8 +17,28 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
-- **Modelled costumes in the game, and Lucky follows Kate. On `wip/bodies`, not merged: one
-  lap failed the gate.** The Blender-built thug, heavy and Clint now import and are what the
+- **The Santa flake is fixed, the thug's suit is matte, Lucky sits better; the bodies are merged.** The grotto
+  laps' scripted player was losing to Santa by a hair: the two passes that night ended the fight on 2.7 and 3.4 of
+  100 health, and two more runs this morning both went down on the ninth hit (the lap passed anyway after the
+  reload). Nothing in the game was random; the bot was. It answered a telegraph only when it was idle, so a heavy
+  it had started took the second sack swing, a jab it threw into the slam took the slam, and it dodged 0.3 s out,
+  just past Kate's 0.25 s of invulnerability, so whether the slam still reached her depended on where a frame fell
+  (one log: "perfect dodge" through the slam, then hit by it at 235 cm, 0.36 s later). The bot now reads telegraphs
+  first: a parryable swing gets a light press (letting go of a charging heavy, or tapping in her recovery), an
+  unblockable gets nothing thrown into it, and it dodges 0.18 s out. New test `Hawkeye.Dodge.LateDodgeOutlastsTheSwing`
+  pins the rule it relies on. Santa took 0 hits in 10 of 10 `Lap.Grotto` (fight 47 to 60 s) and 10 of 10
+  `Lap.SeenGrotto` (47 to 58 s). Santa's and Kate's numbers are unchanged. Art: the tracksuit's roughness is 0.86
+  (was 0.62, read as vinyl), the ribbed hem is the suit's own red (no dark band), the jacket sits closer to the chest,
+  and the trousers' crotch takes its weight from the pelvis, so a wide stance stretches it smoothly instead of
+  tearing it into steps. Lucky's grey undersides are painted cream gold (the dark patch on his hind leg when he sits)
+  and his sitting hind feet lie flat forward. Gate: both builds clean, 591 tests, 225 Python tests, ruff clean,
+  second content run left nothing to commit, city verify, content verify, traversal audit, and 13 of 13 laps first
+  try. **Rough:** the drop crotch still hangs low between the legs, the jacket is still boxy, Lucky's haunch is still
+  lumpy when he sits and his hind feet look thin, and the new shots happened to be taken at night, so the matte
+  suit is not judged in daylight. In the thug shot his left trouser leg ends in the air with no trainer under it (it
+  did before too); not looked into.
+- **Modelled costumes in the game, and Lucky follows Kate. Merged 2026-11-12 (above); it had been held back because
+  one lap failed the gate.** The Blender-built thug, heavy and Clint now import and are what the
   game draws: posed by their mannequins, the right size and way round, materials right, the
   hair masked, the thug's hit flash and telegraph glow still on, the body still riding the
   ragdoll. Each gets four LODs from the engine (the thug is about 4k vertices at the last one).
