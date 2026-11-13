@@ -17,6 +17,21 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **The block, second look pass: shops, an overcast, relief, trees. Merged 2026-11-13.** Look at the shops across
+  East 7th Street by day and night, then up at the roofline from the park. Every shop now has a trade and a readable
+  sign (LAUNDROMAT, DELI & GROCERY, PIZZA, HARDWARE, PHARMACY, BARBER and ten more, generic names in three pixel
+  faces drawn by the shader), its own interior (washers, groceries and fridges, a counter and menu board, hardware,
+  pharmacy, mirrors and chairs, clothes racks, flowers), bay widths that vary by building, awnings on about a third,
+  and some gated even by day. The sky is a low cloud deck: flat white-grey by day (the sun is softer under it), dull
+  orange-brown by night. The hero block's street faces have real relief (cornices, sills and lintels on every window,
+  a belt course, doors with stoops), all render-only so the grapple and the audit are untouched. Bare street trees
+  in tree pits, elms across the park, crosswalks, newspaper boxes; parked cars with glass, trim and lamps; the grid
+  test block is a jersey barrier, the mantle block a dumpster, the park walls granite (collision unchanged). Road
+  tracks and kerb slush read from Kate's camera; the long dark seam was the cracks' noise drawing contour lines and is
+  gone; snowflakes stay 3.5 m from the lens. Slowest Kate shot at 1080p 7.4 ms (p95). Still prototype: signs are cut
+  where a building ends, the long building's upper floors have no bays, no manholes or steam. Details:
+  `claude-docs/city-look.md`, shots `Saved/Screenshots/Block/` (new `shopfront_*`, `wide_*`; `*_before.png` are
+  pass 1's).
 - **The block looks like a street now. Merged 2026-11-13.** Walk out of the start and look at the tenements across
   East 7th Street, by day and by night (`hawkeye.TimeOfDay Day` / `Night`). Every wall is real-size brick (20 x 6.5 cm
   in mortar, a header course every sixth), brownstone ashlar, painted brick or board-marked concrete for the towers,

@@ -171,11 +171,12 @@ Done briefly before building; what fits a 16 GB / RTX 4070 machine and a no-down
 
 ## Next
 
-1. **Clouds.** The day is hazy, not overcast: the sky atmosphere cannot grey the zenith. A low volumetric cloud layer
-   (the engine's own cloud material, scripted) would give the flat white January sky and the orange-lit underside at
-   night, and let the stars go. Measure its cost first (budget 1 ms).
-2. **Depth on the facade.** Fire escapes and parapets are the only relief. Cornices, sills and lintels as real
-   geometry on the hero block's street faces (a render-only mesh with no collision, so the audit and golden hashes
-   stay), and a stoop at each door, would carry the silhouette the shader cannot.
-3. **Street furniture and trees.** Tompkins Square's elms, newspaper boxes, bus shelters, parked cars with snow, a
-   crosswalk at each corner: the ground reads real up close, but the street has too little in it.
+1. **Shop grid per face.** Start each building's shop bays at its own corner (the face's start, passed as custom
+   primitive data per building or found from the object bounds), so signs and storefronts stop being cut where a
+   building ends, and recess the shop doors (a render-only reveal) so the ground floor has depth too.
+2. **Upper-floor variety on long fronts.** Window rhythm per building (pairs, triples, wider bays), projecting bays
+   or a second fire escape on fronts over 20 m, and per-building cornice profiles, so a long tenement front stops
+   reading as one slab.
+3. **Life in the street.** Manholes with steam, a few lit shop interiors spilling light onto the sidewalk (a cheap
+   rect light per open shop at night), parked-car variety (two or three body shapes), and snow piled against trees and
+   hydrants.
