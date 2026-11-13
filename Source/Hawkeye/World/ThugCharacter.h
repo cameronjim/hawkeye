@@ -434,6 +434,12 @@ public:
 	 */
 	void BeginGetUpForTest(float Seconds);
 
+	/** The paired takedown's victim half (ITakedownable); its length, or 0 with no clip. */
+	virtual float BeginPairedTakedown_Implementation(AActor* Attacker) override;
+
+	/** In the paired takedown's victim clip (dead already; the ragdoll waits for its last frame). */
+	bool IsInTakedownClip() const { return bTakedownClip; }
+
 	/** Tests: moves the get-up on (UpdateGetUp, which Tick calls). */
 	void UpdateGetUpForTest(float DeltaSeconds) { UpdateGetUp(DeltaSeconds); }
 
@@ -798,6 +804,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Readability", meta = (ClampMin = "0.0"))
 	float KnockdownClipThudDelay = 1.3f;
 
+	/** The thud under the paired takedown: when its victim clip lays him on the floor, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Feel", meta = (ClampMin = "0.0"))
+	float TakedownClipThudDelay = 1.35f;
+
 	/** The delay the last thud was scheduled with (GroundThudDelay or KnockdownClipThudDelay): tests. */
 	float GetScheduledThudDelay() const { return ScheduledThudDelay; }
 
@@ -1040,6 +1050,11 @@ private:
 	bool bGetUpMeshEase = false;
 	FTransform GetUpMeshStart;
 	ECombatAnimRole LastGetUpRole = ECombatAnimRole::None;
+	/** The paired takedown's victim clip is playing: death does not ragdoll until it ends (EndTakedownClip). */
+	bool bTakedownClip = false;
+	TWeakObjectPtr<AActor> TakedownAttacker;
+	FTimerHandle TakedownClipTimer;
+	void EndTakedownClip();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> KnockdownMontage;

@@ -46,7 +46,10 @@ enum class ECombatAnimRole : uint8
 	/** Getting up from lying face down (GetUp is from lying on the back). Appended: assets store the value. */
 	GetUpFront,
 	/** A heavy blow's stagger (two steps back), whichever side it came from. */
-	HitHeavy
+	HitHeavy,
+	/** The stealth takedown from behind, as a pair: the one doing it and the one it is done to. */
+	TakedownAttacker,
+	TakedownVictim
 };
 
 /**
@@ -195,6 +198,14 @@ public:
 	/** A heavy blow (impact weight at or over the reaction's heavy threshold). Empty: the side's Hit clip. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
 	TSoftObjectPtr<UAnimMontage> HitHeavy;
+
+	/** The stealth takedown's two halves, authored together; both must play or neither does. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Takedown")
+	TSoftObjectPtr<UAnimMontage> TakedownAttacker;
+
+	/** Should hold its last frame (he is handed to the ragdoll from it). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Takedown")
+	TSoftObjectPtr<UAnimMontage> TakedownVictim;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Finisher")
 	TSoftObjectPtr<UAnimMontage> FinisherAttacker;

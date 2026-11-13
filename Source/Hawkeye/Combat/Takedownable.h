@@ -31,4 +31,13 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Takedown")
 	bool CanBeTakenDown(AActor* Attacker);
 	virtual bool CanBeTakenDown_Implementation(AActor* Attacker) { return true; }
+
+	/**
+	 * Asked just before OnTakedown when the attacker can play the paired takedown: play the victim's half (his AI and
+	 * movement stopped, held by the clip, handed to the ragdoll from its last frame) and return its length in seconds,
+	 * or 0 when this target has no such clip (the attacker then does the takedown as before).
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Takedown")
+	float BeginPairedTakedown(AActor* Attacker);
+	virtual float BeginPairedTakedown_Implementation(AActor* Attacker) { return 0.f; }
 };

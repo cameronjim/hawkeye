@@ -32,6 +32,8 @@ const TSoftObjectPtr<UAnimMontage>* UCombatAnimSet::FindSlot(ECombatAnimRole Rol
 	case ECombatAnimRole::BowNock: return &BowNock;
 	case ECombatAnimRole::GetUpFront: return &GetUpFront;
 	case ECombatAnimRole::HitHeavy: return &HitHeavy;
+	case ECombatAnimRole::TakedownAttacker: return &TakedownAttacker;
+	case ECombatAnimRole::TakedownVictim: return &TakedownVictim;
 	default: return nullptr;
 	}
 }
@@ -147,7 +149,7 @@ int32 UCombatAnimSet::PickNextVariant(int32& Cursor, int32 Count)
 int32 UCombatAnimSet::CountAssigned() const
 {
 	int32 Count = 0;
-	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(ECombatAnimRole::HitHeavy); ++Value)
+	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(ECombatAnimRole::TakedownVictim); ++Value)
 	{
 		const TSoftObjectPtr<UAnimMontage>* Slot = FindSlot(static_cast<ECombatAnimRole>(Value));
 		Count += (Slot && !Slot->IsNull()) ? 1 : 0;
@@ -158,7 +160,7 @@ int32 UCombatAnimSet::CountAssigned() const
 void UCombatAnimSet::Preload()
 {
 	Preloaded.Reset();
-	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(ECombatAnimRole::HitHeavy); ++Value)
+	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(ECombatAnimRole::TakedownVictim); ++Value)
 	{
 		const TSoftObjectPtr<UAnimMontage>* Slot = FindSlot(static_cast<ECombatAnimRole>(Value));
 		if (Slot && !Slot->IsNull())

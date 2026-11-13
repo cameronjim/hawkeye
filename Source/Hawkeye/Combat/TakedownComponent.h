@@ -4,6 +4,20 @@
 #include "Components/ActorComponent.h"
 #include "TakedownComponent.generated.h"
 
+class UAnimInstance;
+class UAnimMontage;
+class UCombatAnimSet;
+
+/** How a takedown is played (gameplay-semantics.md, "Takedown"). */
+UENUM(BlueprintType)
+enum class EHawkeyeTakedownVariant : uint8
+{
+	/** Today's: she is held still for TakedownSeconds and he drops where he stands. */
+	Plain,
+	/** Both clips play, side by side on the paired spot: she takes him from behind and lowers him. */
+	Paired
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTakedownPerformedSignature, AActor*, Target);
 
 /**
@@ -102,6 +116,44 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Takedown")
 	void EndTakedown();
 
+	/** The owner's combat clips (its TakedownAttacker); null plays every takedown plain. */
+	void SetAnimSet(UCombatAnimSet* InAnimSet) { AnimSet = InAnimSet; }
+
+	/** How the last takedown was played. */
+	EHawkeyeTakedownVariant GetLastVariant() const { return LastVariant; }
+
+	/** Seconds the takedown under way locks her out for (TakedownSeconds, or the paired clip's length). */
+	float GetLockSeconds() const { return LockSeconds; }
+
+	/**
+	 * Where the attacker stands for the paired takedown on a victim at VictimLocation facing VictimRotation: Gap cm
+	 * straight behind him (flat), facing the way he faces, at AttackerZ. Pure.
+	 */
+	static FTransform ComputePairedSpot(const FVector& VictimLocation, const FRotator& VictimRotation, float Gap, float AttackerZ);
+
+	/** Paired only when both halves have a clip and the spot is clear (no wall, ledge or gap in the way). Pure. */
+	static EHawkeyeTakedownVariant ChooseVariant(bool bAttackerClip, bool bVictimClip, bool bSpotClear);
+
+	/** The paired takedown ends early when its victim is gone or already a ragdoll another way (a blast). Pure. */
+	static bool ShouldEndPairedEarly(bool bVictimValid, bool bVictimLimp);
+
+	/** Tests: whether the paired spot for Target is clear from where the owner stands (walls, floor, his fall). */
+	bool IsPairedSpotClear(const AActor& Target, const FTransform& Spot, FName* OutWhy = nullptr) const;
+
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	/** Cm between her capsule and his on the paired spot (the clips are authored at this gap). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Takedown|Paired", meta = (ClampMin = "0.0"))
+	float PairedGap = 55.f;
+
+	/** Seconds her body eases from where she stood onto the paired spot (the capsule moves at once). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Takedown|Paired", meta = (ClampMin = "0.01"))
+	float PairedEaseSeconds = 0.15f;
+
+	/** How far behind him (from his capsule) the floor must be clear for him to be lowered onto it, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Takedown|Paired", meta = (ClampMin = "0.0"))
+	float PairedFallClearance = 170.f;
+
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -109,5 +161,24 @@ protected:
 	bool bIsPerformingTakedown = false;
 
 private:
+	/** Starts the paired version on Target; false (nothing changed) when it cannot. */
+	bool TryPairedTakedown(AActor* Target, float& OutSeconds);
+
 	FTimerHandle TakedownTimerHandle;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCombatAnimSet> AnimSet;
+
+	EHawkeyeTakedownVariant LastVariant = EHawkeyeTakedownVariant::Plain;
+	float LockSeconds = 0.f;
+	TWeakObjectPtr<AActor> PairedVictim;
+	TWeakObjectPtr<UAnimInstance> PairedInstance;
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> PairedMontage;
+	double PairedStartedAt = 0.0;
+	bool bVictimHandedOver = false;
+	bool bEasing = false;
+	float EaseElapsed = 0.f;
+	FTransform EaseFrom;
+	FTransform EaseTo;
 };

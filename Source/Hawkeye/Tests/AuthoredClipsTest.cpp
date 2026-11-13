@@ -3,6 +3,8 @@
 #include "Combat/CombatAnimSet.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/HitContactRules.h"
+#include "Combat/TakedownComponent.h"
+#include "Player/HawkeyeCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/HawkeyeTestUtils.h"
@@ -148,6 +150,52 @@ bool FHawkeyeAuthoredHitRole::RunTest(const FString& Parameters)
 		UCombatAnimSet::HitRoleForBlow(Set, EHawkeyeHitDirection::Right, 0.4f, 0.6f) == ECombatAnimRole::HitRight);
 	TestTrue(TEXT("No set: the side's clip"), UCombatAnimSet::HitRoleForBlow(nullptr, EHawkeyeHitDirection::Back, 1.f, 0.6f)
 		== ECombatAnimRole::HitBack);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeAuthoredTakedownPair, "Hawkeye.AuthoredClips.PairedTakedownSpotAndFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeAuthoredTakedownPair::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeAuthoredClipsTest;
+	// The spot: straight behind him by the gap, facing his way, at her own height.
+	const FTransform Spot = UTakedownComponent::ComputePairedSpot(FVector(500.f, 200.f, 90.f), FRotator(0.f, 90.f, 0.f), 40.f, 95.f);
+	TestTrue(TEXT("40 cm behind him (he faces +Y)"), Spot.GetLocation().Equals(FVector(500.f, 160.f, 95.f), 0.01f));
+	TestEqual(TEXT("Facing the way he faces"), static_cast<float>(Spot.Rotator().Yaw), 90.f, 0.01f);
+	TestTrue(TEXT("Paired when both clips and the spot is clear"),
+		UTakedownComponent::ChooseVariant(true, true, true) == EHawkeyeTakedownVariant::Paired);
+	TestTrue(TEXT("Plain with no clip of hers"), UTakedownComponent::ChooseVariant(false, true, true) == EHawkeyeTakedownVariant::Plain);
+	TestTrue(TEXT("Plain with no clip of his"), UTakedownComponent::ChooseVariant(true, false, true) == EHawkeyeTakedownVariant::Plain);
+	TestTrue(TEXT("Plain when a wall or a ledge is in the way"),
+		UTakedownComponent::ChooseVariant(true, true, false) == EHawkeyeTakedownVariant::Plain);
+	TestTrue(TEXT("Interrupted when the victim is gone"), UTakedownComponent::ShouldEndPairedEarly(false, false));
+	TestTrue(TEXT("Interrupted when he is already a ragdoll (a blast)"), UTakedownComponent::ShouldEndPairedEarly(true, true));
+	TestFalse(TEXT("Not while he is in the clip"), UTakedownComponent::ShouldEndPairedEarly(true, false));
+
+	// In a world with no animation the paired clips cannot play: every takedown is the plain one, as before.
+	FHawkeyeTestWorld TestWorld;
+	AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(
+		TestWorld.SpawnActor(AHawkeyeAimTestCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator));
+	AHawkeyeTestSolidTakedownTarget* Target = Cast<AHawkeyeTestSolidTakedownTarget>(TestWorld.SpawnActor(
+		AHawkeyeTestSolidTakedownTarget::StaticClass(), FVector(100.f, 0.f, 0.f), FRotator::ZeroRotator));
+	if (!Kate || !Target)
+	{
+		AddError(TEXT("Failed to spawn Kate and a target."));
+		return false;
+	}
+	UCombatAnimSet* Set = NewObject<UCombatAnimSet>(GetTransientPackage());
+	Set->TakedownAttacker = MakeMontage();
+	Kate->SetCombatAnimSet(Set);
+	Kate->ApplyCombatAnimSet();
+	UTakedownComponent* Takedown = Kate->GetTakedownComponent();
+	TestTrue(TEXT("The takedown starts"), Takedown->TryTakedown());
+	TestTrue(TEXT("Plain: her clip does not play here"), Takedown->GetLastVariant() == EHawkeyeTakedownVariant::Plain);
+	TestEqual(TEXT("She is held TakedownSeconds, as documented"), Takedown->GetLockSeconds(), Takedown->TakedownSeconds, 0.001f);
+	TestTrue(TEXT("Locked out meanwhile"), Kate->IsLockedOutByTakedown());
+	TestTrue(TEXT("She stayed where she stood (no move to a spot)"), Kate->GetActorLocation().Equals(FVector::ZeroVector, 1.f));
+	Takedown->EndTakedown();
+	TestFalse(TEXT("Control comes back when it ends"), Kate->IsLockedOutByTakedown());
 	return true;
 }
 

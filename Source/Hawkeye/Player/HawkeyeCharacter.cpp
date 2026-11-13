@@ -2672,6 +2672,10 @@ void AHawkeyeCharacter::ApplyCombatAnimSet()
 	{
 		BowComponent->SetAnimSet(CombatAnimSet);
 	}
+	if (TakedownComponent)
+	{
+		TakedownComponent->SetAnimSet(CombatAnimSet);
+	}
 }
 
 void AHawkeyeCharacter::ApplyTimeWarp(float RealSeconds, float Dilation)

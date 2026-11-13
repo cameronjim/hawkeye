@@ -1398,8 +1398,74 @@ bool AThugCharacter::CanBeTakenDown_Implementation(AActor* /*Attacker*/)
 	return !bRefusesTakedown && AlertState != EThugAlertState::Alerted && HealthComponent && HealthComponent->IsAlive();
 }
 
+float AThugCharacter::BeginPairedTakedown_Implementation(AActor* Attacker)
+{
+	UAnimMontage* Montage = UCombatAnimSet::Resolve(CombatAnimSet, ECombatAnimRole::TakedownVictim);
+	if (bLimp || !Montage || !HealthComponent || !HealthComponent->IsAlive())
+	{
+		return 0.f;
+	}
+	UAnimInstance* Instance = HawkeyeCombatAnim::Play(GetMesh(), Montage);
+	if (!Instance)
+	{
+		return 0.f;
+	}
+	bTakedownClip = true;
+	TakedownAttacker = Attacker;
+	// He is hers for the clip: no AI, no walking, and her capsule may stand in his.
+	if (AController* MyController = GetController())
+	{
+		MyController->StopMovement();
+		MyController->UnPossess();
+	}
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+	}
+	if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+	{
+		Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	}
+	if (MeleeComponent)
+	{
+		MeleeComponent->CancelAttack();
+	}
+	const float Seconds = Montage->GetPlayLength();
+	GetWorldTimerManager().SetTimer(TakedownClipTimer, this, &AThugCharacter::EndTakedownClip, Seconds, false);
+	return Seconds;
+}
+
+void AThugCharacter::EndTakedownClip()
+{
+	if (!bTakedownClip)
+	{
+		return;
+	}
+	bTakedownClip = false;
+	GetWorldTimerManager().ClearTimer(TakedownClipTimer);
+	// From the clip's last frame, lying still: no throw.
+	if (HitReactionComponent)
+	{
+		HitReactionComponent->ClearPendingImpact();
+	}
+	GoLimp(TakedownAttacker.Get());
+}
+
 void AThugCharacter::OnTakedown_Implementation(AActor* Attacker)
 {
+	if (bTakedownClip)
+	{
+		// The paired takedown: he is taken out now (the kill, the counts, the drop), but goes down in the clip and is
+		// handed to the ragdoll from its last frame (EndTakedownClip). He hits the floor about when the clip lays him there.
+		DropLoot();
+		ScheduleGroundThud(TakedownClipThudDelay);
+		if (HealthComponent)
+		{
+			HealthComponent->ApplyDamage(9999.f, Attacker);
+		}
+		return;
+	}
 	// From behind: he goes down forward, away from her, softly (the knockout's throw at a light weight).
 	if (HitReactionComponent && Attacker)
 	{
@@ -1430,6 +1496,11 @@ void AThugCharacter::HandleDeath(UHealthComponent* /*Health*/, AActor* Killer)
 		*GetName(), *GetNameSafe(Killer), static_cast<int32>(AlertState));
 	UHawkeyeAudioSubsystem::PlayAt(this, DeathSound, GetActorLocation(), TEXT("thug death"));
 
+	// Taken down in the paired clip: the clip lays him down and the ragdoll takes over at its end (EndTakedownClip).
+	if (bTakedownClip)
+	{
+		return;
+	}
 	// Already on the floor from a knockdown: the body is down, no second thud.
 	if (!bKnockedDown)
 	{
