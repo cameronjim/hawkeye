@@ -7,18 +7,31 @@ Three layers. Most effort goes into the first.
 Where: `Source/Hawkeye/Tests/*Test.cpp`. Compiled only in editor and development builds
 (`#if WITH_DEV_AUTOMATION_TESTS`). Named `Hawkeye.<System>.<Behaviour>`.
 
-What gets tested: every rule in `gameplay-semantics.md`. Concretely:
+What gets tested: every rule in `gameplay-semantics.md`. The groups, by area (`Hawkeye.<Group>.*`;
+the Tests folder holds about 140 files):
 
-| System | Tests |
-|--------|-------|
-| Health | clamp, invulnerable ignores damage, OnDeath fires once, heal after death is a no-op, Revive works, negative damage ignored |
-| BossPhase | thresholds advance in order, overkill skips to correct phase with one broadcast, transition invulnerability set and restored, N phases produce N-1 transitions, a crew opens its phase, restore to a checkpoint |
-| Boss | phase walk and crew entry, winded window and its damage, finisher share, hazard cycle and hits, checkpoint from objectives, barks, a three-phase fight to the chapter's end in a test world, the checkpoint restart (`Hawkeye.Boss.*`); campaign order (`Hawkeye.Campaign.*`) |
-| Weapon | fire decrements magazine, fire at 0 ammo does nothing, fire rate blocks rapid fire, reload math with partial reserve, reload with full mag is no-op, OnAmmoChanged counts |
-| Mission | completion when all non-optional done, optional never completes mission, duplicate CompleteObjective fires nothing, unknown id logs warning, OnMissionComplete once, OnFlashbackRequested fires only with a definition, current objective picks first incomplete non-optional |
-| Flashback | null/empty definition finishes immediately, total duration equals sum of holds and fades, skip finishes whole thing, skip ignored in first 0.5 s, pause state restored |
-| Takedown | angle check (behind passes, front fails, edge at MaxAngle), range check, alerted guard rejected, tag required |
-| Save (stage 3) | round-trip every field, stale mission id starts new game, version mismatch handled |
+| Area | Groups |
+|------|--------|
+| Health and damage | `Health`, `Death`, `Difficulty`, `HitContact` |
+| Bosses and the campaign | `BossPhase` (thresholds in order, overkill skips with one broadcast, transition invulnerability, crews, checkpoint restore), `Boss` (combo, winded window, finisher share, hazard, barks, a three-phase fight to the chapter's end), `Campaign`, `ChapterEvents`, `ChapterSite`, `ChapterMaps`, `ChapterTitle` |
+| Missions and flow | `Mission`, `Objective`, `MissionFlow`, `Flashback`, `Chase`, `Crime`, `Challenge`, `Phone`, `Dialogue`, `Hints` |
+| Combat | `Melee`, `Takedown`, `Dodge`, `Fight`, `Tokens`, `Bow`, `BowIK`, `Arrow`, `TrickArrow`, `ReturnFlight`, `AimAssist`, `Weapon` (the thugs' pistol and Kate's `Hands`), `CombatAnim` |
+| Thugs and partner | `Thug`, `ThugTree`, `Gunner`, `Archer`, `Heavy`, `Partner`, `Lucky` |
+| Movement and traversal | `Movement`, `Sprint`, `Crouch`, `Camera`, `Parkour`, `Grapple`, `FireEscape`, `Gasp`, `Animation`, `BodyLook` |
+| World and UI | `Interior`, `Door`, `Pickup`, `Inventory`, `FastTravel`, `TimeOfDay`, `Map`, `Hud`, `Pause`, `Input`, `Settings`, `Accessibility`, `Character` |
+| Save, audio, effects, tools | `Save`, `Load`, `Music`, `Audio`, `Vfx`, `Playtest`, `Smoke` |
+| Standalone only (below) | `Lap`, `Screenshot`, `Perf`, `Audit` |
+
+Most groups pass headless with `-nullrhi` in the editor process (`Tools\run-tests.ps1`). These need the
+standalone game (`-game`) and skip with an info line in the editor run:
+
+- With a real RHI (no `-nullrhi`, window not minimised): every `Hawkeye.Lap.*` (sections 2c to 2f and
+  `Hawkeye.Lap.FastTravel`, `InteriorWalk`), every `Hawkeye.Screenshot.*`, `Hawkeye.Perf.Tour`,
+  `Hawkeye.Audit.MeleeFeel`.
+- As a game world, `-nullrhi` is fine: `Hawkeye.Grapple.Audit`, `Hawkeye.Parkour.DistrictWalls`,
+  `Hawkeye.Parkour.DistrictHangCorner`, `Hawkeye.Save.RoundTrip`.
+
+Run each lap in a process of its own (see 2c).
 
 Pattern for a component test (no world needed):
 
@@ -66,7 +79,7 @@ Put that in a small RAII helper (`FHawkeyeTestWorld`) in `Tests/HawkeyeTestUtils
 every test doesn't repeat it.
 
 Dynamic multicast delegates can't take lambdas. Tests bind to a `UHawkeyeTestListener`
-UObject with `UFUNCTION()` counters (`OnHealthChangedCount`, `LastNewHealth`, ...), also
+UObject with `UFUNCTION()` counters (`HealthChangedCount`, `LastNewHealth`, ...), also
 in `HawkeyeTestUtils.h`.
 
 Run all:
@@ -83,25 +96,15 @@ the JSON. The helper `Tools\run-tests.ps1` does this and exits non-zero on failu
 Rules:
 - A test per bullet in `gameplay-semantics.md`. When a rule changes, the test changes in
   the same commit.
-- Tests never load Content assets. Build definitions in code with `NewObject`. Content
-  can move or be renamed; tests shouldn't care.
-- Tests must pass with `-nullrhi`. No rendering, no input, no audio playback assertions
+- Rule tests build their definitions in code with `NewObject` and load no Content, so a renamed
+  asset never breaks them. Tests of the generated content itself (the district, the chapters' data
+  assets, `BP_Kate`, the laps and screenshots; about 50 files) load it by path on purpose; they are
+  the check that the content scripts produced what the game expects.
+- Headless tests must pass with `-nullrhi`. No rendering, no input, no audio playback assertions
   (assert that the call was made, not that sound came out).
-- Under 100 ms each. The whole suite under 30 seconds including editor startup overhead.
-
-## 2. Functional tests (in a map)
-
-Where: `Content/Maps/Tests/L_Test_*.umap` with `AFunctionalTest` actors (Functional
-Testing plugin). Run by the same automation command under the `Project.Functional Tests`
-group.
-
-Use for: things that need a real world tick and navigation. A guard patrols and reaches
-its waypoints. A guard hears a sprinting player and goes Suspicious. A trigger volume
-completes an objective when the pawn overlaps. A door opens with a keycard and not
-without. A boss with a real behavior tree changes branches on phase change.
-
-Keep to under 10 of these. They are slow (each loads a map) and brittle when levels
-change. One per system that has world-dependent behaviour, not one per feature.
+- Rule tests stay under 100 ms each. The headless suite (`run-tests.ps1`) takes a few minutes with
+  editor startup, most of it the tests that load the district. The standalone laps take 30 s to
+  about 2 minutes each, plus about 20 s of load.
 
 ## 2b. Standalone game check (required for any visual change)
 
@@ -235,10 +238,10 @@ Before any commit that touches player feel, AI, or a level, play through this in
 
 - [ ] Walk, sprint, crouch, jump. Nothing snaps or floats.
 - [ ] Look sensitivity unchanged (or changed on purpose).
-- [ ] Fire until empty, reload, fire again. Ammo HUD correct.
-- [ ] Takedown a patrolling guard from behind. Prompt appears, guard drops, other guards
+- [ ] Loose arrows until a quiver slot is empty. The hotbar counts down and skips the empty slot.
+- [ ] Take a patrolling thug down from behind. Prompt appears, he drops, other thugs
       don't react unless they should.
-- [ ] Get spotted. Guard shoots, you take damage, screen effect shows.
+- [ ] Get spotted. A thug attacks, you take damage, screen effect shows.
 - [ ] Die. Respawn at checkpoint (stage 3) or mission start.
 - [ ] Complete the mission. End card, flashback, next level (or return to menu).
 - [ ] Press Esc during gameplay and during a flashback. Correct menu, correct resume.
@@ -297,8 +300,7 @@ screenshot tests.
 ## CI
 `.github/workflows/ci.yml` runs on push and pull request to main, with no Unreal install
 (the engine is too big for a hosted runner, so the C++ build and automation tests stay local
-via `Tools
-un-tests.ps1`). Jobs: `python-tests` (unittest discovery over
+via `Tools\run-tests.ps1`). Jobs: `python-tests` (unittest discovery over
 `Tools/Editor/test_*.py`), `osm-determinism` (re-parse the committed Overpass data, fail if
 the parsed JSON changes), `lint-python` (ruff, rules in `ruff.toml`), and `format-cpp`
 (clang-format on C++ files changed under `Source/` only). Checkouts skip LFS. The traversal audit (2i)
