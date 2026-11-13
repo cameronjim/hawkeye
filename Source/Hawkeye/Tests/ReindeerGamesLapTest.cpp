@@ -44,6 +44,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapBot.h"
 #include "Tests/LapFightPressure.h"
 #include "UI/HawkeyeHudWidget.h"
 #include "UI/HawkeyeObjectiveWidget.h"
@@ -636,23 +637,13 @@ void FHawkeyeReindeerLap::FightStep(UWorld* World, APlayerController* PC, AHawke
 		NextActionAt = Now + 0.3;
 		return;
 	}
-	if (Kate->GetDodgeCooldownRemaining() <= 0.f)
+	HawkeyeLapBot::FDodgeRule DodgeRule;
+	DodgeRule.Except = Target;
+	if (HawkeyeLapBot::TryDodgeSwings(Kate, Crew, DodgeRule))
 	{
-		for (AThugCharacter* Thug : Crew)
-		{
-			const UMeleeComponent* Melee = Thug ? Thug->GetMeleeComponent() : nullptr;
-			if (!IsDown(Thug) && Melee && Melee->IsWindingUp() && Melee->GetPhaseRemaining() < 0.3f && !Thug->IsIncapacitated()
-				&& FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation()) <= 250.f && Thug != Target)
-			{
-				const FVector Away = (Kate->GetActorLocation() - Thug->GetActorLocation()).GetSafeNormal2D();
-				if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-				{
-					++Dodges;
-					NextActionAt = Now + 0.3;
-					return;
-				}
-			}
-		}
+		++Dodges;
+		NextActionAt = Now + 0.3;
+		return;
 	}
 	UInventoryComponent* Inventory = Kate->GetInventoryComponent();
 	// One foam arrow early, at someone 4 to 15 m off: "Stay."

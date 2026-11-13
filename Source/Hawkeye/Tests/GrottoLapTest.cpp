@@ -36,6 +36,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/InteriorTestKit.h"
+#include "Tests/LapBot.h"
 #include "Tests/PartnerScreenshots.h"
 #include "Tests/LapFightPressure.h"
 #include "UI/HawkeyeHudWidget.h"
@@ -94,8 +95,6 @@ namespace HawkeyeGrottoLap
 	static constexpr int32 SlotStandard = 1;
 	static constexpr int32 SlotFoam = 3;
 	static constexpr int32 SlotBoomerang = 4;
-	/** The bot dodges a swing this long before it lands: inside her 0.25 s of invulnerability, a frame to spare. */
-	static constexpr float DodgeLeadSeconds = 0.18f;
 
 	/** Grotto.json's places (the interior map's frame, floor at 0). */
 	static const FVector HallEast(1050.f, 260.f, 0.f);
@@ -525,7 +524,7 @@ namespace HawkeyeGrottoLap
 			{
 				continue;
 			}
-			Landing = Melee->GetPhaseRemaining() <= DodgeLeadSeconds ? T : Landing;
+			Landing = Melee->GetPhaseRemaining() <= HawkeyeLapBot::DodgeLeadSeconds(Kate) ? T : Landing;
 			if (UHawkeyeMeleeRules::IsUnblockableWindup(T))
 			{
 				Unblockable = T;

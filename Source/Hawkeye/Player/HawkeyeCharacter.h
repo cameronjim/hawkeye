@@ -708,6 +708,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Dodge")
 	bool IsDodgeInvulnerable() const { return DodgeInvulnerableRemaining > 0.f; }
 
+	/** How long the start of a dodge keeps her invulnerable (DodgeInvulnerableSeconds). */
+	float GetDodgeInvulnerableSeconds() const { return DodgeInvulnerableSeconds; }
+
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Dodge")
 	float GetDodgeCooldownRemaining() const { return DodgeCooldownRemaining; }
 

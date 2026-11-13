@@ -21,6 +21,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/InteriorTestKit.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapBot.h"
 #include "Tests/LapFightPressure.h"
 #include "World/DoorActor.h"
 #include "World/GrappleAnchor.h"
@@ -538,24 +539,15 @@ namespace HawkeyeInteriorLap
 		}
 		const bool bBusy = Kate->IsMeleeAttacking() || Kate->IsDodging() || Kate->IsStaggered() || Kate->IsLockedOutByTakedown();
 		// A swing about to land within reach: out of it, sideways and back.
-		if (!bBusy && Kate->GetDodgeCooldownRemaining() <= 0.f)
+		HawkeyeLapBot::FDodgeRule DodgeRule;
+		DodgeRule.Reach = 110.f;
+		DodgeRule.bReachFromAttack = true;
+		DodgeRule.bMeleeOnly = true;
+		if (!bBusy && HawkeyeLapBot::TryDodgeSwings(Kate, Group, DodgeRule))
 		{
-			for (const AThugCharacter* T : Group)
-			{
-				const UMeleeComponent* Melee = T && !IsDown(T) ? T->GetMeleeComponent() : nullptr;
-				if (!Melee || T->IsGunner() || T->IsArcher() || !Melee->IsWindingUp() || Melee->GetPhaseRemaining() > 0.3f
-					|| FVector::Dist2D(T->GetActorLocation(), Kate->GetActorLocation()) > Melee->GetCurrentAttack().Range + 110.f)
-				{
-					continue;
-				}
-				const FVector Away = (Kate->GetActorLocation() - T->GetActorLocation()).GetSafeNormal2D();
-				if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-				{
-					++Dodges;
-					NextActionAt = Now + 0.3;
-					return EStep::Running;
-				}
-			}
+			++Dodges;
+			NextActionAt = Now + 0.3;
+			return EStep::Running;
 		}
 		if (bBusy || Now < NextActionAt)
 		{

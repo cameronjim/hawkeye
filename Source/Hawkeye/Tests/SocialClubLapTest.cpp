@@ -43,6 +43,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapBot.h"
 #include "Tests/LapFightPressure.h"
 #include "World/GrappleAnchor.h"
 #include "World/ThugAIController.h"
@@ -598,7 +599,7 @@ bool FHawkeyeSocialClubLap::DodgeUnblockable(AHawkeyeCharacter* Kate, double Now
 		bShotUnblockable = true;
 		Shot(TEXT("social_unblockable.png"));
 	}
-	if (Melee->GetPhaseRemaining() > 0.4f)
+	if (Melee->GetPhaseRemaining() > HawkeyeLapBot::DodgeLeadSeconds(Kate))
 	{
 		// Wait for it: a dodge too early is over before the blow lands.
 		return bMeleeHeld || Kate->IsMeleeAttacking() || FVector::Dist2D(Tomas->GetActorLocation(), Kate->GetActorLocation()) < 260.f;
@@ -807,23 +808,14 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 		return;
 	}
 	// A swing about to land: step out of it.
-	if (Kate->GetDodgeCooldownRemaining() <= 0.f)
+	HawkeyeLapBot::FDodgeRule DodgeRule;
+	DodgeRule.Reach = 260.f;
+	DodgeRule.Except = Target;
+	if (HawkeyeLapBot::TryDodgeSwings(Kate, Targets, DodgeRule))
 	{
-		for (AThugCharacter* Thug : Targets)
-		{
-			const UMeleeComponent* Melee = Thug->GetMeleeComponent();
-			if (Melee && Melee->IsWindingUp() && Melee->GetPhaseRemaining() < 0.3f && !Thug->IsIncapacitated()
-				&& FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation()) <= 260.f && Thug != Target)
-			{
-				const FVector Away = (Kate->GetActorLocation() - Thug->GetActorLocation()).GetSafeNormal2D();
-				if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-				{
-					++Dodges;
-					NextActionAt = Now + 0.3;
-					return;
-				}
-			}
-		}
+		++Dodges;
+		NextActionAt = Now + 0.3;
+		return;
 	}
 	// One confetti arrow at Tomas from a few metres, once the Santa phase has given them.
 	UInventoryComponent* Inventory = Kate->GetInventoryComponent();

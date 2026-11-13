@@ -43,6 +43,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Tests/LapBot.h"
 #include "Tests/LapFightPressure.h"
 #include "UI/HawkeyeHudWidget.h"
 #include "UI/HawkeyeObjectiveWidget.h"
@@ -1013,27 +1014,15 @@ bool FHawkeyeCrimeLapRunner::UpdateDraw(UWorld* World, APlayerController* PC, AH
 bool FHawkeyeCrimeLapRunner::DodgeSwings(AHawkeyeCharacter* Kate, const AThugCharacter* Except, double Now)
 {
 	using namespace HawkeyeCrimeLap;
-	if (Kate->GetDodgeCooldownRemaining() > 0.f)
+	HawkeyeLapBot::FDodgeRule Rule;
+	Rule.Except = Except;
+	if (!HawkeyeLapBot::TryDodgeSwings(Kate, Thugs, Rule))
 	{
 		return false;
 	}
-	for (const TWeakObjectPtr<AThugCharacter>& Weak : Thugs)
-	{
-		const AThugCharacter* Thug = Weak.Get();
-		const UMeleeComponent* Melee = Thug ? Thug->GetMeleeComponent() : nullptr;
-		if (!IsDown(Thug) && Melee && Melee->IsWindingUp() && Melee->GetPhaseRemaining() < 0.3f && !Thug->IsIncapacitated()
-			&& FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation()) <= 250.f && Thug != Except)
-		{
-			const FVector Away = (Kate->GetActorLocation() - Thug->GetActorLocation()).GetSafeNormal2D();
-			if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-			{
-				++Dodges;
-				NextActionAt = Now + 0.3;
-				return true;
-			}
-		}
-	}
-	return false;
+	++Dodges;
+	NextActionAt = Now + 0.3;
+	return true;
 }
 
 bool FHawkeyeCrimeLapRunner::Strike(APlayerController* PC, AHawkeyeCharacter* Kate, AThugCharacter* Target, float Distance, double Now)

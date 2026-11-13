@@ -36,6 +36,7 @@
 #include "Settings/HawkeyeSettingsSubsystem.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/GrappleAuditKit.h"
+#include "Tests/LapBot.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/HawkeyeTestUtils.h"
 #include "Tests/PartnerScreenshots.h"
@@ -2372,6 +2373,14 @@ bool FHawkeyeRoofFightRunner::Update()
 
 	// Any thug close and about to land a swing: step out of it sideways (a direct call: see the
 	// file comment). A competent player watches the glowing mask.
+	HawkeyeLapBot::FDodgeRule DodgeRule;
+	DodgeRule.Except = Distance <= 150.f ? Target : nullptr;
+	if (HawkeyeLapBot::TryDodgeSwings(Kate, Pair, DodgeRule))
+	{
+		++Dodges;
+		NextActionAt = Now + 0.3;
+		return false;
+	}
 	int32 Near = 0;
 	for (const TWeakObjectPtr<AThugCharacter>& Other : Pair)
 	{
@@ -2380,20 +2389,7 @@ bool FHawkeyeRoofFightRunner::Update()
 		{
 			continue;
 		}
-		const float D = FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation());
-		Near += D <= 400.f ? 1 : 0;
-		const UMeleeComponent* Melee = Thug->GetMeleeComponent();
-		if (D <= 250.f && Melee && Melee->IsWindingUp() && Melee->GetPhaseRemaining() < 0.3f && !Thug->IsIncapacitated()
-			&& Kate->GetDodgeCooldownRemaining() <= 0.f && !(Thug == Target && Distance <= 150.f))
-		{
-			const FVector Away = (Kate->GetActorLocation() - Thug->GetActorLocation()).GetSafeNormal2D();
-			if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-			{
-				++Dodges;
-				NextActionAt = Now + 0.3;
-				return false;
-			}
-		}
+		Near += FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation()) <= 400.f ? 1 : 0;
 	}
 
 	if (Distance <= 190.f)
@@ -3146,34 +3142,17 @@ void FHawkeyeStreetFightRunner::NoteHits(double Now)
 
 bool FHawkeyeStreetFightRunner::TryDodgeSwings(AHawkeyeCharacter* Kate, double Now)
 {
-	if (Kate->GetDodgeCooldownRemaining() > 0.f)
+	HawkeyeLapBot::FDodgeRule Rule;
+	Rule.Reach = 110.f;
+	Rule.bReachFromAttack = true;
+	Rule.bMeleeOnly = true;
+	if (!HawkeyeLapBot::TryDodgeSwings(Kate, Group, Rule))
 	{
 		return false;
 	}
-	for (const TWeakObjectPtr<AThugCharacter>& Weak : Group)
-	{
-		const AThugCharacter* Thug = Weak.Get();
-		if (IsDown(Thug) || !IsMeleeThug(Thug) || Thug->IsIncapacitated())
-		{
-			continue;
-		}
-		const UMeleeComponent* Melee = Thug->GetMeleeComponent();
-		const float Reach = Melee ? Melee->GetCurrentAttack().Range + 110.f : 0.f;
-		const float D = FVector::Dist2D(Thug->GetActorLocation(), Kate->GetActorLocation());
-		if (!Melee || !Melee->IsWindingUp() || Melee->GetPhaseRemaining() > 0.3f || D > Reach)
-		{
-			continue;
-		}
-		// Sideways and back: out of the sweep, not out of reach of her own next swing.
-		const FVector Away = (Kate->GetActorLocation() - Thug->GetActorLocation()).GetSafeNormal2D();
-		if (Kate->TryDodge((Away + FVector::CrossProduct(FVector::UpVector, Away)).GetSafeNormal2D()))
-		{
-			++Dodges;
-			NextActionAt = Now + 0.3;
-			return true;
-		}
-	}
-	return false;
+	++Dodges;
+	NextActionAt = Now + 0.3;
+	return true;
 }
 
 void FHawkeyeStreetFightRunner::FightMelee(APlayerController* PC, AHawkeyeCharacter* Kate, AThugCharacter* Target,
