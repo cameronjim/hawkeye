@@ -577,6 +577,27 @@ Everything under `Content/` comes from scripts. Commands: `infrastructure.md`.
    and the player comes back to `ReturnPointLabel`), then the next level, or back to roaming with a toast
    (`bReturnToRoamingAtEnd`), or the final card and the menu.
 
+## Known next steps
+Refactors that are known to be due and deliberately not done yet, so a reader does not mistake them for the design:
+- `AHawkeyeCharacter` is too big (2,212 header lines, 3,840 in the .cpp). Seams to cut along: a camera rig component
+  (the spring arm's aim, fight and indoor lengths), a player combat component (dodge, parry, stagger, the finisher and
+  takedown glue), a landing component, a downed component (`EnterDowned`, the partner's revive), a footstep and noise
+  component, the quiver wheel's input moved to the UI layer, and Kate's move set (light and heavy strings, dodge and
+  parry windows) moved to a data asset so Clint's differs by data.
+- `AHawkeyePlayerController` (989 + 2,564 lines) is the UI and flow glue. Seams: a menu router subsystem (which widget
+  is open, what Esc does), a mission-flow presenter that performs `UMissionFlowController`'s steps, and the playtest
+  keys moved to `UPlaytestSubsystem`.
+- `AThugAIController` still holds the archer's, gunner's, cover and ring logic as helpers the StateTree tasks call. They
+  belong in the tasks themselves (`ThugArcherTasks`, `ThugGunnerTasks`, `ThugMeleeTasks`) with the controller left as
+  senses and actuators.
+- `ST_Partner` is a thin shim: each state's condition asks the C++ `AHawkeyePartnerController::ChooseMode` whether its
+  mode is the one, so the choice still lives in C++ (against the AI boundary below). The partner's needs should become
+  StateTree conditions the way the thug's senses are.
+- About 22 places outside the tests walk `TActorIterator<AThugCharacter>` to find thugs. A thug registry world
+  subsystem (thugs register at BeginPlay, unregister at EndPlay) would replace them.
+- The campaign lap's FORCED steps (`[lap]` and `[game]` in `campaign_lap.json`) only warn. Once the lap drives every
+  step itself they should fail it.
+
 ## Things deliberately not built
 No branching chapters and no dialogue choices (lines are queued from data tables). No multiplayer,
 replication, or networking of any kind; don't add `Replicated` specifiers. No Gameplay Ability System:
