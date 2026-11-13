@@ -27,6 +27,47 @@ Plain Python except the builders at the bottom, which need ``unreal`` (and ``_ma
 LIB_HLSL = r"""
 struct FLook
 {
+    // lowbias32 (Chris Wellons) and the key every facade and bay choice hashes: _facade_plan.ih / hf / key, exactly.
+    uint IH(uint x)
+    {
+        x ^= x >> 16;
+        x *= 0x7feb352du;
+        x ^= x >> 15;
+        x *= 0x846ca68bu;
+        x ^= x >> 16;
+        return x;
+    }
+    float HF(uint x)
+    {
+        return (float)(IH(x) >> 8) * (1.0 / 16777216.0);
+    }
+    uint Key(uint seed, uint face, uint seg, uint bay, uint salt)
+    {
+        return seed * 1031u + face * 7u + seg * 131071u + bay * 524287u + salt * 8191u;
+    }
+    // A rectangular recess |x| < hw, 0 < y < h, d deep, seen along r (x across, y up, z in) from p on the wall plane.
+    // Returns 0 a jamb, 1 the head, 2 the floor, 3 the back; hit is (x, y, depth).
+    int Recess(float2 p, float3 r, float hw, float h, float d, out float3 hit)
+    {
+        float tx = r.x > 0.0 ? (hw - p.x) / r.x : (r.x < 0.0 ? (-hw - p.x) / r.x : 1e6);
+        float ty = r.y > 0.0 ? (h - p.y) / r.y : (r.y < 0.0 ? -p.y / r.y : 1e6);
+        float tz = d / max(r.z, 1e-3);
+        float t = min(tx, min(ty, tz));
+        hit = float3(p.x + r.x * t, p.y + r.y * t, r.z * t);
+        return t == tz ? 3 : (t == tx ? 0 : (r.y > 0.0 ? 1 : 2));
+    }
+    // Entry distance of the ray o + t r into the box [a, b], or 1e6 when it misses.
+    float Box(float3 o, float3 r, float3 a, float3 b)
+    {
+        float3 inv = 1.0 / float3(abs(r.x) > 1e-4 ? r.x : 1e-4, abs(r.y) > 1e-4 ? r.y : 1e-4, abs(r.z) > 1e-4 ? r.z : 1e-4);
+        float3 t0 = (a - o) * inv;
+        float3 t1 = (b - o) * inv;
+        float3 lo = min(t0, t1);
+        float3 hi = max(t0, t1);
+        float tn = max(max(lo.x, lo.y), lo.z);
+        float tf = min(min(hi.x, hi.y), hi.z);
+        return (tn <= tf && tf > 0.0) ? max(tn, 0.0) : 1e6;
+    }
     float H21(float2 p)
     {
         float3 q = frac(float3(p.x, p.y, p.x) * 0.1031);
@@ -136,68 +177,47 @@ FLook L;
 """
 
 # --------------------------------------------------------------------------------------------------------------------
-# shops: trades, their signs (a 5 x 7 pixel font drawn in the shader) and their interiors
+# shops: trades, their signs (signed-distance Roboto lettering from the sign atlas) and their interiors
 # --------------------------------------------------------------------------------------------------------------------
 
-# 5 x 7 glyphs, rows top to bottom, '#' lit.
-FONT = {
-    " ": ["....."] * 7,
-    "A": [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
-    "B": ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
-    "C": [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."],
-    "D": ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."],
-    "E": ["#####", "#....", "#....", "####.", "#....", "#....", "#####"],
-    "F": ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
-    "G": [".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".####"],
-    "H": ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
-    "I": [".###.", "..#..", "..#..", "..#..", "..#..", "..#..", ".###."],
-    "K": ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"],
-    "L": ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
-    "M": ["#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"],
-    "N": ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
-    "O": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
-    "P": ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
-    "Q": [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"],
-    "R": ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
-    "S": [".####", "#....", "#....", ".###.", "....#", "....#", "####."],
-    "T": ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."],
-    "U": ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
-    "W": ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "#.#.#", ".#.#."],
-    "Y": ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
-    "Z": ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
-    "&": [".##..", "#..#.", "#.#..", ".#...", "#.#.#", "#..#.", ".##.#"],
-}
-GLYPHS = sorted(FONT)
-
 # Generic trades only (no brands): (sign, interior kind). Kinds: 0 laundromat, 1 grocery, 2 food, 3 hardware,
-# 4 pharmacy, 5 barber or salon, 6 cleaners or tailor, 7 flowers.
+# 4 pharmacy, 5 barber or salon, 6 cleaners, tailor or a small shop, 7 flowers.
 SHOPS = [
-    ("LAUNDROMAT", 0), ("DELI & GROCERY", 1), ("PIZZA", 2), ("HARDWARE", 3), ("PHARMACY", 4), ("BARBER", 5),
-    ("BAKERY", 2), ("CLEANERS", 6), ("LIQUORS", 1), ("NAIL SALON", 5), ("CAFE", 2), ("TAILOR", 6), ("FLOWERS", 7),
-    ("DINER", 2), ("WINE & LIQUOR", 1), ("GROCERY", 1),
+    ("LAUNDROMAT", 0), ("DELI & GROCERY", 1), ("PIZZA", 2), ("HARDWARE", 3), ("PHARMACY", 4), ("BARBER SHOP", 5),
+    ("BAKERY", 2), ("DRY CLEANERS", 6), ("LIQUORS", 1), ("NAIL SALON", 5), ("CAFE", 2), ("TAILOR", 6), ("FLOWERS", 7),
+    ("DINER", 2), ("WINE & LIQUOR", 1), ("GROCERY", 1), ("BAGELS", 2), ("NOODLES", 2), ("TATTOO", 5), ("THRIFT", 6),
+    ("LOCKSMITH", 3), ("SHOE REPAIR", 6), ("BOOKS", 6), ("RECORDS", 6), ("BAR", 2), ("24 HR DELI", 1),
 ]
-
-
-def _glyph_rows(ch):
-    return [int(row.replace("#", "1").replace(".", "0"), 2) for row in FONT[ch]]
+SIGN_ATLAS = "T_SignAtlas"           # /Game/City/EastVillage/Look, imported from Tools/Data/look/sign_atlas.png
 
 
 def shop_hlsl():
-    """FShop: the font, the shop names, the sign colours and the shop interiors, as HLSL."""
-    font = [v for ch in GLYPHS for v in _glyph_rows(ch)]
+    """FShop and the tables the signs read: each trade's glyphs (indices into the sign atlas), the four faces'
+    advances, the interiors' kinds."""
+    import _sign_font as sf
     chars, starts, lengths = [], [], []
     for name, _kind in SHOPS:
         starts.append(len(chars))
         lengths.append(len(name))
-        chars.extend(GLYPHS.index(ch) for ch in name)
+        chars.extend(sf.GLYPHS.index(ch) for ch in name)
     kinds = [kind for _name, kind in SHOPS]
 
-    def arr(name, values):
-        return "static const uint {0}[{1}] = {{{2}}};".format(name, len(values), ", ".join(str(v) for v in values))
+    def arr(kind, name, values, fmt="{0}"):
+        return "static const {0} {1}[{2}] = {{{3}}};".format(kind, name, len(values), ", ".join(fmt.format(v) for v in values))
 
-    tables = "\n".join([arr("FONT", font), arr("NAME_CHARS", chars), arr("NAME_START", starts),
-                        arr("NAME_LEN", lengths), arr("NAME_KIND", kinds),
-                        "static const float SHOP_NAMES = {0}.0;".format(len(SHOPS))])
+    tables = "\n".join([
+        arr("uint", "NAME_CHARS", chars), arr("uint", "NAME_START", starts), arr("uint", "NAME_LEN", lengths),
+        arr("uint", "NAME_KIND", kinds),
+        arr("float", "ADV", [a for face in sf.ADVANCE for a in face], "{0:.5f}"),
+        "static const uint NG = {0}u;".format(len(sf.GLYPHS)),
+        "static const float GLYPH_GRID = {0:.1f};".format(sf.GRID),
+        "static const float ORIGIN_F = {0:.6f};".format(sf.ORIGIN_X / float(sf.CELL)),
+        "static const float CAP_F = {0:.6f};".format(sf.CAP / float(sf.CELL)),
+        "static const float BASE_F = {0:.6f};".format(sf.BASELINE / float(sf.CELL)),
+        "static const float SDF_PX = {0:.1f};".format(2.0 * sf.SPREAD),
+        "static const float CELL_PX = {0:.1f};".format(sf.CELL),
+        "static const uint SHOP_NAMES = {0}u;".format(len(SHOPS)),
+    ])
     return tables + "\n" + SHOP_STRUCT
 
 
@@ -205,16 +225,8 @@ SHOP_STRUCT = r"""
 struct FShop
 {
     FLook L;
-    float3 SignColours(float seed, out float3 ink)
-    {
-        float h = L.H21(float2(seed, 9.4));
-        if (h < 0.2) { ink = float3(0.80, 0.78, 0.70); return float3(0.40, 0.035, 0.03); }
-        if (h < 0.4) { ink = float3(0.80, 0.78, 0.70); return float3(0.025, 0.11, 0.05); }
-        if (h < 0.6) { ink = float3(0.85, 0.65, 0.10); return float3(0.02, 0.03, 0.11); }
-        if (h < 0.8) { ink = float3(0.03, 0.03, 0.03); return float3(0.55, 0.52, 0.45); }
-        ink = float3(0.75, 0.55, 0.20); return float3(0.025, 0.025, 0.028);
-    }
-    // A shop interior: a box room behind the glass (see FLook.Room), furnished by kind. Light is the lamp share,
+    // A shop interior: a box room behind the glass, furnished by kind, with what stands in it (counters, shelf
+    // gondolas, a bank of machines, pendant lamps) ray-cast as boxes in front of the walls. Light is the lamp share,
     // Tint the light's colour.
     float3 Room(float2 g, float3 r, float W, float Floor, float Ceil, float D, int kind, float seed, out float Light, out float3 Tint)
     {
@@ -238,7 +250,6 @@ struct FShop
         {
             if (kind == 0)
             {
-                // washers and dryers, two rows of white boxes with round doors
                 float cx = frac(a / 72.0) * 72.0 - 36.0;
                 float rowy = y < 95.0 ? y - 47.0 : y - 145.0;
                 if (y < 190.0 && abs(cx) < 33.0)
@@ -248,7 +259,6 @@ struct FShop
             }
             else if (kind == 1 || kind == 3 || kind == 4)
             {
-                // shelves of goods; hardware is darker and dense, the pharmacy pale
                 float rowv = y / 40.0;
                 float3 goods = kind == 3 ? lerp(float3(0.35, 0.18, 0.08), float3(0.30, 0.30, 0.30), item) : (kind == 4 ? lerp(float3(0.70, 0.70, 0.68), float3(0.45, 0.55, 0.65), item) : lerp(float3(0.45, 0.35, 0.25), float3(0.30, 0.35, 0.40), item));
                 goods = lerp(goods, kind == 3 ? float3(0.60, 0.25, 0.05) : float3(0.55, 0.20, 0.12), step(0.86, item));
@@ -256,37 +266,32 @@ struct FShop
                 c = y < 200.0 ? (frac(rowv) < 0.1 ? float3(0.28, 0.28, 0.28) : goods) : wall;
                 if (kind == 1 && t == tx && y < 190.0)
                 {
-                    // the drinks fridges glow
                     c = frac(a / 70.0) < 0.06 ? float3(0.2, 0.2, 0.2) : lerp(float3(0.75, 0.80, 0.85), goods, 0.5);
                 }
             }
             else if (kind == 2)
             {
-                // a counter, a menu board over it
                 if (y < 105.0) { c = lerp(float3(0.45, 0.45, 0.45), float3(0.30, 0.16, 0.08), step(0.5, hv)); }
                 else if (t == tz && y > 150.0 && y < 230.0) { c = frac(y / 12.0) < 0.25 && frac(a / 30.0) < 0.8 ? float3(0.75, 0.72, 0.60) : float3(0.04, 0.04, 0.04); }
             }
             else if (kind == 5)
             {
-                // mirrors over the chairs
                 if (y > 100.0 && y < 200.0 && t == tx) { c = float3(0.55, 0.62, 0.68); }
                 else if (y < 95.0 && frac(a / 110.0) < 0.5) { c = lerp(float3(0.30, 0.04, 0.04), float3(0.04, 0.04, 0.04), step(0.5, hv)); }
             }
             else if (kind == 6)
             {
-                // racks of clothes in plastic
                 if (y > 70.0 && y < 210.0) { c = lerp(float3(0.20, 0.22, 0.30), float3(0.60, 0.58, 0.55), L.H21(float2(floor(a / 6.0), seed))) * (frac(a / 6.0) < 0.15 ? 0.5 : 1.0); }
             }
             else
             {
-                // flowers: buckets of colour under greenery
                 float blob = L.VN(float2(a, y) / 18.0 + seed * 5.0);
                 c = y < 150.0 ? lerp(float3(0.05, 0.18, 0.06), lerp(float3(0.65, 0.10, 0.15), float3(0.75, 0.65, 0.15), item), step(0.62, blob)) : wall;
             }
+            c *= t == tx ? 0.8 : 1.0;
         }
         else if (r.y > 0.0)
         {
-            // ceiling and its tubes
             c = float3(0.72, 0.72, 0.70);
             if (fluor && frac(h.z / 160.0) < 0.06 && abs(h.x) < 0.3 * W) { c = float3(1.0, 1.0, 1.0); Light = 4.0; }
         }
@@ -295,6 +300,100 @@ struct FShop
             float2 tile = float2(h.x, h.z) / (kind == 5 ? 30.0 : 40.0);
             float check = step(0.5, frac(0.5 * (floor(tile.x) + floor(tile.y))));
             c = kind == 5 ? lerp(float3(0.06, 0.06, 0.06), float3(0.70, 0.70, 0.68), check) : (kind == 0 || kind == 4 ? lerp(float3(0.62, 0.62, 0.60), float3(0.55, 0.56, 0.55), check) : (kind == 2 ? lerp(float3(0.45, 0.10, 0.08), float3(0.65, 0.63, 0.58), check) : lerp(float3(0.30, 0.29, 0.27), float3(0.36, 0.35, 0.33), check)));
+            // the room darkens away from the lamps, toward the back and the sides
+            c *= lerp(1.0, 0.7, saturate(abs(h.x) / (0.5 * W)));
+        }
+
+        // What stands in the room, in front of the walls: boxes in (x across, y up, z in) from the glass.
+        float3 o = float3(g.x, g.y, 0.0);
+        float best = t;
+        float3 thing = c;
+        float thingLight = Light;
+        float F = Floor;
+        float side = hv < 0.5 ? -1.0 : 1.0;
+        // a counter across the room (food, pharmacy, cleaners, barber's desk), or along one side
+        if (kind == 2 || kind == 4 || kind == 6 || kind == 5)
+        {
+            float3 a0 = kind == 2 ? float3(-0.42 * W, F, 0.42 * D) : float3(side > 0.0 ? 0.08 * W : -0.45 * W, F, 0.18 * D);
+            float3 a1 = kind == 2 ? float3(0.30 * W, F + 105.0, 0.50 * D) : float3(side > 0.0 ? 0.45 * W : -0.08 * W, F + 100.0, 0.30 * D);
+            float tb = L.Box(o, r, a0, a1);
+            if (tb < best)
+            {
+                best = tb;
+                float3 p = o + r * tb;
+                bool top = p.y > a1.y - 1.0;
+                float3 counter = lerp(float3(0.40, 0.40, 0.42), float3(0.28, 0.14, 0.07), step(0.45, hv));
+                thing = top ? counter * 1.25 : counter * (frac(p.y / 25.0) < 0.06 ? 0.6 : 0.85);
+                thingLight = Light;
+            }
+        }
+        // shelf gondolas running back into the shop (grocery, hardware, pharmacy, a small shop)
+        if (kind == 1 || kind == 3 || kind == 4 || (kind == 6 && hv > 0.5))
+        {
+            float gw = 0.5 * W / 3.0;
+            [unroll] for (int gi = -1; gi <= 1; gi += 2)
+            {
+                float3 a0 = float3(gi * gw - 30.0, F, 0.28 * D);
+                float3 a1 = float3(gi * gw + 30.0, F + (kind == 3 ? 185.0 : 150.0), 0.82 * D);
+                float tb = L.Box(o, r, a0, a1);
+                if (tb < best)
+                {
+                    best = tb;
+                    float3 p = o + r * tb;
+                    float rowv = (p.y - F) / 37.0;
+                    float itm = L.H21(float2(floor(p.z / 9.0 + p.x / 9.0), floor(rowv)) + seed * 7.0);
+                    float3 goods = kind == 3 ? lerp(float3(0.30, 0.16, 0.07), float3(0.28, 0.28, 0.28), itm) : lerp(float3(0.62, 0.45, 0.28), float3(0.25, 0.35, 0.50), itm);
+                    goods = lerp(goods, float3(0.65, 0.18, 0.10), step(0.84, itm));
+                    thing = p.y > a1.y - 1.0 ? float3(0.30, 0.30, 0.30) : (frac(rowv) < 0.12 ? float3(0.22, 0.22, 0.22) : goods);
+                    thingLight = Light * 0.9;
+                }
+            }
+        }
+        // a bank of machines down the middle of a laundromat
+        if (kind == 0)
+        {
+            float3 a0 = float3(-65.0, F, 0.30 * D);
+            float3 a1 = float3(65.0, F + 105.0, 0.90 * D);
+            float tb = L.Box(o, r, a0, a1);
+            if (tb < best)
+            {
+                best = tb;
+                float3 p = o + r * tb;
+                float cz = frac(p.z / 72.0) * 72.0 - 36.0;
+                bool face = abs(abs(p.x) - 65.0) < 1.0;
+                thing = face && length(float2(cz, p.y - F - 52.0)) < 19.0 ? float3(0.05, 0.06, 0.07) : float3(0.74, 0.74, 0.72);
+                thingLight = Light;
+            }
+        }
+        // pendant lamps over the warm-lit shops: a disc of light on a cord
+        if (!fluor)
+        {
+            [unroll] for (int pi = 0; pi < 3; pi++)
+            {
+                float3 pc = float3((pi - 1.0) * 0.28 * W, Ceil - 75.0, (0.25 + 0.2 * pi) * D);
+                float3 a0 = pc - float3(13.0, 9.0, 13.0);
+                float3 a1 = pc + float3(13.0, 9.0, 13.0);
+                float tb = L.Box(o, r, a0, a1);
+                if (tb < best)
+                {
+                    best = tb;
+                    float3 p = o + r * tb;
+                    thing = p.y < pc.y - 8.0 ? float3(1.0, 0.92, 0.75) : float3(0.08, 0.06, 0.05);
+                    thingLight = p.y < pc.y - 8.0 ? 6.0 : 0.5;
+                }
+                float tc = L.Box(o, r, pc + float3(-0.6, 9.0, -0.6), float3(pc.x + 0.6, Ceil, pc.z + 0.6));
+                if (tc < best)
+                {
+                    best = tc;
+                    thing = float3(0.02, 0.02, 0.02);
+                    thingLight = 0.3;
+                }
+            }
+        }
+        if (best < t)
+        {
+            c = thing;
+            Light = thingLight;
         }
         return c;
     }
@@ -304,14 +403,37 @@ FShop S;
 
 SHOP_HLSL = shop_hlsl()
 
+# The palette a facade cut from a long building picks from (_facade_plan.facade_style): (wall, trim, masonry, painted).
+SEG_STYLES = [
+    ((0.32, 0.105, 0.077), (0.55, 0.50, 0.40), 0.0, 0.0),   # red brick
+    ((0.24, 0.13, 0.084), (0.50, 0.46, 0.38), 0.0, 0.0),    # brown brick
+    ((0.15, 0.095, 0.085), (0.52, 0.48, 0.42), 0.0, 0.0),   # dark ironspot brick
+    ((0.22, 0.13, 0.098), (0.09, 0.055, 0.04), 1.0, 0.0),   # brownstone
+    ((0.24, 0.24, 0.27), (0.03, 0.03, 0.035), 0.0, 1.0),    # painted brick
+    ((0.36, 0.20, 0.11), (0.30, 0.30, 0.29), 0.0, 0.0),     # buff-orange brick
+    ((0.40, 0.38, 0.34), (0.26, 0.25, 0.23), 1.0, 0.0),     # limestone ashlar
+]
+
+
+def seg_styles_hlsl():
+    def f3(v):
+        return "float3({0}, {1}, {2})".format(*("{0:.4f}".format(x) for x in v))
+    walls = ", ".join(f3(s[0]) for s in SEG_STYLES)
+    trims = ", ".join(f3(s[1]) for s in SEG_STYLES)
+    mods = ", ".join("float2({0:.1f}, {1:.1f})".format(s[2], s[3]) for s in SEG_STYLES)
+    return ("static const float3 SEG_WALL[{0}] = {{{1}}};\nstatic const float3 SEG_TRIM[{0}] = {{{2}}};\n"
+            "static const float2 SEG_MODE[{0}] = {{{3}}};\n").format(len(SEG_STYLES), walls, trims, mods)
+
 # --------------------------------------------------------------------------------------------------------------------
 # the facade
 # --------------------------------------------------------------------------------------------------------------------
 
 # Inputs: WP (world position, cm), N (vertex normal), V (camera vector), OP / OB (object bounds centre and size),
 # Wall, Trim, LitCol (float3), LitFrac, Glow, Masonry (0 brick, 1 brownstone, 2 concrete), Painted (0..1), Day (0 at
-# night, 1 by day), Card (1 on a dressing window card: always a lit window). Outputs: the base colour, Rough, Emis,
-# NormalWS (world space; the material has tangent-space normals off).
+# night, 1 by day), Card (1 on a dressing window card: always a lit window), Atlas (the sign atlas, a texture object),
+# FX, FY, FA0, FA1, FB0, FB1, FSeed (the building's frame, custom primitive data: _facade_plan.frame), NightFill (the
+# city's glow on the walls at night). Outputs: the base colour, Rough, Emis, NormalWS (world space; the material has
+# tangent-space normals off).
 FACADE_BODY = r"""
 float3 n = normalize(N);
 float3 up = float3(0.0, 0.0, 1.0);
@@ -334,11 +456,66 @@ float fwu = fwidth(u);
 float fwz = fwidth(z);
 float fwc = max(max(fwu, fwz), 1e-3);
 
+// The building's frame (_facade_plan): a wall along its axis A or B spans the building's extent on that axis, cut into
+// facades of their own when it is long; each facade's shop bays run from its own corner to its own corner.
+float2 fa = float2(FX, FY);
+bool framed = dot(fa, fa) > 0.25 && Card < 0.5;
+float u0 = floor(u / 1600.0) * 1600.0;
+float u1 = u0 + 1600.0;
+uint face = 0u;
+bool span = false;
+if (framed)
+{
+    fa = normalize(fa);
+    float ca = dot(t2, fa);
+    float cb = dot(t2, float2(-fa.y, fa.x));
+    if (abs(ca) > 0.97) { span = true; face = ca > 0.0 ? 0u : 1u; u0 = ca > 0.0 ? FA0 : -FA1; u1 = ca > 0.0 ? FA1 : -FA0; }
+    else if (abs(cb) > 0.97) { span = true; face = cb > 0.0 ? 2u : 3u; u0 = cb > 0.0 ? FB0 : -FB1; u1 = cb > 0.0 ? FB1 : -FB0; }
+}
+uint seed = (uint)round(FSeed);
+float s0 = u0;
+float s1 = u1;
+uint seg = 0u;
+if (span)
+{
+    float len = u1 - u0;
+    int nseg = clamp((int)ceil((len - 1.0) / 1300.0), 1, 8);
+    float prev = u0;
+    [loop] for (int ks = 1; ks < nseg; ks++)
+    {
+        float j = L.HF(L.Key(seed, face, (uint)ks, 0u, 1u)) - 0.5;
+        float b = u0 + len * ((float)ks + j * 0.3) / (float)nseg;
+        b = floor(b / 160.0 + 0.5) * 160.0;
+        b = min(max(b, prev + 640.0), u1 - 640.0);
+        if (u >= b) { seg = (uint)ks; s0 = b; }
+        else { s1 = b; break; }
+        prev = b;
+    }
+}
+// A facade cut from a long building is a building of its own: masonry, colour, trim, cornice, shop rhythm.
+float3 wallIn = Wall;
+float3 trimIn = Trim;
+float masonryIn = Masonry;
+float paintedIn = Painted;
+if (seg > 0u)
+{
+    int ps = (int)(L.HF(L.Key(seed, face, seg, 0u, 3u)) * 7.0) % 7;
+    wallIn = SEG_WALL[ps];
+    trimIn = SEG_TRIM[ps];
+    masonryIn = SEG_MODE[ps].x;
+    paintedIn = SEG_MODE[ps].y;
+    bs = L.HF(L.Key(seed, face, seg, 0u, 11u));
+    bs2 = L.HF(L.Key(seed, face, seg, 0u, 12u));
+}
+int trimStyle = span ? (int)(L.HF(L.Key(seed, face, seg, 0u, 4u)) * 4.0) % 4 : 0;
+int corniceStyle = span ? (int)(L.HF(L.Key(seed, face, seg, 0u, 5u)) * 4.0) % 4 : 0;
+float pilasterEvery = span ? floor(L.HF(L.Key(seed, face, seg, 0u, 10u)) * 4.0) : 0.0;
+
 // The building's own colour inside its style's range.
-float3 wall = Wall * lerp(0.78, 1.2, bs);
+float3 wall = wallIn * lerp(0.78, 1.2, bs);
 wall *= lerp(float3(0.93, 0.96, 1.06), float3(1.08, 0.97, 0.88), bs2);
 
-int mode = (int)round(Masonry);
+int mode = (int)round(masonryIn);
 float2 pitch = mode == 0 ? float2(21.0, 7.5) : (mode == 1 ? float2(91.5, 33.0) : float2(160.0, 110.0));
 float jointW = mode == 0 ? 1.0 : (mode == 1 ? 0.7 : 1.6);
 float bv = z / pitch.y;
@@ -366,17 +543,16 @@ float3 mortarCol = mode == 0 ? float3(0.36, 0.345, 0.31) : wall * 0.72;
 float3 col = lerp(unit, mortarCol, mortar);
 if (mode == 2)
 {
-    // board marks and tie holes on the concrete
     float board = frac(z / 15.0);
     col *= lerp(1.0, (board < 0.06 ? 0.9 : 1.0) * lerp(0.94, 1.04, L.H21(float2(floor(z / 15.0), floor(u / 160.0)))), detail);
 }
 
 // Paint over brick, peeling here and there.
 float peel = smoothstep(0.66, 0.72, L.FBM(float2(u, z) / 45.0 + bs * 10.0));
-float3 paintCol = bs < 0.3 ? float3(0.62, 0.58, 0.50) : (bs < 0.55 ? Wall : (bs < 0.8 ? float3(0.12, 0.20, 0.15) : float3(0.55, 0.52, 0.47)));
+float3 paintCol = bs < 0.3 ? float3(0.62, 0.58, 0.50) : (bs < 0.55 ? wallIn : (bs < 0.8 ? float3(0.12, 0.20, 0.15) : float3(0.55, 0.52, 0.47)));
 paintCol *= (1.0 - 0.18 * mortar);
 float3 under = lerp(float3(0.30, 0.11, 0.075) * var, float3(0.36, 0.345, 0.31), mortar);
-col = lerp(col, lerp(paintCol, under, peel), Painted);
+col = lerp(col, lerp(paintCol, under, peel), paintedIn);
 
 // Weather: blotches, a dirty base with a salt line, soot under the top.
 col *= lerp(0.76, 1.06, L.FBM(float2(u, z) / 240.0 + bs * 3.0));
@@ -385,7 +561,7 @@ float salt = saturate(1.0 - abs(z - 48.0) / 26.0) * smoothstep(0.35, 0.6, L.VN(f
 col = lerp(col, float3(0.50, 0.49, 0.46), 0.4 * salt);
 col *= lerp(0.72, 1.0, saturate(rel / 320.0));
 float rough = lerp(0.88, 0.94, mortar);
-rough = lerp(rough, 0.62, Painted * (1.0 - peel));
+rough = lerp(rough, 0.62, paintedIn * (1.0 - peel));
 
 // Masonry relief: bevelled units proud of the joints, a pitted face.
 float3 nrm = n;
@@ -400,47 +576,84 @@ float3 nrm = n;
     float ev1 = (1.0 - fv) * pitch.y;
     float gu = fu < mu ? 0.0 : (eu0 < bev ? 1.0 : (eu1 < bev ? -1.0 : 0.0));
     float gv = fv < mv ? 0.0 : (ev0 < bev ? 1.0 : (ev1 < bev ? -1.0 : 0.0));
-    float k = (mode == 2 ? 0.3 : 0.8) * saturate(1.5 - fwc / 0.8) * (1.0 - 0.6 * Painted);
+    float k = (mode == 2 ? 0.3 : 0.8) * saturate(1.5 - fwc / 0.8) * (1.0 - 0.6 * paintedIn);
     float2 sp = float2(u, z) / (mode == 0 ? 2.5 : 6.0);
-    float s0 = L.VN(sp);
-    float su = L.VN(sp + float2(0.35, 0.0));
-    float sv = L.VN(sp + float2(0.0, 0.35));
+    float s0n = L.VN(sp);
+    float sun = L.VN(sp + float2(0.35, 0.0));
+    float svn = L.VN(sp + float2(0.0, 0.35));
     float ks = 1.2 * saturate(1.5 - fwc / 1.5);
-    float GU = gu * k + (su - s0) * ks;
-    float GV = gv * k + (sv - s0) * ks;
+    float GU = gu * k + (sun - s0n) * ks;
+    float GV = gv * k + (svn - s0n) * ks;
     nrm = normalize(n - (GU * T + GV * up) * vert);
 }
 
 float3 emis = float3(0.0, 0.0, 0.0);
 float snow = 0.0;
-float3 trim = Trim * lerp(0.9, 1.1, bs2);
+float3 trim = trimIn * lerp(0.9, 1.1, bs2);
 float3 rv = -normalize(V);
 float3 r = float3(dot(rv, T), rv.z, max(dot(rv, -outN), 0.03));
 
-// Upper floors: the window grid.
+// The seam where two facades of a long building meet, and pilasters grouping the windows in pairs or threes.
+if (span && seg > 0u && abs(u - s0) < 2.5 && vert > 0.5)
+{
+    col *= 0.35;
+}
+float bayU = u / 160.0;
+float bay = floor(bayU);
+float lu = (frac(bayU) - 0.5) * 160.0;
+if (pilasterEvery > 1.5 && tall > 0.5 && vert > 0.5 && z > 395.0 && rel > 145.0 && abs(abs(lu) - 80.0) < 13.0
+    && fmod(bay + (lu > 0.0 ? 1.0 : 0.0), pilasterEvery) < 0.5 && u > s0 + 100.0 && u < s1 - 100.0)
+{
+    col = lerp(trim, wall * 0.9, step(0.5, bs2)) * lerp(0.85, 1.05, L.VN(float2(u, z) / 20.0));
+    rough = 0.8;
+    nrm = normalize(n + T * (abs(lu) > 79.0 ? 0.0 : sign(lu) * 0.6) * (abs(abs(lu) - 80.0) > 11.0 ? 1.0 : 0.0));
+}
+
+// Upper floors: the window grid (160 cm bays, 330 cm storeys: the dressing's cards, the fire escapes and the window
+// shot sit on it), the window heads by the facade's trim style.
 float upper = step(420.0, z) * step(165.0, rel) * step(0.5, vert);
 if (Card > 0.5)
 {
     upper = 1.0;
 }
-float bayU = u / 160.0;
-float bay = floor(bayU);
-float lu = (frac(bayU) - 0.5) * 160.0;
 float storey = floor(z / 330.0);
 float lz = z - storey * 330.0 - 95.0;
 float wseed = L.H21(float2(bay, storey) + floor(dpl / 100.0) * 1.37);
 float3 frameCol = bs2 < 0.45 ? float3(0.62, 0.60, 0.55) : (bs2 < 0.8 ? float3(0.025, 0.025, 0.028) : float3(0.05, 0.12, 0.08));
 if (upper > 0.5)
 {
-    if (abs(lu) < 66.0 && lz > 150.0 && lz < 172.0)
+    if (trimStyle == 1)
     {
-        col = trim * lerp(0.85, 1.05, L.VN(float2(u, z) / 8.0)) * lerp(0.7, 1.0, saturate((lz - 150.0) / 6.0));
-        rough = 0.8;
-        nrm = n;
-        if (lz > 168.5)
+        // a segmental arch of soldier bricks over the opening
+        float arch = 16.0 + 9.0 * (1.0 - saturate((lu / 64.0) * (lu / 64.0)));
+        if (abs(lu) < 64.0 && lz > 150.0 && lz < 150.0 + arch)
         {
-            snow = 1.0;
-            nrm = normalize(n + up * 2.0);
+            float rad = frac((lu + 64.0) / 8.5);
+            col = wall * lerp(0.7, 0.95, L.H21(float2(floor((lu + 64.0) / 8.5), storey + bay * 3.1))) * (rad < 0.12 ? 0.55 : 1.0);
+            rough = 0.88;
+            nrm = n;
+        }
+    }
+    else
+    {
+        float hw = trimStyle == 3 ? 74.0 : 66.0;
+        float ht = trimStyle == 3 ? 182.0 : 172.0;
+        if (abs(lu) < hw && lz > 150.0 && lz < ht)
+        {
+            col = trim * lerp(0.85, 1.05, L.VN(float2(u, z) / 8.0)) * lerp(0.7, 1.0, saturate((lz - 150.0) / 6.0));
+            rough = 0.8;
+            nrm = n;
+            if (lz > ht - 3.5)
+            {
+                snow = 1.0;
+                nrm = normalize(n + up * 2.0);
+            }
+        }
+        if (trimStyle == 2 && abs(lu) > 55.0 && abs(lu) < 66.0 && lz > -10.0 && lz < 150.0)
+        {
+            col = trim * lerp(0.8, 1.0, L.VN(float2(u, z) / 8.0));
+            rough = 0.8;
+            nrm = normalize(n + T * sign(lu) * 0.3);
         }
     }
     if (abs(lu) < 64.0 && lz > -10.0 && lz < 0.0)
@@ -477,7 +690,6 @@ if (inWin > 0.5)
     float tg = R / r.z;
     if (min(tx, ty) < tg)
     {
-        // the reveal: masonry sides and head, the stone sill's inner face
         float dep = min(tx, ty) * r.z / R;
         float3 rc = lerp(wall, mortarCol, 0.3) * lerp(1.0, 0.7, dep);
         rough = 0.85;
@@ -557,87 +769,231 @@ if (inWin > 0.5)
     }
 }
 
-// The storefronts under the sign band, on the taller buildings (SHOP_HLSL): bays 280, 330 or 400 cm per building,
-// a shop per bay with its own trade, sign, interior and gate.
+// The ground floor of the taller buildings: each facade's shop bays from its own corner to its own corner (end piers
+// END_PIER 45 cm), a fascia over them with one sign per bay, centred in it; a recessed door in each shop; one bay of
+// three or more is the tenement's entrance.
 float ground = tall * step(0.5, vert) * step(z, 395.0);
 if (ground > 0.5)
 {
-    float pitchS = bs < 0.33 ? 280.0 : (bs < 0.66 ? 330.0 : 400.0);
-    float pier = lerp(36.0, 70.0, bs2);
-    float sU = u / pitchS;
-    float shop = floor(sU);
-    float su = (frac(sU) - 0.5) * pitchS;
+    float usable = (s1 - s0) - 90.0;
+    float target = (int)(L.HF(L.Key(seed, face, seg, 0u, 2u)) * 3.0) % 3 == 0 ? 300.0 : ((int)(L.HF(L.Key(seed, face, seg, 0u, 2u)) * 3.0) % 3 == 1 ? 360.0 : 420.0);
+    float nb = max(1.0, floor(usable / target + 0.5));
+    float pitchS = usable / nb;
+    float lx = u - s0 - 45.0;
+    float bayF = floor(lx / pitchS);
+    bool endPier = lx < 0.0 || lx >= usable;
+    uint bayI = (uint)clamp(bayF, 0.0, nb - 1.0);
+    float su = lx - (bayF + 0.5) * pitchS;
+    bool entrance = nb >= 3.0 && bayI == (uint)floor(nb * 0.5);
+    float pier = lerp(30.0, 55.0, L.HF(L.Key(seed, face, seg, 0u, 13u)));
     float halfGlass = 0.5 * (pitchS - pier);
-    float sseed = L.H21(float2(shop, floor(dpl / 100.0)) + 0.37);
-    int trade = (int)floor(L.H21(float2(sseed, 11.3)) * SHOP_NAMES);
+    uint sk = L.Key(seed, face, seg, bayI, 0u);
+    float sseed = L.HF(sk) * 97.0;
+    int trade = (int)(L.HF(L.Key(seed, face, seg, bayI, 8u)) * (float)SHOP_NAMES) % (int)SHOP_NAMES;
     int kind = (int)NAME_KIND[trade];
+    bool vacant = L.HF(L.Key(seed, face, seg, bayI, 6u)) < 0.15;
+    bool openShop = !vacant && (L.HF(L.Key(seed, face, seg, bayI, 7u)) < LitFrac + 0.2 || Day > 0.5);
+    float3 fascia = lerp(float3(0.03, 0.03, 0.035), trim * 0.6, step(0.6, L.HF(L.Key(seed, face, seg, 0u, 14u))));
     if (z > 300.0)
     {
-        float3 inkCol;
-        float3 signCol = S.SignColours(sseed, inkCol);
-        float halfPanel = 0.5 * pitchS - 12.0;
-        float panel = step(abs(su), halfPanel) * step(310.0, z) * step(z, 386.0);
-        col = lerp(float3(0.03, 0.03, 0.035), signCol, panel);
-        // The trade's name in a 5 x 7 pixel face, centred and fitted to the panel: regular, bold or condensed.
-        float ink = 0.0;
+        // the fascia band, and the sign: one per shop bay, never past the bay
+        col = endPier ? col : fascia * lerp(0.85, 1.05, L.VN(float2(u, z) / 25.0));
+        rough = 0.5;
+        nrm = n;
+        float halfPanel = 0.5 * pitchS - 14.0;
+        float panel = (endPier || entrance) ? 0.0 : step(abs(su), halfPanel) * step(310.0, z) * step(z, 386.0);
+        if (panel > 0.5)
         {
-            int face = (int)floor(L.H21(float2(sseed, 5.7)) * 3.0);
+            float tt = L.HF(L.Key(seed, face, seg, bayI, 9u));
+            int treat = tt < 0.38 ? 0 : (tt < 0.62 ? 1 : (tt < 0.84 ? 2 : 3));      // painted, raised, lit box, neon
+            float hc = L.HF(L.Key(seed, face, seg, bayI, 15u));
             int len = (int)NAME_LEN[trade];
-            float tw = 2.0 * halfPanel - 24.0;
-            float s = min(52.0 / 7.0, tw / (6.0 * len));
-            float sx = face == 2 ? s * 0.75 : s;
-            float sy = face == 2 ? min(s * 1.2, 60.0 / 7.0) : s;
-            // read left to right as the viewer sees the face, whichever way the face's coordinate runs
-            float readDir = dot(V, n) >= 0.0 ? -1.0 : 1.0;
-            float2 q = float2(readDir * su / sx + 3.0 * len, 3.5 - (z - 348.0) / sy);
-            if (q.x >= 0.0 && q.x < 6.0 * len && q.y >= 0.0 && q.y < 7.0)
+            int fsel = treat == 3 ? (hc < 0.5 ? 2 : 3) : (treat == 1 ? (hc < 0.5 ? 0 : 2) : (len > 9 ? 1 : (hc < 0.7 ? 0 : 3)));
+            float4 fm = fsel == 0 ? float4(1, 0, 0, 0) : (fsel == 1 ? float4(0, 1, 0, 0) : (fsel == 2 ? float4(0, 0, 1, 0) : float4(0, 0, 0, 1)));
+            float3 panelCol;
+            float3 inkCol;
+            if (treat == 0)
             {
-                int ci = (int)floor(q.x / 6.0);
-                int gc = (int)floor(q.x - 6.0 * ci);
-                int row = (int)floor(q.y);
-                uint bits = FONT[NAME_CHARS[NAME_START[trade] + ci] * 7 + row];
-                float on = gc < 5 ? (float)((bits >> (4 - gc)) & 1u) : 0.0;
-                if (face == 1 && gc > 0)
+                panelCol = hc < 0.2 ? float3(0.40, 0.035, 0.03) : (hc < 0.4 ? float3(0.025, 0.11, 0.05) : (hc < 0.6 ? float3(0.02, 0.03, 0.11) : (hc < 0.8 ? float3(0.55, 0.52, 0.45) : float3(0.025, 0.025, 0.028))));
+                inkCol = hc < 0.4 ? float3(0.80, 0.78, 0.70) : (hc < 0.6 ? float3(0.85, 0.65, 0.10) : (hc < 0.8 ? float3(0.05, 0.05, 0.05) : float3(0.75, 0.55, 0.20)));
+            }
+            else if (treat == 1)
+            {
+                panelCol = hc < 0.35 ? float3(0.02, 0.02, 0.022) : (hc < 0.7 ? float3(0.12, 0.06, 0.03) : wall * 0.8);
+                inkCol = hc < 0.5 ? float3(0.70, 0.52, 0.20) : float3(0.78, 0.76, 0.72);
+            }
+            else if (treat == 2)
+            {
+                panelCol = hc < 0.5 ? float3(0.80, 0.80, 0.76) : (hc < 0.75 ? float3(0.75, 0.62, 0.10) : float3(0.10, 0.25, 0.60));
+                inkCol = hc < 0.5 ? (hc < 0.25 ? float3(0.45, 0.02, 0.02) : float3(0.02, 0.06, 0.25)) : float3(0.85, 0.85, 0.82);
+            }
+            else
+            {
+                panelCol = float3(0.015, 0.015, 0.017);
+                inkCol = hc < 0.3 ? float3(1.0, 0.15, 0.35) : (hc < 0.55 ? float3(0.25, 0.55, 1.0) : (hc < 0.8 ? float3(1.0, 0.30, 0.10) : float3(0.30, 1.0, 0.45)));
+            }
+            // The trade's name: Roboto from the sign atlas, laid out on its advances, centred and fitted to the panel.
+            uint st = NAME_START[trade];
+            float wsum = 0.0;
+            [loop] for (int ia = 0; ia < len; ia++) { wsum += ADV[(uint)fsel * NG + NAME_CHARS[st + (uint)ia]]; }
+            float panelH = 76.0;
+            float kc = min(min(0.46 * panelH, 34.0) / CAP_F, 0.84 * 2.0 * halfPanel / max(wsum, 0.1));   // cm per cell
+            float readDir = dot(V, n) >= 0.0 ? -1.0 : 1.0;
+            float qx = readDir * su / kc + 0.5 * wsum;
+            float qy = 0.5 - (z - 348.0) / kc + (BASE_F - 0.5 * CAP_F - 0.5);
+            float pxc = max(fwu, fwz) / kc * CELL_PX;                 // atlas texels per pixel
+            float lod = log2(max(pxc, 1.0));
+            float pen = 0.0;
+            int ci = len;
+            [loop] for (int ib = 0; ib < len; ib++)
+            {
+                float a = ADV[(uint)fsel * NG + NAME_CHARS[st + (uint)ib]];
+                if (qx < pen + a) { ci = ib; break; }
+                pen += a;
+            }
+            float sd = 0.0;
+            float sh = 0.0;
+            [unroll] for (int jx = -1; jx <= 1; jx++)
+            {
+                int idx = ci + jx;
+                if (idx >= 0 && idx < len)
                 {
-                    on = max(on, (float)((bits >> (5 - gc)) & 1u));
+                    uint gch = NAME_CHARS[st + (uint)idx];
+                    float pj = jx < 0 ? pen - ADV[(uint)fsel * NG + gch] : (jx > 0 ? pen + ADV[(uint)fsel * NG + NAME_CHARS[st + (uint)ci]] : pen);
+                    float2 c = float2(qx - pj + ORIGIN_F, qy);
+                    float2 gc = float2(fmod((float)gch, GLYPH_GRID), floor((float)gch / GLYPH_GRID));
+                    if (c.x >= 0.0 && c.x <= 1.0 && c.y >= 0.0 && c.y <= 1.0)
+                    {
+                        sd = max(sd, dot(Atlas.SampleLevel(AtlasSampler, (gc + c) / GLYPH_GRID, lod), fm));
+                    }
+                    float2 cs = c - float2(0.03, 0.045);
+                    if (treat == 1 && cs.x >= 0.0 && cs.x <= 1.0 && cs.y >= 0.0 && cs.y <= 1.0)
+                    {
+                        sh = max(sh, dot(Atlas.SampleLevel(AtlasSampler, (gc + cs) / GLYPH_GRID, lod), fm));
+                    }
                 }
-                // far away a letter cell is a pixel or two: its average ink instead of aliasing
-                ink = lerp(on, 0.35, saturate(fwu / sx - 0.5)) * panel;
+            }
+            float aa = 0.5 * pxc / SDF_PX + 0.01;
+            float ink = smoothstep(0.5 - aa, 0.5 + aa, sd);
+            float farF = saturate(pxc / 40.0 - 1.0);
+            ink = lerp(ink, 0.22, farF);
+            float halo = saturate((sd - 0.12) / 0.38) * (1.0 - ink) * (1.0 - farF);
+            col = panelCol;
+            if (treat == 2)
+            {
+                // the box sign's frame
+                float edge = min(halfPanel - abs(su), min(z - 310.0, 386.0 - z));
+                col = edge < 4.0 ? float3(0.05, 0.05, 0.055) : col;
+                emis += (edge < 4.0 ? 0.0 : 1.0) * lerp(panelCol, inkCol * 0.6, ink) * Glow * lerp(3.2, 0.25, Day);
+            }
+            if (treat == 1)
+            {
+                col *= 1.0 - 0.55 * smoothstep(0.5 - aa, 0.5 + aa, sh) * (1.0 - ink);
+                emis += inkCol * halo * halo * Glow * 1.6 * (1.0 - Day) * step(0.5, hc);
+            }
+            if (treat == 3)
+            {
+                float3 tube = lerp(float3(0.55, 0.52, 0.50), inkCol, 0.25);
+                col = lerp(col, tube, ink);
+                emis += (inkCol * ink * lerp(9.0, 1.2, Day) + inkCol * halo * halo * lerp(2.5, 0.0, Day)) * Glow;
+                rough = lerp(0.6, 0.15, ink);
+            }
+            else
+            {
+                col = lerp(col, inkCol, ink);
+                rough = treat == 1 ? lerp(0.6, 0.3, ink) : 0.45;
+            }
+            if (treat == 0)
+            {
+                emis += col * Glow * 0.6 * (1.0 - Day) * step(0.45, hc);
             }
         }
-        col = lerp(col, inkCol, ink);
-        rough = 0.45;
-        nrm = n;
-        emis += col * Glow * 0.6 * panel * (1.0 - Day) * step(0.45, L.H21(float2(sseed, 6.9)));
         if (z > 391.0)
         {
             snow = 1.0;
             nrm = normalize(n + up * 2.0);
         }
     }
-    else if (z > 40.0 && abs(su) < halfGlass)
+    else if (!endPier && entrance && abs(su) < 62.0 && z > 15.0 && z < 300.0)
     {
-        // Open at night: about half; by day all but the empty ones.
-        float vacant = step(L.H21(float2(sseed, 2.7)), 0.15);
-        float open = (1.0 - vacant) * max(step(L.H21(float2(sseed, 2.1)), LitFrac + 0.2), step(0.5, Day));
-        if (open < 0.5)
+        // the tenement's door, 60 cm in, a lit transom over it
+        float3 hit;
+        int part = L.Recess(float2(su, z - 15.0), r, 62.0, 285.0, 60.0, hit);
+        if (part == 3)
         {
-            // the roll-down gate, ribbed, tagged
-            float rib = frac((z - 40.0) / 7.0);
+            bool transom = hit.y > 240.0;
+            bool frameD = abs(hit.x) > 54.0 || (hit.y > 232.0 && hit.y < 240.0) || hit.y < 6.0;
+            bool glass = !transom && abs(hit.x) < 40.0 && hit.y > 120.0 && hit.y < 215.0;
+            col = frameD ? float3(0.05, 0.03, 0.02) : (transom || glass ? float3(0.015, 0.016, 0.018) : float3(0.09, 0.045, 0.025) * (frac(hit.y / 40.0) < 0.05 ? 0.6 : 1.0));
+            rough = transom || glass ? 0.05 : 0.5;
+            emis += (transom || glass) ? float3(1.0, 0.8, 0.55) * Glow * lerp(1.2, 0.2, Day) * (transom ? 1.0 : 0.5) : float3(0.0, 0.0, 0.0);
+            nrm = n;
+        }
+        else
+        {
+            col = part == 2 ? float3(0.30, 0.30, 0.29) : lerp(wall, mortarCol, 0.3) * (part == 1 ? 0.5 : 0.75);
+            nrm = part == 0 ? -sign(r.x) * T : (part == 1 ? -up : up);
+            rough = 0.85;
+        }
+    }
+    else if (!endPier && !entrance && abs(su) < halfGlass && z > 15.0 && z < 300.0)
+    {
+        float doorSide = L.HF(L.Key(seed, face, seg, bayI, 16u)) < 0.5 ? -1.0 : 1.0;
+        float dc = doorSide * (halfGlass - 58.0);
+        bool inDoor = abs(su - dc) < 52.0 && z < 255.0 && halfGlass > 120.0;
+        if (!openShop)
+        {
+            // the roll-down gate, ribbed, tagged, over glass and door
+            float rib = frac((z - 15.0) / 7.0);
             col = lerp(float3(0.30, 0.30, 0.31), float3(0.20, 0.21, 0.22), L.H21(float2(sseed, 4.4))) * lerp(0.7, 1.05, L.VN(float2(su / 40.0, z / 60.0) + sseed * 9.0)) * (rib < 0.15 ? 0.6 : 1.0);
             nrm = normalize(n + up * (rib < 0.15 ? -0.6 : (rib > 0.85 ? 0.6 : 0.0)));
             rough = 0.45;
             float tag = smoothstep(0.6, 0.66, L.FBM(float2(su, z) / 35.0 + sseed * 20.0));
             col = lerp(col, lerp(float3(0.45, 0.08, 0.35), float3(0.08, 0.25, 0.55), L.H21(float2(sseed, 3.0))), tag * 0.8);
+            if (z > 285.0) { col = float3(0.12, 0.12, 0.13); }
+        }
+        else if (inDoor)
+        {
+            // the shop door, recessed 85 cm: tiled floor, jambs, a glass door in an aluminium frame, a push bar
+            float3 hit;
+            int part = L.Recess(float2(su - dc, z - 15.0), r, 52.0, 240.0, 85.0, hit);
+            if (part == 3)
+            {
+                bool frameD = abs(hit.x) > 44.0 || hit.y < 14.0 || hit.y > 228.0 || abs(hit.y - 105.0) < 3.0;
+                col = frameD ? float3(0.42, 0.42, 0.42) : float3(0.012, 0.013, 0.015);
+                rough = frameD ? 0.35 : 0.05;
+                float lt;
+                float3 tintD;
+                float3 inside = S.Room(float2(hit.x + dc * 0.3, hit.y - 25.0), r, 2.0 * halfGlass + 60.0, -25.0, 260.0, 500.0, kind, sseed, lt, tintD);
+                emis += frameD ? float3(0.0, 0.0, 0.0) : inside * lt * Glow * 1.1 * tintD * lerp(1.0, 0.4, Day);
+                nrm = n;
+            }
+            else
+            {
+                float3 tileC = lerp(float3(0.55, 0.53, 0.50), float3(0.12, 0.12, 0.12), step(0.5, frac(0.5 * (floor(hit.x / 15.0) + floor(hit.z / 15.0)))));
+                col = part == 2 ? tileC : (part == 1 ? float3(0.05, 0.05, 0.05) : lerp(float3(0.35, 0.35, 0.36), float3(0.10, 0.10, 0.10), step(0.5, sseed / 97.0)));
+                nrm = part == 0 ? -sign(r.x) * T : (part == 1 ? -up : up);
+                rough = part == 2 ? 0.3 : 0.6;
+                emis += part == 2 ? tileC * Glow * 0.15 * (1.0 - Day) : float3(0.0, 0.0, 0.0);
+            }
+        }
+        else if (z < 55.0)
+        {
+            // the bulkhead under the glass: tile, steel or painted wood
+            float bh = L.H21(float2(sseed, 4.9));
+            col = bh < 0.4 ? float3(0.06, 0.06, 0.065) * (frac(z / 15.0) < 0.08 ? 0.5 : 1.0) : (bh < 0.7 ? float3(0.35, 0.35, 0.36) : float3(0.10, 0.18, 0.12));
+            rough = 0.4;
+            nrm = n;
         }
         else
         {
             float tg = 8.0 / r.z;
-            float2 g = float2(su + r.x * tg, (z - 40.0) + r.y * tg);
+            float2 g = float2(su + r.x * tg, (z - 55.0) + r.y * tg);
             float hw = halfGlass - 6.0;
             float mull = L.H21(float2(sseed, 7.3)) < 0.5 ? 0.0 : hw * (L.H21(float2(sseed, 7.4)) - 0.5);
-            float transom = lerp(195.0, 225.0, L.H21(float2(sseed, 7.5)));
-            float pane = step(abs(g.x), hw) * step(5.0, g.y) * step(g.y, 255.0) * (1.0 - step(abs(g.x - mull), 3.0)) * (1.0 - step(abs(g.y - transom), 3.0));
+            float transom = lerp(180.0, 205.0, L.H21(float2(sseed, 7.5)));
+            float pane = step(abs(g.x), hw) * step(4.0, g.y) * step(g.y, 241.0) * (1.0 - step(abs(g.x - mull), 3.0)) * (1.0 - step(abs(g.y - transom), 3.0));
+            pane *= 1.0 - step(abs(g.x - dc), 58.0) * step(g.y, 200.0);
             nrm = n;
             if (pane < 0.5)
             {
@@ -650,24 +1006,54 @@ if (ground > 0.5)
                 rough = 0.05;
                 float light = 1.0;
                 float3 tintS;
-                float3 inside = S.Room(g, r, 2.0 * hw + 60.0, -25.0, 260.0, lerp(450.0, 800.0, L.H21(float2(sseed, 8.1))), kind, sseed, light, tintS);
+                float3 inside = S.Room(float2(g.x, g.y + 15.0), r, 2.0 * hw + 60.0, -40.0, 245.0, lerp(450.0, 800.0, L.H21(float2(sseed, 8.1))), kind, sseed, light, tintS);
                 // By day the shop is darker than the street and its colours wash out.
                 inside = lerp(inside, dot(inside, float3(0.3, 0.6, 0.1)).xxx, 0.4 * Day);
                 emis = inside * light * Glow * 1.3 * tintS * lerp(1.0, 0.45, Day);
+                // painted lettering on the glass of a few shops
             }
         }
     }
 }
-// Cornice with dentils under the parapet, its shadow under it.
+// Cornice under the parapet, by the facade's style: stepped stone with dentils, brackets under a slab, a plain
+// coping, or a deep pressed-metal cornice; its shadow under it.
 if (tall > 0.5 && vert > 0.5 && rel > 90.0 && rel < 145.0)
 {
     float k = (rel - 90.0) / 55.0;
-    float dent = step(0.75, k) * step(0.45, frac(u / 16.0));
-    col = trim * lerp(1.0, 0.7, k) * (1.0 - 0.35 * dent) * lerp(0.85, 1.05, L.VN(float2(u / 30.0, rel / 10.0)));
-    rough = 0.7;
-    nrm = normalize(n + up * (k < 0.15 ? 1.5 : (k > 0.6 ? -0.8 : 0.0)));
+    if (corniceStyle == 0)
+    {
+        float dent = step(0.75, k) * step(0.45, frac(u / 16.0));
+        col = trim * lerp(1.0, 0.7, k) * (1.0 - 0.35 * dent) * lerp(0.85, 1.05, L.VN(float2(u / 30.0, rel / 10.0)));
+        rough = 0.7;
+        nrm = normalize(n + up * (k < 0.15 ? 1.5 : (k > 0.6 ? -0.8 : 0.0)));
+    }
+    else if (corniceStyle == 1)
+    {
+        float brk = step(frac(u / 70.0), 0.2) * step(0.35, k);
+        col = trim * lerp(1.0, 0.75, k) * (brk > 0.5 ? 0.8 : 1.0) * lerp(0.85, 1.05, L.VN(float2(u / 30.0, rel / 10.0)));
+        rough = 0.7;
+        nrm = normalize(n + up * (k < 0.3 ? 1.2 : 0.0) + T * (brk > 0.5 ? (frac(u / 70.0) < 0.1 ? -0.5 : 0.5) : 0.0));
+    }
+    else if (corniceStyle == 2)
+    {
+        if (k < 0.3)
+        {
+            col = trim * 0.95;
+            rough = 0.75;
+            nrm = normalize(n + up * (k < 0.08 ? 1.5 : 0.0));
+        }
+    }
+    else
+    {
+        float hm = L.HF(L.Key(seed, face, seg, 0u, 17u));
+        float3 metal = hm < 0.4 ? float3(0.03, 0.06, 0.04) : (hm < 0.75 ? float3(0.02, 0.02, 0.022) : float3(0.45, 0.42, 0.36));
+        float panelM = step(frac(u / 90.0), 0.06) + step(abs(k - 0.5), 0.03);
+        col = metal * lerp(1.0, 0.75, k) * (1.0 - 0.35 * saturate(panelM));
+        rough = 0.45;
+        nrm = normalize(n + up * (k < 0.2 ? 1.3 : (k > 0.8 ? -1.0 : 0.0)));
+    }
 }
-if (tall > 0.5 && vert > 0.5 && rel >= 145.0 && rel < 158.0)
+if (tall > 0.5 && vert > 0.5 && rel >= 145.0 && rel < 158.0 && corniceStyle != 2)
 {
     col *= 0.2;
 }
@@ -686,13 +1072,16 @@ if (vert < 0.5)
 
 col = lerp(col, float3(0.62, 0.62, 0.63), snow);
 rough = lerp(rough, 0.6, snow);
+// At night the overcast, lit orange by the city, lights the walls a little: brick reads against the sky above the
+// lamps instead of going black.
+emis += col * NightFill * (1.0 - Day) * vert * float3(1.0, 0.72, 0.5) * (1.0 - Card);
 Rough = rough;
 Emis = emis;
 NormalWS = nrm;
 return col;
 """
 
-FACADE_HLSL = LIB_HLSL + SHOP_HLSL + FACADE_BODY
+FACADE_HLSL = LIB_HLSL + SHOP_HLSL + seg_styles_hlsl() + FACADE_BODY
 
 # --------------------------------------------------------------------------------------------------------------------
 # the ground
@@ -861,6 +1250,12 @@ MASONRY = {
     "Painted": (0.0, 1.0),
 }
 
+# Custom primitive data slots on building actors (_facade_plan.frame): the frame M_Facade cuts facades and bays on.
+CPD_FRAME = 0
+FRAME_PARAMS = ("FrameX", "FrameY", "FrameAMin", "FrameAMax", "FrameBMin", "FrameBMax", "FacadeSeed")
+FRAME_INPUTS = ("FX", "FY", "FA0", "FA1", "FB0", "FB1", "FSeed")
+NIGHT_FILL = 0.06      # the facade's own glow at night (x its colour, warm): the city-lit overcast on the walls
+
 # Custom primitive data slots on road and sidewalk actors (generate_city.street_frame).
 CPD_DIR_X = 0
 CPD_DIR_Y = 1
@@ -975,7 +1370,14 @@ def build_facade(m, material, card=False):
         ("Masonry", masonry), ("Painted", painted),
         ("Day", day_node(m, material, -2300, 700)),
         ("Card", m.constant(material, 1.0 if card else 0.0, -1600, 800)),
+        ("Atlas", sign_atlas_node(m, material, -1600, 900)),
     ]
+    for i, name in enumerate(FRAME_PARAMS):
+        node = m.constant(material, 0.0, -1600, 1000 + 100 * i) if card else _cpd_param(m, material, name, CPD_FRAME + i,
+                                                                                         -1600, 1000 + 100 * i)
+        inputs.append((FRAME_INPUTS[i], node))
+    inputs.append(("NightFill", m.constant(material, 0.0, -1600, 1800) if card else
+                   m.scalar_param(material, "NightFill", NIGHT_FILL, -1600, 1800)))
     node = custom(m, material, FACADE_HLSL, inputs, [("Rough", 1), ("Emis", 3), ("NormalWS", 3)], -1000, 0, "Facade")
     m.connect_property(node, unreal.MaterialProperty.MP_NORMAL, "NormalWS")
     if card:
@@ -994,6 +1396,53 @@ def build_facade(m, material, card=False):
     m.connect_property(snow, unreal.MaterialProperty.MP_BASE_COLOR, "BaseColor")
     m.connect_property(snow, unreal.MaterialProperty.MP_ROUGHNESS, "Roughness")
     m.connect_property(total, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+def sign_atlas_node(m, material, x, y):
+    """A TextureObject of T_SignAtlas (imported by ensure_sign_atlas) for the facade's Custom node."""
+    texture = ensure_sign_atlas(m)
+    node = m.expr(material, "MaterialExpressionTextureObject", x, y, None, "TextureObject SignAtlas")
+    if node is not None and texture is not None:
+        m.c.set_props(node, [("texture", texture)], "TextureObject SignAtlas")
+    return node
+
+
+def sign_atlas_stamp():
+    import hashlib
+    import os
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Data", "look", "sign_atlas.png")
+    with open(path, "rb") as source:
+        return path, "atlas-1|" + hashlib.sha1(source.read()).hexdigest()[:16]
+
+
+def ensure_sign_atlas(m):
+    """/Game/Materials/T_SignAtlas from Tools/Data/look/sign_atlas.png (bake_sign_atlas.py): linear RGBA8, uncompressed
+    (a signed distance per face), imported again only when the file's content changes."""
+    import unreal
+    path, stamp = sign_atlas_stamp()
+    full = m.MATERIALS_PATH + "/" + SIGN_ATLAS
+    existing = m.c.load_or_none(full)
+    if existing is not None and unreal.EditorAssetLibrary.get_metadata_tag(existing, m.LOOK_TAG) == stamp:
+        return existing
+    task = unreal.AssetImportTask()
+    task.filename = path
+    task.destination_path = m.MATERIALS_PATH
+    task.destination_name = SIGN_ATLAS
+    task.automated = True
+    task.replace_existing = True
+    task.save = False
+    m.c.asset_tools().import_asset_tasks([task])
+    texture = m.c.load_or_none(full)
+    if texture is None:
+        m.c.log("FAILED", full, "the import made no texture")
+        return None
+    texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_VECTOR_DISPLACEMENTMAP)
+    texture.set_editor_property("srgb", False)
+    texture.set_editor_property("lod_group", unreal.TextureGroup.TEXTUREGROUP_WORLD)
+    unreal.EditorAssetLibrary.set_metadata_tag(texture, m.LOOK_TAG, stamp)
+    m.c.save(texture)
+    m.c.log("imported", full, stamp)
+    return texture
 
 
 def _cpd_param(m, material, name, index, x, y):
@@ -1205,10 +1654,17 @@ def build_paint(m, material):
 CLOUD_DAY = 3.0       # the deck's luminance by day and night, against the fixed exposure (EV100 1; bias 0 / +2)
 CLOUD_NIGHT = 1.0
 
+def _atlas_digest():
+    try:
+        return sign_atlas_stamp()[1]
+    except OSError:
+        return "no-atlas"
+
+
 def _source_hash():
     import hashlib
     text = "\n".join((FACADE_HLSL, ROAD_HLSL, SIDEWALK_HLSL, PARK_HLSL, CLOUD_HLSL, BLOCK_HLSL, CAR_HLSL, PAINT_HLSL,
-                      repr((CLOUD_DAY, CLOUD_NIGHT))))
+                      repr((CLOUD_DAY, CLOUD_NIGHT, NIGHT_FILL)), _atlas_digest()))
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
 
 
