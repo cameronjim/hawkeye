@@ -111,6 +111,7 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
+import _facade_plan  # noqa: E402
 import _geo as geo  # noqa: E402
 import _look as look  # noqa: E402
 import _materials as m  # noqa: E402
@@ -397,8 +398,10 @@ def building_pieces(district, facades):
         street = rec.get("tags", {}).get("addr:street")
         if street:
             tags.append("street:" + street)
+        # M_Facade's frame (_facade_plan.frame): its facades and shop bays start at the building's own corners.
         pieces.append(Piece(BUILDING_PREFIX + rec["id"], MESH_PREFIX + rec["id"], spec,
-                            unreal.Vector(cx, cy, 0.0), build, material, tags))
+                            unreal.Vector(cx, cy, 0.0), build, material, tags,
+                            primitive_data=_facade_plan.frame(ring, rec["id"])))
     if skipped_holes:
         c.log("skipped", "courtyard holes", "{0} building(s) had inner rings; extruded solid".format(skipped_holes))
     return pieces
@@ -2038,10 +2041,10 @@ def ensure_archers(district, existing):
 LAMP_PREFIX = "City_Lamp_"          # the light; what verify counts
 LAMP_POLE_PREFIX = "City_LampPole_"
 LAMP_HEAD_PREFIX = "City_LampHead_"
-LAMP_LUMENS = 1100.0
-LAMP_RADIUS = 1800.0
-LAMP_OUTER_CONE = 70.0              # degrees from straight down; the pool edge
-LAMP_INNER_CONE = 35.0
+LAMP_LUMENS = 2000.0                # look pass 3: was 1100 / 1800 cm / 70 / 35; the facades went black over the
+LAMP_RADIUS = 2400.0                # shops. Now the pool reaches the ground and first floors of its own side
+LAMP_OUTER_CONE = 80.0              # degrees from straight down; the pool edge
+LAMP_INNER_CONE = 45.0
 LAMP_COLOR = (1.0, 0.75, 0.45)      # warm sodium
 LAMP_EMISSIVE = 2.0                 # before m.EMISSIVE_INTENSITY_FACTOR; higher clips the head to white
 MI_STREET_LAMP = m.MATERIALS_PATH + "/MI_StreetLamp"
