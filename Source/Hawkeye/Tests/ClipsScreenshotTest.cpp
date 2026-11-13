@@ -3,6 +3,8 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Combat/CombatAnimPlayback.h"
+#include "Combat/TakedownComponent.h"
+#include "Combat/HealthComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -466,6 +468,131 @@ namespace HawkeyeClipShots
 	}
 }
 
+namespace HawkeyeClipShots
+{
+	/**
+	 * The stealth takedown for real: a fresh, calm BP_Thug with his back to Kate a metre off, Kate's takedown, and the
+	 * world held at each of Times after it starts, both of them in the lens from the side.
+	 */
+	static void AddTakedown(FAutomationTestBase* Test, TSharedRef<FState> State, const TArray<float>& Times, bool bPaired, const FString& Name)
+	{
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State]()
+		{
+			UWorld* World = FindWorld();
+			AHawkeyeCharacter* Kate = State->Kate.Get();
+			UClass* Class = LoadClass<AThugCharacter>(nullptr, ThugClassPath);
+			if (!World || !Kate || !Class)
+			{
+				return true;
+			}
+			if (AThugCharacter* Old = State->Thug.Get())
+			{
+				Old->Destroy();
+			}
+			State->Thug = nullptr;
+			const FTransform At(State->Along.Rotation(), State->Feet + FVector(0.f, 0.f, 100.f));
+			AThugCharacter* Victim = World->SpawnActorDeferred<AThugCharacter>(Class, At, nullptr, nullptr,
+				ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+			if (!Victim)
+			{
+				return true;
+			}
+			Victim->AutoPossessAI = EAutoPossessAI::Disabled;
+			Victim->FinishSpawning(At);
+			Victim->TeleportTo(State->Feet + FVector(0.f, 0.f, Victim->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
+				State->Along.Rotation(), false, true);
+			State->Thug = nullptr;
+			PutOnStage(*State, Kate);
+			State->Thug = Victim;
+			Kate->TeleportTo(Victim->GetActorLocation() - State->Along * 100.f + FVector(0.f, 0.f, 4.f), State->Along.Rotation(), false, true);
+			Kate->SetActorRotation(State->Along.Rotation());
+			return true;
+		}));
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.6f));
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, bPaired]()
+		{
+			AHawkeyeCharacter* Kate = State->Kate.Get();
+			UTakedownComponent* Takedown = Kate ? Kate->GetTakedownComponent() : nullptr;
+			if (!Takedown)
+			{
+				return true;
+			}
+			if (AThugCharacter* Victim = State->Thug.Get())
+			{
+				// Put her a metre behind him now (where he stands after settling), facing his way.
+				const FVector Back = -Victim->GetActorForwardVector().GetSafeNormal2D();
+				Kate->TeleportTo(Victim->GetActorLocation() + Back * 100.f + FVector(0.f, 0.f, 4.f), Victim->GetActorRotation(), false, true);
+				Kate->SetActorRotation(FRotator(0.f, Victim->GetActorRotation().Yaw, 0.f));
+			}
+			if (!bPaired)
+			{
+				// Today's takedown, for comparison: no clips for it.
+				Takedown->SetAnimSet(nullptr);
+			}
+			if (const AThugCharacter* Victim = State->Thug.Get())
+			{
+				Test->AddInfo(FString::Printf(TEXT("takedown: him %s (tag %d, %.0f cm), valid %d, found %s."), *Victim->GetName(),
+					Victim->ActorHasTag(FName(TEXT("Thug"))) ? 1 : 0, FVector::Dist(Kate->GetActorLocation(), Victim->GetActorLocation()),
+					Takedown->IsValidTakedownTarget(Victim, Kate->GetActorLocation()) ? 1 : 0, *GetNameSafe(Takedown->FindTakedownTarget())));
+			}
+			Test->TestTrue(TEXT("takedown: it starts"), Takedown->TryTakedown());
+			Kate->ApplyCombatAnimSet();
+			Test->AddInfo(FString::Printf(TEXT("takedown: %s, locked %.2f s."), Takedown->GetLastVariant() == EHawkeyeTakedownVariant::Paired
+				? TEXT("paired") : TEXT("plain"), Takedown->GetLockSeconds()));
+			State->GetUpStartedAt = Kate->GetWorld()->GetTimeSeconds();
+			if (AThugCharacter* Victim = State->Thug.Get())
+			{
+				Frame(*State, Victim, 70.f);
+			}
+			return true;
+		}));
+		for (int32 I = 0; I < Times.Num(); ++I)
+		{
+			const float At = Times[I];
+			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([State, At]()
+			{
+				UWorld* World = FindWorld();
+				return !World || World->GetTimeSeconds() - State->GetUpStartedAt >= At;
+			}, []() { return true; }, 5.f));
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
+			{
+				if (UWorld* World = FindWorld())
+				{
+					UGameplayStatics::SetGlobalTimeDilation(World, 0.0001f);
+				}
+				return true;
+			}));
+			ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.35f));
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, I, Name]()
+			{
+				UWorld* World = FindWorld();
+				const double Elapsed = World ? World->GetTimeSeconds() - State->GetUpStartedAt : 0.0;
+				AddShot(Test, State, Name, FString::Printf(TEXT("%s_%d_%.2fs"), *Name, I, Elapsed));
+				return true;
+			}));
+			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([Test]() { return ShotsDone(Test); }, []() { return true; }, 12.f));
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
+			{
+				if (UWorld* World = FindWorld())
+				{
+					UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+				}
+				return true;
+			}));
+		}
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.0f));
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State]()
+		{
+			const AHawkeyeCharacter* Kate = State->Kate.Get();
+			const AThugCharacter* Victim = State->Thug.Get();
+			Test->TestFalse(TEXT("takedown: her control is back at the end"), Kate && Kate->IsLockedOutByTakedown());
+			Test->TestTrue(TEXT("takedown: he is down (dead, a ragdoll at rest)"), Victim && !Victim->GetHealthComponent()->IsAlive()
+				&& Victim->IsRagdolling());
+			return true;
+		}));
+	}
+}
+
 bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 {
 	using namespace HawkeyeClipShots;
@@ -582,6 +709,8 @@ bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 	}
 	AddGetUp(this, State, TEXT("getup_from_clip"), false, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
 	AddGetUp(this, State, TEXT("getup_from_ragdoll"), true, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
+	AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, false, TEXT("takedown_before"));
+	AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, true, TEXT("takedown_paired"));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
