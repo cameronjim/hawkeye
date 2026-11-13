@@ -79,6 +79,50 @@ the next `generate-city.ps1` or `create-content.ps1`, and a run with nothing edi
 - Lumen GI and reflections as before; no MegaLights (285 spot lights cost GPU 4 to 5 ms already measured flat
   between day and night, `infrastructure.md`), no volumetric clouds or fog (the haze is the atmosphere's Mie).
 
+## Look pass 2 (2026-11-13): shops, sky, relief, street
+
+- **Shops** (`SHOP_HLSL`, in `FACADE_HLSL`). Bays of 280, 330 or 400 cm per building (a hash of the building) with
+  piers 36 to 70 cm, a trade per bay from `_look.SHOPS` (generic names only: LAUNDROMAT, DELI & GROCERY, PIZZA,
+  HARDWARE, PHARMACY, BARBER, BAKERY, CLEANERS, LIQUORS, NAIL SALON, CAFE, TAILOR, FLOWERS, DINER, WINE & LIQUOR,
+  GROCERY). The sign spells the name in a 5 x 7 pixel font held as bit rows in the shader (`_look.FONT`), in one of
+  three faces (regular, bold, condensed), centred and fitted to the panel, in five colour pairs, read left to right
+  as the viewer sees the face (the face's coordinate runs either way), and fading to an average ink when a letter
+  cell is under a couple of pixels. Eight interior kinds (`FShop.Room`): washers and dryers, shelves of groceries
+  with glowing fridges, a counter under a menu board, a dark dense hardware wall, a pale pharmacy, mirrors and
+  chairs, racks of clothes, buckets of flowers; floors and light colour by kind. By day an open shop is darker than
+  the street and 40 % desaturated; 15 % of shops are vacant and gated day and night, and half the rest gate at
+  night. Mullions and transoms vary per shop.
+- **Sky**: `City_CloudDeck`, the engine sphere (2.5 km radius) seen from inside in `M_CloudDeck` (unlit,
+  `CLOUD_HLSL`): drifting cloud bellies on a plane overhead, a flat white-grey overcast by day, brighter at the zenith,
+  and a dull orange-brown city-lit underside by night, brightest at the horizon. Day or night from the atmosphere
+  light's illuminance like the rooms. It is inside the fog's cutoff so the horizon melts into the haze, outside
+  nothing but the star sphere (which it now hides), and left out of the sky light's capture, no shadow, no
+  collision, no distance field. The day's sun drops to 7 lux and the sky light rises to 13 under it. Cost: within
+  measurement noise (below).
+- **Relief** (`_street_look.relief`, render only, NoCollision, so the traversal audit and golden hashes do not
+  move): on every street face (a wall whose normal meets a road centre line within 26 m) of the buildings within
+  120 m of the PlayerStart, boxes in the building's trim (cream for brick, brown for brownstone, grey for concrete
+  and painted): a three-step cornice under the parapet and a shop cornice over the sign band on buildings over 7 m,
+  a sill (12 cm proud) and lintel on every window M_Facade draws (its grid on the face's own coordinate), one belt
+  course over the shops on fronts of 20 m or more, a door with pilasters, a pediment and a two-step stoop per
+  building, and canvas awnings (green, red, navy, cream; 50 degrees so snow slides off) on 35 % of the shop bays,
+  placed on the same bays as the shader by evaluating its hash in float32. One mesh per material,
+  `SM_Street_<key>`, in world cm, under `/Game/City/EastVillage/Street`, tagged with a hash of its boxes.
+- **Street dressing** (render only): bare street trees (`SM_Street_Tree`: a trunk, four limbs, three branches each,
+  two twigs each; scale 0.85 to 1.15) every 9 m along the sidewalks within 120 m, 1.1 m in from the kerb and 2.5 m
+  clear of lamps, hydrants, bins, bags, doors, test blocks and the start, in tree pits with a steel edge; the park's
+  elms on a jittered 17 m grid within 160 m of the start (scale 1.25 to 1.65); ladder crosswalks (`M_RoadPaint`,
+  worn white) across each road at the corners; two newspaper boxes. Parked cars keep their box but the cabin
+  narrows to the roof and `M_Car` paints tyres, bumpers, a trim line, glass round the cabin and lamps (lit at
+  night), snow on top.
+- **Street blocks**: the parkour test blocks keep their Game Animation Sample actor (and collision) but are hidden;
+  a render-only cube of the same size wears `M_StreetBlock`: the vault a concrete jersey barrier with an orange and
+  white band, the mantle a ribbed green dumpster with rust, the park walls granite.
+- **Ground and snow**: wheel tracks wider and darker (roughness 0.22, compacted snow 0.72 cover between them), a
+  dirtier kerb ridge; cracks only in patches (they had been long winding contour lines of the noise, the "dark seam"
+  down the road). Snowflakes: no nearer than 3.5 m (`NS_Snowfall`'s recycler, was 1.2 m) and 3.5 to 7 cm (was 5 to 9).
+- Not done: signs are cut where a building ends (each building's shop grid restarts at its corner); manholes and
+  steam; the long building's upper floors still have no projecting bays, only sills and lintels.
 ## Shots and numbers
 
 `Hawkeye.Screenshot.Block` (`Source/Hawkeye/Tests/BlockScreenshotTest.cpp`) writes
@@ -101,6 +145,10 @@ this look. The frame is bound by the render thread's draw, not the GPU; the mate
 | kate_roof, night | 6.45 / 6.84 (GPU 4.93) | 6.56 / 6.88 (GPU 5.02) | 7.10 / 7.37 (GPU 5.63) |
 
 Every shot is under 7.4 ms at p95 at 1080p (135 fps and up), far inside 60 fps (16.7 ms).
+
+After look pass 2 (shops, cloud deck, relief, 178 trees, street dressing), 1920x1080: kate_street day 5.58 / 5.92
+(GPU 4.26), kate_roof day 6.74 / 7.01 (5.34), kate_street night 6.27 / 6.55 (4.90), kate_roof night 7.17 / 7.44 (5.72): about
+0.1 ms more than pass 1, slowest p95 7.44 ms.
 
 ## Research and sources
 
