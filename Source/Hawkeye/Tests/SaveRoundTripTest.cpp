@@ -155,7 +155,7 @@ bool FHawkeyeSaveRoundTrip::RunTest(const FString& Parameters)
 	using namespace HawkeyeSaveRoundTrip;
 	if (GIsEditor)
 	{
-		AddInfo(TEXT("The round trip reloads the district; run it from the standalone game (-game)."));
+		AddWarning(TEXT("Skipped (editor): the round trip reloads the district; run it from the standalone game (-game)."));
 		return true;
 	}
 
@@ -513,7 +513,7 @@ bool FHawkeyeScreenshotSave::RunTest(const FString& Parameters)
 {
 	if (GIsEditor || !FApp::CanEverRender())
 	{
-		AddInfo(TEXT("The save shots reload the district; run them from the standalone game (-game)."));
+		AddWarning(TEXT("Skipped (editor): the save shots reload the district; run them from the standalone game (-game)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

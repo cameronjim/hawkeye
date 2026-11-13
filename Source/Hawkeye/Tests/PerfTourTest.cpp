@@ -49,7 +49,7 @@ bool FHawkeyePerfTour::RunTest(const FString& Parameters)
 	using namespace HawkeyePerfTour;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the perf tour. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the perf tour. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(MapPath);

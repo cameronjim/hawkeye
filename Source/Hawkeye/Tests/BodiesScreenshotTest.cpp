@@ -1111,7 +1111,7 @@ bool FHawkeyeScreenshotBodies::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the body screenshots. Re-run without -nullrhi to capture them."));
+		AddWarning(TEXT("Skipped (no RHI): the body screenshots. Re-run without -nullrhi to capture them."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

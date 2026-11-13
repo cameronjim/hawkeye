@@ -2867,7 +2867,7 @@ bool FHawkeyeScreenshotTimeOfDay::RunTest(const FString& Parameters)
 	using namespace HawkeyeKateShots;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the time of day screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the time of day screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -2884,7 +2884,7 @@ bool FHawkeyeScreenshotKate::RunTest(const FString& Parameters)
 
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the Kate screenshots. Re-run without -nullrhi to capture them."));
+		AddWarning(TEXT("Skipped (no RHI): the Kate screenshots. Re-run without -nullrhi to capture them."));
 		return true;
 	}
 

@@ -1981,7 +1981,7 @@ bool FHawkeyeLapGrotto::RunTest(const FString& Parameters)
 	using namespace HawkeyeGrottoLap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the grotto lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the grotto lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(DistrictPath, /*bForceReload=*/true);
@@ -1999,7 +1999,7 @@ bool FHawkeyeLapGrottoLoud::RunTest(const FString& Parameters)
 	using namespace HawkeyeGrottoLap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the loud grotto lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the loud grotto lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(DistrictPath, /*bForceReload=*/true);

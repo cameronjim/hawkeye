@@ -215,7 +215,7 @@ bool FHawkeyeDoorWholeSlabInteracts::RunTest(const FString& Parameters)
 	UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
 	if (!Cube)
 	{
-		AddWarning(TEXT("/Engine/BasicShapes/Cube is not available; skipped the sweep."));
+		AddWarning(TEXT("Skipped (no content): /Engine/BasicShapes/Cube is not available, so the sweep did not run."));
 		return true;
 	}
 

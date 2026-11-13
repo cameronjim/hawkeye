@@ -482,7 +482,7 @@ bool FHawkeyeScreenshotBowIK::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the bow hands screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the bow hands screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -800,7 +800,7 @@ bool FHawkeyeScreenshotBowDraw::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the bow draw screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the bow draw screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

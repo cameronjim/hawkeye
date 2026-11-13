@@ -243,7 +243,7 @@ bool FHawkeyeScreenshotEastVillage::RunTest(const FString& Parameters)
 
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the city screenshots. Re-run without -nullrhi to capture them."));
+		AddWarning(TEXT("Skipped (no RHI): the city screenshots. Re-run without -nullrhi to capture them."));
 		return true;
 	}
 

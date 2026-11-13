@@ -1065,7 +1065,7 @@ bool FHawkeyeLapArcheryChallenge1::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the archery challenge. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the archery challenge. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -1078,7 +1078,7 @@ bool FHawkeyeLapTraversalChallenge1::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the traversal challenge. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the traversal challenge. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

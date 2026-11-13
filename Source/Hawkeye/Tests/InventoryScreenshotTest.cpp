@@ -89,7 +89,7 @@ namespace HawkeyeUiShot
 		{
 			return false;
 		}
-		Test.AddInfo(TEXT("No RHI: skipping the UI screenshots. Re-run without -nullrhi to capture them."));
+		Test.AddWarning(TEXT("Skipped (no RHI): the UI screenshots. Re-run without -nullrhi to capture them."));
 		return true;
 	}
 }

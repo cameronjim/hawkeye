@@ -31,8 +31,28 @@ $Passed = @($Lines | Select-String -Pattern "Test Completed\. Result=\{(Success|
 $Failed = @($Lines | Select-String -Pattern "Test Completed\. Result=\{(Fail|Failed)\}")
 $Skipped = @($Lines | Select-String -Pattern "Test Completed\. Result=\{(Skipped|NotRun)\}").Count
 
+# Tests that pass without running their body report a warning starting "Skipped (<why>)": standalone-only tests
+# (no RHI, or not a game world) and content a fresh clone may not have. They count as passed above; list them.
+$SelfSkipped = @()
+$Index = Join-Path $Report "index.json"
+if (Test-Path $Index) {
+    $Json = Get-Content $Index -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($T in $Json.tests) {
+        $Why = $T.entries | Where-Object { $_.event.type -eq "Warning" -and $_.event.message -match "^Skipped \(([^)]+)\)" } | Select-Object -First 1
+        if ($Why) {
+            $Reason = ([regex]::Match($Why.event.message, "^Skipped \(([^)]+)\)")).Groups[1].Value
+            $SelfSkipped += [pscustomobject]@{ Test = $T.fullTestPath; Reason = $Reason }
+        }
+    }
+}
+
 Write-Host ""
 Write-Host "Hawkeye tests ($Filter): $Passed passed, $($Failed.Count) failed, $Skipped skipped"
+if ($SelfSkipped.Count -gt 0) {
+    $ByReason = ($SelfSkipped | Group-Object Reason | ForEach-Object { "$($_.Count) $($_.Name)" }) -join ", "
+    Write-Host "Of the passed, $($SelfSkipped.Count) skipped their body ($ByReason); run them from the standalone game:"
+    $SelfSkipped | ForEach-Object { Write-Host "  $($_.Test) ($($_.Reason))" }
+}
 if ($Failed.Count -gt 0) {
     Write-Host ""
     Write-Host "Failures:"

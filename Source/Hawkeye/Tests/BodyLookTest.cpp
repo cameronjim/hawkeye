@@ -112,7 +112,7 @@ bool FHawkeyeBodyLookHidesDriver::RunTest(const FString& Parameters)
 		LoadObject<USkeletalMesh>(nullptr, HawkeyeBodyLookTest::LookMeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	if (!LookMesh)
 	{
-		AddInfo(TEXT("No UE4 mannequin in this clone; the look's attachment is not checked."));
+		AddWarning(TEXT("Skipped (no content): no UE4 mannequin in this clone; the look's attachment is not checked."));
 		return true;
 	}
 	FHawkeyeBodyLook Look;
@@ -181,7 +181,7 @@ bool FHawkeyeBodyLookThugLookWearsHisMaterials::RunTest(const FString& Parameter
 		LoadObject<USkeletalMesh>(nullptr, HawkeyeBodyLookTest::LookMeshPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
 	if (!LookMesh)
 	{
-		AddInfo(TEXT("No UE4 mannequin in this clone; the thug's look is not checked."));
+		AddWarning(TEXT("Skipped (no content): no UE4 mannequin in this clone; the thug's look is not checked."));
 		return true;
 	}
 	FHawkeyeBodyLook Look;

@@ -474,7 +474,7 @@ bool FHawkeyeScreenshotHints::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the hint screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the hint screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

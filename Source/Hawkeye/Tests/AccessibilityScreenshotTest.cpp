@@ -358,7 +358,7 @@ bool FHawkeyeScreenshotAccessibility::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the accessibility screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the accessibility screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

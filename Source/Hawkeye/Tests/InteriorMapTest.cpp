@@ -529,7 +529,7 @@ bool FHawkeyeScreenshotInterior::RunTest(const FString& Parameters)
 	using namespace HawkeyeInteriorMap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the interior screenshots. Run them from the standalone game (-game)."));
+		AddWarning(TEXT("Skipped (no RHI): the interior screenshots. Run them from the standalone game (-game)."));
 		return true;
 	}
 	AutomationOpenMap(MapPath, /*bForceReload=*/true);
@@ -850,7 +850,7 @@ bool FHawkeyeLapInteriorWalk::RunTest(const FString& Parameters)
 	using namespace HawkeyeInteriorMap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the interior walk. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the interior walk. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	TSharedRef<FWalk> Walk = MakeShared<FWalk>();

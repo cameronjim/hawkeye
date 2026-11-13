@@ -2014,7 +2014,7 @@ bool FHawkeyeScreenshotContact::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the contact screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the contact screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -2035,7 +2035,7 @@ bool FHawkeyeScreenshotMelee::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the melee screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the melee screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

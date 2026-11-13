@@ -23,7 +23,9 @@ the Tests folder holds about 140 files):
 | Standalone only (below) | `Lap`, `Screenshot`, `Perf`, `Audit` |
 
 Most groups pass headless with `-nullrhi` in the editor process (`Tools\run-tests.ps1`). These need the
-standalone game (`-game`) and skip with an info line in the editor run:
+standalone game (`-game`). In the editor run they pass without running and say so with a warning that starts
+`Skipped (no RHI)` or `Skipped (editor)`; a test missing content a fresh clone may lack says `Skipped (no content)`.
+`run-tests.ps1` lists every one after its totals:
 
 - With a real RHI (no `-nullrhi`, window not minimised): every `Hawkeye.Lap.*` (sections 2c to 2f and
   `Hawkeye.Lap.FastTravel`, `InteriorWalk`), every `Hawkeye.Screenshot.*`, `Hawkeye.Perf.Tour`,

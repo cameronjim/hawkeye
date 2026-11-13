@@ -528,7 +528,7 @@ bool FHawkeyeScreenshotKateTrickArrows::RunTest(const FString& Parameters)
 	using namespace HawkeyeTrickShots;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the trick arrow screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the trick arrow screenshots."));
 		return true;
 	}
 

@@ -99,7 +99,7 @@ static bool SkipWithoutRHI(FAutomationTestBase& Test)
 	{
 		return false;
 	}
-	Test.AddInfo(TEXT("No RHI: skipping the screenshots. Re-run without -nullrhi to capture them."));
+	Test.AddWarning(TEXT("Skipped (no RHI): the screenshots. Re-run without -nullrhi to capture them."));
 	return true;
 }
 

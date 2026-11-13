@@ -1376,7 +1376,7 @@ static bool HawkeyeStartCrimeLap(FAutomationTestBase* Test, ECrimeType Type)
 {
 	if (!FApp::CanEverRender())
 	{
-		Test->AddInfo(TEXT("No RHI: skipping the crime lap. Run it from the standalone game (-game, no -nullrhi)."));
+		Test->AddWarning(TEXT("Skipped (no RHI): the crime lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

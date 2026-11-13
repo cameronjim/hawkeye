@@ -1164,7 +1164,7 @@ bool FHawkeyeLapInteriorStealth::RunTest(const FString& Parameters)
 	using namespace HawkeyeInteriorLap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the interior stealth lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the interior stealth lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(DistrictPath, /*bForceReload=*/true);
@@ -1207,7 +1207,7 @@ bool FHawkeyeLapInteriorLoud::RunTest(const FString& Parameters)
 	using namespace HawkeyeInteriorLap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the interior loud lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the interior loud lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(DistrictPath, /*bForceReload=*/true);

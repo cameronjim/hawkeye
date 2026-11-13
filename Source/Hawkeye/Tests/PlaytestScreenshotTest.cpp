@@ -247,7 +247,7 @@ bool FHawkeyeScreenshotPlaytest::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the playtest capture pass."));
+		AddWarning(TEXT("Skipped (no RHI): the playtest capture pass."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

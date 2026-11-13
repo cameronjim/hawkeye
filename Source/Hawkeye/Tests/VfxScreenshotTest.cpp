@@ -948,7 +948,7 @@ bool FHawkeyeScreenshotVfx::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the effect screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the effect screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

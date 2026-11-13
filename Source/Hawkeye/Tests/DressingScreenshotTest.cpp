@@ -151,7 +151,7 @@ bool FHawkeyeScreenshotDressing::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the dressing screenshots. Re-run without -nullrhi to capture them."));
+		AddWarning(TEXT("Skipped (no RHI): the dressing screenshots. Re-run without -nullrhi to capture them."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

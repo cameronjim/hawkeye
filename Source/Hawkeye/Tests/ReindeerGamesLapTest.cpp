@@ -1250,7 +1250,7 @@ bool FHawkeyeLapReindeerGames::RunTest(const FString& Parameters)
 	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the reindeer games lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the reindeer games lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

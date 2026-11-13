@@ -1369,12 +1369,12 @@ bool FHawkeyeLapSocialClub::RunTest(const FString& Parameters)
 	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the social club lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the social club lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	if (GIsEditor)
 	{
-		AddInfo(TEXT("The social club lap saves and loads the district; run it from the standalone game (-game)."));
+		AddWarning(TEXT("Skipped (editor): the social club lap saves and loads the district; run it from the standalone game (-game)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

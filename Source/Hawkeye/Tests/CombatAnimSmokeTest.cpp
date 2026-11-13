@@ -170,7 +170,7 @@ bool FHawkeyeStartClipSwing::Update()
 	UMeleeComponent* Melee = Kate ? Kate->GetMeleeComponent() : nullptr;
 	if (!Melee || !UCombatAnimSet::Resolve(Kate->GetCombatAnimSet(), ECombatAnimRole::Light1))
 	{
-		Test->AddInfo(TEXT("Kate has no Light1 clip; the notify-timed swing is covered by CombatAnimTest."));
+		Test->AddWarning(TEXT("Skipped (no content): Kate has no Light1 clip; the notify-timed swing is covered by CombatAnimTest."));
 		return true;
 	}
 	Kate->GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;

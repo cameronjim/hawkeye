@@ -2226,7 +2226,7 @@ static bool HawkeyeStartCampaignLap(FAutomationTestBase* Test, bool bFallBehind)
 	using namespace HawkeyeCampaignLap;
 	if (!FApp::CanEverRender())
 	{
-		Test->AddInfo(TEXT("No RHI: skipping the campaign lap. Run it from the standalone game (-game, no -nullrhi)."));
+		Test->AddWarning(TEXT("Skipped (no RHI): the campaign lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	UWorld* World = FindWorld();

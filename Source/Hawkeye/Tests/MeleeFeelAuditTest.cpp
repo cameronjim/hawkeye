@@ -1613,7 +1613,7 @@ bool FHawkeyeAuditMeleeFeel::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the melee feel audit."));
+		AddWarning(TEXT("Skipped (no RHI): the melee feel audit."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

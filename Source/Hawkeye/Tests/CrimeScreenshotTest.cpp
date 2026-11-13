@@ -640,7 +640,7 @@ bool FHawkeyeScreenshotCrime::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the crime screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the crime screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

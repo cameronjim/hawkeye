@@ -3642,7 +3642,7 @@ bool FHawkeyeLapEastVillage::RunTest(const FString& Parameters)
 	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -3658,7 +3658,7 @@ bool FHawkeyeLapRoofFight::RunTest(const FString& Parameters)
 	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the roof fight. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the roof fight. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -3674,7 +3674,7 @@ bool FHawkeyeLapArcherDuel::RunTest(const FString& Parameters)
 	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the archer duel. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the archer duel. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
@@ -3690,7 +3690,7 @@ bool FHawkeyeLapStreetFight::RunTest(const FString& Parameters)
 	HawkeyeLapPressure::Start();
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the street fight. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the street fight. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

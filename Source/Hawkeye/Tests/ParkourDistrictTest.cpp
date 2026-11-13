@@ -264,7 +264,7 @@ bool FHawkeyeParkourDistrictWalls::RunTest(const FString& Parameters)
 {
 	if (GIsEditor)
 	{
-		AddInfo(TEXT("Needs the district as a game world: skipped in the editor. Run it from the standalone game (-game)."));
+		AddWarning(TEXT("Skipped (editor): needs the district as a game world. Run it from the standalone game (-game)."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));

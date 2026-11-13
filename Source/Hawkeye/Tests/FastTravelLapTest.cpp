@@ -290,7 +290,7 @@ bool FHawkeyeLapFastTravel::RunTest(const FString& Parameters)
 	using namespace HawkeyeFastTravelLap;
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the fast travel lap. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(TEXT("Skipped (no RHI): the fast travel lap. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	TSharedRef<FState> State = MakeShared<FState>();
@@ -591,7 +591,7 @@ bool FHawkeyeScreenshotFastTravel::RunTest(const FString& Parameters)
 {
 	if (!FApp::CanEverRender())
 	{
-		AddInfo(TEXT("No RHI: skipping the fast-travel screenshots."));
+		AddWarning(TEXT("Skipped (no RHI): the fast-travel screenshots."));
 		return true;
 	}
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
