@@ -174,6 +174,9 @@ private:
 		Roof->GetActorBounds(false, Origin, Extent);
 		RoofHeightM = (Origin.Z + Extent.Z) / 100.f;
 		const float HalfHeight = Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		// Her hip camera, predicted with the audit's model (FGrappleReachQuery::PredictLens).
+		const FGrappleReachProfile LensView = FGrappleReachWorld::MakeProfile(Kate);
+		const TFunction<FVector(const FVector&, const FVector&)> LensProbe = HawkeyeGrappleView::MakeLensProbe(Kate, LensView);
 		float Best = -1.f;
 		for (TActorIterator<AGrappleAnchor> It(World); It; ++It)
 		{
@@ -203,7 +206,7 @@ private:
 						continue;
 					}
 					FVector Lens, Forward;
-					HawkeyeGrappleView::PredictLens(Kate, Centre, Marker, Lens, Forward);
+					FGrappleReachQuery::PredictLens(LensView.Lens, Centre, Marker, LensProbe, Lens, Forward);
 					const float Angle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
 						FVector::DotProduct(Forward, (Marker - Lens).GetSafeNormal()), -1.f, 1.f)));
 					if (Angle > Grapple->ConeDegrees - 8.f || !Grapple->IsOnScreen(Lens, Forward, Marker)

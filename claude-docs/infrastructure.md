@@ -297,7 +297,7 @@ Facts that matter:
 
   About a minute with the load, 10 s of audit. From sidewalk spots every 10 m (and 2.5 m for a roof the
   10 m ones miss) and every roof's centre and parapet middles it counts, per roof over 8 m, the anchors in
-  range, seen by the hip camera turned to them (`HawkeyeGrappleView::PredictLens`: the spring arm's sums,
+  range, seen by the hip camera turned to them (`FGrappleReachQuery::PredictLens`: the spring arm's sums,
   the pitch clamp, the probe; then the cone, `IsOnScreen` and `HasLineOfSight`) and zip-clear, and asks
   the picker from each view (dead on and 6.3 degrees off) against a full check of every anchor. It writes
   `Saved/Automation/grapple_audit.json` (the summary, the chapter 1 chain, roofs with none from the street

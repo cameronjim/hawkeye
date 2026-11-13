@@ -53,7 +53,7 @@ struct HAWKEYE_API FGrappleReachRules
 };
 
 /**
- * The hip camera as the audit predicts it (HawkeyeGrappleView::PredictLens in the tests): the pivot at the
+ * The hip camera as the audit predicts it (FGrappleReachQuery::PredictLens): the pivot at the
  * capsule centre plus PivotOffset (the boom's relative location), the pitch clamped, and per pitch the arm's
  * length, its socket offset and the pivot's world-up lift. Targets is optional: without it the lens is the
  * pivot itself, which is still a usable "eye" for the editor's reach-from-here.

@@ -41,7 +41,8 @@ struct HAWKEYE_API FGrappleReachQuery
 	/**
 	 * Where the hip camera sits when a player turns it to put Target in the middle of the screen, with the capsule
 	 * centre at Centre: the pivot, the arm's length back along the view and the socket offset out, the probe pulling
-	 * it in, iterated three times because the lens moves with the pitch (HawkeyeGrappleView::PredictLens).
+	 * it in, iterated three times because the lens moves with the pitch. The one copy of this math: the audit, the
+	 * editor and the tests (HawkeyeGrappleView in Tests/GrappleAuditKit.h) all call it.
 	 */
 	static void PredictLens(const FGrappleLensModel& Model, const FVector& Centre, const FVector& Target,
 		const TFunction<FVector(const FVector&, const FVector&)>& Probe, FVector& OutLens, FVector& OutForward);
