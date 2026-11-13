@@ -151,6 +151,8 @@
     {"source": "AuthoredThug", "file": "HitLeft_Light.fbx", "role": "HitLeft", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredThug", "file": "HitRight_Light.fbx", "role": "HitRight", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredThug", "file": "HitHeavy_Stagger.fbx", "role": "HitHeavy", "variant": "Authored", "characters": ["thug", "archer"]},
+    {"source": "AuthoredThug", "file": "Takedown_Victim.fbx", "role": "TakedownVictim", "variant": "Authored", "characters": ["thug", "archer"]},
+    {"source": "AuthoredKate", "file": "Takedown_Attacker.fbx", "role": "TakedownAttacker", "variant": "Authored", "characters": ["kate", "clint"]},
     {"source": "AuthoredKate", "file": "HitFront_Light.fbx", "role": "HitFront", "variant": "Authored", "characters": ["kate", "clint"], "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredKate", "file": "HitLeft_Light.fbx", "role": "HitLeft", "variant": "Authored", "characters": ["kate", "clint"], "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredKate", "file": "HitRight_Light.fbx", "role": "HitRight", "variant": "Authored", "characters": ["kate", "clint"], "blend_in": 0.05, "blend_out": 0.12},

@@ -89,6 +89,10 @@ ROLE_DEFAULTS = {
     "GetUp": {"slot": "DefaultSlot", "blend_in": 0.25, "blend_out": 0.2},
     "GetUpFront": {"slot": "DefaultSlot", "blend_in": 0.25, "blend_out": 0.2},
     "HitHeavy": {"slot": "DefaultSlot", "blend_in": 0.05, "blend_out": 0.15},
+    # The stealth takedown's pair: the victim holds his last frame (on the floor) until the ragdoll takes him.
+    # Her half carries root motion: she drags him back about a metre and the capsule goes with her.
+    "TakedownAttacker": {"slot": "DefaultSlot", "blend_in": 0.15, "blend_out": 0.2, "root_motion": True},
+    "TakedownVictim": {"slot": "DefaultSlot", "hold": True, "blend_in": 0.12},
     "FinisherAttacker": {"slot": "DefaultSlot"}, "FinisherVictim": {"slot": "DefaultSlot"},
     "FinisherBow": {"slot": "DefaultSlot"},
     # The bow's clips over locomotion: 0.15 s in, 0.25 s out. The draw holds its last frame (the anchor)
@@ -729,8 +733,8 @@ def process_clip(clip, anim, source, source_mesh, retargeters, targets, output_o
     return results
 
 
-LYING_ROLES = ("Knockdown", "FinisherVictim")
-AIRBORNE_OR_LOW_ROLES = ("GetUp", "GetUpFront", "FinisherAttacker", "FinisherBow")
+LYING_ROLES = ("Knockdown", "FinisherVictim", "TakedownVictim")
+AIRBORNE_OR_LOW_ROLES = ("GetUp", "GetUpFront", "FinisherAttacker", "FinisherBow", "TakedownAttacker")
 
 
 def report_pose(clip, seq, target_name):
