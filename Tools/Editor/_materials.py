@@ -661,7 +661,9 @@ def _build_fluorescent_flicker(material):
 # --------------------------------------------------------------------------------------
 
 # Metadata tag on every look asset. A different value rebuilds each one once (functions first).
-LOOK_BUILD = "night-15"
+# The HLSL's own hash is part of it, so an edit to _look rebuilds the graphs that carry it.
+import _look  # noqa: E402
+LOOK_BUILD = "block-1/" + _look.SOURCE_HASH
 LOOK_TAG = "HawkeyeBuild"
 
 MF_SNOW = MATERIALS_PATH + "/MF_Snow"
@@ -673,6 +675,7 @@ M_PARK_SNOW = MATERIALS_PATH + "/M_ParkSnow"
 M_STREET_ASPHALT = MATERIALS_PATH + "/M_StreetAsphalt"
 M_LAMP_HEAD = MATERIALS_PATH + "/M_LampHead"
 M_NIGHT_STARS = MATERIALS_PATH + "/M_NightStars"
+M_WINDOW_LIT = MATERIALS_PATH + "/M_WindowLit"     # the dressing's lit window cards: M_Facade's window, always lit
 
 # Snow: world-aligned on faces whose normal is more than SNOW_NORMAL_Z up.
 SNOW_COLOR = (0.62, 0.60, 0.55)      # cream white
@@ -713,16 +716,17 @@ ROOF_COLOR = (0.05, 0.05, 0.055)
 SIGN_COLOR = (0.025, 0.02, 0.03)
 INK = (0.008, 0.008, 0.01)
 
-# name: (wall, trim, lit fraction). Wall colours bumped ~1.15-1.4x over the original so brick reads
+# name: (wall, trim, lit fraction). 2026-11-13: lit fractions 0.35 (painted 0.15), up from 0.22 / 0.09 now a lit window is a room,
+# not a flat card (claude-docs/city-look.md). Wall colours bumped ~1.15-1.4x over the original so brick reads
 # under lamp light instead of going flat black; lit fractions were 0.35 (0.15 for Painted) before
 # windows read as a light board - scaled down by the same 22/35 ratio as the residential-floor spec.
 FACADE_STYLES = {
-    "BrickRed": ((0.32, 0.105, 0.077), (0.55, 0.50, 0.40), 0.22),
-    "BrickBrown": ((0.24, 0.13, 0.084), (0.50, 0.46, 0.38), 0.22),
-    "BrickPurple": ((0.18, 0.091, 0.14), (0.52, 0.48, 0.42), 0.22),
-    "Brownstone": ((0.22, 0.13, 0.098), (0.09, 0.055, 0.04), 0.22),
-    "Stone": ((0.44, 0.40, 0.35), (0.17, 0.16, 0.15), 0.22),
-    "Painted": ((0.24, 0.24, 0.27), (0.03, 0.03, 0.035), 0.09),
+    "BrickRed": ((0.32, 0.105, 0.077), (0.55, 0.50, 0.40), 0.35),
+    "BrickBrown": ((0.24, 0.13, 0.084), (0.50, 0.46, 0.38), 0.35),
+    "BrickPurple": ((0.15, 0.095, 0.085), (0.52, 0.48, 0.42), 0.35),   # dark ironspot brick (was a purple)
+    "Brownstone": ((0.22, 0.13, 0.098), (0.09, 0.055, 0.04), 0.35),
+    "Stone": ((0.30, 0.30, 0.29), (0.20, 0.20, 0.19), 0.35),    # concrete (the towers): _look.MASONRY
+    "Painted": ((0.24, 0.24, 0.27), (0.03, 0.03, 0.035), 0.15),
 }
 WINDOW_GLOW = 0.04                    # before EMISSIVE_INTENSITY_FACTOR; was 0.7, then 0.175 (/4), then 0.08 - each
                                        # round's screenshot still read brighter than the lamp head, scaled down to
@@ -1097,27 +1101,17 @@ def _patchy(material, scale, low, high, x, y):
 
 
 def _build_facade(material):
-    wall = vector_param(material, "WallColor", FACADE_STYLES["BrickRed"][0], -1400, -300)
-    trim = vector_param(material, "TrimColor", FACADE_STYLES["BrickRed"][1], -1400, -150)
-    lit_color = vector_param(material, "LitColor", WINDOW_LIT, -1400, 0)
-    lit_fraction = scalar_param(material, "LitFraction", 0.35, -1400, 150)
-    glow = scalar_param(material, "WindowGlow", WINDOW_GLOW * EMISSIVE_INTENSITY_FACTOR, -1400, 250)
-    facade = function_call(material, ensure_facade_function(), -1000, 0)
-    for node, pin in ((wall, "WallColor"), (trim, "TrimColor"), (lit_color, "LitColor"),
-                      (lit_fraction, "LitFraction"), (glow, "WindowGlow")):
-        connect(node, "", facade, pin)
-    # Roofs: mostly snow, with dark patches where it has blown off or been cleared.
-    coverage = _patchy(material, 0.004, -0.2, 2.2, -1000, 400)
-    snow = function_call(material, ensure_snow_function(), -500, 0)
-    connect(facade, "BaseColor", snow, "BaseColor")
-    connect(facade, "Roughness", snow, "Roughness")
-    connect(coverage, "", snow, "Coverage")
-    total = add(material, None, None, -200, 200)
-    connect(facade, "Emissive", total, "A")
-    connect(snow, "Emissive", total, "B")
-    connect_property(snow, unreal.MaterialProperty.MP_BASE_COLOR, "BaseColor")
-    connect_property(snow, unreal.MaterialProperty.MP_ROUGHNESS, "Roughness")
-    connect_property(total, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    """The procedural facade (_look.FACADE_HLSL): masonry, windows with rooms behind them, storefronts, cornice; roofs
+    go on through MF_Snow (mostly snow, dark patches where it has blown off or been cleared). MF_Facade, the painted
+    grid this replaced, is no longer built."""
+    import _look
+    _look.build_facade(sys.modules[__name__], material)
+
+
+def _build_window_lit(material):
+    """The dressing's lit window cards: the facade's window, always lit, Color x Intensity like M_Emissive."""
+    import _look
+    _look.build_facade(sys.modules[__name__], material, card=True)
 
 
 def _build_prop(material):
@@ -1128,28 +1122,21 @@ def _build_prop(material):
 
 
 def _build_sidewalk_snow(material):
-    """Concrete flags with trodden snow over most of them."""
-    base = _concrete_floor_color(material)
-    coverage = _patchy(material, 0.006, -1.2, 2.0, -900, 500)
-    snowed(material, base, constant(material, 0.9, -700, 300), coverage)
+    """Concrete flags, a granite kerb, a trodden path with snow either side (_look.SIDEWALK_HLSL)."""
+    import _look
+    _look.build_ground(sys.modules[__name__], material, "sidewalk")
 
 
 def _build_park_snow(material):
-    """Snow over the grass, the odd patch of grass showing."""
-    grass = constant3(material, (0.04, 0.09, 0.035), -900, -100)
-    coverage = _patchy(material, 0.004, 0.4, 3.0, -900, 300)
-    snowed(material, grass, constant(material, 0.95, -700, 100), coverage)
+    """Drifted snow, the odd patch of grass showing (_look.PARK_HLSL)."""
+    import _look
+    _look.build_ground(sys.modules[__name__], material, "park")
 
 
 def _build_street_asphalt(material):
-    """Wet black asphalt: near-black with wet patches that catch the lamps. No snow."""
-    fine = noise(material, 0.05, -900, -300, levels=3)
-    color = lerp(material, constant3(material, (0.025, 0.025, 0.028), -900, -150),
-                 constant3(material, (0.045, 0.045, 0.05), -900, -50), fine, -600, -200)
-    connect_property(color, unreal.MaterialProperty.MP_BASE_COLOR)
-    wet = noise(material, 0.003, -900, 150, levels=2)
-    connect_property(lerp(material, None, None, wet, -600, 150, const_a=0.25, const_b=0.75),
-                     unreal.MaterialProperty.MP_ROUGHNESS)
+    """Wet asphalt, wheel tracks through compacted snow, a plowed ridge at the kerb (_look.ROAD_HLSL)."""
+    import _look
+    _look.build_ground(sys.modules[__name__], material, "road")
 
 
 def _build_lamp_head(material):
@@ -1184,10 +1171,11 @@ def _build_night_stars(material):
 
 def ensure_city_look():
     """Every city look material and the facade instances. Returns a dict keyed by short name."""
+    import _look
     c.ensure_directory(MATERIALS_PATH)
     ensure_snow_function()
-    ensure_facade_function()
     out = {
+        "window_lit": ensure_look_material(M_WINDOW_LIT, _build_window_lit, instanced=True),
         "facade": ensure_look_material(M_FACADE, _build_facade),
         "prop": ensure_look_material(M_PROP, _build_prop, instanced=True),
         "sidewalk": ensure_look_material(M_SIDEWALK_SNOW, _build_sidewalk_snow),
@@ -1201,7 +1189,8 @@ def ensure_city_look():
         facades[style] = ensure_material_instance(
             mi_facade_path(style), out["facade"],
             vectors=[("WallColor", wall), ("TrimColor", trim), ("LitColor", WINDOW_LIT)],
-            scalars=[("LitFraction", lit_fraction), ("WindowGlow", WINDOW_GLOW * EMISSIVE_INTENSITY_FACTOR)])
+            scalars=[("LitFraction", lit_fraction), ("WindowGlow", WINDOW_GLOW * EMISSIVE_INTENSITY_FACTOR),
+                     ("Masonry", _look.MASONRY[style][0]), ("Painted", _look.MASONRY[style][1])])
     out["facades"] = facades
     return out
 

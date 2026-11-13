@@ -209,10 +209,12 @@ def ensure_meshes(doc):
 def ensure_materials():
     """{material key: MaterialInterface} for every key _dressing_kit.GROUPS uses."""
     glow = m.ensure_material(M_DRESS_GLOW, m._build_emissive, instanced=True)
+    # The window cards draw M_Facade's window with its room behind the glass, always lit, in the card's warmth.
+    window = m.ensure_look_material(m.M_WINDOW_LIT, m._build_window_lit, instanced=True)
     out = {}
     for key, (rgb, strength) in sorted(GLOWS.items()):
         out["Glow_" + key] = m.ensure_material_instance(
-            GLOW_PREFIX + key, glow, vectors=[(m.EMISSIVE_COLOR_PARAM, rgb)],
+            GLOW_PREFIX + key, window if key.startswith("Window") else glow, vectors=[(m.EMISSIVE_COLOR_PARAM, rgb)],
             scalars=[(m.EMISSIVE_INTENSITY_PARAM, strength * m.EMISSIVE_INTENSITY_FACTOR)])
     for key, (rgb, rough) in sorted(COLOURS.items()):
         out[key] = m.ensure_prop_instance("Dress" + key, rgb, rough)
