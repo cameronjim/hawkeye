@@ -1007,6 +1007,19 @@ Kate's `Hands` punch while she owns no bow, and the gunner's pistol. Her compone
   plays. Thugs can still hurt her during this.
 - The body going down makes a noise of loudness 0.6 (`TakedownNoiseLoudness`; see "Guard AI states").
 - `OnTakedownPerformed(Target)` fires once at the start of the takedown.
+- Paired (2026-11-13, from "stealth takedown animation has kate do nothing and enemy ragdoll"): when Kate's set has
+  `TakedownAttacker`, his has `TakedownVictim` and the spot is clear, the takedown is played as a pair
+  (`UTakedownComponent::ChooseVariant`, `ComputePairedSpot`, `ShouldEndPairedEarly`; `Hawkeye.AuthoredClips.PairedTakedownSpotAndFallback`).
+  Her capsule goes `PairedGap` (55 cm) straight behind his, facing his way, her body easing there over 0.15 s; both clips
+  play: her arm closes across his chest, she pulls him back off his feet and drags him down onto his back in two steps
+  each way (her clip's root motion moves her capsule about 90 cm back), lets go and stands. The spot is clear when the
+  strike magnetism's checks pass on the way there (a sight line, a walkable floor), her capsule fits on it, and behind him
+  `PairedFallClearance` (170 cm) is open at hip height and floored; otherwise the takedown is the plain one, exactly as
+  before. Everything else is as above: who can be taken down, the noise, the chapter event and `OnTakedownPerformed` at
+  the start, and the kill at the start (his health goes to 0 then, so mission counts and drops are unchanged). Only the
+  lock-out changes: she is held for the pair's length (1.73 s) instead of `TakedownSeconds`. He is held by his clip
+  (no AI, no movement, Kate's capsule passes through his) and handed to the ragdoll from its last frame with no throw;
+  his thud is 1.35 s in. If he goes down another way first (a blast) her clip stops and she is free at once.
 
 ## Look input
 - Look input is multiplied by the sensitivity from `UHawkeyeSettingsSubsystem` (default

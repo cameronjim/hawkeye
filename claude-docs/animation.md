@@ -435,6 +435,14 @@ the elbow 50 cm in 0.2 s), no wrist inside the torso, no joint under the floor.
 | HitFront/Left/Right_Light | both | HitFront/Left/Right | 0.53 s | head and chest snap away from the blow, the far foot steps out, the near follows, back past upright, settle |
 | HitHeavy_Stagger | both | HitHeavy | 0.73 s | thrown back, shoulders up, knees buckle, two steps back, forward past upright, settle |
 | BowDraw, BowAimIdle, BowFire | uefn | (out of the set) | 0.36, 2.0, 0.5 s | nock to anchor, a breathing hold, release and follow-through back to the nock |
+| Takedown_Victim | ue4 | TakedownVictim | 1.73 s | a jolt, hands up to her arm, head back; heels go, dragged down onto his back, limp; holds its last frame |
+| Takedown_Attacker | uefn | TakedownAttacker | 1.73 s | steps in, right arm across his chest, left hand on his side; sits back, drags him down in two steps each way (root motion, about 95 cm), crouches over him, lets go, stands |
+
+The takedown pair is authored in one frame: her capsule at the origin, his 55 cm ahead, both facing the same way. His clip
+is built first (the ue4 rig comes first) and her hands are keyed on his solved collarbone and ribs frame by frame,
+divided by her driver's 0.93 scale. Her root carries the drag (`root_pos`: `clipkit` solves her other places relative to
+it and keys the armature object, which is the root bone in the FBX); her montage takes root motion. Strips:
+`takedown_paired.png` and, for comparison, `takedown_before.png` (she stands still while he is thrown away).
 
 The hit clips start with the whole body moved toward the blow by the shove the game gives (light 10 cm, heavy 28 cm at
 500 cm/s) and step back onto the capsule, so the feet stay put in the world while the shove slides the capsule.
