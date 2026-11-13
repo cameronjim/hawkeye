@@ -31,6 +31,8 @@
  *   facade        3 m from that tenement's facade at first-floor height
  *   window        1.8 m from a first-floor window, a little to one side so the room behind it shows
  *   ground        down at the kerb: sidewalk, kerb and carriageway
+ *   shopfront     eye height 6 m from the shops across the street, turned along them
+ *   wide          15 m into the park, looking up at the tenement row: roofs and cornices against the sky
  *
  * The Kate shots also measure 3 s of frames before the capture (frame average and p95, and stat unit's game, draw and
  * GPU averages) and log one "BlockPerf <shot>" line each; run at 1920x1080 for the 60 fps check. The close-ups hide
@@ -59,6 +61,8 @@ namespace HawkeyeBlockShots
 		Facade,
 		Window,
 		Ground,
+		Shopfront,
+		Wide,
 	};
 
 	struct FShot
@@ -75,12 +79,16 @@ namespace HawkeyeBlockShots
 		{ EShot::Facade, false, TEXT("facade") },
 		{ EShot::Window, false, TEXT("window") },
 		{ EShot::Ground, false, TEXT("ground") },
+		{ EShot::Shopfront, false, TEXT("shopfront") },
+		{ EShot::Wide, false, TEXT("wide") },
 		{ EShot::Street, true, TEXT("street") },
 		{ EShot::KateStreet, true, TEXT("kate_street") },
 		{ EShot::KateRoof, true, TEXT("kate_roof") },
 		{ EShot::Facade, true, TEXT("facade") },
 		{ EShot::Window, true, TEXT("window") },
 		{ EShot::Ground, true, TEXT("ground") },
+		{ EShot::Shopfront, true, TEXT("shopfront") },
+		{ EShot::Wide, true, TEXT("wide") },
 	};
 
 	static UWorld* FindWorld()
@@ -319,7 +327,8 @@ private:
 		const HawkeyeBlockShots::FShot& Shot)
 	{
 		using namespace HawkeyeBlockShots;
-		const bool bCloseUp = Shot.Shot == EShot::Facade || Shot.Shot == EShot::Window || Shot.Shot == EShot::Ground;
+		const bool bCloseUp = Shot.Shot == EShot::Facade || Shot.Shot == EShot::Window || Shot.Shot == EShot::Ground
+			|| Shot.Shot == EShot::Shopfront;
 		SetSnowfallHidden(World, bCloseUp);
 
 		const FVector Across = FRotator(0.f, StartYaw, 0.f).Vector();
@@ -400,6 +409,22 @@ private:
 			const FVector Window = FindLitWindow(World, Facade);
 			const FVector Eye = Window + Out * 180.f - Along * 70.f;
 			return Look(Eye, (Window - Eye).Rotation());
+		}
+		case EShot::Shopfront:
+		{
+			if (!bFacade)
+			{
+				Test->AddError(TEXT("shopfront: no facade across the street from the PlayerStart."));
+				return false;
+			}
+			const FVector Out = Facade.ImpactNormal.GetSafeNormal2D();
+			const FVector Eye = Facade.ImpactPoint + Out * 600.f;
+			return Look(FVector(Eye.X, Eye.Y, EyeHeight), FRotator(4.f, (-Out).Rotation().Yaw + 28.f, 0.f));
+		}
+		case EShot::Wide:
+		{
+			const FVector Back = Start - Across * 1500.f;
+			return Look(FVector(Back.X, Back.Y, EyeHeight), FRotator(9.f, StartYaw + 10.f, 0.f));
 		}
 		case EShot::Ground:
 		{
