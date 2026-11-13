@@ -11,7 +11,7 @@ choose differently. When in doubt, match the surrounding file.
   Their types are `FOn...Signature`.
 - Functions are verbs in PascalCase: `ApplyDamage`, `TryTakedown`, `CompleteObjective`.
   Query functions read as questions: `IsAlive()`, `CanFire()`, `HasObjective(Id)`.
-- Enum values are unprefixed inside `enum class`: `EAlertLevel::Calm`, not `EAL_Calm`.
+- Enum values are unprefixed inside `enum class`: `EThugAlertState::Calm`, not `ETAS_Calm`.
 - Member variables have no `m_` or trailing underscore.
 - One class per header. File name matches the class without the prefix:
   `HealthComponent.h` holds `UHealthComponent`.
@@ -52,8 +52,12 @@ choose differently. When in doubt, match the surrounding file.
 - Keep `BlueprintImplementableEvent` for "designer hooks" (`OnPhaseStarted`,
   `OnReloadStarted`) and provide a C++ default via `BlueprintNativeEvent` when a default
   makes sense.
-- Functions under 40 lines. If longer, split. Tick functions in particular should call
-  two or three named helpers, not do the work inline.
+- Aim for functions under 40 lines. It is a target, not something the code meets today:
+  about 250 non-test functions are longer, most of them in `AHawkeyeCharacter`,
+  `AHawkeyePlayerController` and `AThugAIController`, whose splits are listed in
+  `architecture.md`, "Known next steps". New code meets it; when you change a long function,
+  pull out the part you touch rather than growing it. Tick functions in particular should
+  call two or three named helpers, not do the work inline.
 - `const` on every method that doesn't mutate. `const&` for struct and container
   parameters.
 - Early return over nesting. Validate at the top, then do the work.

@@ -24,7 +24,8 @@ Content/
   Blueprints/
     Player/             BP_HawkeyeCharacter, BP_HawkeyePlayerController, BP_HawkeyeGameMode
     Weapons/            DA_Weapon_Hands (UWeaponDefinition), DA_Bow_*, DA_Arrow_*, BP_Arrow_*
-    AI/                 BP_Thug, later BP_Thug_Gunner, StateTree/, EQS_*, BTT_*, BTS_*
+    AI/                 BP_Thug, BP_Thug_Heavy, BP_Thug_Elf, BP_Thug_Reindeer, BP_Civilian,
+                        BP_PartnerController, EQS_CoverPoints, Thug/ST_Thug, Partner/ST_Partner
     Bosses/             BP_Boss_Base, BP_Archer, BP_Trickshot, BP_ArenaController_*
     World/              BP_GrappleAnchor, BP_TraversableBlock, later BP_Door_*, BP_Switch,
                         BP_Checkpoint, BP_MissionStarter, BP_Pickup_*
@@ -76,42 +77,41 @@ Content/
 
 | Prefix | Type | Example |
 |--------|------|---------|
-| `L_` | Level | `L_M03_YardRiot` |
-| `BP_` | Blueprint class | `BP_Guard_Rifle` |
+| `L_` | Level | `L_District_EastVillage`, `L_Int_Grotto` |
+| `BP_` | Blueprint class | `BP_Thug_Heavy` |
 | `WBP_` | Widget Blueprint | `WBP_Hud` |
-| `DA_` | Data asset | `DA_CH01_Rooftops` |
+| `DA_` | Data asset | `DA_CH01_NightShift`, `DA_Boss_CH04_Tomas` |
 | `DT_` | Data table | `DT_Dialogue` |
-| `CU_` | Curve | `CU_DamageFalloff_Pistol` |
 | `IA_` / `IMC_` | Input action / mapping context | `IA_Fire`, `IMC_Default` |
-| `BT_` / `BB_` | Behavior tree / blackboard | `BT_Guard`, `BB_Guard` |
-| `BTT_` / `BTS_` / `BTD_` | BT task / service / decorator | `BTT_MoveToCover` |
+| `ST_` | StateTree (written by a C++ builder; its tasks and conditions are C++ structs) | `ST_Thug`, `ST_Partner` |
 | `EQS_` | Environment query | `EQS_CoverPoints` |
-| `SM_` / `SK_` | Static / skeletal mesh | `SM_Kit_Wall400`, `SK_Guard` |
+| `SM_` / `SK_` | Static / skeletal mesh | `SM_Kit_Dumpster`, `SK_Built_Kate` |
 | `M_` / `MI_` / `MF_` | Material / instance / function | `M_Concrete`, `MI_Concrete_Wet` |
 | `T_` | Texture, with suffix | `T_Concrete_D`, `_N`, `_ORM`, `_M` for mask |
-| `S_` | Sound (wave or cue) | `S_Bow_Release`, `S_VO_Kate_CH01_01`, `S_Amb_Rooftop` |
-| `SC_` / `MS_` | Sound cue / MetaSound | `MS_Footsteps` |
-| `A_` / `AM_` / `ABP_` | Anim sequence / montage / anim BP | `AM_Takedown_Front`, `ABP_Guard` |
-| `NS_` | Niagara system | `NS_MuzzleFlash_Pistol` |
-| `PM_` | Physical material | `PM_Concrete` |
-| `DMG_` | Damage type | `DMG_Bullet` |
+| `S_` | Sound wave | `S_Bow_Release` |
+| `MS_` | MetaSound (what `create_audio.py` builds) | `MS_Bow_Release`, `MS_Amb_Street`, `MS_Music_Score` |
+| `A_` / `AM_` / `ABP_` | Anim sequence / montage / anim BP | `A_Lucky_Walk`, `AM_Kick_SideKick`, `ABP_Kate_Body` |
+| `NS_` | Niagara system | `NS_ParryRing`, `NS_MuzzleFlash` |
 
 Chapter-scoped assets carry the chapter tag: `CH01`, `FB03`. Flashback images are
 numbered in slide order: `T_FB02_04` is the fourth slide of the second flashback.
 
 ## Data-driven rules
-- A mission is: `L_M0X` + `DA_M0X` + a per-mission one-pager in `docs/missions/`. No
-  per-mission C++ or per-mission Blueprint classes. Mission-specific scripting lives in
-  the Level Blueprint of `L_M0X` and in placed `BP_World/*` actors.
-- A boss is: `BP_Boss_X` (child of `BP_Boss_Base`) + `BT_Boss_X` + `BP_ArenaController_X`
-  placed in the level. Phase data is set on the `BossPhaseComponent` in the Blueprint
-  defaults.
-- A weapon is: `DA_Weapon_X`. No Blueprint subclass unless it has a unique behaviour
-  (the shotgun's multi-pellet trace is the one expected exception).
+- A chapter is: `DA_CH0X_Name` (`UMissionDefinition`) + a one-pager in `docs/chapters/`,
+  plus the data it names: a chase (`DA_Chase_CH01_NightShift`), a site
+  (`DA_Site_CH02_ToyDrive`), a boss (`DA_Boss_CH04_Tomas`). No per-chapter C++, Blueprint
+  class or Level Blueprint; the district is generated and the chapter's set piece is spawned
+  from its site.
+- A boss is: `DA_Boss_CH0X_Name` (`UBossDefinition`: body Blueprint, move set, phases, arena,
+  hazard) + a body Blueprint that is a thug child (`BP_Boss_Tomas`). He fights through
+  `ST_Thug`; `UBossFightSubsystem` runs the phases.
+- An arrow is: `DA_Arrow_X` (`UArrowDefinition`), with a `BP_Arrow_X` projectile or a
+  `BP_Effect_X` only when it needs a mesh or effect of its own.
 - A flashback is: `DA_FBXX_Name` + textures + audio. Nothing else.
-- Dialogue: every spoken line is a row in `DT_Dialogue` with a stable row name
-  `m05_doctor_03`, `vent_books_02`, `m07_warden_phase2_01`. Audio asset name matches
-  the row name with the `S_VO_` prefix.
+- Dialogue: every spoken line is a row in `DT_Dialogue` (banter), `DT_DialogueSequences`
+  (walk-and-talk, `seq_ch01_grapple_01`) or `DT_Messages` (texts, `msg_ch01_01`) with a
+  stable row name. Recorded audio, when there is any, takes the row name with the `S_VO_`
+  prefix.
 
 ## Level dressing
 - Every actor a room-art script places carries the `Art_` label prefix so it can be
@@ -159,9 +159,9 @@ costume is a new build script and a `BUILT_LOOKS` line, not a new class. Blender
 names (`M_<Who>_<Part>`).
 
 ## Blueprint hygiene
-- Parent class is the C++ class when one exists. `BP_Guard` derives `AGuardCharacter`,
+- Parent class is the C++ class when one exists. `BP_Thug` derives `AThugCharacter`,
   not `ACharacter`.
-- Child Blueprints for variants (`BP_Guard_Rifle` from `BP_Guard`); never duplicate a
+- Child Blueprints for variants (`BP_Thug_Heavy` from `BP_Thug`); never duplicate a
   Blueprint to make a variant.
 - Every instance-editable variable has a category, a tooltip, and a sane default.
 - No asset references from `Content/Kit` or `Content/Developers` into final assets.
@@ -178,8 +178,8 @@ names (`M_<Who>_<Part>`).
   changes should also carry the test boss Blueprint that exercises it, if one changed.
 
 ## Scale and units
-- 1 Unreal unit = 1 cm. Frank's capsule is 96 cm half-height (192 cm tall), radius 34.
-  Eye height 170 cm.
+- 1 Unreal unit = 1 cm. Kate's capsule is 88 cm half-height (176 cm tall), radius 34
+  (`AHawkeyeCharacter`'s constructor).
 - Kit grid is 100 cm. Walls are 400 x 400 cm faces, 20 cm thick. Doors are 100 wide,
-  220 tall. Corridors are 300 wide minimum so two guards can pass.
+  220 tall. Corridors are 300 wide minimum so two thugs can pass.
 - Snap settings: location 10 cm for kit pieces, 1 cm for props. Rotation 15 degrees.
