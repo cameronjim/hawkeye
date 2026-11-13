@@ -64,7 +64,7 @@ namespace HawkeyeTimeOfDay
 		Day.FogInscattering = FLinearColor(0.24f, 0.25f, 0.27f);
 		Day.FogStartDistance = 1500.f;
 		Day.ExposureBias = 0.f;
-		Day.GainShadows = FVector4(0.97f, 0.99f, 1.04f, 1.f);
+		Day.GainShadows = FVector4(1.f, 1.f, 1.f, 1.f);
 		Day.GainHighlights = FVector4(1.f, 1.f, 1.f, 1.f);
 		Day.Vignette = 0.2f;
 		Day.bStars = false;
