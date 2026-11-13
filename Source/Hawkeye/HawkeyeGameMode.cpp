@@ -639,6 +639,7 @@ void AHawkeyeGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(RestartTimerHandle);
 		World->GetTimerManager().ClearTimer(AutosaveTimerHandle);
 		World->GetTimerManager().ClearTimer(NewGameSaveTimerHandle);
+		World->GetTimerManager().ClearTimer(ChapterSaveTimerHandle);
 	}
 
 	Super::EndPlay(EndPlayReason);
