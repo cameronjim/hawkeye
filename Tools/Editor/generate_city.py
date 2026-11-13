@@ -12,12 +12,15 @@ What gets built, all with Geometry Script from Python (the GeometryScripting plu
   clipped so concave footprints work; courtyard holes are ignored), a 30 x 90 cm parapet ring
   just inside the roof edge, per-face normals, complex-as-simple collision so the player can
   stand on roofs and walk into walls. Actor ``City_Bldg_<id>`` in the MI_Facade_<style> that
-  facade_style picks (brick or brownstone tenements, stone over 30 m, painted grey garages): M_Facade
-  draws the window grid, storefronts, cornice and lit windows from world position, snow on top.
-* one ground slab under the whole district at z = 0 (``City_Ground``, snowy MI_Prop_Ground).
-* per named road way: carriageway at z = +2 cm (``City_Road_<id>``, wet M_StreetAsphalt) and the 4 m
-  sidewalks either side at z = +15 cm (``City_Sidewalk_<id>``, M_SidewalkSnow). Sidewalks are
-  the road's buffer minus every carriageway, so they stop at the kerb of each crossing street.
+  facade_style picks (brick or brownstone tenements, concrete over 30 m, painted brick garages): M_Facade
+  (_look.FACADE_HLSL) draws real-size masonry, recessed windows with rooms behind them, storefronts,
+  cornice and lit windows from world position, snow on top (claude-docs/city-look.md).
+* one ground slab under the whole district at z = 0 (``City_Ground``, M_SidewalkSnow as a plaza: flags on the
+  street grid, patchy snow; custom primitive data (dx, dy, 0, 1e6)).
+* per named road way: carriageway at z = +2 cm (``City_Road_<id>``, M_StreetAsphalt: wheel tracks in snow) and the
+  4 m sidewalks either side at z = +15 cm (``City_Sidewalk_<id>``, M_SidewalkSnow). Sidewalks are
+  the road's buffer minus every carriageway, so they stop at the kerb of each crossing street. Both carry
+  the street's frame (direction, centre line, half width) as custom primitive data (_look.street_frame).
 * the park at z = +5 cm (``City_Park_<id>``, M_ParkSnow), minus the carriageways.
 * a January night: a 0.3 lux blue moon (``Moon``, the sky atmosphere's light) 30 degrees up, the sky
   light, the height fog as night haze, stars on ``City_NightSky`` (M_NightStars on the engine
@@ -109,6 +112,7 @@ import unreal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 import _geo as geo  # noqa: E402
+import _look as look  # noqa: E402
 import _materials as m  # noqa: E402
 from _geomutil import (  # noqa: E402,F401 - re-exported for gen.X callers
     closest_point_on_polyline, _segments_cross, ring_distance, oriented_rect, _segment_distance, _edge_clearance,
@@ -354,8 +358,10 @@ def stored_hash(name):
 
 
 class Piece(object):
-    def __init__(self, label, mesh_name, spec_hash, location, build, material, tags=()):
+    def __init__(self, label, mesh_name, spec_hash, location, build, material, tags=(), primitive_data=None):
         self.label = label
+        # Custom primitive data on the actor's mesh: the street frame M_StreetAsphalt and M_SidewalkSnow read.
+        self.primitive_data = list(primitive_data) if primitive_data else None
         self.mesh_name = mesh_name
         self.spec_hash = spec_hash
         self.location = location
@@ -426,6 +432,10 @@ def street_pieces(district, materials):
     """Ground, roads, sidewalks and parks. Built in world cm, then shifted to a local origin."""
     pieces = []
 
+    roads = road_paths(district)
+    # The ground between and behind the buildings is paved like the sidewalks: flags on the street grid (the longest
+    # road segment's direction), patchy snow, no kerb (a half width of 1e6 tells the material it is the plaza).
+    grid = look.street_frame([p for _r, paths in roads for p in paths], 0.0)
     ground = ground_ring_cm(district)
     gx, gy = centre_of(ground)
     pieces.append(Piece(
@@ -433,9 +443,8 @@ def street_pieces(district, materials):
         geo.record_hash(GENERATOR_VERSION, "ground", ground),
         unreal.Vector(gx, gy, 0.0),
         lambda: shifted(slab_from_polygons(polygon_list_from_ring(ground), 0.0, GROUND_THICK), gx, gy),
-        materials["ground"], ["City", "CityGround"]))
+        materials["sidewalk"], ["City", "CityGround"], (grid[0], grid[1], 0.0, 1e6)))
 
-    roads = road_paths(district)
     all_road_spec = geo.record_hash([[r["id"], r["width_m"], p] for r, p in roads])
 
     # Every carriageway at once, for cutting the sidewalks and the park. Built lazily, once,
@@ -460,6 +469,7 @@ def street_pieces(district, materials):
         cx, cy = centre_of([p for path in paths for p in path])
         half = rec["width_m"] * 50.0
         loc = unreal.Vector(cx, cy, 0.0)
+        frame = look.street_frame(paths, half)
         name_tag = "street:" + (rec.get("name") or "")
 
         def build_road(paths=paths, half=half, cx=cx, cy=cy):
@@ -468,7 +478,7 @@ def street_pieces(district, materials):
         pieces.append(Piece(
             ROAD_PREFIX + rec["id"], MESH_PREFIX + "Road_" + rec["id"],
             geo.record_hash(GENERATOR_VERSION, "road", paths, half), loc, build_road,
-            materials["asphalt"], ["City", "CityRoad", "osm:" + rec["id"], name_tag]))
+            materials["asphalt"], ["City", "CityRoad", "osm:" + rec["id"], name_tag], frame))
 
         def build_sidewalk(paths=paths, half=half, cx=cx, cy=cy):
             outer = polys_for_paths(paths, half + SIDEWALK_WIDTH)
@@ -481,7 +491,7 @@ def street_pieces(district, materials):
             SIDEWALK_PREFIX + rec["id"], MESH_PREFIX + "Sidewalk_" + rec["id"],
             geo.record_hash(GENERATOR_VERSION, "sidewalk", paths, half, all_road_spec), loc,
             build_sidewalk, materials["sidewalk"],
-            ["City", "CitySidewalk", "osm:" + rec["id"], name_tag]))
+            ["City", "CitySidewalk", "osm:" + rec["id"], name_tag], frame))
 
     for park in district.parks:
         ring = geo.clean_ring(district.ring_cm(park["outer"]), min_edge=5.0, collinear_tol=2.0)
@@ -559,6 +569,15 @@ def ensure_piece_actor(piece, static_mesh, existing):
         if len(overrides) < 1 or overrides[0] != piece.material:
             component.set_material(0, piece.material)
             changes += 1
+    if piece.primitive_data is not None:
+        current = list(component.get_editor_property("custom_primitive_data").get_editor_property("data"))
+        if len(current) != len(piece.primitive_data) or any(
+                abs(a - b) > 1e-3 for a, b in zip(current, piece.primitive_data)):
+            # The saved property, not set_custom_primitive_data_float (that writes the transient runtime copy).
+            data = unreal.CustomPrimitiveData()
+            data.set_editor_property("data", [float(v) for v in piece.primitive_data])
+            component.set_editor_property("custom_primitive_data", data)
+            changes += 1
     want_tags = [unreal.Name(t) for t in piece.tags]
     have = [str(t) for t in actor.get_editor_property("tags")]
     if have != piece.tags:
@@ -626,12 +645,17 @@ def remove_stale(pieces, existing):
 MOON_LABEL = "Moon"
 RETIRED_SUN_LABEL = "Sun"
 MOON_ROTATION = unreal.Rotator(0.0, -30.0, -30.0)   # roll, pitch, yaw: 30 degrees up in the WSW
-MOON_LUX = 0.3
-MOON_COLOR = (0.55, 0.65, 1.0)
+MOON_LUX = 0.6                            # was 0.3: the upper floors went black above the lamps (city-look.md)
+MOON_COLOR = (0.72, 0.80, 1.0)                    # was (0.55, 0.65, 1.0): lintels and snow went electric blue at 0.6 lux
 MOON_DISK_SCALE = (0.9, 0.93, 1.0)
-SKY_INTENSITY = 3.0
-FOG_DENSITY = 0.008
-FOG_INSCATTERING = (0.035, 0.035, 0.06)   # night haze, a touch of purple
+MOON_SOURCE_ANGLE = 4.0                   # degrees; soft shadows, and the day's overcast sun shares the light
+SKY_INTENSITY = 5.0                       # was 3
+FOG_DENSITY = 0.01
+FOG_INSCATTERING = (0.07, 0.05, 0.055)    # night haze: the city's sodium-and-LED glow, a touch of purple
+# The atmosphere as winter haze: less blue Rayleigh, more grey Mie, so the day's sky is the milky white-grey of an
+# overcast January afternoon rather than a clear blue, and the night's horizon is grey, not ink (engine defaults:
+# Rayleigh scale 0.0331, Mie scale 0.003996, Mie anisotropy 0.8). Less Rayleigh than this darkens the zenith: a real overcast needs clouds.
+ATMOSPHERE = (("rayleigh_scattering_scale", 0.022), ("mie_scattering_scale", 0.012), ("mie_anisotropy", 0.6))
 FOG_CUTOFF = 300000.0                     # cm; the star sphere (400 m further out) stays clear of fog
 # Auto exposure is off project-wide (Config/DefaultEngine.ini), so exposure is fixed: the
 # min/max brightness pair pins it at 1.0, and the bias is the knob.
@@ -703,6 +727,7 @@ def ensure_lighting_core(existing, make_movable=True, labels=None):
         changes += set_if_different(comp, "intensity", MOON_LUX, moon_label)
         changes += set_if_different(comp, "atmosphere_sun_light", True, moon_label)
         changes += set_if_different(comp, "use_temperature", False, moon_label)
+        changes += set_if_different(comp, "light_source_angle", MOON_SOURCE_ANGLE, moon_label)
         want = unreal.Color(r=int(MOON_COLOR[0] * 255), g=int(MOON_COLOR[1] * 255), b=int(MOON_COLOR[2] * 255), a=255)
         have = comp.get_editor_property("light_color")
         if (have.r, have.g, have.b) != (want.r, want.g, want.b):
@@ -727,6 +752,10 @@ def ensure_lighting_core(existing, make_movable=True, labels=None):
     atmosphere_label = labels.get("SkyAtmosphere", "SkyAtmosphere")
     _a, created = ensure_labelled(existing, atmosphere, atmosphere_label, unreal.Vector(0, 0, 0))
     changes += created
+    if _a is not None:
+        comp = _a.get_editor_property("sky_atmosphere_component")
+        for prop, value in ATMOSPHERE:
+            changes += set_if_different(comp, prop, value, atmosphere_label, 1e-5)
 
     fog, created = ensure_labelled(existing, unreal.ExponentialHeightFog, fog_label, unreal.Vector(0, 0, 0))
     changes += created
