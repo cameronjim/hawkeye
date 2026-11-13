@@ -39,7 +39,7 @@ class StreetLookTest(unittest.TestCase):
         b = self.sl.relief(self.district, self.start, self.records)
         self.assertEqual(a, b)
         self.assertIn("TrimCream", a)
-        self.assertIn("DoorWood", a)
+        self.assertIn("StoopStone", a)
         reach = self.sl.HERO_RADIUS + 10000.0
         for boxes in a.values():
             for box in boxes:

@@ -17,9 +17,10 @@ import math
 import struct
 
 from _district import PARAPET_HEIGHT, PARAPET_MIN_HEIGHT_M, ROAD_TOP, SIDEWALK_TOP, SIDEWALK_WIDTH, road_paths
+import _facade_plan as fp
 import _geo as geo
 
-PLAN_VERSION = 2
+PLAN_VERSION = 3
 HERO_RADIUS = 12000.0          # cm from the PlayerStart to a building's nearest wall, a tree or a crossing
 MIN_EDGE = 300.0               # cm; shorter walls get nothing
 ROAD_REACH = 2600.0            # cm from a wall's middle to a road centre line in front of it
@@ -48,6 +49,10 @@ COLOURS = {
     "TreePit": ((0.04, 0.035, 0.03), 0.9),
     "NewsBlue": ((0.03, 0.08, 0.30), 0.45),
     "NewsRed": ((0.40, 0.03, 0.03), 0.45),
+    "StoopStone": ((0.30, 0.29, 0.27), 0.85),
+    "CorniceGreen": ((0.03, 0.06, 0.04), 0.45),
+    "CorniceBlack": ((0.02, 0.02, 0.022), 0.45),
+    "CorniceCream": ((0.45, 0.42, 0.36), 0.5),
 }
 AWNINGS = ("AwningGreen", "AwningRed", "AwningNavy", "AwningCream")
 PAINT = "Paint"                # M_RoadPaint
@@ -126,9 +131,43 @@ def _box(out, key, x, y, z0, along, depth, height, ux, uy, ox, oy, pitch=0.0):
                                     round(along, 2), round(depth, 2), round(height, 2), round(yaw, 3), pitch))
 
 
+def _facades(rec, ring, segments_road):
+    """[(edge, span, frame, [(s0, s1, seg)])] for the ring's street edges: the edge, the shader's (u0, u1, face) span
+    for it (None off both axes), the building's frame, and the facades the shader cuts it into, clipped to the edge."""
+    fr = fp.frame(ring, rec["id"])
+    out = []
+    for edge in street_edges(ring, segments_road):
+        a, _b, length, (ux, uy), (ox, oy) = edge
+        tx, ty = -oy, ox
+        ua = a[0] * tx + a[1] * ty
+        sgn = 1.0 if ux * tx + uy * ty >= 0.0 else -1.0
+        lo, hi = sorted((ua, ua + sgn * length))
+        span = fp.face_span(fr, tx, ty)
+        if span is None:
+            out.append((edge, None, fr, [(lo, hi, 0)]))
+            continue
+        segs = [(max(s0, lo), min(s1, hi), k) for s0, s1, k in fp.segments(span[0], span[1], fr[6], span[2])
+                if min(s1, hi) - max(s0, lo) > 1.0]
+        out.append((edge, span, fr, segs))
+    return out
+
+
+def _edge_at(edge):
+    a, _b, _length, (ux, uy), (ox, oy) = edge
+    tx, ty = -oy, ox
+    ua = a[0] * tx + a[1] * ty
+    sgn = 1.0 if ux * tx + uy * ty >= 0.0 else -1.0
+
+    def at(u):
+        s = (u - ua) * sgn
+        return a[0] + ux * s, a[1] + uy * s
+    return at
+
+
 def relief(district, start, records):
-    """{material key: [box]} for the hero buildings. ``records`` [(rec, ring cm, style)]."""
-    segments = _segments(district)
+    """{material key: [box]} for the hero buildings. ``records`` [(rec, ring cm, style)]. Each street wall is cut into
+    the facades M_Facade draws (_facade_plan), and each facade gets its own cornice, window trim and shop dressing."""
+    segments_road = _segments(district)
     out = {}
     for rec, ring, style in records:
         if min(math.hypot(x - start[0], y - start[1]) for x, y in ring) > HERO_RADIUS:
@@ -136,71 +175,150 @@ def relief(district, start, records):
         height = rec["height_m"] * 100.0
         top = height + (PARAPET_HEIGHT if rec["height_m"] >= PARAPET_MIN_HEIGHT_M else 0.0)
         tall = top > TALL
-        trim = trim_key(style)
-        x0, y0, x1, y1 = geo.bounds(ring)
-        bs = h21(math.floor((x0 + x1) * 0.5 / 100.0), math.floor((y0 + y1) * 0.5 / 100.0))
-        pitch_s = 280.0 if bs < 0.33 else (330.0 if bs < 0.66 else 400.0)
-        door_done = False
-        for a, b, length, (ux, uy), (ox, oy) in street_edges(ring, segments):
-            tx, ty = -oy, ox                                   # the shader's tangent: up x normal
-            ua = a[0] * tx + a[1] * ty
-            sgn = ux * tx + uy * ty                            # +1 or -1: which way u runs along the edge
-            u_lo, u_hi = sorted((ua, ua + sgn * length))
-
-            def at(u, a=a, ua=ua, sgn=sgn, ux=ux, uy=uy):
-                s = (u - ua) * sgn
-                return a[0] + ux * s, a[1] + uy * s
-
-            mx, my = at((u_lo + u_hi) * 0.5)
-            if tall:
-                for z0, h, d in ((top - 152.0, 12.0, 12.0), (top - 140.0, 40.0, 22.0), (top - 100.0, 12.0, 38.0)):
-                    _box(out, trim, mx, my, z0, length, d, h, ux, uy, ox, oy)
-                _box(out, trim, mx, my, 392.0, length - 10.0, 16.0, 16.0, ux, uy, ox, oy)
-            if length >= BELT_MIN_EDGE and STOREY * 2 + 14.0 < top - 200.0:
-                _box(out, trim, mx, my, STOREY * 2, length - 10.0, 6.0, 14.0, ux, uy, ox, oy)
-            # sills and lintels on M_Facade's windows that fit the wall
-            k = math.floor(u_lo / BAY)
-            while (k + 0.5) * BAY - 66.0 < u_hi:
-                uc = (k + 0.5) * BAY
-                k += 1
-                if uc - 66.0 < u_lo + 10.0 or uc + 66.0 > u_hi - 10.0:
+        for edge, span, fr, segs in _facades(rec, ring, segments_road):
+            _a, _b, _length, (ux, uy), (ox, oy) = edge
+            at = _edge_at(edge)
+            seed = fr[6]
+            face = span[2] if span else 0
+            for s0, s1, seg in segs:
+                width = s1 - s0
+                if width < 60.0:
                     continue
-                wx, wy = at(uc)
-                s = 1
-                while STOREY * s + SILL + WIN_H <= top - TOP_CLEAR:
-                    zb = STOREY * s + SILL
-                    if zb >= UPPER_FROM:
-                        _box(out, trim, wx, wy, zb - 9.0, 128.0, 12.0, 9.0, ux, uy, ox, oy)
-                        _box(out, trim, wx, wy, zb + WIN_H, 132.0, 7.0, 22.0, ux, uy, ox, oy)
-                    s += 1
-            # awnings over some of the shop bays (the bays M_Facade picks for this building)
-            if tall:
-                k = math.floor(u_lo / pitch_s)
-                while (k + 0.5) * pitch_s < u_hi:
-                    uc = (k + 0.5) * pitch_s
-                    k += 1
-                    if uc - pitch_s * 0.5 < u_lo + 20.0 or uc + pitch_s * 0.5 > u_hi - 20.0:
-                        continue
-                    hk = h21(k + 0.5, mx * 0.01 + my * 0.013)
-                    if hk >= AWNING_SHARE:
-                        continue
-                    sx, sy = at(uc)
-                    width = pitch_s - 50.0
-                    key = AWNINGS[int(h21(hk * 97.0, 3.3) * len(AWNINGS)) % len(AWNINGS)]
-                    # a sloped canvas from just under the sign band, 120 cm out and 45 cm down, and its valance
-                    _box(out, key, sx + ox * 2.0, sy + oy * 2.0, 240.0, width, 125.0, 4.0, ux, uy, ox, oy, pitch=AWNING_TILT)
-                    _box(out, key, sx + ox * 104.0, sy + oy * 104.0, 172.0, width, 2.0, 22.0, ux, uy, ox, oy)
-            if not door_done and length >= 600.0:
-                door_done = True
-                dx, dy = at(math.floor((u_lo + u_hi) * 0.5 / BAY) * BAY + BAY * 0.5 if tall else (u_lo + u_hi) * 0.5)
-                _box(out, "DoorWood", dx, dy, SIDEWALK_TOP, 110.0, 3.0, 230.0, ux, uy, ox, oy)
-                for side in (-1.0, 1.0):
-                    _box(out, trim, dx + ux * side * 67.0, dy + uy * side * 67.0, SIDEWALK_TOP, 22.0, 9.0, 250.0,
-                         ux, uy, ox, oy)
-                _box(out, trim, dx, dy, SIDEWALK_TOP + 250.0, 170.0, 13.0, 24.0, ux, uy, ox, oy)
-                _box(out, trim, dx, dy, SIDEWALK_TOP, 170.0, 60.0, 15.0, ux, uy, ox, oy)
-                _box(out, trim, dx, dy, SIDEWALK_TOP + 15.0, 150.0, 30.0, 15.0, ux, uy, ox, oy)
+                pal = fp.facade_style(seed, face, seg) if span else -1
+                trim = trim_key(style) if pal < 0 else SEG_TRIM_KEYS[pal]
+                tstyle = fp.trim_style(seed, face, seg) if span else 0
+                cstyle = fp.cornice_style(seed, face, seg) if span else 0
+                mx, my = at((s0 + s1) * 0.5)
+                if tall:
+                    _cornice(out, cstyle, trim, at, s0, s1, top, (ux, uy, ox, oy),
+                             fp.hf(fp.key(seed, face, seg, 0, 17)))
+                    _box(out, trim, mx, my, 392.0, width - 10.0, 16.0, 16.0, ux, uy, ox, oy)
+                if width >= 1000.0 and STOREY * 2 + 14.0 < top - 200.0 and fp.hf(fp.key(seed, face, seg, 0, 19)) < 0.6:
+                    _box(out, trim, mx, my, STOREY * 2, width - 10.0, 6.0, 14.0, ux, uy, ox, oy)
+                _windows(out, trim, tstyle, at, s0, s1, top, (ux, uy, ox, oy))
+                if tall and span:
+                    _shopfront(out, trim, seed, face, seg, s0, s1, at, (ux, uy, ox, oy))
     return out
+
+
+SEG_TRIM_KEYS = ("TrimCream", "TrimCream", "TrimCream", "TrimBrown", "TrimGrey", "TrimGrey", "TrimGrey")
+METAL_KEYS = ("CorniceGreen", "CorniceBlack", "CorniceCream")
+
+
+def _cornice(out, style, trim, at, s0, s1, top, axes, hm):
+    ux, uy, ox, oy = axes
+    width = s1 - s0
+    mx, my = at((s0 + s1) * 0.5)
+    if style == 0:
+        for z0, h, d in ((top - 152.0, 12.0, 12.0), (top - 140.0, 40.0, 22.0), (top - 100.0, 12.0, 38.0)):
+            _box(out, trim, mx, my, z0, width, d, h, ux, uy, ox, oy)
+    elif style == 1:
+        _box(out, trim, mx, my, top - 100.0, width, 34.0, 14.0, ux, uy, ox, oy)
+        _box(out, trim, mx, my, top - 152.0, width, 8.0, 10.0, ux, uy, ox, oy)
+        u = s0 + 35.0
+        while u < s1 - 20.0:
+            bx, by = at(u)
+            _box(out, trim, bx, by, top - 142.0, 12.0, 28.0, 42.0, ux, uy, ox, oy)
+            u += 70.0
+    elif style == 2:
+        _box(out, trim, mx, my, top - 100.0, width, 6.0, 10.0, ux, uy, ox, oy)
+    else:
+        key = METAL_KEYS[0 if hm < 0.4 else (1 if hm < 0.75 else 2)]
+        _box(out, key, mx, my, top - 150.0, width, 46.0, 58.0, ux, uy, ox, oy)
+        _box(out, key, mx, my, top - 160.0, width, 20.0, 10.0, ux, uy, ox, oy)
+        u = s0 + 45.0
+        while u < s1 - 30.0:
+            bx, by = at(u)
+            _box(out, key, bx, by, top - 196.0, 14.0, 32.0, 46.0, ux, uy, ox, oy)
+            u += 90.0
+
+
+def _windows(out, trim, tstyle, at, s0, s1, top, axes):
+    """Sills and heads on M_Facade's windows that fit the facade, by its trim style."""
+    ux, uy, ox, oy = axes
+    k = math.floor(s0 / BAY)
+    while (k + 0.5) * BAY - 66.0 < s1:
+        uc = (k + 0.5) * BAY
+        k += 1
+        if uc - 66.0 < s0 + 10.0 or uc + 66.0 > s1 - 10.0:
+            continue
+        wx, wy = at(uc)
+        s = 1
+        while STOREY * s + SILL + WIN_H <= top - TOP_CLEAR:
+            zb = STOREY * s + SILL
+            if zb >= UPPER_FROM:
+                _box(out, trim, wx, wy, zb - 9.0, 128.0, 12.0, 9.0, ux, uy, ox, oy)
+                if tstyle in (0, 2):
+                    _box(out, trim, wx, wy, zb + WIN_H, 132.0, 7.0, 22.0, ux, uy, ox, oy)
+                if tstyle == 2:
+                    for side in (-1.0, 1.0):
+                        _box(out, trim, wx + ux * side * 60.5, wy + uy * side * 60.5, zb - 10.0, 11.0, 4.0, WIN_H + 10.0,
+                             ux, uy, ox, oy)
+                elif tstyle == 3:
+                    _box(out, trim, wx, wy, zb + WIN_H + 4.0, 148.0, 15.0, 28.0, ux, uy, ox, oy)
+                    for side in (-1.0, 1.0):
+                        _box(out, trim, wx + ux * side * 68.0, wy + uy * side * 68.0, zb + WIN_H - 14.0, 10.0, 11.0,
+                             18.0, ux, uy, ox, oy)
+            s += 1
+
+
+def _shopfront(out, trim, seed, face, seg, s0, s1, at, axes):
+    """Awnings over some shop bays, and the tenement's door surround and stoop at the entrance bay (M_Facade draws the
+    recessed door)."""
+    ux, uy, ox, oy = axes
+    pitch, bays, entrance = fp.shop_bays(s0, s1, seed, face, seg)
+    for uc, i in bays:
+        sx, sy = at(uc)
+        if i == entrance:
+            for side in (-1.0, 1.0):
+                _box(out, trim, sx + ux * side * 73.0, sy + uy * side * 73.0, SIDEWALK_TOP, 22.0, 10.0, 265.0,
+                     ux, uy, ox, oy)
+            _box(out, trim, sx, sy, SIDEWALK_TOP + 265.0, 180.0, 16.0, 26.0, ux, uy, ox, oy)
+            _box(out, trim, sx, sy, SIDEWALK_TOP + 291.0, 200.0, 24.0, 8.0, ux, uy, ox, oy)
+            _box(out, "StoopStone", sx, sy, SIDEWALK_TOP, 170.0, 55.0, 14.0, ux, uy, ox, oy)
+            continue
+        vacant, _open = fp.shop_open(seed, face, seg, i)
+        if vacant or fp.hf(fp.key(seed, face, seg, i, 18)) >= AWNING_SHARE or pitch < 200.0:
+            continue
+        width = pitch - 70.0
+        key = AWNINGS[int(fp.hf(fp.key(seed, face, seg, i, 20)) * len(AWNINGS)) % len(AWNINGS)]
+        # a sloped canvas from just under the fascia, 120 cm out and 45 cm down, and its valance
+        _box(out, key, sx + ox * 2.0, sy + oy * 2.0, 270.0, width, 125.0, 4.0, ux, uy, ox, oy, pitch=AWNING_TILT)
+        _box(out, key, sx + ox * 104.0, sy + oy * 104.0, 202.0, width, 2.0, 22.0, ux, uy, ox, oy)
+
+
+SHOP_LIGHT_RADIUS = 9000.0     # cm from the start: open shops nearer than this spill light on the sidewalk at night
+SHOP_LIGHT_MAX = 60
+
+
+def shop_lights(district, start, records, shops):
+    """[(x, y, z, yaw out, warm)] just outside every shop bay M_Facade draws open at night on the hero block's street faces, the
+    nearest SHOP_LIGHT_MAX. ``shops`` is _look.SHOPS (the trade decides warm or fluorescent light)."""
+    segments_road = _segments(district)
+    out = []
+    for rec, ring, style in records:
+        if min(math.hypot(x - start[0], y - start[1]) for x, y in ring) > SHOP_LIGHT_RADIUS:
+            continue
+        top = rec["height_m"] * 100.0 + (PARAPET_HEIGHT if rec["height_m"] >= PARAPET_MIN_HEIGHT_M else 0.0)
+        if top <= TALL:
+            continue
+        lit = 0.15 if style == "Painted" else 0.35
+        for edge, span, fr, segs in _facades(rec, ring, segments_road):
+            if span is None:
+                continue
+            _a, _b, _length, _u, (ox, oy) = edge
+            at = _edge_at(edge)
+            for s0, s1, seg in segs:
+                _pitch, bays, entrance = fp.shop_bays(s0, s1, fr[6], span[2], seg)
+                for uc, i in bays:
+                    if i == entrance or not fp.shop_open(fr[6], span[2], seg, i, lit)[1]:
+                        continue
+                    kind = shops[fp.shop_trade(fr[6], span[2], seg, i, len(shops))][1]
+                    x, y = at(uc)
+                    out.append((round(x + ox * 25.0, 1), round(y + oy * 25.0, 1), 250.0,
+                                round(math.degrees(math.atan2(oy, ox)), 2), kind in (2, 5, 7)))
+    out.sort(key=lambda p: (math.hypot(p[0] - start[0], p[1] - start[1]), p[0], p[1]))
+    return out[:SHOP_LIGHT_MAX]
 
 
 def _segment_cross(p, q, r, s):

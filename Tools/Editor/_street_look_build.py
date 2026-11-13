@@ -145,6 +145,72 @@ def _ensure_actor(existing, label, mesh, material, loc, yaw, scale):
     return changes
 
 
+SHOP_LIGHT_PREFIX = "City_ShopLight_"
+SHOP_LIGHT_LUMENS = 700.0
+SHOP_LIGHT_RADIUS = 800.0
+SHOP_LIGHT_PITCH = -50.0        # degrees: out of the glass and down onto the sidewalk
+SHOP_LIGHT_CONE = (35.0, 72.0)
+SHOP_WARM = (1.0, 0.78, 0.55)
+SHOP_COOL = (0.85, 0.92, 1.0)
+
+
+def _set(obj, prop, value, label, tol=1e-3):
+    have = obj.get_editor_property(prop)
+    if isinstance(value, float) and isinstance(have, float):
+        if abs(have - value) <= tol:
+            return 0
+    elif have == value:
+        return 0
+    obj.set_editor_property(prop, value)
+    return 1
+
+
+def _ensure_shop_light(existing, label, loc, yaw, warm):
+    """The light an open shop spills on the sidewalk at night: a spot just outside the glass, angled down and out, no
+    shadows, tagged CityLamp so the time of day switches it with the street lamps (and the EMP with them)."""
+    changes = 0
+    rot = unreal.Rotator(0.0, SHOP_LIGHT_PITCH, yaw)
+    actor = existing.get(label)
+    if actor is not None and not isinstance(actor, unreal.SpotLight):
+        actor.destroy_actor()
+        actor = None
+    if actor is None:
+        actor = c.spawn_actor(unreal.SpotLight, loc, rot, label=label)
+        if actor is None:
+            c.log("FAILED", label, "spawn_actor returned None")
+            return 0
+        existing[label] = actor
+        changes += 1
+    have = actor.get_actor_location()
+    if abs(have.x - loc.x) > 0.5 or abs(have.y - loc.y) > 0.5 or abs(have.z - loc.z) > 0.5:
+        actor.set_actor_location(loc, False, True)
+        changes += 1
+    r = actor.get_actor_rotation()
+    if abs(r.pitch - rot.pitch) > 0.05 or abs(((r.yaw - yaw) + 180.0) % 360.0 - 180.0) > 0.05:
+        actor.set_actor_rotation(rot, False)
+        changes += 1
+    comp = actor.get_editor_property("spot_light_component")
+    changes += _set(comp, "mobility", unreal.ComponentMobility.MOVABLE, label)
+    changes += _set(comp, "intensity_units", unreal.LightUnits.LUMENS, label)
+    changes += _set(comp, "intensity", SHOP_LIGHT_LUMENS, label, 0.5)
+    changes += _set(comp, "attenuation_radius", SHOP_LIGHT_RADIUS, label, 0.5)
+    changes += _set(comp, "inner_cone_angle", SHOP_LIGHT_CONE[0], label, 0.01)
+    changes += _set(comp, "outer_cone_angle", SHOP_LIGHT_CONE[1], label, 0.01)
+    changes += _set(comp, "cast_shadows", False, label)
+    changes += _set(comp, "use_temperature", False, label)
+    rgb = SHOP_WARM if warm else SHOP_COOL
+    want = unreal.Color(r=int(rgb[0] * 255), g=int(rgb[1] * 255), b=int(rgb[2] * 255), a=255)
+    have_c = comp.get_editor_property("light_color")
+    if (have_c.r, have_c.g, have_c.b) != (want.r, want.g, want.b):
+        comp.set_editor_property("light_color", want)
+        changes += 1
+    tags = ["City", "CityLamp", "CityShopLight"]
+    if [str(t) for t in actor.get_editor_property("tags")] != tags:
+        actor.set_editor_property("tags", [unreal.Name(t) for t in tags])
+        changes += 1
+    return changes
+
+
 def ensure(district, existing, start, records, avoid):
     """Build the hero block's relief and street dressing. Returns the number of changes."""
     c.ensure_directory(STREET_DIR)
@@ -174,12 +240,18 @@ def ensure(district, existing, start, records, avoid):
         wanted.add(label)
         changes += _ensure_actor(existing, label, tree, materials["TreeBark"], unreal.Vector(x, y, sl.SIDEWALK_TOP), yaw,
                                  scale)
+    import _look
+    lights = sl.shop_lights(district, start, records, _look.SHOPS)
+    for i, (x, y, z, yaw, warm) in enumerate(lights):
+        label = "{0}{1}".format(SHOP_LIGHT_PREFIX, i)
+        wanted.add(label)
+        changes += _ensure_shop_light(existing, label, unreal.Vector(x, y, z), yaw, warm)
     for label, actor in list(existing.items()):
-        if (label.startswith(PREFIX) or label.startswith(TREE_PREFIX)) and label not in wanted:
+        if (label.startswith(PREFIX) or label.startswith(TREE_PREFIX) or label.startswith(SHOP_LIGHT_PREFIX))                 and label not in wanted:
             actor.destroy_actor()
             existing.pop(label, None)
             changes += 1
     c.log("updated" if changes else "exists", "street look",
-          "{0} relief and dressing meshes ({1} boxes), {2} trees".format(len(plan), sum(len(v) for v in plan.values()),
-                                                                        len(trees)))
+          "{0} relief and dressing meshes ({1} boxes), {2} trees, {3} shop lights".format(
+              len(plan), sum(len(v) for v in plan.values()), len(trees), len(lights)))
     return changes
