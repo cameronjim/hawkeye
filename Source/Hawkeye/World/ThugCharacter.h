@@ -889,8 +889,11 @@ protected:
 	 */
 	bool BeginGetUpClip(bool bFromRagdoll);
 
-	/** The ragdoll's bodies off and the mesh back to an animated character mesh (the end of the physics blend). */
+	/** The ragdoll's bodies off and the mesh back to an animated character mesh on the capsule (the end of the physics blend). */
 	void EndGetUpPhysics();
+
+	/** The mesh where it sits on the capsule, not attached while its bodies simulate (see the .cpp). */
+	void PlaceMeshOnCapsule();
 
 	/** Tells the brain (or, without one, the state) that By just hurt him. */
 	void AlertTo(AActor* By);

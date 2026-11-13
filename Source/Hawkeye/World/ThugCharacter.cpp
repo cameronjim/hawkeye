@@ -986,12 +986,12 @@ void AThugCharacter::StandUp()
 		SkeletalMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 		SkeletalMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 		// A get-up clip moves and turns the capsule so its first frame lies where the body does; without one he stands
-		// over his pelvis and blends up out of the ragdoll.
+		// over his pelvis and blends up out of the ragdoll. The mesh is put where it sits on the capsule but attached only
+		// once its bodies stop simulating (EndGetUpPhysics).
 		if (!BeginGetUpClip(/*bFromRagdoll=*/true))
 		{
 			SetActorLocation(Stand, false, nullptr, ETeleportType::None);
-			SkeletalMesh->AttachToComponent(Capsule, FAttachmentTransformRules::KeepWorldTransform);
-			SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+			PlaceMeshOnCapsule();
 		}
 		bBlendUp = true;
 	}
@@ -1097,12 +1097,33 @@ void AThugCharacter::UpdateGetUp(float DeltaSeconds)
 	}
 }
 
+void AThugCharacter::PlaceMeshOnCapsule()
+{
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (!SkeletalMesh || !Capsule)
+	{
+		return;
+	}
+	// AttachToComponent detaches a component whose root body simulates again at runtime (SceneComponent.cpp: "we must not
+	// attach physically simulated objects"), and the relative transform set after it then put the mesh at the world's
+	// origin, a metre under the street: every ragdoll get-up did that before 2026-11-13. While the bodies blend out the
+	// mesh stays detached, placed where it sits on the capsule (which does not move: no movement while getting up).
+	SkeletalMesh->SetWorldTransform(MeshRelativeTransform * Capsule->GetComponentTransform());
+}
+
 void AThugCharacter::EndGetUpPhysics()
 {
 	bGetUpPhysics = false;
 	if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
 	{
 		SkeletalMesh->SetAllBodiesSimulatePhysics(false);
+		SkeletalMesh->SetSimulatePhysics(false);
+		if (UCapsuleComponent* Capsule = GetCapsuleComponent(); Capsule && SkeletalMesh->GetAttachParent() != Capsule)
+		{
+			SkeletalMesh->AttachToComponent(Capsule, FAttachmentTransformRules::KeepWorldTransform);
+			SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+		}
 		SkeletalMesh->SetAllBodiesPhysicsBlendWeight(0.f);
 		SkeletalMesh->PhysicsTransformUpdateMode = EPhysicsTransformUpdateMode::SimulationUpatesComponentTransform;
 		SkeletalMesh->SetCollisionProfileName(TEXT("CharacterMesh"));
@@ -1306,8 +1327,7 @@ bool AThugCharacter::BeginGetUpClip(bool bFromRagdoll)
 	if (bFromRagdoll)
 	{
 		SetActorLocationAndRotation(Location, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::None);
-		SkeletalMesh->AttachToComponent(Capsule, FAttachmentTransformRules::KeepWorldTransform);
-		SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+		PlaceMeshOnCapsule();
 	}
 	else
 	{
