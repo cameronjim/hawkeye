@@ -194,6 +194,57 @@ class Rig:
         self.shin = seg("calf_l", "foot_l")
         self.idle_pos = {n: m.translation.copy() for n, m in self.idle.items()}
 
+    # ---- reference poses ----------------------------------------------------------------------------
+
+    def load_pose(self, fbx, seconds=0.0):
+        """Every bone's armature-space matrix in another clip of this skeleton at seconds (a pose reference: the
+        game's bow sits in the hands as that clip holds it). The imported objects are removed again."""
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=fbx, automatic_bone_orientation=False)
+        new = [o for o in bpy.data.objects if o not in before]
+        arm = next(o for o in new if o.type == "ARMATURE")
+        action = arm.animation_data.action
+        frame = int(action.frame_range[0]) + int(round(seconds * FPS))
+        scene = bpy.context.scene
+        keep = (scene.frame_start, scene.frame_end, scene.render.fps, scene.frame_current)
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        pose = dict((pb.name, pb.matrix.copy()) for pb in arm.pose.bones if pb.name in self.rest)
+        for o in new:
+            bpy.data.objects.remove(o, do_unlink=True)
+        bpy.data.actions.remove(action)
+        scene.frame_start, scene.frame_end, scene.render.fps = keep[0], keep[1], keep[2]
+        scene.frame_set(keep[3])
+        return pose
+
+    def basis_in(self, pose, name):
+        parent = self.parent[name]
+        if parent is None:
+            return self.rest_inv[name] @ pose[name]
+        return (pose[parent] @ self.rest_inv[parent] @ self.rest[name]).inverted() @ pose[name]
+
+    def take_fingers(self, pose, side):
+        """The fingers of one hand as pose holds them (a bow grip, a string hook) become the base the clip starts from."""
+        for name in self.order:
+            if name.endswith("_" + side) and name.split("_")[0] in ("index", "middle", "ring", "pinky", "thumb"):
+                q = self.basis_in(pose, name).to_quaternion()
+                self.idle_basis[name] = q.to_matrix().to_4x4()
+
+    def body_angles(self, pose):
+        """The pose's pelvis, chest (on the pelvis) and neck (on the chest) turns, in this solver's angles."""
+        def ang(m):
+            e = m.to_euler("YXZ")
+            return (math.degrees(e.x), math.degrees(e.z), math.degrees(e.y))
+        rp = _rot3(pose["pelvis"]) @ _rot3(self.idle["pelvis"]).inverted()
+        ct = _rot3(pose[self.chest_bone]) @ _rot3(self.idle[self.chest_bone]).inverted()
+        ht = _rot3(pose["head"]) @ _rot3(self.idle["head"]).inverted()
+        return ang(rp), ang(rp.inverted() @ ct), ang(ct.inverted() @ ht)
+
+    @staticmethod
+    def quat_of(pose, name):
+        q = pose[name].to_quaternion()
+        return (q.w, q.x, q.y, q.z)
+
     # ---- measures --------------------------------------------------------------------------------
 
     def idle_foot(self, side):
@@ -364,7 +415,10 @@ class Rig:
         # or following the forearm or shin ("follow").
         rot_key = e + "_rot"
         space = p.get(e + "_space", "chest" if arm else "world")
-        if space == "follow":
+        if (e + "_q") in p:
+            # An absolute turn (a quaternion in the armature's space), as a pose reference holds the hand.
+            m_e = _with(Quaternion(p[e + "_q"]).normalized().to_matrix(), end_pos)
+        elif space == "follow":
             m_e = m_lo @ (self.rest_inv[lo] @ self.rest[e] @ self._basis(e, p))
             rot = euler(*p.get(rot_key, (0, 0, 0)))
             m_e = _with(_rot3(m_e) @ rot, end_pos)
@@ -528,7 +582,7 @@ def check_clip(rig, clip, frames):
         worst_move = max(worst_move, (frames[f]["pelvis"].translation - frames[f - 1]["pelvis"].translation).length)
     notes.append("fastest turn {0:.1f} deg/frame ({1}, frame {2}); pelvis {3:.1f} cm/frame".format(
         worst_turn[0], worst_turn[1], worst_turn[2], worst_move))
-    if worst_turn[0] > POP_DEGREES:
+    if worst_turn[0] > clip.extra.get("pop_degrees", POP_DEGREES):
         problems.append("{0} pops {1:.0f} deg in one frame (frame {2})".format(worst_turn[1], worst_turn[0], worst_turn[2]))
     if worst_move > 12.0:
         problems.append("the pelvis jumps {0:.0f} cm in one frame".format(worst_move))
@@ -720,3 +774,28 @@ def export_fbx(rig, body, path):
         bake_anim_force_startend_keying=True, bake_anim_step=1.0, bake_anim_simplify_factor=0.0,
         apply_unit_scale=True, apply_scale_options="FBX_SCALE_NONE", armature_nodetype="NULL",
         primary_bone_axis="Y", secondary_bone_axis="X", use_armature_deform_only=False, mesh_smooth_type="FACE")
+
+
+def export_skeleton_fbx(rig, body, path):
+    """The rig at rest with its stand-in body and no animation: the file the import defines the source skeleton and its
+    reference pose from (a clip's file would bind the mesh in whatever pose its first frame holds)."""
+    arm = rig.arm
+    action = arm.animation_data.action if arm.animation_data else None
+    if arm.animation_data:
+        arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix.Identity(4)
+    arm.data.pose_position = "REST"
+    bpy.context.view_layer.update()
+    bpy.ops.object.select_all(action="DESELECT")
+    arm.select_set(True)
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    bpy.ops.export_scene.fbx(
+        filepath=path, use_selection=True, object_types={"ARMATURE", "MESH"}, add_leaf_bones=False, bake_anim=False,
+        apply_unit_scale=True, apply_scale_options="FBX_SCALE_NONE", armature_nodetype="NULL",
+        primary_bone_axis="Y", secondary_bone_axis="X", use_armature_deform_only=False, mesh_smooth_type="FACE")
+    arm.data.pose_position = "POSE"
+    if action is not None:
+        arm.animation_data.action = action

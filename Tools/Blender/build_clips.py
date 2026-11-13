@@ -6,8 +6,9 @@
 Needs the rigs Tools/Editor/export_clip_rigs.py writes (<assets root>/built/clips/rigs/A_Thug_Idle.fbx and
 A_Kate_Idle.fbx: the thugs' UE4 mannequin and Kate's UEFN mannequin, each in its idle). Writes, per rig:
 
-    <out>/<rig>/<Clip>.fbx            the clip on the rig's own skeleton (its armature object is the root bone) with a
-                                      stand-in body of capsules (the import defines the source skeleton from it)
+    <out>/<rig>/Skeleton.fbx          the rig at rest with a stand-in body of capsules bound to it: the import defines
+                                      the source skeleton and its reference pose from it
+    <out>/<rig>/<Clip>.fbx            the clip on the rig's own skeleton (its armature object is the root bone)
     <out>/<rig>/clips.json            per clip: length, the checks' measures
     <renders>/<rig>_<Clip>.png        side-on strip of the clip at fixed times (red bars along the top: tenths of s)
 
@@ -310,9 +311,169 @@ def hit_heavy(rig):
 
 HITS = [hit_front, hit_left, hit_right, hit_heavy]
 
+
+# --------------------------------------------------------------------------------------------------
+# the bow (Kate: UEFN mannequin, upper body)
+# --------------------------------------------------------------------------------------------------
+
+# The game's bow rides in the clip's left hand and its aim offset is laid out on the drawn pose Paragon's Sparrow holds
+# (claude-docs/animation.md, "The bow clips"), so the hands' places and turns at the anchor and at the nock are taken from
+# those poses (exported by Tools/Editor/export_clip_rigs.py); the motion between them, its timing, arcs, lead and settle
+# are keyed here.
+# Sparrow's draw is the trimmed 0.43-0.93 s of her whole shot (manifest): the nock is its 0.43 s.
+BOW_REFS = {"anchor": ("A_Kate_BowAim.fbx", 0.0), "nock": ("A_Kate_BowDraw.fbx", 0.43)}
+
+
+def _bow_refs(rig):
+    if getattr(rig, "bow_refs", None) is None:
+        rigs = os.path.join(rig.assets_root, "built", "clips", "rigs")
+        rig.bow_refs = {}
+        for key, (name, at) in BOW_REFS.items():
+            rig.bow_refs[key] = rig.load_pose(os.path.join(rigs, name), at)
+        rig.take_fingers(rig.bow_refs["anchor"], "l")
+        rig.take_fingers(rig.bow_refs["anchor"], "r")
+    return rig.bow_refs
+
+
+def _ref_bits(rig, pose):
+    pelvis, chest, neck = rig.body_angles(pose)
+    bits = {"pelvis_rot": pelvis, "chest": chest, "neck": neck}
+    for side in ("l", "r"):
+        bits["hand_" + side] = tuple(pose["hand_" + side].translation)
+        bits["hand_" + side + "_q"] = rig.quat_of(pose, "hand_" + side)
+        upper = pose["upperarm_" + side].translation
+        mid = (upper + pose["hand_" + side].translation) * 0.5
+        bits["pole_hand_" + side] = tuple((pose["lowerarm_" + side].translation - mid).normalized())
+    return bits
+
+
+def _same_hemisphere(q, ref):
+    return tuple(-v for v in q) if sum(a * b for a, b in zip(q, ref)) < 0 else q
+
+
+def _lerp(a, b, f):
+    return tuple(x + (y - x) * f for x, y in zip(a, b))
+
+
+def _scale(v, f):
+    return tuple(x * f for x in v)
+
+
+def _unit(v):
+    n = sum(x * x for x in v) ** 0.5
+    return tuple(x / n for x in v)
+
+
+def _bow_keys(rig, keys):
+    """Tracks from keyed body states: keys is [(t, {param: value})], every key naming every param."""
+    names = keys[0][1].keys()
+    tracks = {}
+    for name in names:
+        values = [(t, k[name]) for t, k in keys]
+        if name.endswith("_q"):
+            fixed = [values[0]]
+            for t, q in values[1:]:
+                fixed.append((t, _same_hemisphere(q, fixed[-1][1])))
+            values = fixed
+        tracks[name] = T(values)
+    return tracks
+
+
+def bow_draw(rig):
+    """From the nock (the arrow on the string, the bow up) to the anchor in 0.36 s: the string hand eases forward onto
+    the string, then pulls back along an arc that lifts and swings out past the shoulder to the jaw, the chest turning
+    side-on ahead of it; the hand overshoots the anchor by a little and settles, the bow arm pushing out against it."""
+    refs = _bow_refs(rig)
+    n = _ref_bits(rig, refs["nock"])
+    a = _ref_bits(rig, refs["anchor"])
+    pull = _unit(tuple(x - y for x, y in zip(a["hand_r"], n["hand_r"])))
+    target = _unit(tuple(x - y for x, y in zip(a["hand_l"], a["hand_r"])))
+
+    def state(base, **over):
+        out = dict(base)
+        out.update(over)
+        return out
+
+    keys = [
+        (0.00, n),
+        (0.05, state(n, hand_r=add(n["hand_r"], _scale(pull, -1.5)), chest=add(n["chest"], V(0, 1.0, 0)))),
+        (0.16, state(_mix(n, a, 0.45), hand_r=add(_lerp(n["hand_r"], a["hand_r"], 0.5), V(0, 0, 3.5)))),
+        (0.27, state(a, hand_r=add(a["hand_r"], _scale(pull, 2.5)), hand_l=add(a["hand_l"], _scale(target, 1.2)),
+                     chest=add(a["chest"], V(0, -2.5, 0)), neck=add(a["neck"], V(0, 1.5, 0)))),
+        (0.36, a),
+    ]
+    tracks = _bow_keys(rig, keys)
+    tracks["fingers_r"] = T([(0.0, 1.0), (0.36, 1.0)])
+    # A real draw is fast: the string elbow swings about 50 cm from in front of the chest to behind the shoulder in
+    # about 0.2 s, so its upper arm turns up to 40 degrees a frame at the peak (smoothly: no frame jumps on its own).
+    return ck.Clip("BowDraw", 0.36, tracks, strip_times=[0.0, 0.05, 0.12, 0.19, 0.27, 0.36], torso_clear=False,
+                   extra={"span": (-110.0, 110.0), "pop_degrees": 45.0})
+
+
+def _mix(a, b, f):
+    out = {}
+    for k in a:
+        if k.endswith("_q"):
+            q = _same_hemisphere(b[k], a[k])
+            out[k] = _lerp(a[k], q, f)
+        else:
+            out[k] = _lerp(a[k], b[k], f)
+    return out
+
+
+def bow_aim(rig):
+    """The held draw, a 2 s loop: the chest rises and falls with a breath, the string hand and the bow hand drift a few
+    millimetres with it; it ends exactly where it starts."""
+    a = _ref_bits(rig, _bow_refs(rig)["anchor"])
+
+    def breath(f, hand):
+        return dict(a, chest=add(a["chest"], V(-0.7 * f, 0.2 * f, 0)), hand_r=add(a["hand_r"], V(0, 0, 0.4 * f)),
+                    hand_l=add(a["hand_l"], V(0, 0, 0.25 * hand)))
+
+    keys = [(0.0, a), (0.5, breath(1.0, 0.6)), (1.0, breath(0.2, 1.0)), (1.5, breath(-0.6, 0.2)), (2.0, a)]
+    return ck.Clip("BowAimIdle", 2.0, _bow_keys(rig, keys), strip_times=[0.0, 0.5, 1.0, 1.5, 2.0], torso_clear=False,
+                   extra={"span": (-110.0, 110.0)})
+
+
+def bow_fire(rig):
+    """The release: the string hand springs back past the ear and out, fingers open, the bow arm pushes on toward the
+    target and dips as the bow kicks; held a beat, then the string hand swings down and forward in an arc to the nock,
+    where the next draw starts."""
+    refs = _bow_refs(rig)
+    n = _ref_bits(rig, refs["nock"])
+    a = _ref_bits(rig, refs["anchor"])
+    back = _unit(tuple(x - y for x, y in zip(a["hand_r"], a["hand_l"])))
+    chest = tuple(refs["anchor"][rig.chest_bone].translation)
+    side = _unit(tuple(x - y for x, y in zip(a["hand_r"], chest)))
+    out = _unit((side[0] - back[0] * sum(s * b for s, b in zip(side, back)),
+                 side[1] - back[1] * sum(s * b for s, b in zip(side, back)), 0.0))
+    fwd = _scale(back, -1.0)
+
+    def state(base, **over):
+        res = dict(base)
+        res.update(over)
+        return res
+
+    keys = [
+        (0.00, a),
+        (0.05, state(a, hand_r=add(add(add(a["hand_r"], _scale(back, 13)), _scale(out, 4)), V(0, 0, 2)),
+                     hand_l=add(add(a["hand_l"], _scale(fwd, 2.5)), V(0, 0, -1)))),
+        (0.16, state(a, hand_r=add(add(add(a["hand_r"], _scale(back, 16)), _scale(out, 7)), V(0, 0, -1)),
+                     hand_l=add(add(a["hand_l"], _scale(fwd, 1.0)), V(0, 0, -3)), chest=add(a["chest"], V(0, -2.0, 0)))),
+        (0.32, state(_mix(a, n, 0.5), hand_r=add(add(_lerp(a["hand_r"], n["hand_r"], 0.5), _scale(out, 6)), V(0, 0, -8)))),
+        (0.50, n),
+    ]
+    tracks = _bow_keys(rig, keys)
+    tracks["fingers_r"] = T([(0.0, 1.0), (0.03, 0.25), (0.20, 0.3), (0.42, 1.0), (0.5, 1.0)])
+    return ck.Clip("BowFire", 0.5, tracks, strip_times=[0.0, 0.04, 0.1, 0.16, 0.25, 0.35, 0.5], torso_clear=False,
+                   extra={"span": (-110.0, 110.0), "pop_degrees": 45.0})
+
+
+BOW = [bow_draw, bow_aim, bow_fire]
+
 CLIPS = {
     "ue4": [getup_back, getup_front] + HITS,
-    "uefn": list(HITS),
+    "uefn": list(HITS) + BOW,
 }
 
 
@@ -336,7 +497,13 @@ def main():
             failures.append(idle)
             continue
         rig = ck.Rig(kind, idle)
+        rig.assets_root = args.assets_root
         body = ck.build_body(rig)
+        if not args.no_export:
+            # The source skeleton's file: the rig at rest, the stand-in body bound to it (manifest mesh_file).
+            skeleton = os.path.join(args.out, kind, "Skeleton.fbx")
+            ck.export_skeleton_fbx(rig, body, skeleton)
+            print("[clips] exported " + skeleton)
         report = {}
         out_dir = os.path.join(args.out, kind)
         json_path = os.path.join(out_dir, "clips.json")

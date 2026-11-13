@@ -7,8 +7,10 @@ clips"). Blender needs those skeletons, and the idles the clips start and end on
     <assets root>/built/clips/rigs/A_Thug_Idle.fbx            ThirdPersonIdle on the thugs' UE4 mannequin: the skeleton,
                                                               and the pose a thug's clips start and end on
     <assets root>/built/clips/rigs/A_Kate_Idle.fbx            the sample's neutral standing idle on Kate's UEFN mannequin
-    <assets root>/built/clips/rigs/A_Thug_KnockedOut.fbx      the thug's clip knockdown, whose last frame his get-up
-                                                              from the back starts on
+    <assets root>/built/clips/rigs/A_Thug_KnockedOut.fbx      the thug's clip knockdown (the get-up from the back is
+                                                              aligned onto its last frame in the game)
+    <assets root>/built/clips/rigs/A_Kate_BowAim.fbx,         pose references for Kate's bow: the anchor (the bow in
+        A_Kate_BowDraw.fbx                                    the hand where the aim offset expects it) and the nock
 
 An animation's FBX carries its skeleton, which is all Blender needs; the meshes are not exported (the skeletal mesh
 exporter asserts in a headless editor). Epic's content stays outside the repo. Run headless:
@@ -34,6 +36,10 @@ EXPORTS = (
     # The thug's clip knockdown (Mixamo's Knocked Out, retargeted by Tools/import-anims.ps1): the get-up from his back
     # starts on its last held frame.
     ("/Game/Mannequin/Animations/Combat/A_Knockdown_KnockedOut", "A_Thug_KnockedOut.fbx"),
+    # Pose references for Kate's bow (retargeted from Paragon's Sparrow by Tools/import-anims.ps1): where the game's bow
+    # sits in her hands at the anchor (the aim offset is laid out on this pose) and where a draw starts (the nock).
+    ("/Game/Characters/UEFN_Mannequin/Animations/Combat/A_BowAimIdle_Sparrow", "A_Kate_BowAim.fbx"),
+    ("/Game/Characters/UEFN_Mannequin/Animations/Combat/A_BowDraw_Sparrow", "A_Kate_BowDraw.fbx"),
 )
 
 
