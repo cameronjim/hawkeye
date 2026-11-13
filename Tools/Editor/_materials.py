@@ -1133,13 +1133,36 @@ def _build_road_paint(material):
     _look.build_paint(sys.modules[__name__], material)
 
 
+M_MANHOLE = MATERIALS_PATH + "/M_Manhole"                 # look pass 3: manholes, steam, snow piles, signs, bark
+M_STEAM = MATERIALS_PATH + "/M_Steam"
+M_SNOW_PILE = MATERIALS_PATH + "/M_SnowPile"
+M_STREET_SIGN = MATERIALS_PATH + "/M_StreetSign"
+M_TREE_BARK = MATERIALS_PATH + "/M_TreeBark"
+
+
+def _look_builder(name):
+    def build(material):
+        import _look
+        getattr(_look, name)(sys.modules[__name__], material)
+    return build
+
+
 def ensure_street_look():
-    """The look pass 2 materials: {"cloud", "paint", "blocks": {name: MI}, "car": M_Car}."""
+    """The look pass 2 and 3 materials: {"cloud", "paint", "blocks": {name: MI}, "car": M_Car, "manhole", "steam",
+    "snowpile", "bark", "signs": {kind: MI}}."""
     out = {
         "cloud": ensure_look_material(M_CLOUD_DECK, _build_cloud_deck),
         "paint": ensure_look_material(M_ROAD_PAINT, _build_road_paint),
         "car": ensure_look_material(M_CAR, _build_car, instanced=True),
+        "manhole": ensure_look_material(M_MANHOLE, _look_builder("build_manhole")),
+        "steam": ensure_look_material(M_STEAM, _look_builder("build_steam")),
+        "snowpile": ensure_look_material(M_SNOW_PILE, _look_builder("build_snow_pile")),
+        "bark": ensure_look_material(M_TREE_BARK, _look_builder("build_bark")),
     }
+    sign = ensure_look_material(M_STREET_SIGN, _look_builder("build_street_sign"))
+    out["signs"] = {name: ensure_material_instance(MATERIALS_PATH + "/MI_StreetSign_" + name, sign,
+                                                   scalars=[("Kind", float(kind))])
+                    for kind, name in enumerate(("NoParking", "BusStop", "OneWay"))}
     block = ensure_look_material(M_STREET_BLOCK, _build_street_block)
     out["blocks"] = {name: ensure_material_instance(MATERIALS_PATH + "/MI_StreetBlock_" + name, block,
                                                     scalars=[("Kind", kind), ("Top", top)])
@@ -1151,6 +1174,20 @@ def ensure_car_instance(name, rgb):
     """MI_Car_<name> under M_Car."""
     parent = ensure_look_material(M_CAR, _build_car, instanced=True)
     return ensure_material_instance(MATERIALS_PATH + "/MI_Car_" + name, parent, vectors=[("Color", rgb)])
+
+
+def ensure_car_shape_instance(shape, colour, rgb, dims):
+    """MI_Car_<shape>_<colour> under M_Car for the street look's parked cars: the colour and the body's numbers
+    (_street_look.CAR_SHAPES: length, width, wheel base half, wheel radius, glass from, glass to, lamp z)."""
+    length, width, base, radius, glass_lo, glass_hi, lamp_z = dims
+    parent = ensure_look_material(M_CAR, _build_car, instanced=True)
+    return ensure_material_instance(
+        MATERIALS_PATH + "/MI_Car_" + shape + "_" + colour, parent,
+        vectors=[("Color", rgb), ("Shape1", (glass_lo, glass_hi, length * 0.5 - 8.0)), ("Shape2", (lamp_z, base, radius)),
+                 ("Shape3", (width * 0.5,) + CAR_PILLARS.get(shape, (0.0, 0.0)))])
+
+
+CAR_PILLARS = {"Sedan": (-26.0, 0.0), "SUV": (-40.0, -150.0), "Van": (20.0, -120.0)}   # x of the B (and C) pillars
 
 
 def _build_window_lit(material):

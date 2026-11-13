@@ -805,7 +805,7 @@ if (ground > 0.5)
         if (panel > 0.5)
         {
             float tt = L.HF(L.Key(seed, face, seg, bayI, 9u));
-            int treat = tt < 0.38 ? 0 : (tt < 0.62 ? 1 : (tt < 0.84 ? 2 : 3));      // painted, raised, lit box, neon
+            int treat = tt < 0.34 ? 0 : (tt < 0.56 ? 1 : (tt < 0.78 ? 2 : 3));      // painted, raised, lit box, neon
             float hc = L.HF(L.Key(seed, face, seg, bayI, 15u));
             int len = (int)NAME_LEN[trade];
             int fsel = treat == 3 ? (hc < 0.5 ? 2 : 3) : (treat == 1 ? (hc < 0.5 ? 0 : 2) : (len > 9 ? 1 : (hc < 0.7 ? 0 : 3)));
@@ -825,7 +825,7 @@ if (ground > 0.5)
             else if (treat == 2)
             {
                 panelCol = hc < 0.5 ? float3(0.80, 0.80, 0.76) : (hc < 0.75 ? float3(0.75, 0.62, 0.10) : float3(0.10, 0.25, 0.60));
-                inkCol = hc < 0.5 ? (hc < 0.25 ? float3(0.45, 0.02, 0.02) : float3(0.02, 0.06, 0.25)) : float3(0.85, 0.85, 0.82);
+                inkCol = hc < 0.25 ? float3(0.45, 0.02, 0.02) : (hc < 0.5 ? float3(0.02, 0.06, 0.25) : (hc < 0.75 ? float3(0.03, 0.03, 0.03) : float3(0.85, 0.85, 0.82)));
             }
             else
             {
@@ -884,7 +884,7 @@ if (ground > 0.5)
                 // the box sign's frame
                 float edge = min(halfPanel - abs(su), min(z - 310.0, 386.0 - z));
                 col = edge < 4.0 ? float3(0.05, 0.05, 0.055) : col;
-                emis += (edge < 4.0 ? 0.0 : 1.0) * lerp(panelCol, inkCol * 0.6, ink) * Glow * lerp(3.2, 0.25, Day);
+                emis += (edge < 4.0 ? 0.0 : 1.0) * lerp(panelCol, inkCol, ink) * Glow * lerp(3.2, 0.25, Day);
             }
             if (treat == 1)
             {
@@ -1116,35 +1116,37 @@ float cr = abs(L.VN(float2(along, across) / 90.0) - 0.5);
 float crack = (1.0 - smoothstep(0.0, 0.01 + fw * 0.002, cr)) * saturate(1.5 - fw / 2.0) * step(0.62, L.VN(float2(along, across) / 700.0));
 asph *= 1.0 - 0.6 * crack;
 
-// Snow: wheel tracks worn to wet asphalt, compacted snow and slush between them, a plowed ridge at the kerb.
+// Snow, as a day after a fall looks from the street: the wheel tracks worn to black wet asphalt, grey-brown slush
+// between them and at the lane lines, the parking lanes packed and dirty, a plowed ridge at the kerb; clean snow only
+// where nothing drives.
 float park = hasFrame * step(halfW - 250.0, a);
 float drive = max(halfW - 250.0, 165.0);
 float laneW = 330.0;
 float lanes = max(1.0, floor(2.0 * drive / laneW));
 float x = across + 0.5 * lanes * laneW;
 float lx = frac(x / laneW) * laneW - 0.5 * laneW;
-float wob = (L.VN(float2(along / 700.0, floor(x / laneW) * 3.0)) - 0.5) * 60.0;
-float trackD = min(abs(lx - wob - 80.0), abs(lx - wob + 80.0));
-float track = 1.0 - smoothstep(20.0, 46.0, trackD + (L.VN(float2(along / 60.0, lx / 20.0)) - 0.5) * 18.0);
+float wob = (L.VN(float2(along / 700.0, floor(x / laneW) * 3.0)) - 0.5) * 50.0;
+float trackD = min(abs(lx - wob - 82.0), abs(lx - wob + 82.0));
+float track = 1.0 - smoothstep(34.0, 62.0, trackD + (L.VN(float2(along / 60.0, lx / 20.0)) - 0.5) * 22.0);
 float sn = L.FBM(float2(along, across) / 120.0);
-float cover = saturate(0.72 + 0.7 * (sn - 0.5));
-cover = lerp(cover, 0.03, track * (1.0 - park));
+float between = saturate(0.47 + 0.5 * (sn - 0.5)) + 0.15 * (1.0 - smoothstep(30.0, 80.0, abs(abs(lx) - 165.0)));
+float cover = lerp(between, 0.0, track);
 float ridge = hasFrame * smoothstep(halfW - 110.0, halfW - 15.0, a);
+cover = lerp(cover, saturate(0.62 + 0.5 * (sn - 0.5)), park);
 cover = max(cover, ridge);
-cover = lerp(cover, saturate(cover + 0.35), park);
 if (hasFrame < 0.5)
 {
     cover = saturate(0.35 + 0.8 * (sn - 0.5));
 }
 float slushy = saturate(1.0 - abs(cover - 0.45) * 3.0);
-float3 snowC = float3(0.60, 0.60, 0.61) * lerp(0.78, 1.0, L.VN(WP.xy / 40.0));
-float3 slushC = float3(0.17, 0.155, 0.135);
-float3 col = lerp(asph, slushC, saturate(cover * 2.0));
-col = lerp(col, snowC, saturate(cover * 2.0 - 1.0));
+float3 snowC = float3(0.56, 0.56, 0.57) * lerp(0.78, 1.0, L.VN(WP.xy / 40.0));
+float3 slushC = float3(0.15, 0.14, 0.125) * lerp(0.8, 1.15, L.VN(WP.xy / 25.0));
+float3 col = lerp(asph * 0.7, slushC, saturate(cover * 2.0));
+col = lerp(col, lerp(snowC, float3(0.36, 0.34, 0.31), 0.35 * park), saturate(cover * 2.0 - 1.0));
 col = lerp(col, float3(0.24, 0.22, 0.19), ridge * lerp(0.45, 0.9, L.VN(WP.xy / 60.0)));
 float wet = 1.0 - saturate(cover * 2.0);
-float rough = lerp(0.7, 0.22, wet * lerp(0.55, 1.0, L.VN(WP.xy / 300.0)));
-rough = lerp(rough, 0.3, slushy);
+float rough = lerp(0.7, 0.42, wet * lerp(0.6, 1.0, L.VN(WP.xy / 300.0)));
+rough = lerp(rough, 0.6, slushy);
 rough = lerp(rough, 0.72, saturate(cover * 2.0 - 1.0));
 float yl = step(900.0, halfW) * step(abs(abs(across) - 10.0), 5.0);
 col = lerp(col, float3(0.50, 0.33, 0.03), yl * (1.0 - saturate(cover * 1.6)));
@@ -1179,11 +1181,16 @@ float3 col = lerp(conc, float3(0.11, 0.11, 0.11), joint);
 float3 kerbC = float3(0.30, 0.30, 0.31) * lerp(0.75, 1.15, L.H21(floor(WP.xy / 1.5)));
 col = lerp(col, kerbC, kerbTop);
 
-// Snow: a trodden path down the middle, banks at the building line and the kerb, salt and wet where it is clear.
-float path = hasFrame * (1.0 - plaza) * smoothstep(40.0, 110.0, ka) * (1.0 - smoothstep(280.0, 360.0, ka));
+// Snow: a path shovelled down the middle with a ragged edge, banks of shovelled snow either side (the kerb side
+// round the trees and lamps, the building side), salt and wet where it is clear.
+float onWalk = hasFrame * (1.0 - plaza);
+float pathIn = 75.0 + (L.VN(float2(along / 80.0, 3.1)) - 0.5) * 22.0;
+float pathOut = 255.0 + (L.VN(float2(along / 95.0, 7.3)) - 0.5) * 26.0;
+float path = onWalk * smoothstep(pathIn - 4.0, pathIn + 4.0, ka) * (1.0 - smoothstep(pathOut - 4.0, pathOut + 4.0, ka));
 float sn = L.FBM(float2(along, ka) / 90.0);
-float bank = hasFrame * (1.0 - plaza) * (smoothstep(330.0, 390.0, ka) + (1.0 - smoothstep(20.0, 45.0, ka)) * (1.0 - kerbTop));
-float cover = saturate(0.5 + (sn - 0.5) * 1.6 - path * 0.75 + bank * 0.6);
+float bank = onWalk * (1.0 - path);
+float cover = lerp(saturate(0.5 + (sn - 0.5) * 1.6), saturate(0.95 + (sn - 0.5) * 0.3), bank);
+cover = lerp(cover, 0.03 + 0.22 * smoothstep(0.66, 0.88, sn), path);
 cover = saturate(cover - kerbTop * 0.4);
 float salt = smoothstep(0.55, 0.75, L.FBM(WP.xy / 25.0 + 4.0)) * (1.0 - cover);
 col = lerp(col, float3(0.56, 0.56, 0.54), salt * 0.55);
@@ -1198,7 +1205,11 @@ float2 q = WP.xy / 35.0;
 float b0 = L.FBM(q);
 float bx = L.FBM(q + float2(0.08, 0.0));
 float by = L.FBM(q + float2(0.0, 0.08));
-float3 nrm = normalize(up + float3(b0 - bx, b0 - by, 0.0) * 1.6 * trod);
+// the banks fall away into the path at its edges
+float sideSign = across >= 0.0 ? 1.0 : -1.0;
+float inB = onWalk * smoothstep(pathIn - 40.0, pathIn - 5.0, ka) * (1.0 - smoothstep(pathIn - 5.0, pathIn + 3.0, ka));
+float outB = onWalk * smoothstep(pathOut - 3.0, pathOut + 5.0, ka) * (1.0 - smoothstep(pathOut + 5.0, pathOut + 40.0, ka));
+float3 nrm = normalize(up + float3(b0 - bx, b0 - by, 0.0) * 1.6 * trod + Sw * sideSign * (inB - outB) * 0.9);
 if (abs(n.z) < 0.5)
 {
     // the kerb face, its steel edge at the top
@@ -1550,11 +1561,32 @@ float zl = LP.z;
 float3 col = Paint;
 float rough = 0.28;
 float3 emis = float3(0.0, 0.0, 0.0);
-if (zl < 30.0) { col = float3(0.02, 0.02, 0.022); rough = 0.8; }
+float glassLo = Shape1.x;
+float glassHi = Shape1.y;
+float halfLen = Shape1.z;
+float lampZ = Shape2.x;
+float wb = Shape2.y;
+float wr = Shape2.z;
+float halfW = Shape3.x;
+float2 wq = float2(abs(LP.x) - wb, zl - wr);
+bool wheel = length(wq) < wr + 1.0 && abs(LP.y) > halfW - 26.0;
+if (zl < 30.0 || wheel)
+{
+    bool rim = wheel && length(wq) < wr * 0.58 && abs(n.z) < 0.5;
+    col = rim ? float3(0.22, 0.22, 0.23) : float3(0.02, 0.02, 0.022);
+    rough = rim ? 0.35 : 0.8;
+}
 else if (zl < 42.0) { col = float3(0.035, 0.035, 0.038); rough = 0.6; }
-else if (zl > 100.0 && zl < 132.0 && abs(n.z) < 0.6) { col = float3(0.015, 0.017, 0.02); rough = 0.05; }
-if (abs(zl - 72.0) < 1.5 && abs(n.z) < 0.6) { col = float3(0.15, 0.15, 0.16); }
-if (abs(LP.x) > 222.0 && zl > 62.0 && zl < 76.0 && abs(LP.y) > 45.0)
+else if (zl > glassLo && zl < glassHi && abs(n.z) < 0.85)
+{
+    // glass, with the pillars between the side windows in the body colour
+    bool pillar = abs(n.y) > 0.7 && (abs(LP.x - Shape3.y) < 6.0 || (Shape3.z != 0.0 && abs(LP.x - Shape3.z) < 7.0));
+    col = pillar ? Paint * 0.8 : float3(0.015, 0.017, 0.02);
+    rough = pillar ? 0.3 : 0.05;
+}
+else if (!wheel && length(wq) < wr + 8.0 && abs(n.y) > 0.7) { col = float3(0.008, 0.008, 0.009); rough = 0.9; }
+if (abs(zl - (glassLo - 28.0)) < 1.5 && abs(n.z) < 0.6 && !wheel) { col = float3(0.15, 0.15, 0.16); }
+if (abs(LP.x) > halfLen && abs(zl - lampZ) < 7.0 && abs(LP.y) > halfW - 45.0)
 {
     bool front = LP.x > 0.0;
     col = front ? float3(0.75, 0.75, 0.72) : float3(0.45, 0.02, 0.02);
@@ -1631,6 +1663,10 @@ def build_car(m, material):
         ("LP", m.expr(material, "MaterialExpressionLocalPosition", -1600, 0)),
         ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100)),
         ("Paint", m.vector_param(material, "Color", (0.1, 0.1, 0.11), -1600, 200)),
+        # the box car's numbers by default (SM_City_ParkedCar); _street_look.CAR_SHAPES for the others
+        ("Shape1", m.vector_param(material, "Shape1", (100.0, 132.0, 222.0), -1600, 500)),
+        ("Shape2", m.vector_param(material, "Shape2", (69.0, 140.0, 33.0), -1600, 600)),
+        ("Shape3", m.vector_param(material, "Shape3", (90.0, 0.0, 0.0), -1600, 700)),
         ("Glow", m.constant(material, m.EMISSIVE_INTENSITY_FACTOR, -1600, 300)),
         ("Day", day_node(m, material, -2300, 400)),
     ]
@@ -1651,6 +1687,277 @@ def build_paint(m, material):
     m.connect_property(node, unreal.MaterialProperty.MP_ROUGHNESS, "Rough")
 
 
+# --------------------------------------------------------------------------------------------------------------------
+# look pass 3: manholes, steam, snow piles, street signs, bark
+# --------------------------------------------------------------------------------------------------------------------
+
+# A manhole (SM_Street_Manhole, a 75 cm disc in local cm, masked): a cast-iron cover in its frame, and round it the
+# asphalt the steam under it keeps clear of snow, wet and black, with a ragged edge.
+MANHOLE_BODY = r"""
+float r = length(LP.xy);
+float a = atan2(LP.y, LP.x);
+float3 col;
+float rough;
+Mask = 1.0;
+if (r < 33.0)
+{
+    float ring = frac(r / 6.5) < 0.14 ? 0.55 : 1.0;
+    float2 g = frac(LP.xy / 5.0);
+    float stud = (r > 6.0 && g.x < 0.32 && g.y < 0.32) ? 1.35 : 1.0;
+    col = float3(0.04, 0.037, 0.034) * ring * stud * lerp(0.75, 1.25, L.VN(LP.xy / 9.0));
+    col = lerp(col, float3(0.13, 0.06, 0.03), 0.4 * smoothstep(0.6, 0.8, L.FBM(LP.xy / 12.0)));
+    rough = 0.3;
+}
+else if (r < 37.0)
+{
+    col = float3(0.06, 0.055, 0.05);
+    rough = 0.35;
+}
+else
+{
+    col = float3(0.028, 0.028, 0.03) * lerp(0.8, 1.15, L.FBM(WP.xy / 25.0));
+    rough = 0.1;
+    float edge = 50.0 + 22.0 * L.FBM(float2(a * 2.5, 1.7) + LP.xy / 22.0);
+    Mask = r < edge ? 1.0 : 0.0;
+}
+Rough = rough;
+return col;
+"""
+MANHOLE_HLSL = LIB_HLSL + MANHOLE_BODY
+
+# Steam from a manhole (SM_Street_Steam, an open cone 3 m tall in local cm, unlit translucent): puffs of a rising
+# noise, soft at the silhouette and the base, thinning as they climb; grey-white by day, a dull warm grey at night.
+STEAM_BODY = r"""
+float h = saturate(LP.z / 320.0);
+float2 p = float2(atan2(LP.y, LP.x) * 1.3 + LP.z / 90.0, LP.z / 45.0 - T * 0.8);
+float puff = L.FBM(p) * 0.7 + L.FBM(p * 2.3 + 5.0) * 0.3;
+float fres = saturate(abs(dot(normalize(N), normalize(V))));
+float a = smoothstep(0.38, 0.78, puff) * fres * fres * (1.0 - h) * saturate(LP.z / 30.0);
+Opacity = a * lerp(0.45, 0.6, Day);
+return lerp(float3(0.07, 0.06, 0.055), float3(0.85, 0.86, 0.88), Day) * Lum;
+"""
+STEAM_HLSL = LIB_HLSL + STEAM_BODY
+
+# Shovelled and plowed snow (SM_Street_SnowPiles, world cm): clean on top, grey-brown with road dirt low down and on
+# the sides, lumpy in the normal.
+SNOWPILE_BODY = r"""
+float3 n = normalize(N);
+float top = smoothstep(0.25, 0.75, n.z);
+float low = saturate(1.0 - (WP.z - 4.0) / 45.0);
+float dirt = saturate((0.45 + low * 0.8 + (1.0 - top) * 0.5) * lerp(0.5, 1.3, L.FBM(WP.xy / 35.0 + WP.z / 20.0)) - 0.15);
+float3 snowC = float3(0.62, 0.62, 0.63) * lerp(0.85, 1.0, L.VN(WP.xy / 18.0));
+float3 dirtyC = float3(0.15, 0.13, 0.105) * lerp(0.6, 1.2, L.FBM(WP.xy / 12.0 + WP.z / 9.0));
+float3 col = lerp(snowC, dirtyC, dirt);
+float2 q = WP.xy / 14.0 + WP.z / 30.0;
+float b0 = L.FBM(q);
+float bx = L.FBM(q + float2(0.1, 0.0));
+float by = L.FBM(q + float2(0.0, 0.1));
+NormalWS = normalize(n + float3(b0 - bx, b0 - by, 0.0) * 1.2);
+Rough = lerp(0.7, 0.85, dirt);
+Emis = step(0.9993, L.H21(floor(WP.xy / 2.0) + floor(WP.z / 2.0))) * top * (1.0 - dirt) * saturate(1.0 - Depth / 1200.0) * Sparkle;
+return col;
+"""
+SNOWPILE_HLSL = LIB_HLSL + SNOWPILE_BODY
+
+# Street signs (SM_Street_SignPlate: 2 x 46 x 60 cm, the face toward local +X; LocalPosition y across, z up): Kind 0 a
+# no-parking plate (white, red border, red NO and PARKING, rows of small print), 1 a bus stop (white, blue band,
+# BUS STOP), 2 a one-way arrow (black plate, white arrow, ONE WAY on it). Lettering from the sign atlas (Roboto Bold).
+SIGN_TEXTS = ["NO", "PARKING", "BUS", "STOP", "ONE WAY"]
+
+
+def sign_text_hlsl():
+    import _sign_font as sf
+    chars, starts, lengths = [], [], []
+    for text in SIGN_TEXTS:
+        starts.append(len(chars))
+        lengths.append(len(text))
+        chars.extend(sf.GLYPHS.index(ch) for ch in text)
+
+    def arr(kind, name, values, fmt="{0}"):
+        return "static const {0} {1}[{2}] = {{{3}}};".format(kind, name, len(values), ", ".join(fmt.format(v) for v in values))
+    return "\n".join([
+        arr("uint", "T_CHARS", chars), arr("uint", "T_START", starts), arr("uint", "T_LEN", lengths),
+        arr("float", "T_ADV", sf.ADVANCE[0], "{0:.5f}"),
+        "static const float T_GRID = {0:.1f};".format(sf.GRID),
+        "static const float T_ORIGIN = {0:.6f};".format(sf.ORIGIN_X / float(sf.CELL)),
+        "static const float T_CAP = {0:.6f};".format(sf.CAP / float(sf.CELL)),
+        "static const float T_SDF = {0:.1f};".format(2.0 * sf.SPREAD),
+        "static const float T_CELL = {0:.1f};".format(sf.CELL),
+    ]) + "\n"
+
+
+SIGN_BODY = r"""
+float3 n = normalize(N);
+float x = -LP.y;          // seen from the face (local +X), the plate's right is local -Y
+float y = LP.z;
+bool front = LP.x > 0.5;
+int kind = (int)round(Kind);
+float3 col = float3(0.35, 0.35, 0.36);
+float rough = 0.5;
+float fw = max(fwidth(x), fwidth(y));
+if (front)
+{
+    // Text(t, centre y, cap height): the string laid out on its advances, centred on x = 0; returns ink 0..1.
+    float ink0 = 0.0;
+    float ink1 = 0.0;
+    int t0 = kind == 0 ? 0 : (kind == 1 ? 2 : 4);
+    int t1 = kind == 0 ? 1 : (kind == 1 ? 3 : -1);
+    float cy0 = kind == 0 ? 12.0 : (kind == 1 ? 8.0 : 0.0);
+    float cap0 = kind == 0 ? 13.0 : (kind == 1 ? 10.0 : 5.0);
+    float cy1 = kind == 0 ? -4.0 : -6.0;
+    float cap1 = kind == 0 ? 6.0 : 8.0;
+    [unroll] for (int ln = 0; ln < 2; ln++)
+    {
+        int tt = ln == 0 ? t0 : t1;
+        if (tt < 0) { continue; }
+        float cap = ln == 0 ? cap0 : cap1;
+        float cy = ln == 0 ? cy0 : cy1;
+        float kc = cap / T_CAP;
+        uint st = T_START[tt];
+        int len = (int)T_LEN[tt];
+        float wsum = 0.0;
+        [loop] for (int i = 0; i < len; i++) { wsum += T_ADV[T_CHARS[st + (uint)i]]; }
+        float qx = x / kc + 0.5 * wsum;
+        float qy = 0.5 - (y - cy) / kc;
+        float pen = 0.0;
+        float sd = 0.0;
+        [loop] for (int j = 0; j < len; j++)
+        {
+            uint g = T_CHARS[st + (uint)j];
+            float2 c = float2(qx - pen + T_ORIGIN, qy);
+            if (c.x >= 0.0 && c.x <= 1.0 && c.y >= 0.0 && c.y <= 1.0)
+            {
+                float2 gc = float2(fmod((float)g, T_GRID), floor((float)g / T_GRID));
+                sd = max(sd, Atlas.SampleLevel(AtlasSampler, (gc + c) / T_GRID, 0.0).r);
+            }
+            pen += T_ADV[g];
+        }
+        float aa = 0.5 * (fw / kc * T_CELL) / T_SDF + 0.01;
+        float ink = smoothstep(0.5 - aa, 0.5 + aa, sd);
+        if (ln == 0) { ink0 = ink; } else { ink1 = ink; }
+    }
+    float border = min(22.0 - abs(x), 29.0 - abs(y));
+    if (kind == 0)
+    {
+        col = float3(0.75, 0.74, 0.70);
+        col = border < 1.6 ? float3(0.45, 0.03, 0.03) : col;
+        col = lerp(col, float3(0.45, 0.03, 0.03), max(ink0, ink1));
+        float rows = step(abs(x), 16.0) * step(-26.0, y) * step(y, -12.0) * step(frac(y / 2.6), 0.35) * step(0.3, L.H21(float2(floor(x / 1.3), floor(y / 2.6))));
+        col = lerp(col, float3(0.05, 0.05, 0.05), rows);
+    }
+    else if (kind == 1)
+    {
+        col = y > 19.0 ? float3(0.03, 0.10, 0.40) : float3(0.75, 0.74, 0.70);
+        col = border < 1.2 ? float3(0.03, 0.10, 0.40) : col;
+        col = lerp(col, float3(0.03, 0.10, 0.40), max(ink0, ink1));
+    }
+    else
+    {
+        col = float3(0.02, 0.02, 0.022);
+        float body = step(abs(y), 6.0) * step(-19.0, x) * step(x, 12.0);
+        float head = step(12.0, x) * step(x, 21.0) * step(abs(y), (21.0 - x) * 1.2);
+        float arrow = max(body, head);
+        col = lerp(col, float3(0.75, 0.74, 0.70), arrow);
+        col = lerp(col, float3(0.02, 0.02, 0.022), ink0 * arrow);
+    }
+    col *= lerp(0.85, 1.0, L.VN(float2(x, y) / 6.0));
+    rough = 0.35;
+}
+Rough = rough;
+return col;
+"""
+SIGN_HLSL = LIB_HLSL + sign_text_hlsl() + SIGN_BODY
+
+# Bark on the street trees and the park's elms (SM_Street_Tree_<n>): grey-brown, fissured along the limb, darker
+# and wetter low down, and snow lying along the upper side of every branch and twig.
+BARK_BODY = r"""
+float3 n = normalize(N);
+float fis = L.VN(float2(dot(WP.xy, float2(0.7, 0.7)) / 3.0, WP.z / 40.0));
+float3 col = float3(0.07, 0.062, 0.055) * lerp(0.6, 1.25, fis) * lerp(0.8, 1.1, L.VN(WP.xy / 30.0 + WP.z / 50.0));
+col *= lerp(0.6, 1.0, saturate((WP.z - 20.0) / 120.0));
+float snow = smoothstep(0.32, 0.62, n.z + 0.15 * (L.VN(WP.xy / 6.0 + WP.z / 6.0) - 0.5)) * step(60.0, WP.z);
+col = lerp(col, float3(0.62, 0.62, 0.63) * lerp(0.85, 1.0, L.VN(WP.xy / 5.0)), snow);
+Rough = lerp(0.9, 0.65, snow);
+return col;
+"""
+BARK_HLSL = LIB_HLSL + BARK_BODY
+
+
+def _blend(m, material, mode, two_sided=False, unlit=False):
+    import unreal
+    props = [("blend_mode", mode), ("two_sided", two_sided)]
+    if unlit:
+        props.append(("shading_model", unreal.MaterialShadingModel.MSM_UNLIT))
+    m.c.set_props(material, props, material.get_name())
+
+
+def build_manhole(m, material):
+    """M_Manhole: MANHOLE_HLSL, masked."""
+    import unreal
+    _blend(m, material, unreal.BlendMode.BLEND_MASKED)
+    inputs = [("WP", m.world_position(material, -1600, 0)),
+              ("LP", m.expr(material, "MaterialExpressionLocalPosition", -1600, 100))]
+    node = custom(m, material, MANHOLE_HLSL, inputs, [("Rough", 1), ("Mask", 1)], -900, 0, "Manhole")
+    m.connect_property(node, unreal.MaterialProperty.MP_BASE_COLOR)
+    m.connect_property(node, unreal.MaterialProperty.MP_ROUGHNESS, "Rough")
+    m.connect_property(node, unreal.MaterialProperty.MP_OPACITY_MASK, "Mask")
+
+
+def build_steam(m, material):
+    """M_Steam: STEAM_HLSL, unlit translucent, two-sided."""
+    import unreal
+    _blend(m, material, unreal.BlendMode.BLEND_TRANSLUCENT, two_sided=True, unlit=True)
+    inputs = [("LP", m.expr(material, "MaterialExpressionLocalPosition", -1600, 0)),
+              ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100)),
+              ("V", m.expr(material, "MaterialExpressionCameraVectorWS", -1600, 200)),
+              ("T", m.time_node(material, -1600, 300)),
+              ("Day", day_node(m, material, -2300, 400)),
+              ("Lum", m.scalar_param(material, "Luminance", STEAM_LUM, -1600, 500))]
+    node = custom(m, material, STEAM_HLSL, inputs, [("Opacity", 1)], -900, 0, "Steam")
+    m.connect_property(node, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    m.connect_property(node, unreal.MaterialProperty.MP_OPACITY, "Opacity")
+
+
+def build_snow_pile(m, material):
+    """M_SnowPile: SNOWPILE_HLSL."""
+    import unreal
+    _world_space_normals(m, material)
+    inputs = [("WP", m.world_position(material, -1600, 0)),
+              ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100)),
+              ("Depth", m.expr(material, "MaterialExpressionPixelDepth", -1600, 200)),
+              ("Sparkle", m.constant(material, m.SNOW_SPARKLE * m.EMISSIVE_INTENSITY_FACTOR, -1600, 300))]
+    node = custom(m, material, SNOWPILE_HLSL, inputs, [("Rough", 1), ("Emis", 3), ("NormalWS", 3)], -900, 0, "SnowPile")
+    m.connect_property(node, unreal.MaterialProperty.MP_BASE_COLOR)
+    m.connect_property(node, unreal.MaterialProperty.MP_ROUGHNESS, "Rough")
+    m.connect_property(node, unreal.MaterialProperty.MP_EMISSIVE_COLOR, "Emis")
+    m.connect_property(node, unreal.MaterialProperty.MP_NORMAL, "NormalWS")
+
+
+def build_street_sign(m, material):
+    """M_StreetSign: SIGN_HLSL with Kind (the plate's face is its local +X side), lettering from the atlas."""
+    import unreal
+    inputs = [("LP", m.expr(material, "MaterialExpressionLocalPosition", -1600, 0)),
+              ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100)),
+              ("Kind", m.scalar_param(material, "Kind", 0.0, -1600, 300)),
+              ("Atlas", sign_atlas_node(m, material, -1600, 400))]
+    node = custom(m, material, SIGN_HLSL, inputs, [("Rough", 1)], -900, 0, "StreetSign")
+    m.connect_property(node, unreal.MaterialProperty.MP_BASE_COLOR)
+    m.connect_property(node, unreal.MaterialProperty.MP_ROUGHNESS, "Rough")
+
+
+def build_bark(m, material):
+    """M_TreeBark: BARK_HLSL."""
+    import unreal
+    inputs = [("WP", m.world_position(material, -1600, 0)),
+              ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100))]
+    node = custom(m, material, BARK_HLSL, inputs, [("Rough", 1)], -900, 0, "Bark")
+    m.connect_property(node, unreal.MaterialProperty.MP_BASE_COLOR)
+    m.connect_property(node, unreal.MaterialProperty.MP_ROUGHNESS, "Rough")
+
+
+STEAM_LUM = 1.0
+
+
 CLOUD_DAY = 3.0       # the deck's luminance by day and night, against the fixed exposure (EV100 1; bias 0 / +2)
 CLOUD_NIGHT = 1.0
 
@@ -1664,7 +1971,8 @@ def _atlas_digest():
 def _source_hash():
     import hashlib
     text = "\n".join((FACADE_HLSL, ROAD_HLSL, SIDEWALK_HLSL, PARK_HLSL, CLOUD_HLSL, BLOCK_HLSL, CAR_HLSL, PAINT_HLSL,
-                      repr((CLOUD_DAY, CLOUD_NIGHT, NIGHT_FILL)), _atlas_digest()))
+                      MANHOLE_HLSL, STEAM_HLSL, SNOWPILE_HLSL, SIGN_HLSL, BARK_HLSL,
+                      repr((CLOUD_DAY, CLOUD_NIGHT, NIGHT_FILL, STEAM_LUM)), _atlas_digest()))
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
 
 
