@@ -31,7 +31,9 @@ Open the editor before we talk so the Unreal MCP tools can connect.
   gone; snowflakes stay 3.5 m from the lens. Slowest Kate shot at 1080p 7.4 ms (p95). Still prototype: signs are cut
   where a building ends, the long building's upper floors have no bays, no manholes or steam. Details:
   `claude-docs/city-look.md`, shots `Saved/Screenshots/Block/` (new `shopfront_*`, `wide_*`; `*_before.png` are
-  pass 1's).
+  pass 1's). Gate: both builds, 599 tests, 229 Python tests (4 new for the street plan), ruff, content twice
+  (clean), city verify (it now checks the cars' new materials), content verify, traversal audit (2457 anchors, 24459
+  reachable pairs, exit 0), 13 of 13 laps, one run each.
 - **The block looks like a street now. Merged 2026-11-13.** Walk out of the start and look at the tenements across
   East 7th Street, by day and by night (`hawkeye.TimeOfDay Day` / `Night`). Every wall is real-size brick (20 x 6.5 cm
   in mortar, a header course every sixth), brownstone ashlar, painted brick or board-marked concrete for the towers,
