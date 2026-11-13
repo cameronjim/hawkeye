@@ -34,7 +34,7 @@
  *   facade        3 m from that tenement's facade at first-floor height
  *   window        1.8 m from a first-floor window, a little to one side so the room behind it shows
  *   ground        down at the kerb: sidewalk, kerb and carriageway
- *   shopfront     eye height 6 m from the shops across the street, turned along them
+ *   shopfront     eye height 3.6 m from the shops across the street (on their sidewalk), turned along them
  *   wide          15 m into the park, looking up at the tenement row: roofs and cornices against the sky
  *   kerb          eye height on the shop-side sidewalk by the kerb, looking along it: parked cars, plowed snow, signs
  *   tree          under the street tree nearest the PlayerStart, looking up into its branches
@@ -451,7 +451,7 @@ private:
 				return false;
 			}
 			const FVector Out = Facade.ImpactNormal.GetSafeNormal2D();
-			const FVector Eye = Facade.ImpactPoint + Out * 600.f;
+			const FVector Eye = Facade.ImpactPoint + Out * 360.f;   // on the sidewalk, in front of the parked cars
 			return Look(FVector(Eye.X, Eye.Y, EyeHeight), FRotator(4.f, (-Out).Rotation().Yaw + 28.f, 0.f));
 		}
 		case EShot::Wide:
