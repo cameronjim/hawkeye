@@ -45,7 +45,6 @@ import generate_city as gen  # noqa: E402
 
 CHALLENGE_PATH = "/Game/Challenges"
 ASSET_PREFIX = "DA_Challenge_"
-PEDESTAL_PREFIX = "City_Challenge_"
 
 SEARCH_RADIUS = 25000.0         # cm from the PlayerStart an archery range may start: the block and its streets
 TRAVERSAL_SEARCH_RADIUS = 45000.0  # cm; routes with a mantle are rarer, so the whole district is searched
@@ -108,7 +107,6 @@ RUN_MIN = 600.0
 RUN_MAX = 2000.0
 STREET_RUN = (900.0, 1800.0)    # cm along the sidewalk to the first ring
 MANTLE_STEP = (30.0, 110.0)     # cm a neighbour's roof may stand above hers: parapet plus step within 200
-LEVEL_STEP = 25.0               # cm either way that counts as the same level (a vault over the parapets)
 ROOF_PATH_CLEAR = 60.0          # cm from a roof edge a run keeps (except where it crosses to a neighbour)
 PATH_PROP_CLEAR = 80.0          # cm from any prop to a run
 DESCENT_BACK = 110.0            # cm back from the facade over the top landing (the lap's descent stand)
@@ -125,7 +123,6 @@ ROUTE_REACH = 8000.0            # cm from the pedestal every ring stays within (
 ROUTE_BRANCH = 8                # anchors tried from each spot while searching for a route
 ROUTE_OPTIONS = 20              # spots with a grapple tried per roof leg
 
-LEGS = ("Run", "Grapple", "Mantle", "Descent")
 GRID_CELL = 2000.0              # cm; the buildings are bucketed this coarse for point lookups
 
 

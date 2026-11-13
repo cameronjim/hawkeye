@@ -111,38 +111,27 @@ import _common as c  # noqa: E402
 import _geo as geo  # noqa: E402
 import _materials as m  # noqa: E402
 from _geomutil import (  # noqa: E402,F401 - re-exported for gen.X callers
-    closest_point_on_polyline, _segments_cross, ring_distance, oriented_rect, _segment_distance,
-    _edge_clearance, _segment_params, _edge_distance, _point_quad_distance, stable_hash, _near_segment)
+    closest_point_on_polyline, _segments_cross, ring_distance, oriented_rect, _segment_distance, _edge_clearance,
+    _segment_params, _edge_distance, _point_quad_distance, stable_hash, _near_segment)
 from _district import (  # noqa: E402,F401 - re-exported for gen.X callers
-    DISTRICT, GENERATOR_VERSION, PARAPET_HEIGHT, PARAPET_THICK, PARAPET_MIN_HEIGHT_M, PARAPET_MITER_LIMIT,
-    ROAD_TOP, SIDEWALK_TOP, PARK_TOP, SLAB_THICK, GROUND_THICK, SIDEWALK_WIDTH, data_dir, data_paths,
-    data_available, load_json, District, PAINTED_BUILDINGS, STONE_BUILDINGS, TENEMENT_STYLES, facade_style,
-    ground_ring_cm, road_paths, LAMP_SPACING, LAMP_MIN_GAP, LAMP_KERB_INSET, LAMP_POLE_HEIGHT,
-    LAMP_POLE_DIAMETER, LAMP_ARM, LAMP_SHADOW_DISTANCE, lamp_spots, FIRE_ESCAPE_MIN_HEIGHT_M,
-    FIRE_ESCAPE_MAX_HEIGHT_M, MAP_LINE_TOLERANCE, simplify_line, map_street_lines)
+    GENERATOR_VERSION, PARAPET_HEIGHT, PARAPET_THICK, PARAPET_MIN_HEIGHT_M, PARAPET_MITER_LIMIT, ROAD_TOP,
+    SIDEWALK_TOP, PARK_TOP, SLAB_THICK, GROUND_THICK, SIDEWALK_WIDTH, data_paths, data_available, District,
+    facade_style, ground_ring_cm, road_paths, LAMP_SPACING, LAMP_POLE_HEIGHT, LAMP_POLE_DIAMETER, LAMP_ARM,
+    lamp_spots, FIRE_ESCAPE_MIN_HEIGHT_M, FIRE_ESCAPE_MAX_HEIGHT_M, MAP_LINE_TOLERANCE, simplify_line,
+    map_street_lines)
 from _fire_escapes import (  # noqa: E402,F401 - re-exported for gen.X callers
     FIRE_ESCAPE_PREFIX, FIRE_ESCAPE_FLOOR, FIRE_ESCAPE_ROOF_CLEARANCE, FIRE_ESCAPE_SLAB, FIRE_ESCAPE_GAP,
-    FIRE_ESCAPE_RAIL, FIRE_ESCAPE_RAIL_THICK, FIRE_ESCAPE_MIN_EDGE, FIRE_ESCAPE_STREET_SLACK,
-    FIRE_ESCAPE_FACING, FIRE_ESCAPE_LAMP_CLEARANCE, FIRE_ESCAPE_GAP_TO_OTHER, _landing_corners,
-    _rects_overlap, fire_escape_spots)
+    FIRE_ESCAPE_RAIL, FIRE_ESCAPE_RAIL_THICK, FIRE_ESCAPE_GAP_TO_OTHER, _landing_corners, _rects_overlap,
+    fire_escape_spots)
 from _reach import (  # noqa: E402,F401 - re-exported for gen.X callers
-    ANCHOR_MIN_HEIGHT_M, ANCHOR_MIN_GAP, ANCHOR_LONG_EDGE, ANCHOR_CORNER_TURN, ANCHOR_MIN_INTERIOR,
-    ANCHOR_LANDING_INBOARD, ANCHOR_LANDING_CLEARANCE, ANCHOR_BURIED_DISTANCE, _corner_anchor_spots,
-    FACADE_ANCHOR_OUT, FACADE_ANCHOR_DOWN, FACADE_ANCHOR_LANDING, FACADE_ANCHOR_MIN_EDGE,
-    FACADE_ANCHOR_END_CLEAR, FACADE_ANCHOR_MIN_GAP, FACADE_ANCHOR_ESCAPE_CLEAR, FACADE_ANCHOR_ROAD_REACH,
-    FACADE_ANCHOR_SPOTS, REACH_RANGE, REACH_MIN_RANGE, REACH_RANGE_SLACK, REACH_CONE, REACH_CONE_SLACK,
-    REACH_SIGHT_TOLERANCE, REACH_HALF_HEIGHT, REACH_CAPSULE_HALF, REACH_ZIP_LAUNCH, REACH_START_RELEASE,
-    REACH_SUPPORT_RADIUS, REACH_FEET_CLEAR, REACH_PITCH, REACH_CAMERA, REACH_STREET_ROBUST, REACH_STREET_STEP,
-    REACH_SIDEWALK_MIDDLE, REACH_SIDEWALK_BACKOFF, REACH_STAND_CLEAR, REACH_ROOF_SPOT_IN,
-    REACH_ROOF_SPOT_EDGE, REACH_NEIGHBOUR_GAP, REACH_TOUCHING, REACH_WALKABLE_RISE, REACH_ESCAPE_MARGIN,
-    REACH_CELL, _anchor_marker, _anchor_landing, GrappleReach, _outward_edges, _along_options, _facade_anchor,
-    _street_edges, _roof_reached, grapple_reach, anchor_spots)
+    ANCHOR_MIN_HEIGHT_M, FACADE_ANCHOR_LANDING, FACADE_ANCHOR_END_CLEAR, FACADE_ANCHOR_ESCAPE_CLEAR, REACH_RANGE,
+    REACH_MIN_RANGE, REACH_HALF_HEIGHT, REACH_TOUCHING, REACH_WALKABLE_RISE, REACH_CELL, _anchor_marker,
+    GrappleReach, _street_edges, _roof_reached, grapple_reach, anchor_spots)
 from _ledges import (  # noqa: E402,F401 - re-exported for gen.X callers
-    LEDGE_PREFIX, LEDGE_MIN_EDGE, LEDGE_OUTSET, LEDGE_SLAB_HEIGHT, LEDGE_SPLINE, ledge_spots)
+    LEDGE_PREFIX, LEDGE_MIN_EDGE, LEDGE_SPLINE, ledge_spots)
 
 MAP_PATH = "/Game/Maps/L_District_EastVillage"
 MESH_DIR = "/Game/City/EastVillage/Meshes"
-KIT_MATERIALS = "/Game/Kit/Materials"
 PLAYER_PATH = "/Game/Blueprints/Player"
 
 LABEL_PREFIX = "City_"
@@ -986,18 +975,8 @@ OBJECTIVE_MIN_HEIGHT_M = 8.0      # cross_block and find_arrow skip sheds and ga
 OBJECTIVE_ABOVE_ROOF = 50.0       # cm between the roof and the bottom of the volume
 OBJECTIVE_HALF_HEIGHT = 150.0     # cm; tall enough to hold Kate's whole capsule
 
-# The objective chain's ids, in order (first the Rooftops chapter's objectives); clear_roof has no volume (a thug
-# group completes it). Its volumes, beacons, arrow and fighters stay in the district as the traversal audit's chain
-# and the tests' roofs; the running chapter has none of these ids, so they keep quiet and the beacons stay dark
-# (gameplay-semantics.md, "Chases").
-MISSION_OBJECTIVE_IDS = ("reach_roof", "cross_block", "clear_roof", "find_arrow")
-
 # The chapter the district starts (DA_CH01_NightShift), in order: its chase completes all three.
 CHAPTER_OBJECTIVE_IDS = ("chase_thief", "cross_gap", "catch_thief")
-
-# Actors the prison build put in its maps. None belong in the district, except the chapter's own
-# thugs, which carry THUG_PREFIX labels.
-PRISON_CLASS_WORDS = ("Thug", "Guard", "Keycard", "Pickup", "Door")
 
 
 def ensure_district_game_mode():
@@ -1057,35 +1036,6 @@ def ensure_game_mode():
     ws.set_editor_property("default_game_mode", game_mode)
     c.log("updated", MAP_PATH, "GameMode override = " + name)
     return 1
-
-
-def actor_class_name(actor):
-    try:
-        return actor.get_class().get_name()
-    except Exception:  # noqa: BLE001
-        return c.class_name(type(actor))
-
-
-def is_chapter_actor(label):
-    """True for the fight's own thugs and their group, which share class words with the prison's."""
-    return label.startswith(THUG_PREFIX) or label == THUG_GROUP_LABEL
-
-
-def remove_prison_actors(existing):
-    """Delete anything the prison build would have placed (thugs, keycards, doors, pickups)."""
-    removed = 0
-    for label, actor in list(existing.items()):
-        cls = actor_class_name(actor)
-        if is_chapter_actor(label):
-            continue
-        if any(word in cls for word in PRISON_CLASS_WORDS):
-            actor.destroy_actor()
-            existing.pop(label, None)
-            removed += 1
-            c.log("updated", label, "removed prison-build actor ({0})".format(cls))
-    if not removed:
-        c.log("exists", MAP_PATH, "no thug, keycard, door or pickup actors")
-    return removed
 
 
 def streets_crossed(district, a, b):
@@ -1345,7 +1295,6 @@ CHAPTER_END_TOWER_LABEL = "City_ChapterEndTower"
 SCENE_RETURN_LABEL = "City_SceneReturn_FB00"   # DA_FB00_Placeholder's ReturnPointLabel
 CHAPTER_END_VERSION = 1                        # bump when an arrow mesh recipe changes
 TOWER_TANK_RADIUS = 150.0                      # cm; SM_City_WaterTower's tank
-TOWER_FOOTPRINT = 170.0                        # cm; its deck
 TOWER_EDGE_CLEAR = 230.0                       # cm from the roof edge to the tower's centre
 TOWER_BEACON_RANGE = (400.0, 900.0)            # cm from the find_arrow beacon
 TOWER_BEACON_IDEAL = 550.0
@@ -4167,7 +4116,6 @@ def run():
     changes += ensure_player_start(district, existing)
     changes += ensure_nav_volume(district, existing)
     changes += ensure_game_mode()
-    changes += remove_prison_actors(existing)
     changes += ensure_objective_volumes(district, existing)
     changes += ensure_objective_beacons(district, existing)
     changes += ensure_chapter_end(district, existing)

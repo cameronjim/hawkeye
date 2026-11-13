@@ -16,7 +16,7 @@ Prints one line per check and a final ``[Hawkeye] verify_city PASS`` or ``FAIL``
   reach_roof and cross_block roofs, three City_Beacon_* (pole, emissive cap, movable
   300 lm light) on the objective roofs, the chapter end (City_ChapterEndTower on the find_arrow
   roof, City_ChapterEnd completing find_arrow with the arrow meshes, City_SceneReturn_FB00), the street lamps (light, pole, head) matching the
-  generator, and no prison-build actors (thugs, keycards, doors, pickups)
+  generator
 * City_LedgeSpawner and its props asset (the ledges and anchors are data, spawned at load; this
   script calls SpawnAll() first, as BeginPlay does), and no ledge or anchor saved in the map
 * the grapple anchors match the generator, and every anchor's landing point is on a roof: a
@@ -1417,10 +1417,6 @@ def run():
     check_challenges(district, actors)
     check_crimes(district, actors)
 
-    prison = [a.get_actor_label() for a in all_actors
-              if not gen.is_chapter_actor(a.get_actor_label())
-              and any(w in gen.actor_class_name(a) for w in gen.PRISON_CLASS_WORDS)]
-    check(not prison, "no thug, keycard, door or pickup actors", ", ".join(prison[:5]))
     try:
         wp = ws.get_world_partition() if ws and hasattr(ws, "get_world_partition") else None
     except Exception:  # noqa: BLE001
