@@ -17,6 +17,19 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Kate wears her own suit now, not Sparrow. Merged 2026-11-12.** The Blender-built Kate (`build_kate.py`) is
+  imported on the Quaternius female body as its own skeleton (`SKEL_Body_Female`), retargeted from her mannequin like
+  Clint, at her 0.93 scale (about 164 cm next to Clint's 181). The purple drew too light in the game (`#7539AF` by day),
+  so it is 0.55 as bright now: the torso reads `#4C357C` by day and `#632896` under a street lamp, around the `#5B2A86`
+  asked for; the collar is 2 cm lower. Frames by day and night (`Saved/Screenshots/Bodies/body_kate_*`): idle front and
+  back (the ponytail and quiver read, not see-through), a run at 500 cm/s, a crouch, a light punch, a full draw (bow in
+  her left hand, string at her face), and standing with Clint and Lucky. Her visible body is 0.0 cm off her driver in
+  all 57 checks of `Hawkeye.Audit.MeleeFeel`. Sparrow is still built and goes back on her if the built Kate is missing
+  or fails to import. Rough: the ponytail does not swing, her hands at rest are about 7 cm off the driver's (arms by her
+  side), a teleport that turns her keeps her body's old facing until she moves (seen only in the test; may show on fast
+  travel). Gate: both builds, 598 tests, 225 Python tests, ruff, content twice (clean), city, content verify, traversal
+  audit, MeleeFeel, 13 of 13 laps first try. **Look at:** does the purple read right on your screen, and is the
+  aim camera too close to her ponytail for you.
 - **Melee feel: punches land on the body, Kate stays herself, ragdolls fall like men. Merged 2026-11-12.** Your note
   was "punches don't land properly, ragdoll physics are off". A standalone audit (`Hawkeye.Audit.MeleeFeel`,
   `docs/playtests/2026-11-11-melee-feel-audit.md`) found the punches did reach the body on time, but nothing happened when
