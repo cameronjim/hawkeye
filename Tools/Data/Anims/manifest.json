@@ -117,6 +117,24 @@
       "about": "Download to Tools/Data/Anims/Mixamo/ (git-ignored). mesh_file is the one clip downloaded With Skin (it defines the source skeleton and is also a clip); every other file is Without Skin. Missing files are reported and skipped."
     },
     {
+      "name": "AuthoredThug",
+      "kind": "mixamo_fbx",
+      "path": "{HAWKEYE_ASSETS_ROOT}/built/clips/ue4",
+      "chains": "ue4",
+      "mesh_file": "Skeleton.fbx",
+      "rebuilt": true,
+      "about": "Our own clips on the thugs' UE4 mannequin, keyed by Tools/Blender/build_clips.py (claude-docs/animation.md, 'Authored clips') outside the repo like the built bodies. rebuilt: a file whose size or time changed is imported again. Absent: skipped, the game as before."
+    },
+    {
+      "name": "AuthoredKate",
+      "kind": "mixamo_fbx",
+      "path": "{HAWKEYE_ASSETS_ROOT}/built/clips/uefn",
+      "chains": "uefn",
+      "mesh_file": "Skeleton.fbx",
+      "rebuilt": true,
+      "about": "The same on Kate's and Clint's UEFN mannequin."
+    },
+    {
       "name": "ParagonSparrow",
       "kind": "uasset_project",
       "path": "C:/Users/camer/code/GASP/Content",
@@ -127,6 +145,19 @@
     }
   ],
   "clips": [
+    {"source": "AuthoredThug", "file": "GetUp_Back.fbx", "role": "GetUp", "variant": "Authored", "characters": ["thug", "archer"]},
+    {"source": "AuthoredThug", "file": "GetUp_Front.fbx", "role": "GetUpFront", "variant": "Authored", "characters": ["thug", "archer"]},
+    {"source": "AuthoredThug", "file": "HitFront_Light.fbx", "role": "HitFront", "variant": "Authored", "characters": ["thug", "archer"], "in_set": false, "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredThug", "file": "HitLeft_Light.fbx", "role": "HitLeft", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredThug", "file": "HitRight_Light.fbx", "role": "HitRight", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredThug", "file": "HitHeavy_Stagger.fbx", "role": "HitHeavy", "variant": "Authored", "characters": ["thug", "archer"]},
+    {"source": "AuthoredKate", "file": "HitFront_Light.fbx", "role": "HitFront", "variant": "Authored", "characters": ["kate", "clint"], "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredKate", "file": "HitLeft_Light.fbx", "role": "HitLeft", "variant": "Authored", "characters": ["kate", "clint"], "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredKate", "file": "HitRight_Light.fbx", "role": "HitRight", "variant": "Authored", "characters": ["kate", "clint"], "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredKate", "file": "HitHeavy_Stagger.fbx", "role": "HitHeavy", "variant": "Authored", "characters": ["kate", "clint"]},
+    {"source": "AuthoredKate", "file": "BowDraw.fbx", "role": "BowDraw", "variant": "Authored", "characters": ["kate", "clint"], "in_set": false},
+    {"source": "AuthoredKate", "file": "BowAimIdle.fbx", "role": "BowAimIdle", "variant": "Authored", "characters": ["kate", "clint"], "in_set": false},
+    {"source": "AuthoredKate", "file": "BowFire.fbx", "role": "BowFire", "variant": "Authored", "characters": ["kate", "clint"], "in_set": false},
     {"source": "Mixamo", "file": "Cross Punch.fbx", "role": "Light1", "variant": "Cross", "characters": ["kate", "clint"], "start_s": 0.6, "end_s": 1.7, "rate": 1.7, "hit_s": [1.03, 1.17], "combo_s": [1.17, 1.66]},
     {"source": "Mixamo", "file": "Punching.fbx", "role": "Light1", "variant": "Punching", "characters": ["kate", "clint"], "start_s": 0.13, "end_s": 1.0, "rate": 1.5, "hit_s": [0.5, 0.62], "combo_s": [0.62, 0.97]},
     {"source": "Mixamo", "file": "Hook Punch.fbx", "role": "Light2", "variant": "Hook", "characters": ["kate", "clint"], "start_s": 0.7, "end_s": 1.75, "rate": 1.3, "hit_s": [1.02, 1.15], "combo_s": [1.15, 1.7]},

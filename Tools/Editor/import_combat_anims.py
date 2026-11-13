@@ -84,7 +84,11 @@ ROLE_DEFAULTS = {
     "HitFront": {"slot": "DefaultSlot"}, "HitBack": {"slot": "DefaultSlot"},
     "HitLeft": {"slot": "DefaultSlot"}, "HitRight": {"slot": "DefaultSlot"},
     "Knockdown": {"slot": "DefaultSlot", "hold": True},
-    "GetUp": {"slot": "DefaultSlot"},
+    # The get-ups blend in slowly from the floor pose they are aligned onto (the knockdown clip's last frame or the
+    # ragdoll); the authored hit reactions come in fast, the blow's frame is their first.
+    "GetUp": {"slot": "DefaultSlot", "blend_in": 0.25, "blend_out": 0.2},
+    "GetUpFront": {"slot": "DefaultSlot", "blend_in": 0.25, "blend_out": 0.2},
+    "HitHeavy": {"slot": "DefaultSlot", "blend_in": 0.05, "blend_out": 0.15},
     "FinisherAttacker": {"slot": "DefaultSlot"}, "FinisherVictim": {"slot": "DefaultSlot"},
     "FinisherBow": {"slot": "DefaultSlot"},
     # The bow's clips over locomotion: 0.15 s in, 0.25 s out. The draw holds its last frame (the anchor)
@@ -99,6 +103,17 @@ ROLE_DEFAULTS = {
 # into the manifest's aim_offsets blend spaces. No montage.
 AIM_POSE_PREFIX = "BowAimOffset_"
 FROM_TAG = "HawkeyeFrom"
+FILE_TAG = "HawkeyeFile"
+DEFAULT_ASSETS_ROOT = "C:/Users/camer/code/hawkeye-assets"
+
+
+def file_stamp(path):
+    """size:mtime of a source file, so a rebuilt FBX (the authored clips) is imported again and nothing else is."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    return "{0}:{1}".format(st.st_size, int(st.st_mtime))
 
 _MIXAMO_PREFIX = re.compile(r"^mixamorig\d*[:_]", re.IGNORECASE)
 
@@ -473,6 +488,11 @@ def import_fbx_source(source, clips, folder):
     mesh_path = os.path.join(folder, mesh_file) if mesh_file else None
     mesh_asset = base + "/SK_" + _fbx_name(mesh_file or "Mesh")
     mesh = c.load_or_none(mesh_asset)
+    mesh_stamp = file_stamp(mesh_path) if source.get("rebuilt") and mesh_path else ""
+    if mesh is not None and mesh_stamp and tag_of(mesh, FILE_TAG) != mesh_stamp:
+        # A rebuilt skeleton: everything imported onto the old one goes (clips, rig, retargeters) and comes in again.
+        unreal.EditorAssetLibrary.delete_directory(base)
+        mesh = None
     if mesh is None or FORCE:
         if not mesh_path or not os.path.isfile(mesh_path):
             c.log("missing", mesh_path or source["name"] + " mesh_file", "download one clip With Skin under this name")
@@ -489,6 +509,8 @@ def import_fbx_source(source, clips, folder):
         if mesh is None:
             c.log("FAILED", mesh_path, "no skeletal mesh in it: download it With Skin")
             return None, {}
+        if mesh_stamp:
+            set_tag(mesh, mesh_stamp, FILE_TAG)
         for obj in imported:
             c.save(obj)
         c.log("imported", mesh.get_path_name().split(".")[0], "skeleton {0}, bones: {1}".format(
@@ -507,6 +529,11 @@ def import_fbx_source(source, clips, folder):
             continue
         anim_path = base + "/A_Src_" + _fbx_name(clip["file"])
         anim = c.load_or_none(anim_path)
+        stamp = file_stamp(filename) if source.get("rebuilt") else ""
+        if anim is not None and stamp and tag_of(anim, FILE_TAG) != stamp:
+            # The file was rebuilt (build_clips.py): import it again; its retargets and montages follow (FROM_TAG).
+            delete_if_exists(anim_path)
+            anim = None
         if anim is not None and not FORCE:
             found[index] = anim
             this_run[clip["file"]] = anim
@@ -524,6 +551,8 @@ def import_fbx_source(source, clips, folder):
         if not imported:
             c.log("FAILED", filename, "imported no animation onto " + skeleton.get_name())
             continue
+        if stamp:
+            set_tag(imported[0], stamp, FILE_TAG)
         c.save(imported[0])
         found[index] = imported[0]
         this_run[clip["file"]] = imported[0]
@@ -570,6 +599,9 @@ def import_project_source(source, clips, content):
 def retarget_clip(anim, source_mesh, rtg, target, out_folder, seq_name):
     seq_path = out_folder + "/" + seq_name
     source_path = anim.get_path_name().split(".")[0]
+    stamp = tag_of(anim, FILE_TAG)
+    if stamp:
+        source_path += "@" + stamp
     if c.exists(seq_path) and not FORCE:
         existing = c.load_or_none(seq_path)
         # Only if retargeted from this clip: the same name from another clip (a manifest line pointed
@@ -698,7 +730,7 @@ def process_clip(clip, anim, source, source_mesh, retargeters, targets, output_o
 
 
 LYING_ROLES = ("Knockdown", "FinisherVictim")
-AIRBORNE_OR_LOW_ROLES = ("GetUp", "FinisherAttacker", "FinisherBow")
+AIRBORNE_OR_LOW_ROLES = ("GetUp", "GetUpFront", "FinisherAttacker", "FinisherBow")
 
 
 def report_pose(clip, seq, target_name):
@@ -742,7 +774,8 @@ def source_folder(source):
     path = next((os.environ[n] for n in envs if os.environ.get(n)), "") or source["path"]
     # {NAME} in a manifest path is an environment variable; the launcher scripts export HAWKEYE_UE_ROOT and
     # HAWKEYE_GASP_CONTENT from Tools\hawkeye.env.ps1, and the path as written is the fallback.
-    path = re.sub(r"\{(\w+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), path)
+    defaults = {"HAWKEYE_ASSETS_ROOT": DEFAULT_ASSETS_ROOT}
+    path = re.sub(r"\{(\w+)\}", lambda m: os.environ.get(m.group(1)) or defaults.get(m.group(1), m.group(0)), path)
     if not os.path.isabs(path):
         path = os.path.join(REPO, path.replace("/", os.sep))
     return path
