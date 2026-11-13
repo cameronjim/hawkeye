@@ -78,14 +78,6 @@ _PKG_FILTER_EDITOR_ONLY = 0x80000000
 _GAME_PATH = re.compile(rb"/Game/[A-Za-z0-9_/\-+]+")
 
 
-def _say(action, path, extra=""):
-    if unreal is not None:
-        import _common as c  # noqa: PLC0415 - needs the engine
-        c.log(action, path, extra)
-    else:
-        print("{0:<8} {1}{2}".format(action, path, "  (" + extra + ")" if extra else ""))
-
-
 def content_root():
     if unreal is not None:
         return os.path.join(os.path.abspath(unreal.Paths.project_dir()), "Content")

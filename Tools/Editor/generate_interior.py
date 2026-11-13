@@ -765,10 +765,6 @@ def prop_parts(tag, size):
     raise ValueError("no parts for prop tag " + tag)
 
 
-def _camel(tag):
-    return "".join(w.capitalize() for w in tag.split("_"))
-
-
 def build_props(b):
     layout = b.layout
     block_cls = gen.traversable_class()

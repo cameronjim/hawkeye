@@ -86,18 +86,6 @@ def check_assets():
             fail("SKM_UEFN_Mannequin has no skeleton")
 
 
-def parent_chain(cls, depth=6):
-    names = []
-    while cls is not None and depth > 0:
-        names.append(cls.get_name())
-        try:
-            cls = cls.get_super_class()
-        except Exception:  # noqa: BLE001 - older API name
-            cls = None
-        depth -= 1
-    return names
-
-
 def check_kate():
     say("---- BP_Kate ----")
     bp = c.load_or_none(c.asset_path(PLAYER_PATH, "BP_Kate"))

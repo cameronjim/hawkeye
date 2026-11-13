@@ -532,15 +532,6 @@ def import_fbx_source(source, clips, folder):
     return mesh, found
 
 
-def _assets_in(folder):
-    out = []
-    for path in unreal.EditorAssetLibrary.list_assets(folder, recursive=False, include_folder=False):
-        asset = unreal.load_asset(path.split(".")[0])
-        if asset is not None:
-            out.append(asset)
-    return out
-
-
 def import_project_source(source, clips, content):
     """Copies the clips and the mesh (with their hard closure) from another Content folder. {index: anim}."""
     # Plus anything else of this source's the run needs (an aim offset's layout).

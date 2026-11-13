@@ -42,8 +42,6 @@ MANNEQUIN_WALK_PATH = "/Game/Mannequin/Animations/ThirdPersonWalk"
 MANNEQUIN_RUN_PATH = "/Game/Mannequin/Animations/ThirdPersonRun"
 
 THUG_MATERIAL_PATH = "/Game/Characters/Thug"
-M_THUG_BODY = THUG_MATERIAL_PATH + "/M_ThugBody"
-M_THUG_VISOR = THUG_MATERIAL_PATH + "/M_ThugVisor"
 
 # The Tracksuit Mafia look (docs/DESIGN.md, Cast). SK_Mannequin has two material slots: the body
 # (head included) and the chest logo patch. So the ski mask and the side stripes are drawn by the
@@ -77,25 +75,6 @@ BAT_ROTATION = unreal.Rotator(0.0, -90.0, 0.0)
 # The template's own offsets: the mesh hangs from the capsule centre and faces +X.
 THUG_MESH_LOCATION = unreal.Vector(0.0, 0.0, -96.0)
 THUG_MESH_ROTATION = unreal.Rotator(0.0, 0.0, -90.0)
-
-
-def _build_thug_body(material):
-    """Riot kit: near-black, half rough, a touch of metal so the light catches the shoulders."""
-    color = m.constant3(material, (0.02, 0.02, 0.02), -400, -200)
-    m.connect_property(color, unreal.MaterialProperty.MP_BASE_COLOR)
-    m.set_scalar_property(material, 0.6, unreal.MaterialProperty.MP_ROUGHNESS, -400, 0)
-    m.set_scalar_property(material, 0.2, unreal.MaterialProperty.MP_METALLIC, -400, 150)
-
-
-def _build_thug_visor(material):
-    """Black with a red glowing strip, so a thug's face reads as a visor line in the dark."""
-    color = m.constant3(material, (0.01, 0.01, 0.01), -700, -200)
-    m.connect_property(color, unreal.MaterialProperty.MP_BASE_COLOR)
-    m.set_scalar_property(material, 0.25, unreal.MaterialProperty.MP_ROUGHNESS, -700, 0)
-
-    glow = m.constant3(material, (0.9, 0.05, 0.02), -700, 200)
-    bright = m.multiply(material, glow, None, -400, 200, const_b=20.0)
-    m.connect_property(bright, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
 
 def _scalar_param(material, name, x, y):

@@ -11,7 +11,6 @@ Run from ``UnrealEditor-Cmd.exe Hawkeye.uproject -run=pythonscript -script=...``
 """
 
 import os
-import sys
 import traceback
 
 import unreal
@@ -73,13 +72,6 @@ def script_dir():
         return os.path.join(unreal.Paths.project_dir(), "Tools", "Editor")
 
 
-def add_script_dir_to_path():
-    d = script_dir()
-    if d not in sys.path:
-        sys.path.insert(0, d)
-    return d
-
-
 def project_dir():
     return os.path.abspath(unreal.Paths.project_dir())
 
@@ -93,12 +85,6 @@ def ensure_directory(package_path):
     except Exception as exc:  # noqa: BLE001 - be loud, never abort the whole script
         log_error("ensure_directory " + package_path, exc)
         return False
-
-
-def ensure_disk_directory(abs_path):
-    if not os.path.isdir(abs_path):
-        os.makedirs(abs_path)
-    return abs_path
 
 
 def asset_path(package_path, name):
@@ -347,15 +333,6 @@ def ensure_constant_color_material(name, path, base_color_rgb, roughness):
         return None
 
 
-def has_material_override(static_mesh_component):
-    """True when slot 0 already has a material assigned (not falling back to the mesh default)."""
-    try:
-        overrides = static_mesh_component.get_editor_property("override_materials")
-        return len(overrides) > 0 and overrides[0] is not None
-    except Exception:  # noqa: BLE001
-        return False
-
-
 def assign_mesh_material(actor, material, slot=0):
     """set_material(slot, material) on a StaticMeshActor's mesh component."""
     if material is None:
@@ -372,35 +349,6 @@ def assign_mesh_material(actor, material, slot=0):
 # --------------------------------------------------------------------------------------
 # lights
 # --------------------------------------------------------------------------------------
-
-
-def set_actor_mobility_movable(actor):
-    """Movable mobility on an actor's root component.
-
-    Works for lights: DirectionalLightComponent / SkyLightComponent / PointLightComponent
-    are each their actor's root component, so setting mobility there is enough.
-    """
-    try:
-        root = actor.get_editor_property("root_component")
-    except Exception as exc:  # noqa: BLE001
-        log_error("get root_component " + safe_name(actor), exc)
-        return False
-    if root is None:
-        return False
-    try:
-        root.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        log_error("set mobility movable " + safe_name(actor), exc)
-        return False
-
-
-def actor_mobility(actor):
-    try:
-        root = actor.get_editor_property("root_component")
-        return root.get_editor_property("mobility") if root is not None else None
-    except Exception:  # noqa: BLE001
-        return None
 
 
 # --------------------------------------------------------------------------------------
@@ -549,15 +497,3 @@ def world_settings():
         except Exception as exc:  # noqa: BLE001
             log_error("get_all_actors_of_class(WorldSettings)", exc)
     return None
-
-
-def set_level_game_mode(game_mode_class, level_label=""):
-    ws = world_settings()
-    if ws is None:
-        log("skipped", level_label or "<level>", "no WorldSettings actor found")
-        return False
-    if game_mode_class is None:
-        log("skipped", level_label or "<level>", "game mode class not found")
-        return False
-    applied = set_props(ws, [("default_game_mode", game_mode_class)], "WorldSettings")
-    return bool(applied)

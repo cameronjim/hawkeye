@@ -984,14 +984,6 @@ def rigid(body, n, bones):
     return W
 
 
-def finish_piece(obj, body, W, tile=0.05, sharp=40.0):
-    """UVs, shading and skin for one built piece."""
-    if len(obj.data.uv_layers) == 0 or tile:
-        box_uv(obj, tile or 0.05)
-    mark_sharp(obj, sharp)
-    return skin(obj, body, W)
-
-
 def poly_count(obj):
     me = obj.data
     me.calc_loop_triangles()

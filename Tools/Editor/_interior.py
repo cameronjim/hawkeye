@@ -753,12 +753,5 @@ def stair_climb_ok(parts, max_step=MAX_RISER):
 
 # --- points ---------------------------------------------------------------------------------------------
 
-def room_floor_point(layout, room_id, dx, dy):
-    """(x, y, z) on room_id's floor, dx, dy from its x0, y0."""
-    room = layout.by_id[room_id]
-    x, y = room.point(dx, dy)
-    return x, y, room.z0
-
-
 def yaw_of(nx, ny):
     return math.degrees(math.atan2(ny, nx))

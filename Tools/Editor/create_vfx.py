@@ -727,11 +727,6 @@ def ensure_system(name, emitters):
     return system
 
 
-def system_path(name):
-    """The object path the Blueprints and data assets point at."""
-    return c.object_path(VFX_PATH, name)
-
-
 def run():
     c.ensure_directory(MATERIALS_PATH)
     for name, build_fn, niagara in MATERIALS:
