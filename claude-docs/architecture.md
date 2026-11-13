@@ -431,8 +431,8 @@ in `WBP_*`; behaviour in the C++ parent.
   `AHawkeyeCharacter`), `UHawkeyeObjectiveWidget` (marker, compass, toasts), the grapple marker, the
   thug overhead glyphs (`UHawkeyeThugOverheadWidget`), the challenge and crime panels, and the first-time
   hint line (`UHawkeyeHintSubsystem`, `UHawkeyeHintWidget`). Subscribes to the mission subsystem, the
-  pawn's bow, weapon and takedown components. Hidden during flashbacks by the controller. Its ammo line
-  still binds `UWeaponComponent` and stays blank for Kate, who has no ammo count.
+  pawn's bow, weapon and takedown components. Hidden during flashbacks by the controller. It has no ammo
+  line: `UWeaponComponent` is bound only so Kate's `Hands` punches flash the hit marker.
 - Menus and cards, all driven by `AHawkeyePlayerController`: `UHawkeyeMainMenuWidget`,
   `UHawkeyeDifficultyPromptWidget` (once at New Game), `UHawkeyePauseWidget`, `UHawkeyeSettingsWidget`,
   `UHawkeyeInventoryWidget` (Tab, pauses), `UHawkeyeSafehouseWidget`, `UHawkeyeMapWidget` (the world

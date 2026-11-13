@@ -40,15 +40,15 @@ class UMissionObjective;
 class UWeaponComponent;
 
 /**
- * Bare gameplay HUD: current objective, ammo, an interaction prompt, a third-person reticle and
+ * Bare gameplay HUD: current objective, an interaction prompt, a third-person reticle and
  * an optional movement debug line.
  *
- * Reparent a UMG widget to this class and name widgets ObjectiveText, AmmoText, PromptText,
+ * Reparent a UMG widget to this class and name widgets ObjectiveText, PromptText,
  * DebugText and Reticle to have them driven automatically; a subclass with no designer layout
  * works too, because RebuildWidget builds them itself (same approach as UFlashbackWidget).
  *
  * All of the state comes from delegates: the mission subsystem drives the objective line, the
- * pawn's UWeaponComponent drives the ammo line, and UInteractionComponent drives the prompt.
+ * pawn's UWeaponComponent and UBowComponent flash the hit marker, and UInteractionComponent drives the prompt.
  */
 UCLASS(Blueprintable, BlueprintType)
 class HAWKEYE_API UHawkeyeHudWidget : public UUserWidget
@@ -85,14 +85,6 @@ public:
 	/** Re-reads the current objective and repaints the objective line. */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void RefreshObjective();
-
-	/** Re-reads the pawn's weapon and repaints the ammo line (blank while unarmed). */
-	UFUNCTION(BlueprintCallable, Category = "HUD")
-	void RefreshAmmo();
-
-	/** "12 / 24", or empty when the pawn has no weapon. Pure so a test can assert on it. */
-	UFUNCTION(BlueprintPure, Category = "HUD")
-	static FText FormatAmmo(int32 Magazine, int32 Reserve);
 
 	// --- Hotbar ---------------------------------------------------------------------------------
 
@@ -426,9 +418,6 @@ protected:
 	void HandleMissionComplete(UMissionDefinition* Mission);
 
 	UFUNCTION()
-	void HandleAmmoChanged(int32 Magazine, int32 Reserve);
-
-	UFUNCTION()
 	void HandleTakedownPerformed(AActor* Target);
 
 	UFUNCTION()
@@ -449,14 +438,14 @@ protected:
 	/** The weapon the HUD is currently listening to; rebound whenever the pawn picks one up. */
 	UWeaponComponent* FindPawnWeapon() const;
 
+	/** Moves the hit-marker binding to the pawn's current weapon when it has changed (a pawn can gain one mid-level). */
+	void RebindPawnWeapon();
+
 	/** Player-facing objective line ("Don't lose the bike thief"), or empty when there is nothing to show. */
 	FText BuildObjectiveText() const;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HUD", meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> ObjectiveText = nullptr;
-
-	UPROPERTY(BlueprintReadOnly, Category = "HUD", meta = (BindWidgetOptional))
-	TObjectPtr<UTextBlock> AmmoText = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HUD", meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> PromptText = nullptr;
@@ -604,7 +593,7 @@ protected:
 	UPROPERTY(Transient)
 	FText CurrentPrompt;
 
-	/** Weapon currently bound to OnAmmoChanged, so the binding can be swapped on pickup. */
+	/** Weapon whose OnHit the HUD listens to, so the binding can be swapped on pickup. */
 	UPROPERTY(Transient)
 	TObjectPtr<UWeaponComponent> BoundWeapon = nullptr;
 

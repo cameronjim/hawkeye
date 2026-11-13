@@ -64,7 +64,6 @@ TSharedRef<SWidget> UHawkeyeHudWidget::RebuildWidget()
 		};
 
 		AddText(ObjectiveText, TEXT("ObjectiveText"), HAlign_Left, VAlign_Top, FMargin(48.f, 48.f, 0.f, 0.f));
-		AddText(AmmoText, TEXT("AmmoText"), HAlign_Right, VAlign_Bottom, FMargin(0.f, 0.f, 48.f, 48.f));
 		AddText(PromptText, TEXT("PromptText"), HAlign_Center, VAlign_Center, FMargin(0.f, 120.f, 0.f, 0.f));
 		AddText(DebugText, TEXT("DebugText"), HAlign_Left, VAlign_Top, FMargin(48.f, 80.f, 0.f, 0.f));
 		DebugText->SetVisibility(ESlateVisibility::Collapsed);
@@ -732,7 +731,7 @@ void UHawkeyeHudWidget::NativeConstruct()
 
 	BindToGame();
 	RefreshObjective();
-	RefreshAmmo();
+	RebindPawnWeapon();
 	ClearPrompt();
 	ApplySettings(UHawkeyeSettingsSubsystem::GetCurrentSettings(this));
 }
@@ -760,7 +759,6 @@ void UHawkeyeHudWidget::BindToGame()
 
 	if (UWeaponComponent* Weapon = FindPawnWeapon())
 	{
-		Weapon->OnAmmoChanged.AddDynamic(this, &UHawkeyeHudWidget::HandleAmmoChanged);
 		Weapon->OnHit.AddDynamic(this, &UHawkeyeHudWidget::HandleWeaponHit);
 		BoundWeapon = Weapon;
 	}
@@ -797,7 +795,6 @@ void UHawkeyeHudWidget::UnbindFromGame()
 
 	if (BoundWeapon)
 	{
-		BoundWeapon->OnAmmoChanged.RemoveDynamic(this, &UHawkeyeHudWidget::HandleAmmoChanged);
 		BoundWeapon->OnHit.RemoveDynamic(this, &UHawkeyeHudWidget::HandleWeaponHit);
 		BoundWeapon = nullptr;
 	}
@@ -826,11 +823,6 @@ UWeaponComponent* UHawkeyeHudWidget::FindPawnWeapon() const
 	const APlayerController* PC = GetOwningPlayer();
 	const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
 	return Pawn ? Pawn->FindComponentByClass<UWeaponComponent>() : nullptr;
-}
-
-FText UHawkeyeHudWidget::FormatAmmo(int32 Magazine, int32 Reserve)
-{
-	return FText::FromString(FString::Printf(TEXT("%d / %d"), Magazine, Reserve));
 }
 
 FText UHawkeyeHudWidget::BuildObjectiveText() const
@@ -865,34 +857,20 @@ void UHawkeyeHudWidget::RefreshObjective()
 	}
 }
 
-void UHawkeyeHudWidget::RefreshAmmo()
+void UHawkeyeHudWidget::RebindPawnWeapon()
 {
-	// The pawn can gain a weapon component (or have it enabled) partway through the level.
+	// The pawn can gain a weapon component (or have it enabled) partway through the level. Kate's Hands report
+	// her punches through OnHit, which flashes the hit marker.
 	UWeaponComponent* Weapon = FindPawnWeapon();
 	if (Weapon && Weapon != BoundWeapon)
 	{
 		if (BoundWeapon)
 		{
-			BoundWeapon->OnAmmoChanged.RemoveDynamic(this, &UHawkeyeHudWidget::HandleAmmoChanged);
 			BoundWeapon->OnHit.RemoveDynamic(this, &UHawkeyeHudWidget::HandleWeaponHit);
 		}
-		Weapon->OnAmmoChanged.AddDynamic(this, &UHawkeyeHudWidget::HandleAmmoChanged);
 		Weapon->OnHit.AddDynamic(this, &UHawkeyeHudWidget::HandleWeaponHit);
 		BoundWeapon = Weapon;
 	}
-
-	if (!AmmoText)
-	{
-		return;
-	}
-
-	if (!Weapon || !Weapon->HasWeapon())
-	{
-		AmmoText->SetText(FText::GetEmpty());
-		return;
-	}
-
-	AmmoText->SetText(FormatAmmo(Weapon->CurrentAmmo, Weapon->ReserveAmmo));
 }
 
 void UHawkeyeHudWidget::SetPrompt(FText Prompt)
@@ -943,11 +921,6 @@ void UHawkeyeHudWidget::HandleObjectiveUpdated(UMissionObjective* /*Objective*/,
 void UHawkeyeHudWidget::HandleMissionComplete(UMissionDefinition* /*Mission*/)
 {
 	RefreshObjective();
-}
-
-void UHawkeyeHudWidget::HandleAmmoChanged(int32 /*Magazine*/, int32 /*Reserve*/)
-{
-	RefreshAmmo();
 }
 
 void UHawkeyeHudWidget::HandleTakedownPerformed(AActor* /*Target*/)
@@ -1093,7 +1066,7 @@ void UHawkeyeHudWidget::RebindToPawn()
 {
 	UnbindFromGame();
 	BindToGame();
-	RefreshAmmo();
+	RebindPawnWeapon();
 	if (Hotbar)
 	{
 		Hotbar->BindToOwningPawn();
@@ -1343,7 +1316,6 @@ void UHawkeyeHudWidget::ApplyHudScale(float Scale)
 	// Each part grows from the corner or edge it is pinned to, so nothing slides off the screen.
 	ScaleAbout(ObjectiveText, FVector2D(0.f, 0.f));
 	ScaleAbout(DebugText, FVector2D(0.f, 0.f));
-	ScaleAbout(AmmoText, FVector2D(1.f, 1.f));
 	ScaleAbout(PromptText, FVector2D(0.5f, 0.5f));
 	ScaleAbout(CharacterNameText, FVector2D(0.f, 1.f));
 	ScaleAbout(PartnerStatusText, FVector2D(0.f, 1.f));
