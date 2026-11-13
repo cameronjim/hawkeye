@@ -271,6 +271,9 @@ def polyline_length(pts):
 # OSM tag interpretation
 # --------------------------------------------------------------------------------------
 
+# Metres per OSM building:levels when a building has no height tag: an estimate of a whole storey, slab included,
+# for a building's height from data. Not the 330 cm storey the game builds to (_fire_escapes.FIRE_ESCAPE_FLOOR,
+# _interior.FLOOR_HEIGHT): changing either moves the generated city.
 LEVEL_HEIGHT_M = 3.2
 PARAPET_ALLOWANCE_M = 1.5
 DEFAULT_HEIGHT_M = 15.0

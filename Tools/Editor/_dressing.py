@@ -41,7 +41,7 @@ SIDEWALK_TOP = 15.0             # _district.SIDEWALK_TOP
 PARAPET_HEIGHT = 90.0           # _district.PARAPET_HEIGHT
 PARAPET_THICK = 30.0            # _district.PARAPET_THICK
 PARAPET_MIN_HEIGHT_M = 6.0      # _district.PARAPET_MIN_HEIGHT_M
-FLOOR = 330.0                   # _fire_escapes.FIRE_ESCAPE_FLOOR: one storey
+FLOOR = 330.0                   # _fire_escapes.FIRE_ESCAPE_FLOOR: one built storey (not _geo.LEVEL_HEIGHT_M, the OSM estimate)
 
 # --- blocks --------------------------------------------------------------------------------------------------------
 BLOCK_LINK = 2500.0             # cm; footprints this close with no street centre line between them share a block

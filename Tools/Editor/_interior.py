@@ -58,7 +58,7 @@ meet. Walls are WALL thick, centred on the line.
 import json
 import math
 
-FLOOR_HEIGHT = 330.0
+FLOOR_HEIGHT = 330.0  # cm, one built storey, as the district's fire escapes (not _geo.LEVEL_HEIGHT_M, the OSM estimate)
 SLAB = 20.0
 WALL = 20.0
 DOOR_WIDTH = 100.0
