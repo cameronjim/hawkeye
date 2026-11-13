@@ -454,3 +454,193 @@ def merge(*dicts):
         for key, boxes in d.items():
             out.setdefault(key, []).extend(boxes)
     return out
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# look pass 3: parked cars on both kerbs, manholes and steam, snow piles, street furniture (all render only)
+# ----------------------------------------------------------------------------------------------------------------------
+
+# Body shapes: name -> (length, width, wheel base half, wheel radius, glass from, glass to, lamp z). The meshes are
+# _street_look_build.CAR_PROFILES on these numbers; M_Car paints them from the same (its Shape1 / Shape2 parameters).
+CAR_SHAPES = {
+    "Sedan": (470.0, 182.0, 140.0, 32.0, 94.0, 137.0, 72.0),
+    "SUV": (485.0, 195.0, 150.0, 36.0, 111.0, 173.0, 88.0),
+    "Van": (520.0, 200.0, 165.0, 35.0, 121.0, 202.0, 96.0),
+}
+CAR_SHAPE_ORDER = ("Sedan", "Sedan", "SUV", "Sedan", "Van", "SUV")      # how often each turns up
+CAR_COLOURS = {
+    "Black": (0.015, 0.015, 0.017), "Grey": (0.10, 0.10, 0.11), "Navy": (0.02, 0.03, 0.07),
+    "White": (0.55, 0.55, 0.54), "Silver": (0.28, 0.29, 0.30), "Red": (0.30, 0.025, 0.02), "Green": (0.03, 0.07, 0.05),
+}
+CAR_COLOUR_ORDER = ("Black", "Grey", "White", "Silver", "Navy", "Black", "Red", "Grey", "White", "Green")
+CAR_RADIUS = 9000.0            # cm from the start along the hero streets
+CAR_KERB_GAP = 25.0            # cm between a car's side and the kerb
+CAR_GAP = (70.0, 240.0)        # cm bumper to bumper
+CAR_EMPTY = 0.12               # of spaces left empty
+CROSS_CLEAR = 700.0            # cm from another road's carriageway: crossings and corners stay clear
+MANHOLE_STEP = 2600.0          # cm between manholes along a road
+STEAM_COUNT = 3
+
+
+def _road_segments_near(district, start, radius):
+    """[(rec, p, q, half, (ux, uy), length)] of road segments passing within ``radius`` of ``start``."""
+    out = []
+    for rec, paths in sorted(road_paths(district), key=lambda rp: rp[0]["id"]):
+        half = rec["width_m"] * 50.0
+        for path in paths:
+            for p, q in zip(path, path[1:]):
+                length = math.hypot(q[0] - p[0], q[1] - p[1])
+                if length < 1.0 or _seg_dist(start, p, q)[0] > radius:
+                    continue
+                out.append((rec, p, q, half, ((q[0] - p[0]) / length, (q[1] - p[1]) / length), length))
+    return out
+
+
+def _all_road_segments(district):
+    return [(rec["id"], p, q, rec["width_m"] * 50.0) for rec, paths in road_paths(district) for path in paths
+            for p, q in zip(path, path[1:])]
+
+
+def _near_other_road(pt, rec_id, segs, pad):
+    return any(rid != rec_id and _seg_dist(pt, a, b)[0] < h + pad for rid, a, b, h in segs)
+
+
+def parked_cars(district, start, keep):
+    """[(x, y, yaw, shape, colour)] along both kerbs of the roads near the start, nose to tail with believable gaps,
+    clear of crossings and of ``keep`` [(x, y, radius)] (the start, test blocks, patrols, hydrants, solid cars)."""
+    segs = _all_road_segments(district)
+    out = []
+    for rec, p, q, half, (ux, uy), length in _road_segments_near(district, start, CAR_RADIUS + 3000.0):
+        nx, ny = -uy, ux
+        for side in (-1.0, 1.0):
+            s = 0.0
+            n = 0
+            while s < length:
+                k = fp.key(int(round(p[0])) & 0xFFFF, int(round(p[1])) & 0xFFFF, int(side + 1), n, 30)
+                n += 1
+                shape = CAR_SHAPE_ORDER[int(fp.hf(k) * len(CAR_SHAPE_ORDER)) % len(CAR_SHAPE_ORDER)]
+                length_car, width = CAR_SHAPES[shape][0], CAR_SHAPES[shape][1]
+                gap = CAR_GAP[0] + (CAR_GAP[1] - CAR_GAP[0]) * fp.hf(k + 1)
+                if fp.hf(k + 2) < CAR_EMPTY:
+                    s += 550.0
+                    continue
+                c = s + length_car * 0.5
+                if c + length_car * 0.5 > length:
+                    break
+                off = side * (half - width * 0.5 - CAR_KERB_GAP)
+                x, y = p[0] + ux * c + nx * off, p[1] + uy * c + ny * off
+                ends = [(x + ux * length_car * 0.5, y + uy * length_car * 0.5),
+                        (x - ux * length_car * 0.5, y - uy * length_car * 0.5), (x, y)]
+                if math.hypot(x - start[0], y - start[1]) > CAR_RADIUS \
+                        or any(_near_other_road(e, rec["id"], segs, CROSS_CLEAR) for e in ends) \
+                        or any(math.hypot(e[0] - kx, e[1] - ky) < kr + width * 0.5 for e in ends for kx, ky, kr in keep):
+                    s += 150.0
+                    continue
+                colour = CAR_COLOUR_ORDER[int(fp.hf(k + 3) * len(CAR_COLOUR_ORDER)) % len(CAR_COLOUR_ORDER)]
+                yaw = math.degrees(math.atan2(uy, ux)) + (180.0 if side < 0.0 else 0.0)   # parked with the traffic
+                out.append((round(x, 1), round(y, 1), round(yaw, 2), shape, colour))
+                s += length_car + gap
+    return out
+
+
+def manholes(district, start):
+    """[(x, y, steam)] a manhole every MANHOLE_STEP along each road near the start, in a lane, alternating sides;
+    the STEAM_COUNT nearest the start (but not under her) steam."""
+    out = []
+    for _rec, p, _q, half, (ux, uy), length in _road_segments_near(district, start, HERO_RADIUS):
+        nx, ny = -uy, ux
+        s = MANHOLE_STEP * 0.5
+        i = 0
+        while s < length:
+            lane = (1.0 if i % 2 == 0 else -1.0) * min(170.0, half * 0.35)
+            x, y = p[0] + ux * s + nx * lane, p[1] + uy * s + ny * lane
+            if math.hypot(x - start[0], y - start[1]) <= HERO_RADIUS:
+                out.append([round(x, 1), round(y, 1), False])
+            s += MANHOLE_STEP
+            i += 1
+    ranked = sorted(range(len(out)), key=lambda j: math.hypot(out[j][0] - start[0], out[j][1] - start[1]))
+    steaming = [j for j in ranked if math.hypot(out[j][0] - start[0], out[j][1] - start[1]) > 900.0][:STEAM_COUNT]
+    for j in steaming:
+        out[j][2] = True
+    return [tuple(mh) for mh in out]
+
+
+def snow_piles(district, start, trees, hydrants, cars):
+    """[(x, y, z, length, width, height, yaw)] mounds of shovelled and plowed snow: in the tree pits, behind the
+    hydrants, and windrows along the kerb in the gaps between parked cars."""
+    out = []
+    for x, y, yaw, _s in trees:
+        out.append((x, y, SIDEWALK_TOP - 3.0, 105.0, 100.0, 16.0, yaw))
+    for x, y in hydrants:
+        out.append((x, y, SIDEWALK_TOP - 3.0, 115.0, 80.0, 34.0, round(h21(round(x), round(y)) * 180.0, 2)))
+    car_pts = [(car[0], car[1]) for car in cars]
+    segs = _all_road_segments(district)
+    for rec, p, _q, half, (ux, uy), length in _road_segments_near(district, start, CAR_RADIUS):
+        nx, ny = -uy, ux
+        for side in (-1.0, 1.0):
+            s = 150.0
+            while s < length - 150.0:
+                off = side * (half - 40.0)
+                x, y = p[0] + ux * s + nx * off, p[1] + uy * s + ny * off
+                hv = h21(round(x / 7.0), round(y / 7.0))
+                s += 260.0 + 200.0 * hv
+                d = math.hypot(x - start[0], y - start[1])
+                if d > CAR_RADIUS or d < 500.0:
+                    continue
+                if any(math.hypot(x - cx, y - cy) < 290.0 for cx, cy in car_pts):
+                    continue
+                if _near_other_road((x, y), rec["id"], segs, 300.0):
+                    continue
+                # a windrow: three to five lumps of plowed snow along the kerb
+                yaw = math.degrees(math.atan2(uy, ux))
+                lumps = 3 + int(hv * 2.99)
+                for j in range(lumps):
+                    hj = h21(round(x / 3.0) + j * 7.0, round(y / 3.0))
+                    t = (j - (lumps - 1) * 0.5) * 85.0 + (hj - 0.5) * 50.0
+                    out.append((round(x + ux * t + nx * side * (hj - 0.5) * 16.0, 1),
+                                round(y + uy * t + ny * side * (hj - 0.5) * 16.0, 1), ROAD_TOP - 3.0,
+                                round(110.0 + 80.0 * hj, 1), round(60.0 + 30.0 * hj, 1), round(16.0 + 18.0 * hj, 1),
+                                round(yaw + (hj - 0.5) * 40.0, 2)))
+    return out
+
+
+SIGN_KINDS = ("NoParking", "BusStop", "OneWay")
+
+
+def street_furniture(district, start, avoid):
+    """{"sign": [(x, y, yaw, kind)], "mailbox": [(x, y, yaw)]}: parking signs on poles at the kerb every 25 to 35 m,
+    one bus stop sign, one one-way sign near a corner, two mailboxes; clear of ``avoid`` [(x, y)] by 120 cm. A sign's
+    yaw turns its plate (local +Y) to face along the kerb, as street signs do."""
+    signs, boxes = [], []
+    segs = _all_road_segments(district)
+    avoid = list(avoid)
+    bus_done = oneway_done = False
+    for rec, p, _q, half, (ux, uy), length in _road_segments_near(district, start, CAR_RADIUS):
+        nx, ny = -uy, ux
+        for side in (-1.0, 1.0):
+            s = 400.0 if side > 0 else 1700.0
+            while s < length - 400.0:
+                off = side * (half + 45.0)
+                x, y = p[0] + ux * s + nx * off, p[1] + uy * s + ny * off
+                s += 2500.0 + 1000.0 * h21(round(x / 9.0), round(y / 9.0))
+                d = math.hypot(x - start[0], y - start[1])
+                if d > CAR_RADIUS or d < 400.0:
+                    continue
+                if any(math.hypot(x - ax, y - ay) < 160.0 for ax, ay in avoid):
+                    continue
+                if _near_other_road((x, y), rec["id"], segs, 60.0):
+                    continue
+                near_corner = _near_other_road((x, y), rec["id"], segs, 1200.0)
+                kind = "NoParking"
+                if not bus_done and not near_corner:
+                    kind, bus_done = "BusStop", True
+                elif not oneway_done and near_corner:
+                    kind, oneway_done = "OneWay", True
+                signs.append((round(x, 1), round(y, 1), round(math.degrees(math.atan2(uy, ux)), 2), kind))
+                avoid.append((x, y))
+                if len(boxes) < 2 and kind == "NoParking" and len(signs) % 3 == 1:
+                    bx, by = x - ux * 160.0 - nx * side * 40.0, y - uy * 160.0 - ny * side * 40.0
+                    if not any(math.hypot(bx - ax, by - ay) < 120.0 for ax, ay in avoid):
+                        boxes.append((round(bx, 1), round(by, 1), round(math.degrees(math.atan2(-ny * side, -nx * side)), 2)))
+                        avoid.append((bx, by))
+    return {"sign": signs, "mailbox": boxes}
