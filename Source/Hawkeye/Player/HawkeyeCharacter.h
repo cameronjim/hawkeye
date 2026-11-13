@@ -1919,9 +1919,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Noise", meta = (ClampMin = "0.0"))
 	float WalkNoiseLoudness = 0.4f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Noise", meta = (ClampMin = "0.0"))
-	float GunshotNoiseLoudness = 3.f;
-
 	/** Timer body: emits one movement noise event if the player is making any. */
 	void EmitMovementNoise();
 
