@@ -12,7 +12,7 @@ Prints one line per check and a final ``[Hawkeye] verify_city PASS`` or ``FAIL``
 * handedness: the streets come out in the real order (1st Ave west of Ave A west of Ave B
   west of Ave C, East 6th south of East 11th), i.e. the map is not mirrored
 * the BP_GameMode_EastVillage override starting DA_CH01_NightShift (its objectives the chase's three),
-  and the retired Rooftops chapter's furniture: a City_Obj_* volume above the
+  and the objective chain (the Rooftops chapter's roofs, kept for the traversal audit and the tests): a City_Obj_* volume above the
   reach_roof and cross_block roofs, three City_Beacon_* (pole, emissive cap, movable
   300 lm light) on the objective roofs, the chapter end (City_ChapterEndTower on the find_arrow
   roof, City_ChapterEnd completing find_arrow with the arrow meshes, City_SceneReturn_FB00), the street lamps (light, pole, head) matching the

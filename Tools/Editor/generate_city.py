@@ -31,8 +31,10 @@ What gets built, all with Geometry Script from Python (the GeometryScripting plu
   the player's height above it.
   The lit windows are in the facade material.
 * chapter 1: the BP_GameMode_EastVillage override (starts DA_CH01_NightShift, whose chase spawns its own
-  thief, dumpster and roof props at run time: create_chase.py); and, kept as furniture from the retired
-  Rooftops chapter (dark and quiet while Night Shift runs), three objective roofs
+  thief, dumpster and roof props at run time: create_chase.py); and the objective chain, first built for
+  the Rooftops chapter and kept as the district's grapple benchmark: the traversal audit gates on these
+  roofs chaining from the street, ThugGroupObjective and the archers use them, and about ten tests stand
+  Kate on them. Night Shift has none of their ids, so they stay dark and quiet. Three objective roofs
   picked from the records, each with a 1 m ``City_Beacon_<objective>`` (pole, emissive purple
   ``City_BeaconTop_``, and a movable 300 lm purple ``City_BeaconLight_``) at the end of the roof
   nearest the start, ``City_Obj_<objective>`` trigger volumes on the first two, and on the
@@ -984,9 +986,10 @@ OBJECTIVE_MIN_HEIGHT_M = 8.0      # cross_block and find_arrow skip sheds and ga
 OBJECTIVE_ABOVE_ROOF = 50.0       # cm between the roof and the bottom of the volume
 OBJECTIVE_HALF_HEIGHT = 150.0     # cm; tall enough to hold Kate's whole capsule
 
-# The retired Rooftops chapter's objectives, in order; clear_roof has no volume (a thug group completes it). Its
-# volumes, beacons, arrow and fighters stay in the district as furniture (the running chapter has none of these
-# ids, so they keep quiet and the beacons stay dark: gameplay-semantics.md, "Chases").
+# The objective chain's ids, in order (first the Rooftops chapter's objectives); clear_roof has no volume (a thug
+# group completes it). Its volumes, beacons, arrow and fighters stay in the district as the traversal audit's chain
+# and the tests' roofs; the running chapter has none of these ids, so they keep quiet and the beacons stay dark
+# (gameplay-semantics.md, "Chases").
 MISSION_OBJECTIVE_IDS = ("reach_roof", "cross_block", "clear_roof", "find_arrow")
 
 # The chapter the district starts (DA_CH01_NightShift), in order: its chase completes all three.

@@ -24,6 +24,8 @@ import json
 import math
 import re
 
+# An equirectangular projection about the origin, with the usual WGS84 approximations for metres per degree
+# (latitude constant, longitude scaled by cos(lat0)): good to well under a metre across one district.
 M_PER_DEG_LAT = 110540.0
 M_PER_DEG_LON_EQUATOR = 111320.0
 
