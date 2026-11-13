@@ -1191,7 +1191,7 @@ void AHawkeyePlayerController::OpenSafehouseMenu(ASafehouse* Safehouse)
 	Menu->SetSafehouseName(Safehouse->GetDisplayName());
 	Menu->SetSubtitle(Safehouse->Address);
 	Menu->ShowMain();
-	SafehouseListKind = 0;
+	SafehouseListKind = ESafehouseList::None;
 	Menu->SetStatus(NSLOCTEXT("Hawkeye", "SafehouseWelcome", "Healed to full. Progress saved."));
 	if (!Menu->IsInViewport())
 	{
@@ -1214,7 +1214,7 @@ void AHawkeyePlayerController::CloseSafehouseMenu()
 	}
 	bSafehouseMenuOpen = false;
 	ActiveSafehouse = nullptr;
-	SafehouseListKind = 0;
+	SafehouseListKind = ESafehouseList::None;
 	TravelRowIds.Reset();
 	SetPause(false);
 	ApplyPauseInputMode(false);
@@ -1337,7 +1337,7 @@ void AHawkeyePlayerController::SafehouseFastTravel()
 		Row.bEnabled = Entry.bDiscovered;
 		TravelRowIds.Add(Entry.SafehouseId);
 	}
-	SafehouseListKind = 1;
+	SafehouseListKind = ESafehouseList::FastTravel;
 	SafehouseWidget->ShowList(NSLOCTEXT("Hawkeye", "FastTravelHeading", "Fast travel"), Rows);
 	SetSafehouseStatus(Rows.Num() == 0 ? NSLOCTEXT("Hawkeye", "SafehouseNoOther", "No other safehouse yet.")
 		: NSLOCTEXT("Hawkeye", "FastTravelPick", "Pick a safehouse."));
@@ -1372,19 +1372,19 @@ void AHawkeyePlayerController::SafehouseChapterSelect()
 	{
 		Rows.Add({ NSLOCTEXT("Hawkeye", "ChapterSelectLocked", "[Locked]"), false });
 	}
-	SafehouseListKind = 2;
+	SafehouseListKind = ESafehouseList::Chapters;
 	SafehouseWidget->ShowList(NSLOCTEXT("Hawkeye", "ChapterSelectHeading", "Chapter select"), Rows);
 	SetSafehouseStatus(NSLOCTEXT("Hawkeye", "SafehouseChapters", "Pick a chapter."));
 }
 
 void AHawkeyePlayerController::HandleSafehouseListPicked(int32 Index)
 {
-	if (SafehouseListKind == 1 && TravelRowIds.IsValidIndex(Index))
+	if (SafehouseListKind == ESafehouseList::FastTravel && TravelRowIds.IsValidIndex(Index))
 	{
 		FastTravelTo(TravelRowIds[Index]);
 		return;
 	}
-	if (SafehouseListKind != 2)
+	if (SafehouseListKind != ESafehouseList::Chapters)
 	{
 		return;
 	}
@@ -1408,7 +1408,7 @@ void AHawkeyePlayerController::HandleSafehouseListPicked(int32 Index)
 
 void AHawkeyePlayerController::HandleSafehouseListBack()
 {
-	SafehouseListKind = 0;
+	SafehouseListKind = ESafehouseList::None;
 	TravelRowIds.Reset();
 	SetSafehouseStatus(FText::GetEmpty());
 }

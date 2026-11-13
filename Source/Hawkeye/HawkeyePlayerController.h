@@ -41,6 +41,14 @@ class USoundMix;
 struct FInputActionValue;
 struct FInputKeyEventArgs;
 
+/** Which list the safehouse menu is showing, so a picked row means the right thing. */
+enum class ESafehouseList : uint8
+{
+	None,
+	FastTravel,
+	Chapters
+};
+
 /**
  * Owns the HUD and the flashback presentation: listens to the mission subsystem, plays the slideshow and
  * travels to the mission's NextLevel once it finishes.
@@ -923,8 +931,8 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Safehouse")
 	bool bSafehouseMenuOpen = false;
 
-	/** Which list the safehouse menu is showing: 0 none, 1 fast travel, 2 chapter select. */
-	uint8 SafehouseListKind = 0;
+	/** Which list the safehouse menu is showing. */
+	ESafehouseList SafehouseListKind = ESafehouseList::None;
 
 	/** The fast-travel list's safehouse ids, row for row. */
 	TArray<FName> TravelRowIds;
