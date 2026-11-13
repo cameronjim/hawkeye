@@ -421,9 +421,24 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	bool IsKnockedDown() const { return bKnockedDown; }
 
-	/** The ragdoll pose blending back into the animated one after a knockdown. */
+	/** The ragdoll pose blending back into the animated one after a knockdown, or the get-up clip playing. */
 	UFUNCTION(BlueprintPure, Category = "Thug")
 	bool IsGettingUp() const { return bGettingUp; }
+
+	/** The get-up clip's role the last get-up chose (GetUp on his back, GetUpFront face down); None for no clip. */
+	ECombatAnimRole GetLastGetUpRole() const { return LastGetUpRole; }
+
+	/**
+	 * Tests: puts him in a clip get-up of Seconds (as BeginGetUpClip does when a clip plays: movement off until it ends)
+	 * without a clip, a mesh or physics, so the get-up's rules run in a world with no animation.
+	 */
+	void BeginGetUpForTest(float Seconds);
+
+	/** Tests: moves the get-up on (UpdateGetUp, which Tick calls). */
+	void UpdateGetUpForTest(float DeltaSeconds) { UpdateGetUp(DeltaSeconds); }
+
+	/** Seconds the get-up under way lasts in all (its clip's length, or GetUpSeconds with none); 0 when not getting up. */
+	float GetGetUpSeconds() const { return bGettingUp ? (bGetUpFromClip ? GetUpClipSeconds : GetUpSeconds) : 0.f; }
 
 	/** Staggered, on the floor or getting up: the AI does nothing. */
 	UFUNCTION(BlueprintPure, Category = "Thug")
@@ -519,6 +534,24 @@ public:
 	/** Speed of the shove away from whoever hit him, cm/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0"))
 	float HitShoveSpeed = 250.f;
+
+	/**
+	 * A blow of this impact weight or more plays the HitHeavy clip (two steps back) when his set has one, with the
+	 * shove at HeavyHitShoveSpeed: the clip is authored to step back onto the capsule over that shove's distance.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeavyReactionWeight = 0.6f;
+
+	/** The shove under a HitHeavy clip, cm/s (about 28 cm on the ground). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0"))
+	float HeavyHitShoveSpeed = 500.f;
+
+	/**
+	 * Seconds the floor pose blends into a get-up clip's first frame: the ragdoll's physics weight going 1 to 0, or, out of
+	 * the knockdown clip, the mesh easing from where it lay onto the capsule the get-up is aligned to.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.01"))
+	float GetUpBlendSeconds = 0.3f;
 
 	/** Seconds a heavy keeps him on the floor. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0"))
@@ -848,6 +881,17 @@ protected:
 	/** Ends a clip knockdown: the get-up clip (or the knockdown clip blending out) and back on his feet. */
 	void StandUpFromClip();
 
+	/**
+	 * Starts the get-up clip for the way his body lies (on the back or face down, by the pelvis), with the capsule moved
+	 * and turned so the clip's first frame lies where the body does. bFromRagdoll: the bodies are simulating (the mesh
+	 * is attached back on the capsule here); else the knockdown clip's pose is on screen and the mesh eases onto the
+	 * capsule over GetUpBlendSeconds. False, nothing changed, when there is no get-up clip that plays.
+	 */
+	bool BeginGetUpClip(bool bFromRagdoll);
+
+	/** The ragdoll's bodies off and the mesh back to an animated character mesh (the end of the physics blend). */
+	void EndGetUpPhysics();
+
 	/** Tells the brain (or, without one, the state) that By just hurt him. */
 	void AlertTo(AActor* By);
 
@@ -987,6 +1031,12 @@ private:
 	bool bKnockdownClip = false;
 	bool bGetUpFromClip = false;
 	float GetUpClipSeconds = 0.f;
+	/** The ragdoll's bodies still blending out under the get-up clip. */
+	bool bGetUpPhysics = false;
+	/** The mesh easing from where the knockdown clip left it onto the capsule (its relative transform at the start). */
+	bool bGetUpMeshEase = false;
+	FTransform GetUpMeshStart;
+	ECombatAnimRole LastGetUpRole = ECombatAnimRole::None;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> KnockdownMontage;

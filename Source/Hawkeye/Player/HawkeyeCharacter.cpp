@@ -3025,13 +3025,19 @@ void AHawkeyeCharacter::HandleStaggered(UHealthComponent* /*Health*/, AActor* Da
 	{
 		Away = -GetActorForwardVector();
 	}
-	LaunchCharacter(Away * PlayerStaggerShove, true, false);
-	// The reaction for the side the blow came from (its travel, when a strike or an arrow says), else from where he stood.
+	// The reaction for the side the blow came from (its travel, when a strike or an arrow says), else from where he stood;
+	// a heavy blow's two-step stagger over a longer shove when her set has one.
 	const FHawkeyeStrikeImpact* Blow = HitReactionComponent && HitReactionComponent->GetPendingImpact().bValid
 		? &HitReactionComponent->GetPendingImpact() : nullptr;
 	const EHawkeyeHitDirection Side = Blow ? UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow->Direction)
 		: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
-	HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, UCombatAnimSet::HitRoleFor(Side));
+	const ECombatAnimRole HitRole = UCombatAnimSet::HitRoleForBlow(CombatAnimSet, Side, Blow ? Blow->Weight : 0.f, HeavyReactionWeight);
+	const bool bHeavyClip = HitRole == ECombatAnimRole::HitHeavy && HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, HitRole) != nullptr;
+	LaunchCharacter(Away * (bHeavyClip ? PlayerHeavyStaggerShove : PlayerStaggerShove), true, false);
+	if (!bHeavyClip)
+	{
+		HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, UCombatAnimSet::HitRoleFor(Side));
+	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: staggered by %s, health %.1f."), *GetNameSafe(this),
 		*GetNameSafe(DamageInstigator), HealthComponent->GetCurrentHealth());
 }

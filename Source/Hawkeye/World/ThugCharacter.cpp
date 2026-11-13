@@ -4,6 +4,7 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
+#include "AnimationRuntime.h"
 #include "Hawkeye.h"
 #include "Audio/HawkeyeAudioSubsystem.h"
 #include "Combat/ArrowProjectile.h"
@@ -648,6 +649,16 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 		return;
 	}
 
+	// Getting up off the floor, a blow hurts but does not stagger him or cut the get-up (gameplay-semantics.md,
+	// "Authored clips"); a knockdown comes through KnockdownFor and starts over.
+	if (UHawkeyeHitContactRules::ResolveHitDuringGetUp(bGettingUp, /*bKnocksDown=*/false) == EHawkeyeGetUpHit::Absorb)
+	{
+		AlertTo(HitBy);
+		UE_LOG(LogHawkeye, Log, TEXT("%s: hit by %s while getting up: no stagger, health %.1f."), *GetName(), *GetNameSafe(HitBy),
+			HealthComponent->GetCurrentHealth());
+		return;
+	}
+
 	StaggerRemaining = StaggerSeconds;
 	UHawkeyeAudioSubsystem::PlayAt(this, StaggerSound, GetActorLocation(), TEXT("thug stagger"));
 
@@ -673,15 +684,20 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 		{
 			Away = -GetActorForwardVector();
 		}
-		LaunchCharacter(Away * HitShoveSpeed, true, false);
-		// The clip for the side the blow came from (a hook from his left, a kick from behind); the stagger and the shove
-		// are the same with or without one.
+		// The clip for the side the blow came from (a hook from his left, a kick from behind), or the heavy stagger for a
+		// heavy blow; the stagger is the same with or without one. The heavy clip steps back two steps onto a longer shove.
 		const FHawkeyeStrikeImpact* Blow = HitReactionComponent && HitReactionComponent->GetPendingImpact().bValid
 			? &HitReactionComponent->GetPendingImpact() : nullptr;
 		const EHawkeyeHitDirection Side = Blow
 			? UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow->Direction)
 			: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
-		PlayCombatClip(UCombatAnimSet::HitRoleFor(Side));
+		const ECombatAnimRole HitRole = UCombatAnimSet::HitRoleForBlow(CombatAnimSet, Side, Blow ? Blow->Weight : 0.f, HeavyReactionWeight);
+		const bool bHeavyClip = HitRole == ECombatAnimRole::HitHeavy && PlayCombatClip(HitRole);
+		LaunchCharacter(Away * (bHeavyClip ? HeavyHitShoveSpeed : HitShoveSpeed), true, false);
+		if (!bHeavyClip)
+		{
+			PlayCombatClip(UCombatAnimSet::HitRoleFor(Side));
+		}
 	}
 
 	AlertTo(HitBy);
@@ -969,9 +985,14 @@ void AThugCharacter::StandUp()
 		SkeletalMesh->SetEnablePhysicsBlending(false);
 		SkeletalMesh->SetAllBodiesPhysicsBlendWeight(1.f);
 		SkeletalMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
-		SetActorLocation(Stand, false, nullptr, ETeleportType::None);
-		SkeletalMesh->AttachToComponent(Capsule, FAttachmentTransformRules::KeepWorldTransform);
-		SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+		// A get-up clip moves and turns the capsule so its first frame lies where the body does; without one he stands
+		// over his pelvis and blends up out of the ragdoll.
+		if (!BeginGetUpClip(/*bFromRagdoll=*/true))
+		{
+			SetActorLocation(Stand, false, nullptr, ETeleportType::None);
+			SkeletalMesh->AttachToComponent(Capsule, FAttachmentTransformRules::KeepWorldTransform);
+			SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+		}
 		bBlendUp = true;
 	}
 	else if (SkeletalMesh && Capsule && SkeletalMesh->IsSimulatingPhysics())
@@ -1011,14 +1032,25 @@ void AThugCharacter::StandUp()
 	KnockdownRemaining = 0.f;
 	bGettingUp = bBlendUp;
 	GetUpElapsed = 0.f;
+	bGetUpPhysics = bBlendUp;
 
 	// The ragdoll left the bones wherever they fell; re-playing the clip puts him back on his feet.
 	CurrentLocomotionAnim = nullptr;
 	UpdateLocomotionAnimation();
+	if (bGetUpFromClip)
+	{
+		// Control comes back when the clip ends (FinishGetUp), not when the ragdoll's blend does.
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->DisableMovement();
+		}
+	}
 	if (bWasDown)
 	{
-		UE_LOG(LogHawkeye, Log, TEXT("%s: %s."), *GetName(),
-			bBlendUp ? *FString::Printf(TEXT("getting up, blending out of the ragdoll over %.2f s"), GetUpSeconds) : TEXT("back on his feet"));
+		UE_LOG(LogHawkeye, Log, TEXT("%s: %s."), *GetName(), bGetUpFromClip
+			? *FString::Printf(TEXT("getting up (%s, %.2f s) out of the ragdoll over %.2f s"), *UEnum::GetValueAsString(LastGetUpRole),
+				GetUpClipSeconds, GetUpBlendSeconds)
+			: bBlendUp ? *FString::Printf(TEXT("getting up, blending out of the ragdoll over %.2f s"), GetUpSeconds) : TEXT("back on his feet"));
 	}
 }
 
@@ -1031,6 +1063,23 @@ void AThugCharacter::UpdateGetUp(float DeltaSeconds)
 	GetUpElapsed += DeltaSeconds;
 	if (bGetUpFromClip)
 	{
+		const float Blend = FMath::SmoothStep(0.f, 1.f, FMath::Clamp(GetUpElapsed / GetUpBlendSeconds, 0.f, 1.f));
+		USkeletalMeshComponent* SkeletalMesh = GetMesh();
+		if (bGetUpPhysics && SkeletalMesh)
+		{
+			SkeletalMesh->SetAllBodiesPhysicsBlendWeight(1.f - Blend);
+			if (Blend >= 1.f)
+			{
+				EndGetUpPhysics();
+			}
+		}
+		if (bGetUpMeshEase && SkeletalMesh)
+		{
+			FTransform Eased;
+			Eased.Blend(GetUpMeshStart, MeshRelativeTransform, Blend);
+			SkeletalMesh->SetRelativeTransform(Eased);
+			bGetUpMeshEase = Blend < 1.f;
+		}
 		if (GetUpElapsed >= GetUpClipSeconds)
 		{
 			FinishGetUp();
@@ -1048,21 +1097,9 @@ void AThugCharacter::UpdateGetUp(float DeltaSeconds)
 	}
 }
 
-void AThugCharacter::FinishGetUp()
+void AThugCharacter::EndGetUpPhysics()
 {
-	if (!bGettingUp)
-	{
-		return;
-	}
-	if (bGetUpFromClip)
-	{
-		// The clip never touched the physics; there is nothing to put back.
-		bGetUpFromClip = false;
-		bGettingUp = false;
-		GetUpElapsed = 0.f;
-		UE_LOG(LogHawkeye, Log, TEXT("%s: back on his feet."), *GetName());
-		return;
-	}
+	bGetUpPhysics = false;
 	if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
 	{
 		SkeletalMesh->SetAllBodiesSimulatePhysics(false);
@@ -1071,6 +1108,40 @@ void AThugCharacter::FinishGetUp()
 		SkeletalMesh->SetCollisionProfileName(TEXT("CharacterMesh"));
 		SkeletalMesh->SetCollisionResponseToChannel(ECC_HawkeyeWeapon, ECR_Block);
 	}
+}
+
+void AThugCharacter::FinishGetUp()
+{
+	if (!bGettingUp)
+	{
+		return;
+	}
+	if (bGetUpFromClip)
+	{
+		// The clip's end: the bodies and the mesh are put back if a knockdown cut the blend short, and he moves again.
+		if (bGetUpPhysics)
+		{
+			EndGetUpPhysics();
+		}
+		if (bGetUpMeshEase)
+		{
+			if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
+			{
+				SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+			}
+			bGetUpMeshEase = false;
+		}
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+		{
+			Movement->SetMovementMode(MOVE_Walking);
+		}
+		bGetUpFromClip = false;
+		bGettingUp = false;
+		GetUpElapsed = 0.f;
+		UE_LOG(LogHawkeye, Log, TEXT("%s: back on his feet."), *GetName());
+		return;
+	}
+	EndGetUpPhysics();
 	bGettingUp = false;
 	GetUpElapsed = 0.f;
 	UE_LOG(LogHawkeye, Log, TEXT("%s: back on his feet."), *GetName());
@@ -1120,15 +1191,15 @@ bool AThugCharacter::PlayKnockdownClip()
 
 void AThugCharacter::StandUpFromClip()
 {
-	// The get-up cuts the knockdown clip; without one the knockdown clip blends back into his
-	// locomotion over GetUpSeconds, where the ragdoll would have blended.
-	UAnimInstance* GetUp = HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, ECombatAnimRole::GetUp);
-	UAnimMontage* GetUpMontage = GetUp ? UCombatAnimSet::Resolve(CombatAnimSet, ECombatAnimRole::GetUp) : nullptr;
-	if (!GetUp)
+	// The get-up cuts the knockdown clip, the capsule moved and turned so it starts where he lies; without one the
+	// knockdown clip blends back into his locomotion over GetUpSeconds, where the ragdoll would have blended.
+	const bool bClip = BeginGetUpClip(/*bFromRagdoll=*/false);
+	if (!bClip)
 	{
 		HawkeyeCombatAnim::Stop(KnockdownInstance.Get(), KnockdownMontage, GetUpSeconds);
+		GetUpClipSeconds = GetUpSeconds;
+		LastGetUpRole = ECombatAnimRole::None;
 	}
-	GetUpClipSeconds = GetUpMontage ? GetUpMontage->GetPlayLength() : GetUpSeconds;
 	KnockdownMontage = nullptr;
 	KnockdownInstance = nullptr;
 
@@ -1136,18 +1207,130 @@ void AThugCharacter::StandUpFromClip()
 	{
 		Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	}
-	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-	{
-		Movement->SetMovementMode(MOVE_Walking);
-	}
+	// He moves again when the get-up ends (FinishGetUp).
 	bKnockedDown = false;
 	bKnockdownClip = false;
 	KnockdownRemaining = 0.f;
 	bGettingUp = true;
 	bGetUpFromClip = true;
 	GetUpElapsed = 0.f;
-	UE_LOG(LogHawkeye, Log, TEXT("%s: getting up (%s, %.2f s)."), *GetName(), GetUpMontage ? *GetUpMontage->GetName()
+	UE_LOG(LogHawkeye, Log, TEXT("%s: getting up (%s, %.2f s)."), *GetName(), bClip ? *UEnum::GetValueAsString(LastGetUpRole)
 		: TEXT("knockdown clip blending out"), GetUpClipSeconds);
+}
+
+namespace
+{
+	/** Bone's component-space transform in Sequence at Time (its parents' tracks composed up to the root). */
+	bool SampleComponentSpace(const UAnimSequence* Sequence, const FReferenceSkeleton& Skeleton, int32 BoneIndex, double Time, FTransform& Out)
+	{
+		if (!Sequence || BoneIndex == INDEX_NONE)
+		{
+			return false;
+		}
+		Out = FTransform::Identity;
+		const FAnimExtractContext Context(Time);
+		for (int32 Bone = BoneIndex; Bone != INDEX_NONE; Bone = Skeleton.GetParentIndex(Bone))
+		{
+			FTransform Local;
+			Sequence->GetBoneTransform(Local, FSkeletonPoseBoneIndex(Bone), Context, false);
+			Out = Out * Local;
+		}
+		return true;
+	}
+}
+
+void AThugCharacter::BeginGetUpForTest(float Seconds)
+{
+	bKnockedDown = false;
+	KnockdownRemaining = 0.f;
+	bGettingUp = true;
+	bGetUpFromClip = true;
+	GetUpClipSeconds = FMath::Max(Seconds, 0.f);
+	GetUpElapsed = 0.f;
+	LastGetUpRole = ECombatAnimRole::GetUp;
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->DisableMovement();
+	}
+}
+
+bool AThugCharacter::BeginGetUpClip(bool bFromRagdoll)
+{
+	USkeletalMeshComponent* SkeletalMesh = GetMesh();
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const USkeletalMesh* Asset = SkeletalMesh ? SkeletalMesh->GetSkeletalMeshAsset() : nullptr;
+	const USkeleton* Skeleton = Asset ? Asset->GetSkeleton() : nullptr;
+	static const FName Pelvis(TEXT("pelvis"));
+	const int32 MeshPelvis = SkeletalMesh ? SkeletalMesh->GetBoneIndex(Pelvis) : INDEX_NONE;
+	if (!Capsule || !Skeleton || MeshPelvis == INDEX_NONE || !CombatAnimSet)
+	{
+		return false;
+	}
+	// Which way he lies: the pelvis's turn from its reference pose carries the mesh's up (+Z) and front (+Y, the
+	// mannequin faces +Y) onto the body's spine and chest.
+	const FQuat RefPelvis = FAnimationRuntime::GetComponentSpaceTransformRefPose(Asset->GetRefSkeleton(), MeshPelvis).GetRotation();
+	const FVector UpInPelvis = RefPelvis.Inverse().RotateVector(FVector::UpVector);
+	const FVector FrontInPelvis = RefPelvis.Inverse().RotateVector(FVector(0.f, 1.f, 0.f));
+	const FTransform PelvisWorld = SkeletalMesh->GetBoneTransform(MeshPelvis);
+	const bool bOnBack = UHawkeyeHitContactRules::IsLyingOnBack(PelvisWorld.GetRotation().RotateVector(FrontInPelvis));
+	const ECombatAnimRole GetUpRole = UCombatAnimSet::GetUpRoleFor(CombatAnimSet, bOnBack);
+	UAnimMontage* Montage = UCombatAnimSet::Resolve(CombatAnimSet, GetUpRole);
+	const FAnimSegment* Segment = Montage && Montage->SlotAnimTracks.Num() > 0 && Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Num() > 0
+		? &Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0] : nullptr;
+	const UAnimSequence* Sequence = Segment ? Cast<UAnimSequence>(Segment->GetAnimReference()) : nullptr;
+	FTransform ClipPelvis;
+	if (!Sequence || Sequence->GetSkeleton() != Skeleton
+		|| !SampleComponentSpace(Sequence, Skeleton->GetReferenceSkeleton(), Skeleton->GetReferenceSkeleton().FindBoneIndex(Pelvis),
+			Segment->AnimStartTime, ClipPelvis))
+	{
+		return false;
+	}
+
+	// The clip's first frame in the capsule's space, then the capsule that lays it onto the body.
+	const FVector ClipPelvisActor = MeshRelativeTransform.TransformPosition(ClipPelvis.GetLocation());
+	const FVector ClipUpActor = MeshRelativeTransform.TransformVectorNoScale(ClipPelvis.GetRotation().RotateVector(UpInPelvis));
+	const FVector BodyUp = PelvisWorld.GetRotation().RotateVector(UpInPelvis);
+	FVector Location;
+	float Yaw = GetActorRotation().Yaw;
+	UHawkeyeHitContactRules::ComputeGetUpAlignment(PelvisWorld.GetLocation(), BodyUp, ClipPelvisActor, ClipUpActor, Yaw, Location, Yaw);
+	FHitResult Floor;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(ThugGetUpFloor), false, this);
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	Location.Z = PelvisWorld.GetLocation().Z + HalfHeight;
+	if (GetWorld() && GetWorld()->LineTraceSingleByChannel(Floor, PelvisWorld.GetLocation() + FVector(0.f, 0.f, 50.f),
+			PelvisWorld.GetLocation() - FVector(0.f, 0.f, 300.f), ECC_Visibility, Params))
+	{
+		Location.Z = Floor.ImpactPoint.Z + HalfHeight + 2.f;
+	}
+
+	if (bFromRagdoll)
+	{
+		SetActorLocationAndRotation(Location, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::None);
+		SkeletalMesh->AttachToComponent(Capsule, FAttachmentTransformRules::KeepWorldTransform);
+		SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+	}
+	else
+	{
+		// The knockdown clip's pose stays where it is on screen while the capsule moves under it, then eases onto it.
+		const FTransform MeshWorld = SkeletalMesh->GetComponentTransform();
+		SetActorLocationAndRotation(Location, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+		SkeletalMesh->SetWorldTransform(MeshWorld);
+		GetUpMeshStart = SkeletalMesh->GetRelativeTransform();
+		bGetUpMeshEase = true;
+	}
+	if (!HawkeyeCombatAnim::Play(SkeletalMesh, Montage))
+	{
+		if (!bFromRagdoll)
+		{
+			SkeletalMesh->SetRelativeTransform(MeshRelativeTransform);
+			bGetUpMeshEase = false;
+		}
+		return false;
+	}
+	LastGetUpRole = GetUpRole;
+	GetUpClipSeconds = Montage->GetPlayLength();
+	bGetUpFromClip = true;
+	return true;
 }
 
 UAnimSequence* AThugCharacter::SelectLocomotionAnim() const

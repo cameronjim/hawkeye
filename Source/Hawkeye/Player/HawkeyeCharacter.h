@@ -1509,6 +1509,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
 	float PlayerStaggerShove = 250.f;
 
+	/**
+	 * A blow of this impact weight or more (a bat, the heavy's bash) plays her HitHeavy clip when her set has one, with
+	 * the shove at PlayerHeavyStaggerShove: the clip steps two steps back onto that shove's distance (about 28 cm).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HeavyReactionWeight = 0.6f;
+
+	/** The shove under her HitHeavy clip, cm/s. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
+	float PlayerHeavyStaggerShove = 500.f;
+
 	/** How long the camera shakes when a hit lands on her. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
 	float HitShakeSeconds = 0.2f;
