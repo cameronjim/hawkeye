@@ -21,7 +21,6 @@ PLAYER_PATH = "/Game/Blueprints/Player"
 UI_PATH = "/Game/Blueprints/UI"
 WORLD_PATH = "/Game/Blueprints/World"
 AI_PATH = "/Game/Blueprints/AI"
-THUG_MATERIAL_PATH = "/Game/Characters/Thug"
 WEAPON_PATH = "/Game/Blueprints/Weapons"
 KATE_MATERIAL_PATH = "/Game/Characters/Kate"
 
@@ -89,10 +88,8 @@ EXPECTED = (
         c.asset_path(UI_PATH, "WBP_Inventory"),
         c.asset_path(AI_PATH, "BP_Thug"),
     ]
-    + [
-        c.asset_path(THUG_MATERIAL_PATH, "M_ThugBody"),
-        c.asset_path(THUG_MATERIAL_PATH, "M_ThugVisor"),
-    ]
+    # M_ThugBody and M_ThugVisor (the prison build's) are left on disk unused and nothing creates them, so they are
+    # neither expected nor retired.
     + [
         WEAPON_PATH + "/DA_Weapon_Hands",
         WEAPON_PATH + "/DA_Bow_Kate",
@@ -476,7 +473,8 @@ def check_built_kate():
         name_of(skeleton), lods, slots, worn or "nothing", len([x for x in materials if x])))
     if worn != BUILT_KATE:
         fail("Kate: SK_Built_Kate is imported but BP_Kate wears {0}".format(worn or "no look"))
-    if lods == 0 or lods == 1:
+    if lods < 2:
+        # -1: the LOD query itself failed, which must not pass as "enough LODs".
         fail("Kate: SK_Built_Kate has {0} LOD; import_bodies generates {1}".format(lods, 4))
     if len([x for x in materials if x]) != slots:
         fail("Kate: {0} of SK_Built_Kate's {1} slots have a material in BP_Kate's look".format(
