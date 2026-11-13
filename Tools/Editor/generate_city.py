@@ -572,7 +572,7 @@ def ensure_piece_actor(piece, static_mesh, existing):
     if piece.primitive_data is not None:
         current = list(component.get_editor_property("custom_primitive_data").get_editor_property("data"))
         if len(current) != len(piece.primitive_data) or any(
-                abs(a - b) > 1e-3 for a, b in zip(current, piece.primitive_data)):
+                abs(a - b) > 1e-3 + 1e-6 * abs(b) for a, b in zip(current, piece.primitive_data)):  # float32 storage
             # The saved property, not set_custom_primitive_data_float (that writes the transient runtime copy).
             data = unreal.CustomPrimitiveData()
             data.set_editor_property("data", [float(v) for v in piece.primitive_data])
