@@ -831,6 +831,53 @@ def ensure_night_sky(existing):
     return changes
 
 
+CLOUD_LABEL = "City_CloudDeck"
+CLOUD_RADIUS = 250000.0                   # cm; inside the fog (FOG_CUTOFF) so the horizon melts into it, inside the stars
+
+
+def ensure_cloud_deck(existing):
+    """City_CloudDeck: the engine sphere round the district, seen from inside, in M_CloudDeck (look pass 2): the
+    overcast by day and the city-lit cloud by night. Not in the sky light's capture (the ambient stays the
+    atmosphere's, as tuned), no shadow, no collision, no distance field."""
+    sphere = c.load_or_none(SPHERE)
+    deck = m.ensure_street_look()["cloud"]
+    if sphere is None or deck is None:
+        c.log("FAILED", CLOUD_LABEL, "no engine sphere or M_CloudDeck")
+        return 0
+    scale = CLOUD_RADIUS / 50.0
+    changes = _ensure_mesh_actor(existing, CLOUD_LABEL, sphere, deck, unreal.Vector(0.0, 0.0, 0.0),
+                                 unreal.Rotator(0.0, 0.0, 0.0), unreal.Vector(scale, scale, scale), ["City", "CityCloudDeck"])
+    actor = existing.get(CLOUD_LABEL)
+    if actor is not None:
+        comp = actor.get_editor_property("static_mesh_component")
+        changes += set_if_different(comp, "cast_shadow", False, CLOUD_LABEL)
+        if str(comp.get_collision_profile_name()) != "NoCollision":
+            comp.set_collision_profile_name("NoCollision")
+            changes += 1
+        changes += set_if_different(comp, "affect_distance_field_lighting", False, CLOUD_LABEL)
+        changes += set_if_different(comp, "visible_in_real_time_sky_captures", False, CLOUD_LABEL)
+        changes += set_if_different(comp, "affect_dynamic_indirect_lighting", False, CLOUD_LABEL)
+    return changes
+
+
+def ensure_street_look(district, existing):
+    """The hero block's relief and street dressing (_street_look, render only)."""
+    import _street_look_build as slb
+    loc, _rot = player_start_transform(district)
+    start = (loc.x, loc.y)
+    records = []
+    for rec in district.buildings:
+        ring = geo.clean_ring(district.ring_cm(rec["outer"]), min_edge=5.0, collinear_tol=2.0)
+        if len(ring) >= 3:
+            records.append((rec, ring, facade_style(rec)))
+    points, _segments = clutter_keepouts(district)
+    avoid = [p for _kind, p, _r in points] + [start]
+    plan = clutter_plan(district)
+    for kind in ("Hydrant", "Bin", "TrashBag"):
+        avoid += [(x, y) for x, y, _z, _yaw, _s in plan.get(kind, [])]
+    return slb.ensure(district, existing, start, records, avoid)
+
+
 def ensure_labelled(existing, actor_class, label, location, rotation=None):
     """(actor, 1 if spawned else 0)."""
     actor = existing.get(label)
@@ -2483,8 +2530,9 @@ def _set_trace_only_body(mesh, context):
     mesh.set_collision_response_to_channel(traversable_channel(), unreal.CollisionResponseType.ECR_BLOCK)
 
 
-def _ensure_block(existing, label, cls, origin, yaw, scale, tags, visible, traversable_only):
-    """A BP_TraversableBlock at origin (its bottom corner), turned yaw, scaled. Returns changes."""
+def _ensure_block(existing, label, cls, origin, yaw, scale, tags, visible, traversable_only, material=None):
+    """A BP_TraversableBlock at origin (its bottom corner), turned yaw, scaled. Returns changes. ``material`` (the
+    visible test blocks) goes on every slot of its meshes in place of the sample's grid; collision is untouched."""
     loc = unreal.Vector(*origin)
     rot = unreal.Rotator(0.0, 0.0, yaw)
     want_scale = unreal.Vector(*scale)
@@ -2510,6 +2558,12 @@ def _ensure_block(existing, label, cls, origin, yaw, scale, tags, visible, trave
         actor.set_actor_scale3d(want_scale)
         changes += 1
     changes += _set_components(actor, visible, traversable_only, label)
+    if material is not None:
+        for mesh in actor.get_components_by_class(unreal.StaticMeshComponent):
+            for slot in range(mesh.get_num_materials()):
+                if mesh.get_material(slot) != material:
+                    mesh.set_material(slot, material)
+                    changes += 1
     if actor.get_actor_label() != label:
         actor.set_actor_label(label)
         changes += 1
@@ -2876,9 +2930,26 @@ def ensure_test_blocks(district, existing):
         c.log("FAILED", "parkour test blocks", "BP_TraversableBlock not found")
         return 0
     spots = test_block_spots(district, existing)
+    # Dressed as street things (look pass 2): the vault a jersey barrier, the mantle a dumpster, the park's low walls
+    # granite. Only the material changes.
+    blocks = m.ensure_street_look()["blocks"]
     changes = 0
+    cube = c.load_or_none("/Engine/BasicShapes/Cube")
     for label, tag, origin, yaw, scale in spots:
-        changes += _ensure_block(existing, label, cls, origin, yaw, scale, ["City", "CityParkour", tag], True, False)
+        look_name = "Barrier" if "Vault" in label else ("Dumpster" if "Mantle" in label else "Wall")
+        # The sample's block keeps its collision and goes invisible (its grid material is set by its construction
+        # script, so an override does not stick); a render-only cube the same size wears the street look.
+        changes += _ensure_block(existing, label, cls, origin, yaw, scale, ["City", "CityParkour", tag], False, False)
+        ux, uy = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+        centre = unreal.Vector(origin[0] + ux * scale[0] * 50.0 - uy * scale[1] * 50.0,
+                               origin[1] + uy * scale[0] * 50.0 + ux * scale[1] * 50.0, origin[2] + scale[2] * 50.0)
+        look_label = label + "_Look"
+        changes += _ensure_mesh_actor(existing, look_label, cube, blocks.get(look_name), centre, unreal.Rotator(0.0, 0.0, yaw),
+                                      unreal.Vector(*scale), ["City", "CityParkourLook"])
+        comp = existing[look_label].get_editor_property("static_mesh_component") if look_label in existing else None
+        if comp is not None and str(comp.get_collision_profile_name()) != "NoCollision":
+            comp.set_collision_profile_name("NoCollision")
+            changes += 1
     c.log("updated" if changes else "exists", "parkour test blocks",
           "{0} blocks: {1}".format(len(spots), ", ".join(
               "{0} {1:.0f} cm on z {2:.0f}".format(s[0], s[4][2] * 100.0, s[2][2]) for s in spots)))
@@ -2895,7 +2966,7 @@ def ensure_test_blocks(district, existing):
 # City_LedgeSpawner draws each group as one instanced mesh at load.
 # --------------------------------------------------------------------------------------
 
-CLUTTER_VERSION = 1                    # bump when a clutter mesh recipe changes
+CLUTTER_VERSION = 2                    # bump when a clutter mesh recipe changes (2: the car's cabin narrows)
 WATER_TOWER_MIN_HEIGHT_M = 15.0
 WATER_TOWER_ONE_IN = 4
 HVAC_ONE_IN = 2
@@ -3044,8 +3115,12 @@ def _build_parked_car():
     centred, +X forward."""
     L, W, H = CAR_SIZE
     mesh = new_mesh()
-    _bx(mesh, 0.0, 0.0, 28.0, L, W, 67.0)
-    _bx(mesh, -20.0, 0.0, 95.0, 250.0, W - 16.0, H - 95.0)
+    # Within the same 4.5 x 1.8 x 1.4 m box as the block car (look pass 2): a body, bumpers, and a cabin that
+    # narrows to its roof, so the silhouette reads as a car; M_Car paints glass, trim and lamps on it.
+    _bx(mesh, 0.0, 0.0, 30.0, L - 20.0, W, 65.0)
+    _bx(mesh, 0.0, 0.0, 30.0, L, W - 20.0, 20.0)
+    _bx(mesh, -20.0, 0.0, 95.0, 250.0, W - 16.0, 22.0)
+    _bx(mesh, -28.0, 0.0, 117.0, 200.0, W - 34.0, H - 117.0)
     for sx in (-1.0, 1.0):
         for sy in (-1.0, 1.0):
             xf = unreal.Transform(location=unreal.Vector(sx * 140.0, sy * (W * 0.5 - 11.0), 33.0),
@@ -3090,7 +3165,9 @@ def ensure_clutter_meshes():
 
 
 def ensure_clutter_materials():
-    return {key: m.ensure_prop_instance(key, rgb, rough) for key, (rgb, rough) in sorted(CLUTTER_MATERIALS.items())}
+    """MI_Prop_<key> under M_Prop; the cars' MI_Car_<key> under M_Car (body, glass, lamps, snow on top)."""
+    return {key: (m.ensure_car_instance(key, rgb) if key.startswith("Car") else m.ensure_prop_instance(key, rgb, rough))
+            for key, (rgb, rough) in sorted(CLUTTER_MATERIALS.items())}
 
 
 def clutter_keepouts(district):
@@ -4163,6 +4240,8 @@ def run():
     changes += ensure_ledge_spawner(district, existing)
     changes += ensure_dressing_actors(existing)
     changes += ensure_test_blocks(district, existing)
+    changes += ensure_cloud_deck(existing)
+    changes += ensure_street_look(district, existing)
     # The world map data is its own asset, not part of the level.
     ensure_city_map(district)
 
