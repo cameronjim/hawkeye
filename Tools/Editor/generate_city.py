@@ -873,12 +873,22 @@ def ensure_street_look(district, existing):
         ring = geo.clean_ring(district.ring_cm(rec["outer"]), min_edge=5.0, collinear_tol=2.0)
         if len(ring) >= 3:
             records.append((rec, ring, facade_style(rec)))
-    points, _segments = clutter_keepouts(district)
+    points, segments = clutter_keepouts(district)
     avoid = [p for _kind, p, _r in points] + [start]
     plan = clutter_plan(district)
     for kind in ("Hydrant", "Bin", "TrashBag"):
         avoid += [(x, y) for x, y, _z, _yaw, _s in plan.get(kind, [])]
-    return slb.ensure(district, existing, start, records, avoid)
+    # What the render-only parked cars keep clear of: every clutter keepout and patrol line, the hydrants' no-parking
+    # zones, and the solid clutter cars already at the kerb.
+    keep = [(p[0], p[1], r) for _kind, p, r in points]
+    for a, b in segments:
+        steps = int(math.hypot(b[0] - a[0], b[1] - a[1]) // 200.0) + 1
+        keep += [(a[0] + (b[0] - a[0]) * i / steps, a[1] + (b[1] - a[1]) * i / steps, PATROL_CLEAR) for i in range(steps + 1)]
+    hydrants = [(x, y) for x, y, _z, _yaw, _s in plan.get("Hydrant", [])]
+    keep += [(x, y, HYDRANT_NO_PARKING) for x, y in hydrants]
+    for kind in CAR_KINDS:
+        keep += [(x, y, CAR_SIZE[0] * 0.5 + 100.0) for x, y, _z, _yaw, _s in plan.get(kind, [])]
+    return slb.ensure(district, existing, start, records, avoid, keep, hydrants)
 
 
 def ensure_labelled(existing, actor_class, label, location, rotation=None):
@@ -2041,7 +2051,7 @@ def ensure_archers(district, existing):
 LAMP_PREFIX = "City_Lamp_"          # the light; what verify counts
 LAMP_POLE_PREFIX = "City_LampPole_"
 LAMP_HEAD_PREFIX = "City_LampHead_"
-LAMP_LUMENS = 2000.0                # look pass 3: was 1100 / 1800 cm / 70 / 35; the facades went black over the
+LAMP_LUMENS = 1400.0                # look pass 3: was 1100 / 1800 cm / 70 / 35; the facades went black over the
 LAMP_RADIUS = 2400.0                # shops. Now the pool reaches the ground and first floors of its own side
 LAMP_OUTER_CONE = 80.0              # degrees from straight down; the pool edge
 LAMP_INNER_CONE = 45.0

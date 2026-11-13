@@ -23,8 +23,9 @@ HASH_TAG = "CityHash"
 PREFIX = "City_Street_"
 TREE_PREFIX = "City_Tree_"
 TREE_MESH = "SM_Street_Tree"
-TREE_VERSION = 1
+TREE_VERSION = 4
 TAGS = ["City", "CityStreetLook"]
+OWNED_PREFIXES = (PREFIX, TREE_PREFIX, "City_ShopLight_", "City_Car_", "City_Manhole_", "City_Steam_", "City_Sign_")
 
 GS_PRIM = unreal.GeometryScript_Primitives
 
@@ -41,42 +42,16 @@ def _box_mesh(boxes):
     return mesh
 
 
-def _branch(mesh, base, direction, length, radius):
-    d = unreal.Vector(direction[0], direction[1], direction[2])
-    rot = unreal.MathLibrary.make_rot_from_z(d)
-    GS_PRIM.append_cylinder(mesh, _opts(), unreal.Transform(location=unreal.Vector(*base), rotation=rot), radius, length,
-                            6, 0, True, unreal.GeometryScriptPrimitiveOriginMode.BASE)
-    return (base[0] + direction[0] * length, base[1] + direction[1] * length, base[2] + direction[2] * length)
-
-
-def _dir(yaw_deg, tilt_deg):
-    y, t = math.radians(yaw_deg), math.radians(tilt_deg)
-    return (math.cos(y) * math.sin(t), math.sin(y) * math.sin(t), math.cos(t))
-
-
-def _build_tree():
-    """A bare street tree (a young London plane or honey locust in winter): a 2.6 m trunk, four limbs, three
-    branches on each, two twigs on each of those; about 9 m tall at scale 1."""
-    mesh = unreal.DynamicMesh()
-    top = _branch(mesh, (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 270.0, 13.0)
-    for i in range(4):
-        yaw = i * 90.0 + 20.0 * math.sin(i * 1.7)
-        end1 = _branch(mesh, top, _dir(yaw, 32.0 + 6.0 * math.sin(i)), 240.0, 7.0)
-        for j in range(3):
-            yaw2 = yaw + (j - 1) * 50.0 + 10.0 * math.sin(i + j)
-            end2 = _branch(mesh, end1, _dir(yaw2, 48.0 - 8.0 * j), 160.0, 3.6)
-            for k in range(2):
-                _branch(mesh, end2, _dir(yaw2 + (k - 0.5) * 70.0, 55.0), 95.0, 1.8)
-    return mesh
-
-
-def _write_mesh(name, build, spec):
+def _write_mesh(name, build, spec, smooth=False):
     full = c.asset_path(STREET_DIR, name)
     existing = c.load_or_none(full)
     if existing is not None and unreal.EditorAssetLibrary.get_metadata_tag(existing, HASH_TAG) == spec:
         return existing, False
     mesh = build()
-    unreal.GeometryScript_Normals.set_per_face_normals(mesh)
+    if smooth:
+        unreal.GeometryScript_Normals.set_per_vertex_normals(mesh)
+    else:
+        unreal.GeometryScript_Normals.set_per_face_normals(mesh)
     if existing is None:
         options = unreal.GeometryScriptCreateNewStaticMeshAssetOptions()
         options.set_editor_property("enable_recompute_normals", False)
@@ -101,7 +76,7 @@ def _write_mesh(name, build, spec):
     return static_mesh, True
 
 
-def _ensure_actor(existing, label, mesh, material, loc, yaw, scale):
+def _ensure_actor(existing, label, mesh, material, loc, yaw, scale, shadow=True):
     changes = 0
     actor = existing.get(label)
     if actor is not None and not isinstance(actor, unreal.StaticMeshActor):
@@ -135,6 +110,9 @@ def _ensure_actor(existing, label, mesh, material, loc, yaw, scale):
     if abs(s.x - scale) > 1e-4 or abs(s.z - scale) > 1e-4:
         actor.set_actor_scale3d(unreal.Vector(scale, scale, scale))
         changes += 1
+    if bool(comp.get_editor_property("cast_shadow")) != shadow:
+        comp.set_editor_property("cast_shadow", shadow)
+        changes += 1
     if str(comp.get_collision_profile_name()) != "NoCollision":
         comp.set_collision_profile_name("NoCollision")
         changes += 1
@@ -146,7 +124,7 @@ def _ensure_actor(existing, label, mesh, material, loc, yaw, scale):
 
 
 SHOP_LIGHT_PREFIX = "City_ShopLight_"
-SHOP_LIGHT_LUMENS = 700.0
+SHOP_LIGHT_LUMENS = 240.0
 SHOP_LIGHT_RADIUS = 800.0
 SHOP_LIGHT_PITCH = -50.0        # degrees: out of the glass and down onto the sidewalk
 SHOP_LIGHT_CONE = (35.0, 72.0)
@@ -211,8 +189,9 @@ def _ensure_shop_light(existing, label, loc, yaw, warm):
     return changes
 
 
-def ensure(district, existing, start, records, avoid):
-    """Build the hero block's relief and street dressing. Returns the number of changes."""
+def ensure(district, existing, start, records, avoid, keep=(), hydrants=()):
+    """Build the hero block's relief and street dressing. ``keep`` [(x, y, radius)] is what parked cars keep clear of,
+    ``hydrants`` [(x, y)]. Returns the number of changes."""
     c.ensure_directory(STREET_DIR)
     street_trees = sl.tree_spots(district, start, avoid)
     plan = sl.merge(sl.relief(district, start, records), sl.crosswalks(district, start), sl.tree_pits(street_trees),
@@ -233,13 +212,22 @@ def ensure(district, existing, start, records, avoid):
         label = PREFIX + key
         wanted.add(label)
         changes += _ensure_actor(existing, label, mesh, materials.get(key), unreal.Vector(0.0, 0.0, 0.0), 0.0, 1.0)
-    tree, built = _write_mesh(TREE_MESH, _build_tree, geo.record_hash(TREE_VERSION, "tree"))
-    changes += int(built)
+    bark = m.ensure_street_look()["bark"]
+    variants = []
+    for v in range(STREET_TREES + PARK_ELMS):
+        elm = v >= STREET_TREES
+        mesh, built = _write_mesh("{0}_{1}".format(TREE_MESH, v), lambda v=v, elm=elm: _build_tree3(1000 + v * 77, elm),
+                                  geo.record_hash(TREE_VERSION, "tree3", v, elm), smooth=True)
+        changes += int(built)
+        variants.append(mesh)
     for i, (x, y, yaw, scale) in enumerate(trees):
         label = "{0}{1}".format(TREE_PREFIX, i)
         wanted.add(label)
-        changes += _ensure_actor(existing, label, tree, materials["TreeBark"], unreal.Vector(x, y, sl.SIDEWALK_TOP), yaw,
-                                 scale)
+        park = i >= len(street_trees)
+        pick = STREET_TREES + i % PARK_ELMS if park else i % STREET_TREES
+        changes += _ensure_actor(existing, label, variants[pick], bark, unreal.Vector(x, y, sl.SIDEWALK_TOP), yaw,
+                                 scale * (0.8 if park else 1.0))
+    changes += ensure_look3(district, existing, start, list(keep), street_trees, list(hydrants), avoid, wanted)
     import _look
     lights = sl.shop_lights(district, start, records, _look.SHOPS)
     for i, (x, y, z, yaw, warm) in enumerate(lights):
@@ -247,11 +235,298 @@ def ensure(district, existing, start, records, avoid):
         wanted.add(label)
         changes += _ensure_shop_light(existing, label, unreal.Vector(x, y, z), yaw, warm)
     for label, actor in list(existing.items()):
-        if (label.startswith(PREFIX) or label.startswith(TREE_PREFIX) or label.startswith(SHOP_LIGHT_PREFIX))                 and label not in wanted:
+        if label.startswith(OWNED_PREFIXES) and label not in wanted:
             actor.destroy_actor()
             existing.pop(label, None)
             changes += 1
+    old_tree = c.asset_path(STREET_DIR, TREE_MESH)
+    if c.load_or_none(old_tree) is not None:
+        # pass 2's stick tree, replaced by the variants: nothing points at it once the actors above are updated
+        unreal.EditorAssetLibrary.delete_asset(old_tree)
+        c.log("deleted", old_tree)
+        changes += 1
     c.log("updated" if changes else "exists", "street look",
           "{0} relief and dressing meshes ({1} boxes), {2} trees, {3} shop lights".format(
               len(plan), sum(len(v) for v in plan.values()), len(trees), len(lights)))
+    return changes
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# look pass 3: car bodies, trees, manholes, steam, snow piles, signs, mailboxes
+# ----------------------------------------------------------------------------------------------------------------------
+
+GS_QUERY = unreal.GeometryScript_MeshQueries
+BASE = unreal.GeometryScriptPrimitiveOriginMode.BASE
+CENTER = unreal.GeometryScriptPrimitiveOriginMode.CENTER
+LOOK3_VERSION = 2
+
+# Side profiles (x forward, z up, cm) of the lower body (full width) and the glasshouse (narrower), per body shape.
+CAR_PROFILES = {
+    "Sedan": ([(-235, 30), (235, 30), (238, 55), (229, 76), (100, 90), (-150, 92), (-229, 88), (-238, 58)],
+              [(98, 90), (28, 138), (-82, 140), (-152, 92)], 26.0),
+    "SUV": ([(-242, 36), (242, 36), (245, 72), (236, 100), (128, 110), (-238, 110), (-245, 72)],
+            [(126, 110), (72, 173), (-218, 175), (-236, 112)], 22.0),
+    "Van": ([(-260, 36), (260, 36), (262, 78), (252, 106), (172, 120), (-259, 120), (-262, 78)],
+            [(170, 120), (118, 202), (-252, 204), (-259, 122)], 14.0),
+}
+
+
+def _first(result):
+    return result[0] if isinstance(result, (list, tuple)) else result
+
+
+def _orient(mesh):
+    res = GS_QUERY.get_mesh_volume_area(mesh)
+    volume = float(res[1]) if isinstance(res, (list, tuple)) else float(res)
+    if volume < 0.0:
+        unreal.GeometryScript_Normals.flip_normals(mesh)
+
+
+def _extrude_side(profile, width):
+    """The profile (x, z) extruded ``width`` across, centred on y = 0."""
+    for roll in (90.0, -90.0):
+        piece = unreal.DynamicMesh()
+        GS_PRIM.append_simple_extrude_polygon(piece, _opts(), unreal.Transform(rotation=unreal.Rotator(roll, 0.0, 0.0)),
+                                              [unreal.Vector2D(float(x), float(z)) for x, z in profile], width, 0, True, BASE)
+        box = _first(GS_QUERY.get_mesh_bounding_box(piece))
+        if box.min.z > -1.0:
+            break
+    unreal.GeometryScript_MeshTransforms.translate_mesh(piece, unreal.Vector(0.0, -(box.min.y + box.max.y) * 0.5, 0.0))
+    _orient(piece)
+    return piece
+
+
+def _build_car_body(shape):
+    lower, glass, inset = CAR_PROFILES[shape]
+    length, width, base, radius = sl.CAR_SHAPES[shape][:4]
+    mesh = unreal.DynamicMesh()
+    for piece in (_extrude_side(lower, width), _extrude_side(glass, width - inset)):
+        unreal.GeometryScript_MeshEdits.append_mesh(mesh, piece, unreal.Transform())
+    for sx in (-1.0, 1.0):
+        for sy in (-1.0, 1.0):
+            wheel = unreal.DynamicMesh()
+            GS_PRIM.append_cylinder(wheel, _opts(), unreal.Transform(location=unreal.Vector(sx * base, sy * (width * 0.5 - 11.0), radius),
+                                                                    rotation=unreal.Rotator(90.0, 0.0, 0.0)),
+                                    radius, 22.0, 14, 0, True, CENTER)
+            _orient(wheel)
+            unreal.GeometryScript_MeshEdits.append_mesh(mesh, wheel, unreal.Transform())
+    return mesh
+
+
+def _cone(mesh, base, d, length, r0, r1, sides):
+    """A tapered segment from ``base`` along ``d``; it starts a little behind its base and runs a little past its end,
+    so a bend in the chain leaves no gap."""
+    rot = unreal.MathLibrary.make_rot_from_z(unreal.Vector(d[0], d[1], d[2]))
+    back = min(r0 * 0.8, length * 0.25)
+    start = unreal.Vector(base[0] - d[0] * back, base[1] - d[1] * back, base[2] - d[2] * back)
+    GS_PRIM.append_cone(mesh, _opts(), unreal.Transform(location=start, rotation=rot), r0, r1, length + back + r1 * 0.5,
+                        sides, 1, False, BASE)
+    return (base[0] + d[0] * length, base[1] + d[1] * length, base[2] + d[2] * length)
+
+
+def _norm(v):
+    n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) or 1.0
+    return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def _build_tree3(seed, elm):
+    """A bare tree in five orders (trunk, limbs, branches, shoots, twigs), each a chain of tapered round segments that
+    bends a little at every joint: limbs and a leader from the top of the trunk climbing toward the light, branches
+    spread round their parent along its outer half, the outer orders arching out and down a little. A young street
+    tree or, with ``elm``, a vase-shaped park elm. About 3 thousand triangles."""
+    import random
+    rnd = random.Random(seed)
+    mesh = unreal.DynamicMesh()
+    sides = (10, 7, 5, 4, 3)
+    segs = (3, 3, 3, 2, 2)
+    kids = (4, 4, 3, 3, 0)
+    shrink = (0.0, 0.78, 0.72, 0.62, 0.55)
+
+    def grow(base, d, length, radius, order, leader=False):
+        points = []
+        p, r = base, radius
+        n = segs[order]
+        for _i in range(n):
+            bend = 0.12 if order == 0 else 0.26
+            lift = 0.08 if order < 3 else -0.07
+            d = _norm((d[0] + rnd.uniform(-1, 1) * bend, d[1] + rnd.uniform(-1, 1) * bend,
+                       d[2] + rnd.uniform(-0.3, 0.3) * bend + lift))
+            r1 = r * (0.86 if order == 0 else 0.74)
+            q = _cone(mesh, p, d, length / n, r, max(r1, 0.3), sides[order])
+            points.append((q, d, r1))
+            p, r = q, r1
+        if order + 1 >= len(sides):
+            return
+        count = kids[order] + (1 if order >= 2 and rnd.random() < 0.35 else 0)
+        yaw0 = rnd.uniform(0.0, 360.0)
+        for k in range(count):
+            if order == 0:
+                at = points[-1] if k < 2 else points[-2]
+            else:
+                at = points[-1] if k == 0 else points[rnd.randint(len(points) // 2, len(points) - 1)]
+            q, pd, pr = at
+            yaw = math.radians(yaw0 + k * 360.0 / count + rnd.uniform(-30.0, 30.0))
+            if order == 0:
+                tilt = rnd.uniform(18.0, 32.0) if elm else rnd.uniform(28.0, 48.0)
+            else:
+                tilt = rnd.uniform(30.0, 60.0)
+            tilt = math.radians(tilt)
+            side = (math.cos(yaw), math.sin(yaw), 0.0)
+            cd = _norm((pd[0] * math.cos(tilt) + side[0] * math.sin(tilt), pd[1] * math.cos(tilt) + side[1] * math.sin(tilt),
+                        pd[2] * math.cos(tilt) + (0.25 if order < 2 else 0.05)))
+            grow(q, cd, length * shrink[order + 1] * rnd.uniform(0.85, 1.1), max(pr * 0.7, 0.35), order + 1)
+        if order == 0 and not elm:
+            # the leader: the trunk going on up, a limb's size
+            q, pd, pr = points[-1]
+            grow(q, _norm((pd[0], pd[1], pd[2] + 0.5)), length * 0.8, pr * 0.8, 1)
+
+    if elm:
+        grow((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 340.0, 28.0, 0)
+    else:
+        grow((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 270.0, 13.0, 0)
+    return mesh
+
+
+def _build_manhole():
+    mesh = unreal.DynamicMesh()
+    GS_PRIM.append_cylinder(mesh, _opts(), unreal.Transform(), 75.0, 1.0, 24, 0, True, BASE)
+    return mesh
+
+
+def _build_steam():
+    mesh = unreal.DynamicMesh()
+    GS_PRIM.append_cone(mesh, _opts(), unreal.Transform(), 30.0, 140.0, 320.0, 14, 4, False, BASE)
+    GS_PRIM.append_cone(mesh, _opts(), unreal.Transform(rotation=unreal.Rotator(0.0, 0.0, 15.0)), 20.0, 95.0, 260.0, 10, 3,
+                        False, BASE)
+    return mesh
+
+
+def _mound(seed):
+    mesh = unreal.DynamicMesh()
+    GS_PRIM.append_sphere_lat_long(mesh, _opts(), unreal.Transform(), 50.0, 10, 16, CENTER)
+    options = unreal.GeometryScriptPerlinNoiseOptions()
+    layer = unreal.GeometryScriptPerlinNoiseLayerOptions()
+    layer.set_editor_property("magnitude", 11.0)
+    layer.set_editor_property("frequency", 0.06)
+    layer.set_editor_property("random_seed", seed)
+    options.set_editor_property("base_layer", layer)
+    unreal.GeometryScript_MeshDeformers.apply_perlin_noise_to_mesh2(mesh, unreal.GeometryScriptMeshSelection(), options)
+    return mesh
+
+
+def _build_snow_piles(piles):
+    mesh = unreal.DynamicMesh()
+    mounds = [_mound(s) for s in (3, 11, 29)]
+    for i, (x, y, z, length, width, height, yaw) in enumerate(piles):
+        xf = unreal.Transform(location=unreal.Vector(x, y, z), rotation=unreal.Rotator(0.0, 0.0, yaw),
+                              scale=unreal.Vector(length / 100.0, width / 100.0, height / 50.0))
+        unreal.GeometryScript_MeshEdits.append_mesh(mesh, mounds[i % len(mounds)], xf)
+    return mesh
+
+
+def _build_sign_poles(signs):
+    mesh = unreal.DynamicMesh()
+    for x, y, _yaw, kind in signs:
+        GS_PRIM.append_cylinder(mesh, _opts(), unreal.Transform(location=unreal.Vector(x, y, sl.SIDEWALK_TOP)), 3.0,
+                                330.0 if kind == "BusStop" else 290.0, 8, 0, True, BASE)
+    return mesh
+
+
+def _build_sign_plate():
+    mesh = unreal.DynamicMesh()
+    GS_PRIM.append_box(mesh, _opts(), unreal.Transform(location=unreal.Vector(0.0, 0.0, -30.0)), 2.0, 46.0, 60.0, 0, 0, 0, BASE)
+    return mesh
+
+
+def _build_mailboxes(boxes):
+    mesh = unreal.DynamicMesh()
+    for x, y, yaw in boxes:
+        rot = unreal.Rotator(0.0, 0.0, yaw)
+        _box_into(mesh, x, y, sl.SIDEWALK_TOP + 18.0, 52.0, 48.0, 92.0, rot)
+        GS_PRIM.append_cylinder(mesh, _opts(), unreal.Transform(location=unreal.Vector(x, y, sl.SIDEWALK_TOP + 110.0),
+                                                                rotation=unreal.Rotator(0.0, 90.0, yaw)),
+                                24.0, 52.0, 12, 0, True, CENTER)
+        for sx in (-1.0, 1.0):
+            for sy in (-1.0, 1.0):
+                lx, ly = sx * 20.0, sy * 18.0
+                r = math.radians(yaw)
+                _box_into(mesh, x + lx * math.cos(r) - ly * math.sin(r), y + lx * math.sin(r) + ly * math.cos(r),
+                          sl.SIDEWALK_TOP, 5.0, 5.0, 18.0, rot)
+    return mesh
+
+
+def _box_into(mesh, x, y, z0, sx, sy, sz, rot):
+    GS_PRIM.append_box(mesh, _opts(), unreal.Transform(location=unreal.Vector(x, y, z0), rotation=rot), sx, sy, sz, 0, 0, 0,
+                       BASE)
+
+
+STREET_TREES = 3        # mesh variants
+PARK_ELMS = 2
+
+
+def ensure_look3(district, existing, start, keep, trees, hydrants, avoid, wanted):
+    """The third pass's dressing: parked cars on both kerbs (City_Car_<n>), manholes (City_Manhole_<n>) and steam
+    (City_Steam_<n>), snow piles, sign poles and mailboxes (merged, City_Street_<key>), sign plates (City_Sign_<n>).
+    All render only. Returns the number of changes; adds every label it keeps to ``wanted``."""
+    changes = 0
+    mats = m.ensure_street_look()
+    cars = sl.parked_cars(district, start, keep)
+    car_meshes = {}
+    for shape in sorted(sl.CAR_SHAPES):
+        mesh, built = _write_mesh("SM_Street_Car_" + shape, lambda shape=shape: _build_car_body(shape),
+                                  geo.record_hash(LOOK3_VERSION, "car", shape, CAR_PROFILES[shape], sl.CAR_SHAPES[shape]))
+        car_meshes[shape] = mesh
+        changes += int(built)
+    car_mats = {}
+    for i, (x, y, yaw, shape, colour) in enumerate(cars):
+        key = (shape, colour)
+        if key not in car_mats:
+            car_mats[key] = m.ensure_car_shape_instance(shape, colour, sl.CAR_COLOURS[colour], sl.CAR_SHAPES[shape])
+        label = "City_Car_{0}".format(i)
+        wanted.add(label)
+        changes += _ensure_actor(existing, label, car_meshes[shape], car_mats[key], unreal.Vector(x, y, sl.ROAD_TOP), yaw, 1.0)
+    holes = sl.manholes(district, start)
+    hole_mesh, built = _write_mesh("SM_Street_Manhole", _build_manhole, geo.record_hash(LOOK3_VERSION, "manhole"))
+    changes += int(built)
+    steam_mesh, built = _write_mesh("SM_Street_Steam", _build_steam, geo.record_hash(LOOK3_VERSION, "steam"), smooth=True)
+    changes += int(built)
+    n_steam = 0
+    for i, (x, y, steam) in enumerate(holes):
+        label = "City_Manhole_{0}".format(i)
+        wanted.add(label)
+        changes += _ensure_actor(existing, label, hole_mesh, mats["manhole"], unreal.Vector(x, y, sl.ROAD_TOP + 0.3),
+                                 (i * 37.0) % 360.0, 1.0)
+        if steam:
+            label = "City_Steam_{0}".format(n_steam)
+            n_steam += 1
+            wanted.add(label)
+            changes += _ensure_actor(existing, label, steam_mesh, mats["steam"], unreal.Vector(x, y, sl.ROAD_TOP), 0.0, 1.0,
+                                     shadow=False)
+    piles = sl.snow_piles(district, start, trees, hydrants, cars)
+    furniture = sl.street_furniture(district, start, avoid + [(c[0], c[1]) for c in cars] + [(t[0], t[1]) for t in trees])
+    merged = [
+        ("SnowPiles", lambda: _build_snow_piles(piles), piles, mats["snowpile"]),
+        ("SignPoles", lambda: _build_sign_poles(furniture["sign"]), furniture["sign"],
+         m.ensure_prop_instance("StreetSignPole", (0.12, 0.13, 0.12), 0.5)),
+        ("Mailboxes", lambda: _build_mailboxes(furniture["mailbox"]), furniture["mailbox"],
+         m.ensure_prop_instance("StreetMailbox", (0.02, 0.04, 0.16), 0.4)),
+    ]
+    for key, build, data, material in merged:
+        if not data:
+            continue
+        mesh, built = _write_mesh("SM_Street_" + key, build, geo.record_hash(LOOK3_VERSION, key, data), smooth=key == "SnowPiles")
+        changes += int(built)
+        label = PREFIX + key
+        wanted.add(label)
+        changes += _ensure_actor(existing, label, mesh, material, unreal.Vector(0.0, 0.0, 0.0), 0.0, 1.0)
+    plate, built = _write_mesh("SM_Street_SignPlate", _build_sign_plate, geo.record_hash(LOOK3_VERSION, "plate"))
+    changes += int(built)
+    for i, (x, y, yaw, kind) in enumerate(furniture["sign"]):
+        label = "City_Sign_{0}".format(i)
+        wanted.add(label)
+        top = sl.SIDEWALK_TOP + (330.0 if kind == "BusStop" else 290.0)
+        changes += _ensure_actor(existing, label, plate, mats["signs"][kind], unreal.Vector(x, y, top), yaw, 1.0)
+    c.log("updated" if changes else "exists", "street look 3",
+          "{0} parked cars, {1} manholes ({2} steaming), {3} snow piles, {4} signs, {5} mailboxes".format(
+              len(cars), len(holes), n_steam, len(piles), len(furniture["sign"]), len(furniture["mailbox"])))
     return changes
