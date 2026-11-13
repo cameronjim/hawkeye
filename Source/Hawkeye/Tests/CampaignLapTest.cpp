@@ -81,7 +81,7 @@
  *       -nosplash -log -ExecCmds="Automation RunTests Hawkeye.Lap.Campaign; Quit"
  *
  * Its own save slot, deleted first; the settings are put back as they were at the end. The test hook
- * AHawkeyePlayerController::bAutomationPlaysAsPlayer gives it what automation otherwise skips (the boot menu, the
+ * HawkeyeAutomation::SetPlaysAsPlayer gives it what automation otherwise skips (the boot menu, the
  * difficulty prompt, the chapter opening and its chase, the notices, the crime schedule) and hawkeye.Hints 2
  * turns the hints on.
  *
@@ -1350,7 +1350,7 @@ void FHawkeyeCampaignLapRunner::Finish(UWorld* World)
 	{
 		StopMoving(PC);
 	}
-	AHawkeyePlayerController::bAutomationPlaysAsPlayer = false;
+	HawkeyeAutomation::SetPlaysAsPlayer(false);
 	auto SetCVar = [](const TCHAR* Name, const FString& Value)
 	{
 		if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(Name))
@@ -2257,7 +2257,7 @@ static bool HawkeyeStartCampaignLap(FAutomationTestBase* Test, bool bFallBehind)
 	Save->SlotNameOverride = Slot;
 	IFileManager::Get().Delete(*USpudSubsystem::GetSaveGameFilePath(Slot), false, true, true);
 	Save->RearmBootMenu();
-	AHawkeyePlayerController::bAutomationPlaysAsPlayer = true;
+	HawkeyeAutomation::SetPlaysAsPlayer(true);
 	FAutomationTestFramework::Get().EnqueueLatentCommand(Runner);
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(Test));
 	return true;

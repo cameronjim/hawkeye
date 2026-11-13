@@ -61,12 +61,6 @@ namespace HawkeyeHintSubsystem
 	static constexpr float ProbeSeconds = 0.2f;
 	static constexpr float NoticePulseSeconds = 0.5f;
 
-	static bool IsAutomationRun()
-	{
-		static const bool bRunTests = FCString::Stristr(FCommandLine::Get(), TEXT("RunTests")) != nullptr;
-		return GIsAutomationTesting || bRunTests;
-	}
-
 	/** Triggers that need a trace: refreshed at 5 Hz. */
 	static uint64 TracedTriggers()
 	{
@@ -103,7 +97,7 @@ TStatId UHawkeyeHintSubsystem::GetStatId() const
 bool UHawkeyeHintSubsystem::IsRunAllowed()
 {
 	const int32 Mode = HawkeyeHintSubsystem::CVarHints.GetValueOnGameThread();
-	return Mode >= 2 || (Mode == 1 && !HawkeyeHintSubsystem::IsAutomationRun());
+	return Mode >= 2 || (Mode == 1 && !HawkeyeAutomation::IsAutomationRun());
 }
 
 FHawkeyeHintSuppression UHawkeyeHintSubsystem::GatherSuppression(const AHawkeyePlayerController* Controller)

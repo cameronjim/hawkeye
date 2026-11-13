@@ -407,13 +407,6 @@ public:
 	UFUNCTION()
 	void HandleNewGameDifficultyChosen(EHawkeyeDifficulty Difficulty);
 
-	/**
-	 * Test hook (Hawkeye.Lap.Campaign): an automation run that plays as a new player gets what automation
-	 * otherwise skips: the boot menu, the difficulty prompt, the chapter opening, the "nearby" notices and
-	 * the crime schedule. Off in the game and in every other test.
-	 */
-	static bool bAutomationPlaysAsPlayer;
-
 	// --- Safehouse ------------------------------------------------------------------------------
 
 	/** The safehouse menu. UHawkeyeSafehouseWidget by default. */

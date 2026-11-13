@@ -196,8 +196,7 @@ bool UCrimeSubsystem::IsSchedulingAllowed()
 		return true;
 	}
 	// Laps and screenshot passes drive the district themselves; four thugs turning up would spoil them.
-	return AHawkeyePlayerController::bAutomationPlaysAsPlayer
-		|| (!GIsAutomationTesting && FCString::Stristr(FCommandLine::Get(), TEXT("RunTests")) == nullptr);
+	return !HawkeyeAutomation::SkipsPlayerFlow();
 }
 
 bool UCrimeSubsystem::IsInChallenge() const

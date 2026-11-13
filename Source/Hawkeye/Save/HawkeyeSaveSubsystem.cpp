@@ -102,7 +102,7 @@ FString UHawkeyeSaveSubsystem::GetSlotName() const
 	}
 	// An automation pass completes objectives and enters the safehouse, and each of those saves;
 	// none of that may land in the player's own campaign.
-	return GIsAutomationTesting ? FString::Printf(TEXT("%sAutomation"), DefaultSlotName) : FString(DefaultSlotName);
+	return HawkeyeAutomation::IsTestRunning() ? FString::Printf(TEXT("%sAutomation"), DefaultSlotName) : FString(DefaultSlotName);
 }
 
 bool UHawkeyeSaveSubsystem::HasSave() const
@@ -811,10 +811,7 @@ bool UHawkeyeSaveSubsystem::ConsumeBootMenu()
 	bBootMenuConsumed = true;
 
 	// Automation drives the game itself; a menu pausing the first world would only get in its way.
-	const TCHAR* CommandLine = FCommandLine::Get();
-	const bool bAutomation = (FCString::Stristr(CommandLine, TEXT("RunTests")) != nullptr || GIsAutomationTesting)
-		&& !AHawkeyePlayerController::bAutomationPlaysAsPlayer;
-	if (FParse::Param(CommandLine, TEXT("NoMainMenu")) || bAutomation)
+	if (FParse::Param(FCommandLine::Get(), TEXT("NoMainMenu")) || HawkeyeAutomation::SkipsPlayerFlow())
 	{
 		return false;
 	}

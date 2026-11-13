@@ -1,10 +1,53 @@
 #include "Hawkeye.h"
+#include "CoreGlobals.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
 
 DEFINE_LOG_CATEGORY(LogHawkeye);
+
+namespace HawkeyeAutomation
+{
+	static bool bPlaysAsPlayer = false;
+
+	bool IsTestRunning()
+	{
+		return GIsAutomationTesting;
+	}
+
+	bool IsLaunchedForTests()
+	{
+		// The command line is fixed once the engine is up; read it once.
+		static const bool bRunTests = FCString::Stristr(FCommandLine::Get(), TEXT("RunTests")) != nullptr;
+		return bRunTests;
+	}
+
+	bool IsAutomationRun()
+	{
+		return IsTestRunning() || IsLaunchedForTests();
+	}
+
+	bool IsAutomationRunOrCommandlet()
+	{
+		return IsAutomationRun() || IsRunningCommandlet();
+	}
+
+	bool PlaysAsPlayer()
+	{
+		return bPlaysAsPlayer;
+	}
+
+	void SetPlaysAsPlayer(bool bPlays)
+	{
+		bPlaysAsPlayer = bPlays;
+	}
+
+	bool SkipsPlayerFlow()
+	{
+		return IsAutomationRun() && !PlaysAsPlayer();
+	}
+}
 
 /**
  * The game module. Its one job at startup: the standalone game (-game from the editor binaries)

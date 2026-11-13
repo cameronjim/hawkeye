@@ -145,7 +145,7 @@ prompt, thief on a roof, dumpster, cornered, end card, street, phone).
 ("[He got away]"), the checkpoint (the new game's save) reloads, and the chase picks up from it with the thief no
 further than `RestoreMaxLead` ahead and running. `campaign_fall_behind.json`, `campaign_lost*.png`.
 
-`AHawkeyePlayerController::bAutomationPlaysAsPlayer` is the hook that gives both the boot menu, the prompt, the
+`HawkeyeAutomation::SetPlaysAsPlayer` (`Hawkeye.h`) is the hook that gives both the boot menu, the prompt, the
 opening and its chase, the notices and the crime schedule; `hawkeye.Hints 2` turns the hints on. Run each in a
 process of its own: the campaign state lives in the game instance, so a second lap in one process starts with the
 first one's (its title card already seen).

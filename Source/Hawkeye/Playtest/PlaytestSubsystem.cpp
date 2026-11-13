@@ -66,8 +66,7 @@ UPlaytestSubsystem* UPlaytestSubsystem::Get(const UObject* WorldContextObject)
 
 bool UPlaytestSubsystem::IsAutomationRun()
 {
-	static const bool bRunTests = FCString::Stristr(FCommandLine::Get(), TEXT("RunTests")) != nullptr;
-	return GIsAutomationTesting || bRunTests || IsRunningCommandlet();
+	return HawkeyeAutomation::IsAutomationRunOrCommandlet();
 }
 
 void UPlaytestSubsystem::Initialize(FSubsystemCollectionBase& Collection)
