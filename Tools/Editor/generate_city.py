@@ -2051,7 +2051,7 @@ def ensure_archers(district, existing):
 LAMP_PREFIX = "City_Lamp_"          # the light; what verify counts
 LAMP_POLE_PREFIX = "City_LampPole_"
 LAMP_HEAD_PREFIX = "City_LampHead_"
-LAMP_LUMENS = 1400.0                # look pass 3: was 1100 / 1800 cm / 70 / 35; the facades went black over the
+LAMP_LUMENS = 1200.0                # look pass 3: was 1100 / 1800 cm / 70 / 35; the facades went black over the
 LAMP_RADIUS = 2400.0                # shops. Now the pool reaches the ground and first floors of its own side
 LAMP_OUTER_CONE = 80.0              # degrees from straight down; the pool edge
 LAMP_INNER_CONE = 45.0
