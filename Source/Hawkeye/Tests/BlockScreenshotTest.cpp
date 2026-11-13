@@ -1,7 +1,10 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -33,6 +36,8 @@
  *   ground        down at the kerb: sidewalk, kerb and carriageway
  *   shopfront     eye height 6 m from the shops across the street, turned along them
  *   wide          15 m into the park, looking up at the tenement row: roofs and cornices against the sky
+ *   kerb          eye height on the shop-side sidewalk by the kerb, looking along it: parked cars, plowed snow, signs
+ *   tree          under the street tree nearest the PlayerStart, looking up into its branches
  *
  * The Kate shots also measure 3 s of frames before the capture (frame average and p95, and stat unit's game, draw and
  * GPU averages) and log one "BlockPerf <shot>" line each; run at 1920x1080 for the 60 fps check. The close-ups hide
@@ -63,6 +68,8 @@ namespace HawkeyeBlockShots
 		Ground,
 		Shopfront,
 		Wide,
+		Kerb,
+		Tree,
 	};
 
 	struct FShot
@@ -81,6 +88,8 @@ namespace HawkeyeBlockShots
 		{ EShot::Ground, false, TEXT("ground") },
 		{ EShot::Shopfront, false, TEXT("shopfront") },
 		{ EShot::Wide, false, TEXT("wide") },
+		{ EShot::Kerb, false, TEXT("kerb") },
+		{ EShot::Tree, false, TEXT("tree") },
 		{ EShot::Street, true, TEXT("street") },
 		{ EShot::KateStreet, true, TEXT("kate_street") },
 		{ EShot::KateRoof, true, TEXT("kate_roof") },
@@ -89,6 +98,8 @@ namespace HawkeyeBlockShots
 		{ EShot::Ground, true, TEXT("ground") },
 		{ EShot::Shopfront, true, TEXT("shopfront") },
 		{ EShot::Wide, true, TEXT("wide") },
+		{ EShot::Kerb, true, TEXT("kerb") },
+		{ EShot::Tree, true, TEXT("tree") },
 	};
 
 	static UWorld* FindWorld()
@@ -202,6 +213,28 @@ namespace HawkeyeBlockShots
 			}
 		}
 		return Fallback;
+	}
+
+	/** The street tree (SM_Street_Tree_<n>, look pass 3) nearest Near, 2D. */
+	static AActor* FindTreeNear(UWorld* World, const FVector& Near)
+	{
+		AActor* Best = nullptr;
+		float BestDistance = TNumericLimits<float>::Max();
+		for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
+		{
+			const UStaticMeshComponent* Mesh = It->GetStaticMeshComponent();
+			if (!Mesh || !Mesh->GetStaticMesh() || !Mesh->GetStaticMesh()->GetName().StartsWith(TEXT("SM_Street_Tree_")))
+			{
+				continue;
+			}
+			const float Distance = FVector::Dist2D(It->GetActorLocation(), Near);
+			if (Distance < BestDistance)
+			{
+				BestDistance = Distance;
+				Best = *It;
+			}
+		}
+		return Best;
 	}
 
 	static void SetSnowfallHidden(UWorld* World, bool bHidden)
@@ -328,7 +361,7 @@ private:
 	{
 		using namespace HawkeyeBlockShots;
 		const bool bCloseUp = Shot.Shot == EShot::Facade || Shot.Shot == EShot::Window || Shot.Shot == EShot::Ground
-			|| Shot.Shot == EShot::Shopfront;
+			|| Shot.Shot == EShot::Shopfront || Shot.Shot == EShot::Kerb || Shot.Shot == EShot::Tree;
 		SetSnowfallHidden(World, bCloseUp);
 
 		const FVector Across = FRotator(0.f, StartYaw, 0.f).Vector();
@@ -425,6 +458,30 @@ private:
 		{
 			const FVector Back = Start - Across * 1500.f;
 			return Look(FVector(Back.X, Back.Y, EyeHeight), FRotator(9.f, StartYaw + 10.f, 0.f));
+		}
+		case EShot::Kerb:
+		{
+			if (!bFacade)
+			{
+				Test->AddError(TEXT("kerb: no facade across the street from the PlayerStart."));
+				return false;
+			}
+			const FVector Out = Facade.ImpactNormal.GetSafeNormal2D();
+			const FVector Along = FVector::CrossProduct(FVector::UpVector, Out);
+			const FVector Eye = Facade.ImpactPoint + Out * 300.f - Along * 600.f;
+			return Look(FVector(Eye.X, Eye.Y, EyeHeight), FRotator(-7.f, Along.Rotation().Yaw + 8.f, 0.f));
+		}
+		case EShot::Tree:
+		{
+			const AActor* Tree = FindTreeNear(World, Start);
+			if (!Tree)
+			{
+				Test->AddError(TEXT("tree: no SM_Street_Tree_ actor."));
+				return false;
+			}
+			const FVector Base = Tree->GetActorLocation();
+			const FVector Eye = Base + Across * 380.f + Side * 120.f;
+			return Look(FVector(Eye.X, Eye.Y, 150.f), FRotator(28.f, (Base - Eye).Rotation().Yaw, 0.f));
 		}
 		case EShot::Ground:
 		{
