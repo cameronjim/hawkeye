@@ -54,6 +54,7 @@ namespace HawkeyeFastTravelLap
 		TArray<FString> Legs;
 		TArray<float> FadeSeconds;
 		bool bRefused = false;
+		bool bPartnerWasBenched = false;
 	};
 
 	static UWorld* FindWorld()
@@ -279,7 +280,7 @@ namespace HawkeyeFastTravelLap
  * Its own save slot, no safehouse found. Kate walks into [Safehouse 1] and then [Safehouse 2] (each put
  * 5 m out, walking at the door until the entry zone discovers it); a challenge started under her
  * refuses fast travel; then from [Safehouse 2]'s menu she travels to [Safehouse 1] and back. Each
- * travel must leave Kate and Clint within 3 m of the destination's door, take under 3 s fade to fade,
+ * travel must leave Kate and Clint (brought off Act 1's bench for the lap) within 3 m of the destination's door, take under 3 s fade to fade,
  * autosave and record the destination as last used. Writes Saved/Automation/fast_travel.json.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLapFastTravel, "Hawkeye.Lap.FastTravel",
@@ -296,7 +297,7 @@ bool FHawkeyeLapFastTravel::RunTest(const FString& Parameters)
 	TSharedRef<FState> State = MakeShared<FState>();
 	AutomationOpenMap(MapPath);
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(4.f));
-	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this]()
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
 	{
 		UWorld* World = FindWorld();
 		UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(World);
@@ -308,7 +309,19 @@ bool FHawkeyeLapFastTravel::RunTest(const FString& Parameters)
 		Save->SlotNameOverride = Slot;
 		IFileManager::Get().Delete(*USpudSubsystem::GetSaveGameFilePath(Slot), false, true, true);
 		Save->GetCampaignState()->DiscoveredSafehouses.Reset();
+		// Act 1's chapter benches Clint (DA_CH01_NightShift has no partner), and a benched partner is off stage and
+		// does not travel. The lap is about the travel taking both of them, so it brings him on for itself and puts
+		// the chapter's cast back at the end.
+		for (TActorIterator<AHawkeyePartnerController> It(World); It; ++It)
+		{
+			if (It->IsBenched())
+			{
+				State->bPartnerWasBenched = true;
+				It->SetBenched(false);
+			}
+		}
 		HawkeyeFreezePartner(World);
+		TestNotNull(TEXT("Clint is on stage for the lap"), FindPartner(World));
 		return true;
 	}));
 
@@ -364,6 +377,13 @@ bool FHawkeyeLapFastTravel::RunTest(const FString& Parameters)
 		AddInfo(TEXT("fast_travel.json:\n") + Json);
 		UE_LOG(LogTemp, Display, TEXT("[Hawkeye] fast travel: %s"), *Json);
 		TestEqual(TEXT("Both legs travelled"), State->FadeSeconds.Num(), 2);
+		if (State->bPartnerWasBenched)
+		{
+			for (TActorIterator<AHawkeyePartnerController> It(FindWorld()); It; ++It)
+			{
+				It->SetBenched(true);
+			}
+		}
 		if (UHawkeyeSaveSubsystem* Save = UHawkeyeSaveSubsystem::Get(FindWorld()))
 		{
 			IFileManager::Get().Delete(*USpudSubsystem::GetSaveGameFilePath(Slot), false, true, true);
