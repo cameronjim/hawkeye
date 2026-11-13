@@ -17,6 +17,24 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **The block, third look pass: real lettering, facades, parked cars, trees, night. Merged 2026-11-13.** Walk out of
+  the start by day and by night. The signs are now smooth Roboto lettering (baked by script from the engine's own font
+  into a signed-distance atlas), in four real treatments: painted fascias, raised letters with a shadow, lit box signs
+  that glow at night, and neon tubes with a halo. Every building's shop bays now start at its own corners, so each
+  sign sits centred in one bay and never crosses a building edge or another sign; shop doors are recessed 85 cm with
+  a tiled step, and the middle bay of a wide front is the tenement's own door with a lit transom and a stoop. Long
+  fronts are cut into facades about 13 m wide, each with its own brick, colour, window heads (lintel, brick arch,
+  stone surround, hood), cornice (stone, brackets, plain, pressed metal) and shop rhythm. 33 render-only parked cars
+  (sedan, SUV, van, snow on top) line both kerbs near the start, plus manholes with steam, plowed snow along the kerbs
+  and in the tree pits, NO PARKING / BUS STOP / ONE WAY signs and mailboxes. Trees are round, tapered and branch down
+  to twigs. The road shows dark wet tracks through slush, the sidewalk a shovelled path between banks. At night the
+  lamps light the lower floors, 48 open shops spill light on the sidewalk, and upper floors read as brick against the
+  orange sky. Slowest Kate shot at 1080p: 7.85 ms p95 (was 7.44). Still prototype: the cars are flat-shaded extruded
+  slabs close up and walk-through; the windrows are smooth pillows; storey height cannot vary per facade (fire escapes
+  and the dressing's window cards hang on that grid). Details: `claude-docs/city-look.md`; shots
+  `Saved/Screenshots/Block/` (new `kerb_*`, `tree_*`; `*_before.png` are pass 2's). Gate: both builds, 599 tests, 234 Python tests (5 new for the facade plan), ruff, atlas check, content twice (clean after
+  committing four materials the new snow function resaved), city verify, content verify, traversal audit (2457 anchors,
+  24459 reachable pairs, exit 0, unchanged), 13 of 13 laps first try (Campaign 107 s, SocialClub 194 s, Grotto 182 s).
 - **The block, second look pass: shops, an overcast, relief, trees. Merged 2026-11-13.** Look at the shops across
   East 7th Street by day and night, then up at the roofline from the park. Every shop now has a trade and a readable
   sign (LAUNDROMAT, DELI & GROCERY, PIZZA, HARDWARE, PHARMACY, BARBER and ten more, generic names in three pixel
