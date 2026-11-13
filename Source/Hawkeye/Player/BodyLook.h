@@ -10,7 +10,8 @@ class USkeletalMeshComponent;
 
 /**
  * The mesh people see on a character whose animated mesh is a stand-in (Kate: the Game Animation
- * Sample's UEFN mannequin drives every system; Paragon's Sparrow is what is drawn). Everything is soft:
+ * Sample's UEFN mannequin drives every system; her built suit, or Paragon's Sparrow as the fallback, is
+ * what is drawn). Everything is soft:
  * a clone without the look's content keeps the driver mesh visible and plays exactly as before.
  *
  * Swapping the look is a data change: another skeletal mesh, an AnimBP that retargets the driver's

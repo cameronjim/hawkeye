@@ -503,7 +503,8 @@ public:
 
 	/**
 	 * What she looks like over the driver mesh (see GetBodyMesh). Empty: the driver is what is drawn. BP_Kate's
-	 * is Paragon's Sparrow, written by Tools/Editor/create_kate_look.py; a clone without it keeps the mannequin.
+	 * is her Blender-built suit (SK_Built_Kate, written by Tools/Editor/import_bodies.py), or Paragon's Sparrow
+	 * (create_kate_look.py) when the built body is not on disk; a clone with neither keeps the mannequin.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Body")
 	FHawkeyeBodyLook BodyLook;

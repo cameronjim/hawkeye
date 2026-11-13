@@ -440,7 +440,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Safehouse")
 	void SafehouseFastTravel();
 
-	/** Chapter select: a stub listing "[CH01]" and the rest as "[Locked]". */
+	/**
+	 * Chapter select: one row per chapter in campaign order (UHawkeyeCampaignOrder), named when open and
+	 * "[Locked]" when not, padded with locked rows to the menu's slot count.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Safehouse")
 	void SafehouseChapterSelect();
 

@@ -14,7 +14,8 @@ class USkeletalMeshComponent;
  * blended over the animation by physical animation motors and recovered within RecoverSeconds), and a knockout's
  * ragdoll throw and settle. Rules and numbers are UHawkeyeHitContactRules and the tuning structs below (data).
  *
- * The body it moves is the one people see: Kate's look (Sparrow) when she has one, else the character's mesh. A mesh
+ * The body it moves is the one people see: a look with a physics asset (Kate's Sparrow fallback) when there is one,
+ * else the character's mesh (her built suit and Clint's look have none, so their driver reacts). A mesh
  * with no physics asset (tests, a greybox) keeps every rule's bookkeeping and moves nothing. bPhysicalReaction off (Kate
  * and Clint since 2026-11-12) keeps the bookkeeping and moves nothing too: their hit clips and lean read the blow.
  */
