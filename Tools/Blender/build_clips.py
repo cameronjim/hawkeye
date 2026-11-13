@@ -471,9 +471,160 @@ def bow_fire(rig):
 
 BOW = [bow_draw, bow_aim, bow_fire]
 
+
+# --------------------------------------------------------------------------------------------------
+# the stealth takedown: a pair (the thug on the UE4 mannequin, Kate on the UEFN one)
+# --------------------------------------------------------------------------------------------------
+
+# Both clips are authored in one frame: Kate's capsule at the origin facing -Y, the victim's TAKEDOWN_GAP cm ahead of her
+# facing the same way (the game puts them there, gameplay-semantics.md, "Takedown"). Kate's driver is drawn at 0.93 scale,
+# so a place on him is divided by KATE_SCALE to be the same place in her rig. The victim is solved first (ue4 before
+# uefn) and Kate's hands follow his shoulders frame by frame.
+TAKEDOWN_GAP = 55.0
+KATE_SCALE = 0.93
+TAKEDOWN_SECONDS = 1.75
+# How far Kate's root travels back as she drags him down (her rig's cm: the game moves her capsule by it).
+TAKEDOWN_RETREAT = 95.0
+SOLVED = {}
+
+
+def takedown_victim(rig):
+    """Taken from behind: a jolt as her arm closes across his chest, his hands fly up to it, his head goes back; pulled
+    back off balance his heels go out from under him, she drags him back and down onto his back and he goes limp. The
+    last frame holds (the game hands it to the ragdoll from there)."""
+    P = tuple(rig.idle_pelvis)
+    fl = tuple(rig.idle_foot("l"))
+    fr = tuple(rig.idle_foot("r"))
+    hl = tuple(rig.idle_hand("l"))
+    hr = tuple(rig.idle_hand("r"))
+    a = rig.ankle_height()
+    t = TAKEDOWN_SECONDS
+    body = {
+        "pelvis_pos": T([(0.0, P), (0.12, add(P, V(0, 3, -1))), (0.45, add(P, V(0, 14, -8))), (0.80, V(0, 26, 52)),
+                         (1.10, V(0, 32, 26)), (1.40, V(0, 32, 12)), (t, V(0, 32, 11))]),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.12, V(-6, 0, 0)), (0.45, V(-14, 0, 0)), (0.80, V(-30, 0, 0)),
+                         (1.10, V(-56, 0, 2)), (1.40, V(-84, 0, 4)), (t, V(-86, 0, 4))]),
+        "chest": T([(0.0, V(0, 0, 0)), (0.12, V(-14, 0, 0)), (0.45, V(-18, 4, 0)), (0.80, V(-12, 2, 0)), (1.10, V(-6, 0, 0)),
+                    (1.40, V(0, 0, 0)), (t, V(1, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.10, V(-22, 0, 0)), (0.45, V(-25, 4, 0)), (0.80, V(-15, 4, 0)), (1.10, V(-4, 6, 0)),
+                   (1.40, V(10, 18, 4)), (t, V(10, 20, 4))]),
+        # Planted while he fights it, then the heels go out from under him and the legs end out straight.
+        "foot_l": T([(0.0, fl), (0.50, fl), (0.80, V(18, -10, a + 1)), (1.10, V(17, -26, a + 1)), (1.40, V(15, -44, a - 1)),
+                     (t, V(15, -45, a - 1))]),
+        "foot_r": T([(0.0, fr), (0.55, fr), (0.85, V(-14, 4, a + 1)), (1.10, V(-14, -22, a + 1)), (1.40, V(-13, -42, a - 1)),
+                     (t, V(-13, -43, a - 1))]),
+        "foot_l_rot": T([(0.0, V(0, 0, 0)), (0.50, V(0, 0, 0)), (0.80, V(-8, 4, 0)), (1.10, V(-35, 10, 0)),
+                         (1.40, V(-70, 18, 0)), (t, V(-72, 18, 0))]),
+        "foot_r_rot": T([(0.0, V(0, 0, 0)), (0.55, V(0, 0, 0)), (0.85, V(-8, -4, 0)), (1.10, V(-35, -10, 0)),
+                         (1.40, V(-68, -16, 0)), (t, V(-70, -16, 0))]),
+    }
+    # His hands go to where her arm is (his own chest, wherever it has gone): solve the body first, then key the hands on it.
+    probe = ck.Clip("probe", t, body)
+    hand_l = [(0.0, hl)]
+    hand_r = [(0.0, hr)]
+    for k in (0.27, 0.37, 0.48, 0.62, 0.80, 0.95):
+        pose = rig.solve(probe.params(k))
+        cl, cr = pose["clavicle_l"].translation, pose["clavicle_r"].translation
+        # Gripping her forearm across his upper chest: just in front of and below each collarbone, pulling at it.
+        hand_l.append((k, add(tuple(cl), V(-2, -14, -10))))
+        hand_r.append((k, add(tuple(cr), V(2, -14, -6))))
+    hand_l += [(1.20, V(30, 22, 30)), (1.45, V(31, 40, 4)), (t, V(31, 41, 4))]
+    hand_r += [(1.22, V(-30, 24, 28)), (1.45, V(-30, 38, 4)), (t, V(-30, 39, 4))]
+    body["hand_l"] = T(hand_l)
+    body["hand_r"] = T(hand_r)
+    body["fingers_l"] = T([(0.0, 1.0), (0.15, 1.8), (0.95, 1.6), (1.3, 0.6), (t, 0.6)])
+    body["fingers_r"] = T([(0.0, 1.0), (0.15, 1.8), (0.95, 1.6), (1.3, 0.6), (t, 0.6)])
+    return ck.Clip("Takedown_Victim", t, body, planted=[("l", 0.0, 0.50, "flat"), ("r", 0.0, 0.55, "flat")],
+                   strip_times=[0.0, 0.15, 0.4, 0.65, 0.9, 1.15, 1.4, t], torso_clear=False,
+                   extra={"pair": "victim", "gap": TAKEDOWN_GAP, "span": (-130.0, 130.0), "pop_degrees": 30.0})
+
+
+def takedown_attacker(rig):
+    """Kate behind him: steps in on her left foot as her right arm closes across his chest and her left hand takes his
+    side, sits her hips down and turns to pull him back off his feet, then drags him back and down in two steps
+    each way (her root travels back with her: the game moves her capsule by it), lets go over him and stands. Her hands
+    ride his collarbones (from his solved frames) while she holds him."""
+    victim = SOLVED.get("Takedown_Victim")
+    if victim is None:
+        raise RuntimeError("Takedown_Attacker needs Takedown_Victim built first (ue4 before uefn)")
+    P = tuple(rig.idle_pelvis)
+    fl = tuple(rig.idle_foot("l"))
+    fr = tuple(rig.idle_foot("r"))
+    hl = tuple(rig.idle_hand("l"))
+    hr = tuple(rig.idle_hand("r"))
+    t = TAKEDOWN_SECONDS
+    back = TAKEDOWN_RETREAT
+
+    def on_him(frame, bone, offset):
+        p = victim[frame][bone]
+        return tuple(v / KATE_SCALE for v in (p[0] + offset[0], p[1] - TAKEDOWN_GAP + offset[1], p[2] + offset[2]))
+
+    def behind(v, d):
+        return add(v, V(0, d, 0))
+
+    first = int(round(0.30 * ck.FPS))
+    reach_l = on_him(first, "spine_02", (20, -8, -12))
+    reach_r = on_him(first, "clavicle_l", (-2, -12, -4))
+    # The arms come up in an arc: out and up from her sides, then in over his shoulders.
+    hand_l = [(0.0, hl), (0.10, add(hl, V(6, -22, 14))), (0.20, add(_lerp(hl, reach_l, 0.6), V(10, -16, -4)))]
+    hand_r = [(0.0, hr), (0.10, add(hr, V(-4, -22, 16))), (0.20, add(_lerp(hr, reach_r, 0.6), V(-6, -22, -8)))]
+    for k in (0.30, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0, 1.1):
+        f = int(round(k * ck.FPS))
+        hand_r.append((k, on_him(f, "clavicle_l", (-2, -12, -4))))
+        hand_l.append((k, on_him(f, "spine_02", (20, -8, -12))))
+    hand_l += [(1.30, behind(add(hl, V(8, -24, 10)), back - 20)), (1.48, behind(add(hl, V(2, -10, 5)), back)),
+               (1.62, behind(add(hl, V(0, -3, 1)), back)), (t, behind(hl, back))]
+    hand_r += [(1.30, behind(add(hr, V(-10, -30, 10)), back - 20)), (1.48, behind(add(hr, V(-4, -12, 5)), back)),
+               (1.62, behind(add(hr, V(0, -3, 1)), back)), (t, behind(hr, back))]
+    # Feet (world, where she started): the left steps in; then right, left, right, left back, two each.
+    l_in = add(fl, V(-2, -22, 0))
+    r1 = behind(fr, 30)
+    l1 = behind(fl, 34)
+    r2 = behind(fr, back)
+    l2 = behind(fl, back)
+    tracks = {
+        "root_pos": T([(0.0, V(0, 0, 0)), (0.45, V(0, 0, 0)), (0.80, V(0, 30, 0)), (1.10, V(0, 64, 0)), (1.45, V(0, back - 3, 0)),
+                       (1.60, V(0, back, 0)), (t, V(0, back, 0))]),
+        "pelvis_pos": T([(0.0, P), (0.15, add(P, V(0, -10, -4))), (0.45, add(P, V(-2, -2, -10))), (0.80, behind(add(P, V(0, -2, -18)), 30)),
+                         (1.10, behind(add(P, V(0, -6, -26)), 64)), (1.35, behind(add(P, V(0, -4, -12)), back - 4)),
+                         (1.58, behind(P, back)), (t, behind(P, back))]),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.15, V(4, -4, 0)), (0.45, V(-2, -12, 0)), (0.80, V(8, -6, 0)),
+                         (1.10, V(16, 0, 0)), (1.35, V(6, 0, 0)), (1.58, V(-1, 0, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(0, 0, 0)), (0.15, V(8, -4, 0)), (0.45, V(-6, -14, 0)), (0.80, V(10, -6, 0)), (1.10, V(26, 0, 0)),
+                    (1.35, V(10, 0, 0)), (1.58, V(-2, 0, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.15, V(6, 4, 0)), (0.45, V(4, 8, 0)), (0.80, V(16, 4, 0)), (1.10, V(24, 0, 0)),
+                   (1.35, V(14, 0, 0)), (1.58, V(-2, 0, 0)), (t, V(0, 0, 0))]),
+        "foot_l": T(_step(fl, l_in, 0.03, 0.20, 5.0) + [(0.66, l_in)] + _step(l_in, l1, 0.66, 0.90, 6.0)[1:]
+                    + [(1.18, l1)] + _step(l1, l2, 1.18, 1.42, 5.0)[1:] + [(t, l2)]),
+        "foot_l_rot": T(_step_rot(0.03, 0.20, -10.0) + [(0.66, V(0, 0, 0))] + _step_rot(0.66, 0.90, -10.0)[1:]
+                        + [(1.18, V(0, 0, 0))] + _step_rot(1.18, 1.42, -8.0)[1:] + [(t, V(0, 0, 0))]),
+        "foot_r": T([(0.0, fr), (0.46, fr)] + _step(fr, r1, 0.46, 0.68, 6.0)[1:] + [(0.95, r1)]
+                    + _step(r1, r2, 0.95, 1.20, 6.0)[1:] + [(t, r2)]),
+        "foot_r_rot": T([(0.0, V(0, 0, 0))] + _step_rot(0.46, 0.68, -10.0) + [(0.95, V(0, 0, 0))]
+                        + _step_rot(0.95, 1.20, -10.0)[1:] + [(t, V(0, 0, 0))]),
+        "hand_l": T(hand_l),
+        "hand_r": T(hand_r),
+        "pole_hand_r": T([(0.0, V(-1.0, 0.0, -0.1)), (1.12, V(-1.0, 0.0, -0.1)), (1.45, V(-0.8, 0.4, -0.4)),
+                          (t, V(-0.6, 0.5, -0.6))]),
+        "pole_hand_l": T([(0.0, V(1.0, 0.0, -0.1)), (1.12, V(1.0, 0.0, -0.1)), (1.45, V(0.9, 0.4, -0.4)),
+                          (t, V(0.9, 0.4, -0.4))]),
+        "fingers_l": T([(0.0, 1.0), (0.15, 1.7), (1.1, 1.7), (1.3, 1.0), (t, 1.0)]),
+        "fingers_r": T([(0.0, 1.0), (0.15, 1.5), (1.1, 1.5), (1.3, 1.0), (t, 1.0)]),
+    }
+    return ck.Clip("Takedown_Attacker", t, tracks, fade_out=0.15,
+                   planted=[("l", 0.20, 0.66, "flat"), ("r", 0.0, 0.46, "flat"), ("r", 0.70, 0.95, "flat"),
+                            ("l", 0.92, 1.18, "flat"), ("r", 1.22, t, "flat"), ("l", 1.46, t, "flat")],
+                   strip_times=[0.0, 0.15, 0.4, 0.65, 0.9, 1.15, 1.4, t], torso_clear=False,
+                   extra={"pair": "attacker", "gap": TAKEDOWN_GAP, "span": (-100.0, 160.0), "retreat": back,
+                          # The grab is fast on purpose: the arm comes from her side to across his chest in 0.3 s.
+                          "pop_degrees": 36.0})
+
+
+TAKEDOWN_BONES = ("clavicle_l", "clavicle_r", "neck_01", "spine_02", "spine_03", "pelvis", "head")
+
 CLIPS = {
-    "ue4": [getup_back, getup_front] + HITS,
-    "uefn": list(HITS) + BOW,
+    "ue4": [getup_back, getup_front] + HITS + [takedown_victim],
+    "uefn": list(HITS) + BOW + [takedown_attacker],
 }
 
 
@@ -514,6 +665,8 @@ def main():
             clip = make(rig)
             frames = ck.solve_clip(rig, clip)
             problems, notes = ck.check_clip(rig, clip, frames)
+            if clip.extra.get("pair") == "victim":
+                SOLVED[clip.name] = [dict((b, tuple(pose[b].translation)) for b in TAKEDOWN_BONES) for pose in frames]
             for bone in filter(None, os.environ.get("CLIP_TRACE", "").split(",")):
                 for f, pose in enumerate(frames):
                     print("[trace] {0} {1} f{2} {3}".format(clip.name, bone, f, tuple(round(v, 1) for v in pose[bone].translation)))

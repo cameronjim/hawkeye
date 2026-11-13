@@ -409,6 +409,14 @@ class Rig:
         m_u = _with(r_upper @ _rot3(mu), start)
         m_lo = m_u @ (self.rest_inv[u] @ self.rest[lo] @ self._basis(lo, p))
         cur_l = (m_lo @ (self.rest_inv[lo] @ self.rest[e] @ self._basis(e, p))).translation - m_lo.translation
+        # The elbow or knee is a hinge: turn the lower bone about the bend plane's normal onto the target (a minimal
+        # rotation flips the forearm's roll when the hand crosses the shoulder), then take up what is left out of plane.
+        c = (cur_l - n_t * cur_l.dot(n_t))
+        if c.length > 1e-6:
+            c.normalize()
+            hinge = math.atan2(n_t.dot(c.cross(l_t)), c.dot(l_t))
+            m_lo = _with(Matrix.Rotation(hinge, 3, n_t) @ _rot3(m_lo), m_lo.translation)
+            cur_l = (m_lo @ (self.rest_inv[lo] @ self.rest[e] @ self._basis(e, p))).translation - m_lo.translation
         m_lo = _with(_min_rot(cur_l, l_t) @ _rot3(m_lo), m_lo.translation)
         end_pos = m_lo @ (self.rest_inv[lo] @ self.rest[e]).translation
         # The hand or foot: its keyed turn on the idle's (in the chest's frame for a hand, the world for a foot),
@@ -479,13 +487,25 @@ def _blend(ma, mb, w):
     return _with(q.to_matrix(), pos)
 
 
+_PLACES = ("pelvis_pos", "hand_l", "hand_r", "foot_l", "foot_r", "ball_l", "ball_r")
+
+
 def solve_clip(rig, clip):
-    """[frame -> {bone: matrix}] with the idle cross-fades at either end."""
+    """[frame -> {bone: matrix}] with the idle cross-fades at either end. A clip with a root_pos track moves its root
+    (root motion: the game moves the capsule along it); its other places are keyed in the world it starts in and are
+    solved relative to the root, which clip.roots keeps per frame."""
     frames = []
+    clip.roots = []
     n = clip.frames()
     for f in range(n):
         t = f / FPS
-        pose = rig.solve(clip.params(t))
+        params = clip.params(t)
+        root = Vector(params.pop("root_pos", (0.0, 0.0, 0.0)))
+        for key in _PLACES:
+            if key in params:
+                params[key] = tuple(Vector(params[key]) - root)
+        clip.roots.append(root)
+        pose = rig.solve(params)
         w = 0.0
         if clip.fade_in > 0 and t < clip.fade_in:
             w = 1.0 - smoothstep(t / clip.fade_in)
@@ -504,7 +524,13 @@ def write_action(rig, clip, frames):
     action = bpy.data.actions.new(clip.name)
     arm.animation_data.action = action
     last = {}
+    roots = getattr(clip, "roots", None) or [Vector((0.0, 0.0, 0.0))] * len(frames)
+    scale = arm.matrix_world.to_scale()[0]
     for f, pose in enumerate(frames):
+        # The root's travel is the armature object's (it is the root bone in the FBX); keyed on every clip so one
+        # clip's travel never carries into the next.
+        arm.location = roots[f] * scale
+        arm.keyframe_insert("location", frame=f)
         for name in rig.order:
             pb = arm.pose.bones[name]
             parent = rig.parent[name]
@@ -554,12 +580,13 @@ def check_clip(rig, clip, frames):
     for side, t0, t1, mode in clip.planted:
         f0, f1 = int(round(t0 * FPS)), int(round(t1 * FPS))
         bone = "foot_" + side if mode == "flat" else "ball_" + side
-        ref = frames[f0][bone].translation
+        roots = getattr(clip, "roots", None) or [Vector((0.0, 0.0, 0.0))] * len(frames)
+        ref = frames[f0][bone].translation + roots[f0]
         span = range(f0, min(f1, len(frames) - 1) + 1)
-        drift = [((frames[f][bone].translation - ref).length, f) for f in span]
+        drift = [((frames[f][bone].translation + roots[f] - ref).length, f) for f in span]
         if mode == "flat":
-            ball = frames[f0]["ball_" + side].translation
-            drift += [((frames[f]["ball_" + side].translation - ball).length, f) for f in span]
+            ball = frames[f0]["ball_" + side].translation + roots[f0]
+            drift += [((frames[f]["ball_" + side].translation + roots[f] - ball).length, f) for f in span]
         worst, at = max(drift)
         notes.append("{0} {1} planted {2:.2f}-{3:.2f} s: drift {4:.2f} cm (worst at frame {5})".format(
             side, mode, t0, t1, worst, at))
@@ -733,6 +760,10 @@ def render_strip(rig, clip, frames, out_png, times=None, width=300, height=420, 
     for t in times:
         f = min(int(round(t * FPS)), len(frames) - 1)
         scene.frame_set(f)
+        # The stand-in body is not parented (the FBX keeps it beside the armature): it follows a root that travels.
+        body = bpy.data.objects.get("Body")
+        if body is not None:
+            body.matrix_world = rig.arm.matrix_world.copy()
         scene.render.filepath = tmp
         bpy.ops.render.render(write_still=True)
         img = bpy.data.images.load(tmp, check_existing=False)
@@ -786,6 +817,7 @@ def export_skeleton_fbx(rig, body, path):
     for pb in arm.pose.bones:
         pb.matrix_basis = Matrix.Identity(4)
     arm.data.pose_position = "REST"
+    arm.location = (0.0, 0.0, 0.0)
     bpy.context.view_layer.update()
     bpy.ops.object.select_all(action="DESELECT")
     arm.select_set(True)
