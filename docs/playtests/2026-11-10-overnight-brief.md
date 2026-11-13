@@ -17,6 +17,23 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **The block looks like a street now. Merged 2026-11-13.** Walk out of the start and look at the tenements across
+  East 7th Street, by day and by night (`hawkeye.TimeOfDay Day` / `Night`). Every wall is real-size brick (20 x 6.5 cm
+  in mortar, a header course every sixth), brownstone ashlar, painted brick or board-marked concrete for the towers,
+  colour varied per building and per brick, dirty at the base with a salt line, sooty under the cornice, streaked
+  under the sills. Windows are recessed with stone lintels and sills (snow on top), double-hung sashes, the odd air
+  conditioner, glossy glass, blinds and curtains, and a room behind each one (interior mapping: walls, furniture, a
+  picture, a floor, a ceiling lamp), a third of them lit at night in warm, cool or TV light. Ground floors are shops
+  with shelves behind the glass or roll-down gates at night, under coloured sign bands. The road has wheel tracks worn
+  to wet asphalt through compacted snow, slush, a plowed ridge at the kerb and a double yellow on the avenues; the
+  sidewalks are 5 ft flags with a granite kerb, a trodden path, salt and wet patches; the park is drifted snow. All of
+  it is one scripted HLSL expression per material (`Tools/Editor/_look.py`), no textures, nothing downloaded; collision
+  and geometry are untouched (audit 2457 anchors, 24459 reachable pairs, golden hashes the same). The day is a hazy
+  January afternoon (softer, whiter sun, cool sky light, grey haze); the night has a brighter moon and a warm city
+  haze so the upper floors read. Frame time at 1080p 5.5 to 7.1 ms average (was about 0.1 ms less). Still prototype:
+  the facades are flat boxes (no cornice or sill relief), the sky is clear rather than overcast, and the street is
+  empty of furniture and trees. Details and before/after: `claude-docs/city-look.md`, shots
+  `Saved/Screenshots/Block/` (`*_before.png` are main's). New test `Hawkeye.Screenshot.Block`. The day keeps a neutral shadow grade (TimeOfDay.DayThenNightRestoresTheLevel). Gate: both builds, 599 tests (598 + the new shot test), 225 Python tests, ruff, content twice (clean), city verify, content verify, traversal audit (2457 / 24459, exit 0), 13 of 13 laps, one run each.
 - **Cleanup pass for a reader from outside. Merged 2026-11-13.** Nothing you play changes. Docs: CLAUDE.md says the
   first-person removal is done; names that never existed (`EAlertLevel`, `BT_Thug`, `BB_Guard`, the functional-test
   maps, Punisher asset examples) are replaced with real ones; testing.md lists every test group and which need `-game`;
