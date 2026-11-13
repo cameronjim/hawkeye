@@ -3,7 +3,6 @@
 #include "AssetCompilingManager.h"
 #include "CollisionQueryParams.h"
 #include "Components/CapsuleComponent.h"
-#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/GameModeBase.h"
@@ -13,6 +12,7 @@
 #include "Physics/Experimental/PhysScene_Chaos.h"
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Traversal/GrappleTraces.h"
 #include "World/CityLedgeSpawner.h"
 #include "World/CityMapData.h"
 #include "World/FireEscapeLanding.h"
@@ -451,12 +451,7 @@ FGrappleReachOracle FGrappleReachWorld::MakeOracle(UWorld* World, const FGrapple
 			Params.AddIgnoredActor(Spawned->Get());
 		}
 		FHitResult Hit;
-		if (!Live->LineTraceSingleByChannel(Hit, Lens, Anchor.Marker, ECC_Visibility, Params))
-		{
-			return true;
-		}
-		// The anchor sits on a parapet; a hit on the stone right under it still means it is in view.
-		if (Hit.Distance >= FVector::Dist(Lens, Anchor.Marker) - Rules.SightTolerance)
+		if (HawkeyeGrappleTraces::HasLineOfSight(*Live, Lens, Anchor.Marker, Rules.SightTolerance, Params, &Hit))
 		{
 			return true;
 		}
@@ -489,76 +484,34 @@ FGrappleReachOracle FGrappleReachWorld::MakeOracle(UWorld* World, const FGrapple
 		{
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleReachSupport), true, AnchorActor);
 			Params.AddIgnoredActors(SeeThrough);
-			FHitResult Hit;
-			if (Live->LineTraceSingleByChannel(Hit, Anchor.Landing + FVector(0.f, 0.f, 50.f),
-					Anchor.Landing - FVector(0.f, 0.f, SupportProbeDepth), ECC_WorldStatic, Params)
-				&& Hit.GetActor())
-			{
-				AnchorSupports.AddUnique(Hit.GetActor());
-			}
-			TArray<FOverlapResult> Overlaps;
-			Live->OverlapMultiByObjectType(Overlaps, Anchor.Origin, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldStatic),
-				FCollisionShape::MakeSphere(Rules.SupportRadius), Params);
-			for (const FOverlapResult& Overlap : Overlaps)
-			{
-				if (AActor* Actor = Overlap.GetActor())
-				{
-					AnchorSupports.AddUnique(Actor);
-				}
-			}
+			HawkeyeGrappleTraces::FindAnchorSupports(*Live, Anchor.Landing, Anchor.Origin, SupportProbeDepth, Rules.SupportRadius,
+				Params, AnchorSupports);
 		}
 		// The start's supports: what she stands on and the static actors within ZipStartIgnoreRadius.
 		TArray<AActor*> StartSupports;
 		{
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleReachStartSupport), true);
 			Params.AddIgnoredActors(SeeThrough);
-			FHitResult Hit;
-			if (Live->LineTraceSingleByChannel(Hit, From, From - FVector(0.f, 0.f, Rules.CapsuleHalfHeight + 50.f), ECC_WorldStatic, Params)
-				&& Hit.GetActor())
-			{
-				StartSupports.AddUnique(Hit.GetActor());
-			}
-			TArray<FOverlapResult> Overlaps;
-			Live->OverlapMultiByObjectType(Overlaps, From, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldStatic),
-				FCollisionShape::MakeSphere(Rules.ZipStartIgnoreRadius), Params);
-			for (const FOverlapResult& Overlap : Overlaps)
-			{
-				if (AActor* Actor = Overlap.GetActor())
-				{
-					StartSupports.AddUnique(Actor);
-				}
-			}
+			HawkeyeGrappleTraces::FindStartSupports(*Live, From, Rules.CapsuleHalfHeight, Rules.ZipStartIgnoreRadius, Params,
+				StartSupports);
 		}
 
 		const FVector ReleasePoint = FGrappleReachQuery::ComputeStartReleasePoint(From, Launch, End, Rules.GetStartReleaseDistance());
 		const FCollisionShape Shape = FCollisionShape::MakeCapsule(Rules.CapsuleRadius, Rules.CapsuleHalfHeight);
-		const FCollisionResponseParams ResponseParams(Responses);
-		auto Sweep = [&](const FVector& A, const FVector& B, bool bIgnoreStart) -> bool
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleReachZip), false, AnchorActor);
+		Params.AddIgnoredActors(SeeThrough);
+		FHitResult Hit;
+		if (HawkeyeGrappleTraces::IsZipClear(*Live, Launch, ReleasePoint, End, Shape, ObjectType, FCollisionResponseParams(Responses),
+				Params, AnchorSupports, StartSupports, &Hit))
 		{
-			if (A.Equals(B, 0.1f))
-			{
-				return true;
-			}
-			FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleReachZip), false, AnchorActor);
-			Params.AddIgnoredActors(SeeThrough);
-			Params.AddIgnoredActors(AnchorSupports);
-			if (bIgnoreStart)
-			{
-				Params.AddIgnoredActors(StartSupports);
-			}
-			FHitResult Hit;
-			if (Live->SweepSingleByChannel(Hit, A, B, FQuat::Identity, ObjectType, Shape, Params, ResponseParams))
-			{
-				if (OutBlocker)
-				{
-					*OutBlocker = DescribeBlocker(Hit.GetActor());
-					OutBlocker->Location = Hit.ImpactPoint;
-				}
-				return false;
-			}
 			return true;
-		};
-		return Sweep(Launch, ReleasePoint, true) && Sweep(ReleasePoint, End, false);
+		}
+		if (OutBlocker)
+		{
+			*OutBlocker = DescribeBlocker(Hit.GetActor());
+			OutBlocker->Location = Hit.ImpactPoint;
+		}
+		return false;
 	};
 
 	if (Profile.bProbeLens)

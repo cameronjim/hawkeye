@@ -9,7 +9,6 @@
 #include "CollisionQueryParams.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
@@ -20,6 +19,7 @@
 #include "Player/InventoryComponent.h"
 #include "NiagaraComponent.h"
 #include "Traversal/GrappleReachQuery.h"
+#include "Traversal/GrappleTraces.h"
 #include "Vfx/HawkeyeVfxSubsystem.h"
 #include "World/GrappleAnchor.h"
 #include "World/GrappleArrowProjectile.h"
@@ -239,16 +239,9 @@ bool UGrappleComponent::HasLineOfSight(const AGrappleAnchor* Anchor, const FVect
 		return false;
 	}
 
-	const FVector Marker = Anchor->GetMarkerLocation();
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleSight), false, GetOwner());
 	Params.AddIgnoredActor(Anchor);
-	FHitResult Hit;
-	if (!World->LineTraceSingleByChannel(Hit, ViewLocation, Marker, ECC_Visibility, Params))
-	{
-		return true;
-	}
-	// The anchor sits on a parapet; a hit on the stone right under it still means it is in view.
-	return Hit.Distance >= FVector::Dist(ViewLocation, Marker) - SightTolerance;
+	return HawkeyeGrappleTraces::HasLineOfSight(*World, ViewLocation, Anchor->GetMarkerLocation(), SightTolerance, Params);
 }
 
 bool UGrappleComponent::IsDebugEnabled()
@@ -669,26 +662,8 @@ void UGrappleComponent::FindAnchorSupports(const AGrappleAnchor* Anchor, TArray<
 	}
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleSupport), true, GetOwner());
 	Params.AddIgnoredActor(Anchor);
-
-	const FVector Landing = Anchor->GetLandingLocation();
-	FHitResult Hit;
-	if (World->LineTraceSingleByChannel(Hit, Landing + FVector(0.f, 0.f, 50.f),
-			Landing - FVector(0.f, 0.f, HawkeyeGrapple::SupportProbeDepth), ECC_WorldStatic, Params)
-		&& Hit.GetActor())
-	{
-		OutSupports.AddUnique(Hit.GetActor());
-	}
-
-	TArray<FOverlapResult> Overlaps;
-	World->OverlapMultiByObjectType(Overlaps, Anchor->GetActorLocation(), FQuat::Identity,
-		FCollisionObjectQueryParams(ECC_WorldStatic), FCollisionShape::MakeSphere(SupportRadius), Params);
-	for (const FOverlapResult& Overlap : Overlaps)
-	{
-		if (AActor* Actor = Overlap.GetActor())
-		{
-			OutSupports.AddUnique(Actor);
-		}
-	}
+	HawkeyeGrappleTraces::FindAnchorSupports(*World, Anchor->GetLandingLocation(), Anchor->GetActorLocation(),
+		HawkeyeGrapple::SupportProbeDepth, SupportRadius, Params, OutSupports);
 }
 
 void UGrappleComponent::FindStartSupports(const FVector& Start, TArray<AActor*>& OutSupports) const
@@ -702,22 +677,7 @@ void UGrappleComponent::FindStartSupports(const FVector& Start, TArray<AActor*>&
 	const ACharacter* Character = GetCharacter();
 	const float HalfHeight = Character && Character->GetCapsuleComponent()
 		? Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.f;
-	FHitResult Hit;
-	if (World->LineTraceSingleByChannel(Hit, Start, Start - FVector(0.f, 0.f, HalfHeight + 50.f), ECC_WorldStatic, Params)
-		&& Hit.GetActor())
-	{
-		OutSupports.AddUnique(Hit.GetActor());
-	}
-	TArray<FOverlapResult> Overlaps;
-	World->OverlapMultiByObjectType(Overlaps, Start, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldStatic),
-		FCollisionShape::MakeSphere(ZipStartIgnoreRadius), Params);
-	for (const FOverlapResult& Overlap : Overlaps)
-	{
-		if (AActor* Actor = Overlap.GetActor())
-		{
-			OutSupports.AddUnique(Actor);
-		}
-	}
+	HawkeyeGrappleTraces::FindStartSupports(*World, Start, HalfHeight, ZipStartIgnoreRadius, Params, OutSupports);
 }
 
 float UGrappleComponent::GetStartReleaseDistance() const
@@ -764,32 +724,20 @@ bool UGrappleComponent::IsZipClear(const FVector& From, const AGrappleAnchor* An
 	const FVector ReleasePoint = FGrappleReachQuery::ComputeStartReleasePoint(From, Launch, End, GetStartReleaseDistance());
 
 	const FCollisionShape Shape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
-	FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
-	auto Sweep = [&](const FVector& A, const FVector& B, bool bIgnoreStart) -> bool
+	const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleZipClear), false, Character);
+	Params.AddIgnoredActor(Anchor);
+	FHitResult Hit;
+	if (HawkeyeGrappleTraces::IsZipClear(*World, Launch, ReleasePoint, End, Shape, Capsule->GetCollisionObjectType(), Responses,
+			Params, AnchorSupports, StartSupports, &Hit))
 	{
-		if (A.Equals(B, 0.1f))
-		{
-			return true;
-		}
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(GrappleZipClear), false, Character);
-		Params.AddIgnoredActor(Anchor);
-		Params.AddIgnoredActors(AnchorSupports);
-		if (bIgnoreStart)
-		{
-			Params.AddIgnoredActors(StartSupports);
-		}
-		FHitResult Hit;
-		if (World->SweepSingleByChannel(Hit, A, B, FQuat::Identity, Capsule->GetCollisionObjectType(), Shape, Params, Responses))
-		{
-			if (OutBlocker)
-			{
-				*OutBlocker = Hit.GetActor();
-			}
-			return false;
-		}
 		return true;
-	};
-	return Sweep(Launch, ReleasePoint, true) && Sweep(ReleasePoint, End, false);
+	}
+	if (OutBlocker)
+	{
+		*OutBlocker = Hit.GetActor();
+	}
+	return false;
 }
 
 void UGrappleComponent::SetSupportsIgnored(bool bIgnore)
