@@ -17,6 +17,23 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **Cleanup pass for a reader from outside. Merged 2026-11-13.** Nothing you play changes. Docs: CLAUDE.md says the
+  first-person removal is done; names that never existed (`EAlertLevel`, `BT_Thug`, `BB_Guard`, the functional-test
+  maps, Punisher asset examples) are replaced with real ones; testing.md lists every test group and which need `-game`;
+  architecture.md gains "Known next steps" (splitting the character and controller, thug logic into StateTree tasks,
+  the partner tree, a thug registry, the campaign lap's FORCED steps). Code: no "Frank" or wardens left in comments or
+  tests; the HUD's always-blank ammo line, an unread noise value and about 20 dead Python helpers, constants and 53
+  unused re-exports are gone; the city generator's prison sweep (it deleted any actor whose class said Door, Pickup or
+  Thug) is gone; the safehouse menu's 0/1/2 is an enum; one `HawkeyeAutomation` helper answers "is this a test run"
+  for five callers, each keeping its meaning; the grapple's sight, support and zip traces are one copy shared by the
+  game and the traversal audit (audit numbers identical before and after), and the tests predict the camera with the
+  audit's code. Skipped tests now warn `Skipped (...)` and `run-tests.ps1` lists them: 52 of the 598 skip their body
+  headless (46 need a real RHI, 6 a game world). The laps' dodge bot is one shared helper that dodges inside Kate's
+  0.25 s invulnerability less a frame (six laps used 0.3 s and the Tomas dodge 0.4 s); all 13 laps still pass, one run
+  each: CrimeAmbush took 1 hit with no dodge where it had dodged once, InteriorLoud 1 hit (was 2), Grotto 6 dodges (was
+  8), the rest the same. Found, not fixed: `Hawkeye.Lap.FastTravel` (not in the 13) fails "Clint beside her" because
+  chapter 1 benches him. Gate: both builds, 598 tests, 225 Python tests, ruff, content twice (clean), city, content
+  verify, traversal audit, 13 of 13 laps.
 - **Kate wears her own suit now, not Sparrow. Merged 2026-11-12.** The Blender-built Kate (`build_kate.py`) is
   imported on the Quaternius female body as its own skeleton (`SKEL_Body_Female`), retargeted from her mannequin like
   Clint, at her 0.93 scale (about 164 cm next to Clint's 181). The purple drew too light in the game (`#7539AF` by day),
