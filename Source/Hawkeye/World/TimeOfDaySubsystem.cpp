@@ -50,15 +50,17 @@ namespace HawkeyeTimeOfDay
 	static FTimeOfDayPreset MakeDay()
 	{
 		// 2026-11-13, the block look (claude-docs/city-look.md): an overcast January afternoon rather than a clear one.
+		// Look pass 2: under the cloud deck (City_CloudDeck) the sun drops to 7 lux and the sky light rises to 13, so shadows
+		// are faint and the light comes from the whole sky.
 		// The sun lower and weaker (12 lux) and nearly white, the sky light stronger and cool so the shade is grey-blue and soft,
 		// a denser grey haze (the atmosphere's Mie, set by generate_city, whitens the sky), exposure bias 0 (was -0.3). Was 16 lux warm sun 30
 		// degrees up, sky 8 warm, fog 0.0015 warm from 30 m.
 		FTimeOfDayPreset Day;
 		Day.SunRotation = FRotator(-22.f, -45.f, 0.f);
-		Day.SunLux = 12.f;
+		Day.SunLux = 7.f;
 		Day.SunColor = FLinearColor(1.f, 0.95f, 0.88f);
 		Day.SunDiskColorScale = FLinearColor::White;
-		Day.SkyLightIntensity = 11.f;
+		Day.SkyLightIntensity = 13.f;
 		Day.SkyLightColor = FLinearColor(0.88f, 0.93f, 1.f);
 		Day.FogDensity = 0.008f;
 		Day.FogInscattering = FLinearColor(0.24f, 0.25f, 0.27f);
