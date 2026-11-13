@@ -210,3 +210,31 @@ float UHawkeyeHitContactRules::ComputeCameraKick(float Weight, float LightDistan
 {
 	return FMath::Lerp(LightDistance, HeavyDistance, FMath::Clamp(Weight, 0.f, 1.f));
 }
+
+bool UHawkeyeHitContactRules::IsLyingOnBack(const FVector& BodyFront)
+{
+	return BodyFront.Z > 0.f;
+}
+
+void UHawkeyeHitContactRules::ComputeGetUpAlignment(const FVector& WorldPelvis, const FVector& WorldBodyUp, const FVector& ClipPelvis,
+	const FVector& ClipBodyUp, float FallbackYaw, FVector& OutLocation, float& OutYaw)
+{
+	const FVector WorldFlat = FVector(WorldBodyUp.X, WorldBodyUp.Y, 0.f);
+	const FVector ClipFlat = FVector(ClipBodyUp.X, ClipBodyUp.Y, 0.f);
+	OutYaw = FallbackYaw;
+	if (WorldFlat.SizeSquared() > 1e-4f && ClipFlat.SizeSquared() > 1e-4f)
+	{
+		OutYaw = FRotator::NormalizeAxis(FMath::RadiansToDegrees(FMath::Atan2(WorldFlat.Y, WorldFlat.X) - FMath::Atan2(ClipFlat.Y, ClipFlat.X)));
+	}
+	const FVector Offset = FRotator(0.f, OutYaw, 0.f).RotateVector(FVector(ClipPelvis.X, ClipPelvis.Y, 0.f));
+	OutLocation = FVector(WorldPelvis.X - Offset.X, WorldPelvis.Y - Offset.Y, WorldPelvis.Z);
+}
+
+EHawkeyeGetUpHit UHawkeyeHitContactRules::ResolveHitDuringGetUp(bool bGettingUp, bool bKnocksDown)
+{
+	if (!bGettingUp)
+	{
+		return EHawkeyeGetUpHit::React;
+	}
+	return bKnocksDown ? EHawkeyeGetUpHit::KnockDownAgain : EHawkeyeGetUpHit::Absorb;
+}

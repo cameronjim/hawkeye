@@ -40,6 +40,18 @@ enum class EHawkeyeImpactSource : uint8
  * in-place clip) so the striking limb is ContactDistance from the chosen region at the hit, never more than MaxSlide
  * and MaxTurnDegrees of correction; past either it whiffs.
  */
+/** What a blow does to a body that is getting up (gameplay-semantics.md, "Authored clips"). */
+UENUM(BlueprintType)
+enum class EHawkeyeGetUpHit : uint8
+{
+	/** Not getting up: the usual hit reaction (clip, shove, stagger). */
+	React,
+	/** Getting up: the damage, flash and sound land, but no clip, shove or stagger: he finishes getting up. */
+	Absorb,
+	/** A knockdown (a heavy, a bola, a blast) puts him down again: the get-up ends and the knockdown starts over. */
+	KnockDownAgain
+};
+
 USTRUCT(BlueprintType)
 struct HAWKEYE_API FHawkeyeStrikeContact
 {
@@ -386,4 +398,25 @@ public:
 	/** The camera kick for a landed blow of Weight: Light cm at 0, Heavy cm at 1. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Contact")
 	static float ComputeCameraKick(float Weight, float LightDistance, float HeavyDistance);
+
+	/**
+	 * Whether a body lying with its chest facing BodyFront (world) is on its back: the chest faces up (z above 0). A body
+	 * on its side counts as face down (the face-down get-up rolls onto the hands first).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Hawkeye|Contact")
+	static bool IsLyingOnBack(const FVector& BodyFront);
+
+	/**
+	 * Where the capsule stands and which way it faces for a get-up clip to start on a body lying on the floor
+	 * (gameplay-semantics.md, "Authored clips"): the clip's first frame has its pelvis at ClipPelvis and its spine
+	 * pointing ClipBodyUp, both in the capsule's space (forward +X); the body lies with its pelvis at WorldPelvis and its
+	 * spine pointing WorldBodyUp. The yaw turns the clip's spine onto the body's (flat), and the location puts the clip's
+	 * pelvis on the body's (flat; Z is WorldPelvis's, the caller stands it on the floor). A spine pointing straight up or
+	 * down (nothing flat to turn by) keeps FallbackYaw.
+	 */
+	static void ComputeGetUpAlignment(const FVector& WorldPelvis, const FVector& WorldBodyUp, const FVector& ClipPelvis,
+		const FVector& ClipBodyUp, float FallbackYaw, FVector& OutLocation, float& OutYaw);
+
+	/** What a blow does to a body getting up off the floor (the get-up rule). */
+	static EHawkeyeGetUpHit ResolveHitDuringGetUp(bool bGettingUp, bool bKnocksDown);
 };

@@ -42,7 +42,11 @@ enum class ECombatAnimRole : uint8
 	BowDraw,
 	BowAimIdle,
 	BowFire,
-	BowNock
+	BowNock,
+	/** Getting up from lying face down (GetUp is from lying on the back). Appended: assets store the value. */
+	GetUpFront,
+	/** A heavy blow's stagger (two steps back), whichever side it came from. */
+	HitHeavy
 };
 
 /**
@@ -120,6 +124,15 @@ public:
 	/** The hit reaction for a blow from Side. */
 	static ECombatAnimRole HitRoleFor(EHawkeyeHitDirection Side);
 
+	/**
+	 * The hit reaction for a blow from Side at Weight (0 to 1): HitHeavy at HeavyWeight or more when Set has a HitHeavy
+	 * clip, else HitRoleFor(Side) (gameplay-semantics.md, "Authored clips").
+	 */
+	static ECombatAnimRole HitRoleForBlow(const UCombatAnimSet* Set, EHawkeyeHitDirection Side, float Weight, float HeavyWeight);
+
+	/** The get-up for a body on its back (GetUp) or face down (GetUpFront, or GetUp when the set has none). */
+	static ECombatAnimRole GetUpRoleFor(const UCombatAnimSet* Set, bool bOnBack);
+
 	/** The dodge for a dash toward Side of the one dodging (Front is a dash forward). */
 	static ECombatAnimRole DodgeRoleFor(EHawkeyeHitDirection Side);
 
@@ -171,8 +184,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
 	TSoftObjectPtr<UAnimMontage> Knockdown;
 
+	/** From lying on his back. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
 	TSoftObjectPtr<UAnimMontage> GetUp;
+
+	/** From lying face down. Empty: GetUp is used for both. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> GetUpFront;
+
+	/** A heavy blow (impact weight at or over the reaction's heavy threshold). Empty: the side's Hit clip. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitHeavy;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Finisher")
 	TSoftObjectPtr<UAnimMontage> FinisherAttacker;
