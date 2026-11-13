@@ -397,12 +397,61 @@ body_thug_flash, body_clint_draw, body_lucky_kate.png`, then Kate's `body_kate_<
 driver's head, follows the ragdoll, the punch is caught in its wind-up (the telegraph glow), the flash over half, and
 Lucky 40 to 95 cm tall, facing his way and on the ground.
 
-**Not done.** The get-up clip: UAL2's `LayToIdle` (a get-up from lying down) and `Hit_Knockback` are on the same rig
-and would retarget with the `ue4` chain map, but `import_combat_anims.py` has no glTF source type; adding one, a
-manifest `GetUp` line for the thugs and checking the Mixamo knockdown's last pose meets the get-up's first is the work
-(the thug's `GetUp` role and `PlayRole` path already exist). The painted body does not use the pack's hair meshes
+**Not done.** (The get-up is our own since 2026-11-13, "Authored clips"; UAL2 is not used.) The painted body does not use the pack's hair meshes
 (hair is painted; the built costumes do);
 arrows stuck in a thug sit on the hidden driver's surface, a few cm off the body's.
+
+## Authored clips (built 2026-11-13)
+
+Our own get-ups, hit reactions and a bow set, keyed by script in Blender on the drivers' own skeletons, not downloaded.
+
+**Pipeline.** `Tools/Editor/export_clip_rigs.py` (headless editor, once) writes the drivers' idles and the pose references
+to `<assets root>/built/clips/rigs/` (FBX of animations: they carry the skeleton; the skeletal mesh exporter asserts in a
+headless editor). `Tools/Blender/build_clips.py` (with `clipkit.py`) keys each clip and writes
+`<assets root>/built/clips/<ue4 | uefn>/<Clip>.fbx` plus `Skeleton.fbx` (the rig at rest with a capsule stand-in body:
+the import binds the source skeleton from it; a clip's own file bound it in its first frame's pose and the retarget came
+out 8 m tall), renders a side-on strip per clip to `Saved/Screenshots/Blender/clips/` and fails on a check. The manifest's
+`AuthoredThug` (ue4 chains) and `AuthoredKate` (uefn chains) sources are `mixamo_fbx` with `"rebuilt": true`: a file
+whose size or time changed is imported again, and its retargets and montages follow (`HawkeyeFile` tag); a changed
+`Skeleton.fbx` clears the source's folder. `create-content.ps1` runs them (`import_authored_clips.py`, before
+`create_combat_anims`). Not built: one "missing" line per source and the game plays what it did before.
+
+```powershell
+& "C:\Program Files\Blender Foundation\Blender 5.3\blender.exe" --background --factory-startup --python-exit-code 1 --python Tools\Blender\build_clips.py -- [--only getup_back,hit_heavy]
+```
+
+**How a clip is keyed.** Tracks per parameter (pelvis place and turn; chest on the pelvis and neck on the chest, spread
+down the spine and neck bones; clavicles; hand and foot targets with elbow and knee poles, solved as two-bone IK; hand
+and foot turns; a foot placed by its ball; toe bend; finger curl), monotone cubic between keys so nothing overshoots by
+accident: overshoot and settle are keys, arcs are via keys. The idle (frame 0 of the game's idle) is the base, so twist
+bones and fingers look like the game's; the last frames cross-fade into it exactly. Checks per frame: a planted ankle or
+ball moves under 0.6 cm, no bone turns over 24 degrees a frame (the bow's string arm is allowed 45: a real draw swings
+the elbow 50 cm in 0.2 s), no wrist inside the torso, no joint under the floor.
+
+| Clip | Rig | Role | Length | What |
+|------|-----|------|--------|------|
+| GetUp_Back | ue4 (thugs, archers) | GetUp | 1.6 s | chin tucks, sits up with the right hand pushing behind, heels drawn in to the stance, hips rocked over the feet into a crouch, up a touch tall, settle |
+| GetUp_Front | ue4 | GetUpFront | 1.8 s | hands under the shoulders, chest up, onto hands and knees, left foot steps through, rises off it with the right toes tucked, right foot steps up |
+| HitFront/Left/Right_Light | both | HitFront/Left/Right | 0.53 s | head and chest snap away from the blow, the far foot steps out, the near follows, back past upright, settle |
+| HitHeavy_Stagger | both | HitHeavy | 0.73 s | thrown back, shoulders up, knees buckle, two steps back, forward past upright, settle |
+| BowDraw, BowAimIdle, BowFire | uefn | (out of the set) | 0.36, 2.0, 0.5 s | nock to anchor, a breathing hold, release and follow-through back to the nock |
+
+The hit clips start with the whole body moved toward the blow by the shove the game gives (light 10 cm, heavy 28 cm at
+500 cm/s) and step back onto the capsule, so the feet stay put in the world while the shove slides the capsule.
+
+**What ships and what does not** (strips from `Hawkeye.Screenshot.Clips`, `Saved/Screenshots/Clips/`): the get-ups (there
+were none), the heavy stagger (new), Kate's and Clint's light hits (Sparrow's baked additive reactions put her in Sparrow's
+own bow stance, arms out, for half a second: `kate_hit_front_before.png`), the thugs' side hits (same fault,
+`thug_hit_left_before.png`). The thugs' front hit stays Mixamo's Receive Punch To The Face (mocap with the guard up reads
+better than ours, `thug_hit_front_before.png`; ours is imported with `"in_set": false`). The bow set stays Sparrow's: ours
+takes its anchor and nock from Sparrow's poses (where the game's bow and aim offset expect the hands) and in the strips
+is the same motion faster (`kate_bow_draw.png` against `kate_bow_draw_before.png`), not better; it is imported with
+`"in_set": false`.
+
+**Get-up in the game.** The capsule is moved and turned so the clip's first frame lies on the body (the pelvis's turn
+picks back or front, `gameplay-semantics.md`, "Authored clips"); out of the knockdown clip the mesh eases from where it
+lay onto the capsule over 0.3 s, out of the ragdoll the physics weight falls 1 to 0 over 0.3 s. Strips:
+`getup_from_clip.png`, `getup_from_ragdoll.png`.
 
 ## Known limits
 
@@ -410,8 +459,8 @@ arrows stuck in a thug sit on the hidden driver's surface, a few cm off the body
 - Every second fists swing (Standing Melee Punch) still holds its first frame for 0.29 s of the 0.6 s
   telegraph (its wind-up is short); the first (Jab To Elbow) needs no hold. Leaving the punch out of the
   set (`"in_set": false`) would make every swing the jab, at the cost of variety.
-- There is no GetUp clip yet: a Mixamo knockdown holds its last frame on the floor, then blends back
-  to locomotion over 0.4 s.
+- (2026-11-13: the thugs get up through `GetUp_Back` / `GetUp_Front`, "Authored clips".) Kate has no knockdown, so no
+  get-up of hers.
 - The aim offset under-pitched (Sparrow's CU and CD poses sit at +-90 on the axis but aim less far): at
   30 degrees up the nocked arrow pointed 24 up. Fixed 2026-09-29 by scaling the pitch input (1.57 up,
   1.85 down, +5; gameplay-semantics.md, "Aim offset pitch"): 30.6 up, -30.2 down, -1.5 level. Looking

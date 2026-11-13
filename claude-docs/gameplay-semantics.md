@@ -2195,7 +2195,8 @@ group pass lets several come at once, Spider-Man style, and keeps every blow ans
   clip for the side the blow came from, on top of the lean.
 - Knockdown with clips: a heavy strike or a bola trip plays Knockdown, which holds its last
   frame, instead of the ragdoll; after KnockdownSeconds GetUp plays and he is getting up for
-  its length (with no GetUp clip the knockdown clip blends out over GetUpSeconds). The
+  its length (with no GetUp clip the knockdown clip blends out over GetUpSeconds; 2026-11-13: which get-up, where it
+  starts and what a blow does meanwhile, see "Authored clips" below). The
   explosive's blast always ragdolls. A clip knockdown counts as knocked down for the finisher
   gate exactly as the ragdoll does.
 - Bow with clips (upper body, over locomotion; rewritten 2026-09-28 after "the bow animation is not
@@ -2242,3 +2243,27 @@ group pass lets several come at once, Spider-Man style, and keeps every blow ans
   bow hand to the aim point is shallower than the view (-19.3 at 30 down), so there the arrow points
   with the view rather than along its flight; the arrow still flies to the reticle. Clint shares
   Kate's skeleton and settings; the archers take the same scales on their own aim offset.
+
+## Authored clips (built 2026-11-13; pipeline in claude-docs/animation.md, "Authored clips")
+Rules in `UHawkeyeHitContactRules` (`IsLyingOnBack`, `ComputeGetUpAlignment`, `ResolveHitDuringGetUp`) and
+`UCombatAnimSet` (`GetUpRoleFor`, `HitRoleForBlow`), tested by `Hawkeye.AuthoredClips.*`; seen in `Hawkeye.Screenshot.Clips`.
+- Which get-up: when a thug's knockdown ends, the pelvis's turn from its reference pose says which way his chest faces;
+  up is on his back (`GetUp`), anything else face down or on his side (`GetUpFront`, or `GetUp` when the set has none).
+  The ragdoll knockdown (a blast) and the clip knockdown (a heavy, a bola) both go through it.
+- Where it starts: the capsule is turned so the clip's first-frame spine lies along the body's (flat) and moved so the
+  clip's first-frame pelvis lands on the body's (flat), stood on the floor under the pelvis. Out of the ragdoll the
+  bodies' physics weight falls 1 to 0 over `GetUpBlendSeconds` (0.3); out of the knockdown clip the mesh eases from where
+  it lay onto the capsule over the same time. No get-up clip: as before (he stands over his pelvis and blends 0.4 s).
+- Control: he does not move (movement off) and stays incapacitated (the AI's Stunned state) until the clip ends, then
+  walks again; nothing can hold him longer than the clip.
+- A blow while he gets up: the damage, flash and alert land, but no stagger, no shove and no clip: he finishes getting
+  up. A knockdown (a heavy, a bola, a blast) puts him down again and the knockdown starts over.
+- Fixed with it: a ragdoll get-up re-attached a mesh whose root body still simulated, which the engine refuses at
+  runtime, so the mesh was left at the world's origin, a metre under the street, after every blast. The mesh is now
+  placed on the capsule while its bodies blend out and attached once they stop.
+- Heavy blows: a blow of impact weight `HeavyReactionWeight` (0.6) or more (a bat 0.65, the heavy's bash 0.8, his slow
+  swing 0.75, a guard break 1) plays `HitHeavy` from any side when the set has one, with the shove at
+  `HeavyHitShoveSpeed` (thugs) or `PlayerHeavyStaggerShove` (Kate), 500 cm/s instead of 250 (about 28 cm, the clip's two
+  steps). Lighter blows play the side's clip as before. Stagger lengths are unchanged (Kate 0.35 s, a thug 0.5 s).
+- Kate has no knockdown (a stagger, or down for a revive), so no get-up of hers; her and Clint's physical flinch stays off.
+- The bow's clips, timings and rules are unchanged (the authored bow set is imported but out of the set).
