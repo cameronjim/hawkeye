@@ -349,7 +349,9 @@ def check_spawner(district, actors):
 def clutter_groups(district):
     """The generator's clutter groups, from the meshes and instances already on disk (loads only)."""
     meshes = {name: c.load_or_none(c.asset_path(gen.MESH_DIR, name)) for name in gen.CLUTTER_MESHES}
-    materials = {key: c.load_or_none(m.MATERIALS_PATH + "/MI_Prop_" + key) for key in gen.CLUTTER_MATERIALS}
+    # The cars wear MI_Car_<key> under M_Car since look pass 2; the rest MI_Prop_<key>.
+    materials = {key: c.load_or_none(m.MATERIALS_PATH + ("/MI_Car_" if key.startswith("Car") else "/MI_Prop_") + key)
+                 for key in gen.CLUTTER_MATERIALS}
     return gen.clutter_groups(district, meshes, materials)
 
 
