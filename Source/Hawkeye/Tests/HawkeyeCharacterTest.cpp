@@ -25,14 +25,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeCharacterAimSlowsAndTightens, "Hawkeye.
 bool FHawkeyeCharacterAimSlowsAndTightens::RunTest(const FString& Parameters)
 {
 	const FHawkeyeTestWorld TestWorld;
-	AHawkeyeAimTestCharacter* Frank = HawkeyeAimTest::Spawn(TestWorld);
-	if (!Frank)
+	AHawkeyeAimTestCharacter* Kate = HawkeyeAimTest::Spawn(TestWorld);
+	if (!Kate)
 	{
 		AddError(TEXT("Could not spawn the test character."));
 		return false;
 	}
 
-	UWeaponComponent* Weapon = Frank->GetWeaponComponent();
+	UWeaponComponent* Weapon = Kate->GetWeaponComponent();
 	if (!Weapon)
 	{
 		AddError(TEXT("The character has no weapon component."));
@@ -41,23 +41,23 @@ bool FHawkeyeCharacterAimSlowsAndTightens::RunTest(const FString& Parameters)
 	Weapon->GiveWeapon(12, 24);
 
 	// Keyboard input: always full, so the character runs.
-	Frank->TestSetMoveInput(1.f, 0.f);
+	Kate->TestSetMoveInput(1.f, 0.f);
 
-	TestFalse(TEXT("Starts hip-firing"), Frank->IsAiming());
-	TestEqual(TEXT("At run speed"), Frank->MaxWalkSpeed(), Frank->TestRunSpeed());
+	TestFalse(TEXT("Starts hip-firing"), Kate->IsAiming());
+	TestEqual(TEXT("At run speed"), Kate->MaxWalkSpeed(), Kate->TestRunSpeed());
 
-	Frank->StartAim();
-	TestTrue(TEXT("Aiming"), Frank->IsAiming());
-	TestEqual(TEXT("Aiming drops to a walk"), Frank->MaxWalkSpeed(), Frank->TestWalkSpeed());
+	Kate->StartAim();
+	TestTrue(TEXT("Aiming"), Kate->IsAiming());
+	TestEqual(TEXT("Aiming drops to a walk"), Kate->MaxWalkSpeed(), Kate->TestWalkSpeed());
 	TestTrue(TEXT("The weapon is aiming too"), Weapon->IsAiming());
 	TestEqual(TEXT("And uses the tight cone"), Weapon->GetCurrentSpreadDegrees(), Weapon->AimSpreadDegrees);
-	TestTrue(TEXT("Aiming faces the camera"), Frank->GetCharacterMovement()->bUseControllerDesiredRotation);
-	TestFalse(TEXT("Not the movement direction"), Frank->GetCharacterMovement()->bOrientRotationToMovement);
+	TestTrue(TEXT("Aiming faces the camera"), Kate->GetCharacterMovement()->bUseControllerDesiredRotation);
+	TestFalse(TEXT("Not the movement direction"), Kate->GetCharacterMovement()->bOrientRotationToMovement);
 
-	Frank->StopAim();
-	TestFalse(TEXT("No longer aiming"), Frank->IsAiming());
-	TestEqual(TEXT("Run speed restored"), Frank->MaxWalkSpeed(), Frank->TestRunSpeed());
-	TestTrue(TEXT("Back to facing where it moves"), Frank->GetCharacterMovement()->bOrientRotationToMovement);
+	Kate->StopAim();
+	TestFalse(TEXT("No longer aiming"), Kate->IsAiming());
+	TestEqual(TEXT("Run speed restored"), Kate->MaxWalkSpeed(), Kate->TestRunSpeed());
+	TestTrue(TEXT("Back to facing where it moves"), Kate->GetCharacterMovement()->bOrientRotationToMovement);
 	TestFalse(TEXT("The weapon lowered as well"), Weapon->IsAiming());
 
 	return true;
@@ -69,32 +69,32 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeCharacterSprintCancelsAim, "Hawkeye.Cha
 bool FHawkeyeCharacterSprintCancelsAim::RunTest(const FString& Parameters)
 {
 	const FHawkeyeTestWorld TestWorld;
-	AHawkeyeAimTestCharacter* Frank = HawkeyeAimTest::Spawn(TestWorld);
-	if (!Frank)
+	AHawkeyeAimTestCharacter* Kate = HawkeyeAimTest::Spawn(TestWorld);
+	if (!Kate)
 	{
 		AddError(TEXT("Could not spawn the test character."));
 		return false;
 	}
 
-	UWeaponComponent* Weapon = Frank->GetWeaponComponent();
+	UWeaponComponent* Weapon = Kate->GetWeaponComponent();
 	Weapon->GiveWeapon(12, 24);
 
-	Frank->StartAim();
-	TestTrue(TEXT("Aiming"), Frank->IsAiming());
+	Kate->StartAim();
+	TestTrue(TEXT("Aiming"), Kate->IsAiming());
 
-	Frank->TestSetSprinting(true);
-	TestFalse(TEXT("Breaking into a sprint drops the aim"), Frank->IsAiming());
+	Kate->TestSetSprinting(true);
+	TestFalse(TEXT("Breaking into a sprint drops the aim"), Kate->IsAiming());
 	TestFalse(TEXT("And the weapon with it"), Weapon->IsAiming());
-	TestEqual(TEXT("Sprint speed wins"), Frank->MaxWalkSpeed(), Frank->TestSprintSpeed());
+	TestEqual(TEXT("Sprint speed wins"), Kate->MaxWalkSpeed(), Kate->TestSprintSpeed());
 
 	// Holding the aim button while sprinting must not sneak the aim back on.
-	Frank->StartAim();
-	TestFalse(TEXT("Aiming is refused while sprinting"), Frank->IsAiming());
-	TestEqual(TEXT("Still at sprint speed"), Frank->MaxWalkSpeed(), Frank->TestSprintSpeed());
+	Kate->StartAim();
+	TestFalse(TEXT("Aiming is refused while sprinting"), Kate->IsAiming());
+	TestEqual(TEXT("Still at sprint speed"), Kate->MaxWalkSpeed(), Kate->TestSprintSpeed());
 
-	Frank->TestSetSprinting(false);
-	Frank->StartAim();
-	TestTrue(TEXT("Aiming works again once the sprint ends"), Frank->IsAiming());
+	Kate->TestSetSprinting(false);
+	Kate->StartAim();
+	TestTrue(TEXT("Aiming works again once the sprint ends"), Kate->IsAiming());
 
 	return true;
 }
@@ -105,35 +105,35 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeCharacterAimFOVBlend, "Hawkeye.Characte
 bool FHawkeyeCharacterAimFOVBlend::RunTest(const FString& Parameters)
 {
 	const FHawkeyeTestWorld TestWorld;
-	AHawkeyeAimTestCharacter* Frank = HawkeyeAimTest::Spawn(TestWorld);
-	if (!Frank)
+	AHawkeyeAimTestCharacter* Kate = HawkeyeAimTest::Spawn(TestWorld);
+	if (!Kate)
 	{
 		AddError(TEXT("Could not spawn the test character."));
 		return false;
 	}
 
-	Frank->GetWeaponComponent()->GiveWeapon(12, 24);
+	Kate->GetWeaponComponent()->GiveWeapon(12, 24);
 
-	TestEqual(TEXT("Starts at the hip FOV"), Frank->GetCurrentFOV(), Frank->TestHipFOV());
+	TestEqual(TEXT("Starts at the hip FOV"), Kate->GetCurrentFOV(), Kate->TestHipFOV());
 
-	Frank->StartAim();
+	Kate->StartAim();
 	TestEqual(TEXT("The FOV does not snap on the frame the aim starts"),
-		Frank->GetCurrentFOV(), Frank->TestHipFOV());
+		Kate->GetCurrentFOV(), Kate->TestHipFOV());
 
 	// Half the blend should land half way between the two values.
-	const float Blend = Frank->TestAimBlendSeconds();
-	Frank->TestTickAim(Blend * 0.5f);
-	const float Midpoint = (Frank->TestHipFOV() + Frank->TestAimFOV()) * 0.5f;
-	TestTrue(TEXT("Half a blend is half way down"), FMath::IsNearlyEqual(Frank->GetCurrentFOV(), Midpoint, 0.5f));
+	const float Blend = Kate->TestAimBlendSeconds();
+	Kate->TestTickAim(Blend * 0.5f);
+	const float Midpoint = (Kate->TestHipFOV() + Kate->TestAimFOV()) * 0.5f;
+	TestTrue(TEXT("Half a blend is half way down"), FMath::IsNearlyEqual(Kate->GetCurrentFOV(), Midpoint, 0.5f));
 
-	Frank->TestTickAim(Blend);
+	Kate->TestTickAim(Blend);
 	TestTrue(TEXT("A full blend arrives at the aim FOV"),
-		FMath::IsNearlyEqual(Frank->GetCurrentFOV(), Frank->TestAimFOV(), 0.05f));
+		FMath::IsNearlyEqual(Kate->GetCurrentFOV(), Kate->TestAimFOV(), 0.05f));
 
-	Frank->StopAim();
-	Frank->TestTickAim(Blend * 2.f);
+	Kate->StopAim();
+	Kate->TestTickAim(Blend * 2.f);
 	TestTrue(TEXT("Lowering the sights returns to the hip FOV"),
-		FMath::IsNearlyEqual(Frank->GetCurrentFOV(), Frank->TestHipFOV(), 0.05f));
+		FMath::IsNearlyEqual(Kate->GetCurrentFOV(), Kate->TestHipFOV(), 0.05f));
 
 	return true;
 }
@@ -150,25 +150,25 @@ bool FHawkeyeCharacterLookSensitivity::RunTest(const FString& Parameters)
 {
 	FHawkeyeTestWorld TestWorld;
 
-	AHawkeyeAimTestCharacter* Frank = Cast<AHawkeyeAimTestCharacter>(TestWorld.SpawnActor(
+	AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(TestWorld.SpawnActor(
 		AHawkeyeAimTestCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator));
-	if (!TestNotNull(TEXT("Frank spawned"), Frank))
+	if (!TestNotNull(TEXT("Kate spawned"), Kate))
 	{
 		return false;
 	}
 
 	TestEqual(TEXT("Hip look sensitivity is the tuned default"),
-		Frank->GetEffectiveLookSensitivity(), 0.2f);
+		Kate->GetEffectiveLookSensitivity(), 0.2f);
 
-	Frank->GetWeaponComponent()->GiveWeapon(12, 24);
-	Frank->StartAim();
+	Kate->GetWeaponComponent()->GiveWeapon(12, 24);
+	Kate->StartAim();
 
 	TestEqual(TEXT("Aiming slows the look by AimLookMultiplier"),
-		Frank->GetEffectiveLookSensitivity(), 0.2f * 0.7f);
+		Kate->GetEffectiveLookSensitivity(), 0.2f * 0.7f);
 
-	Frank->StopAim();
+	Kate->StopAim();
 	TestEqual(TEXT("Lowering the sights restores it"),
-		Frank->GetEffectiveLookSensitivity(), 0.2f);
+		Kate->GetEffectiveLookSensitivity(), 0.2f);
 
 	return true;
 }

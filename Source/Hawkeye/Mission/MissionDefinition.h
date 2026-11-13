@@ -24,7 +24,7 @@ class HAWKEYE_API UMissionDefinition : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
-	/** Player-facing mission name ("Cell Block D"). */
+	/** Player-facing mission name ("Night Shift"). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission")
 	FText MissionName;
 
@@ -48,7 +48,7 @@ public:
 	bool bShowObjectiveText = true;
 
 	/**
-	 * One line of Frank's, shown under the mission name on the end card. Optional: an empty
+	 * One line of Kate's, shown under the mission name on the end card. Optional: an empty
 	 * line leaves the card as just the mission name.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mission", meta = (MultiLine = "true"))

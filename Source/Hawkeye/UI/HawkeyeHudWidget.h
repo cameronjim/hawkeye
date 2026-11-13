@@ -449,7 +449,7 @@ protected:
 	/** The weapon the HUD is currently listening to; rebound whenever the pawn picks one up. */
 	UWeaponComponent* FindPawnWeapon() const;
 
-	/** Player-facing objective line ("Find a weapon"), or empty when there is nothing to show. */
+	/** Player-facing objective line ("Don't lose the bike thief"), or empty when there is nothing to show. */
 	FText BuildObjectiveText() const;
 
 	UPROPERTY(BlueprintReadOnly, Category = "HUD", meta = (BindWidgetOptional))
@@ -571,7 +571,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "HUD|Grapple")
 	FLinearColor GrappleUnavailableColor = FLinearColor(0.45f, 0.45f, 0.45f, 0.7f);
 
-	/** The green of the old first-person crosshair: nothing else on screen is that colour. */
+	/** A bright green: nothing else on screen is that colour. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "HUD|Grapple")
 	FLinearColor GrappleMarkerColor = FLinearColor(0.22f, 1.f, 0.08f, 1.f);
 

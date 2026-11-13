@@ -84,18 +84,18 @@ bool FHawkeyePauseIgnoredWhileDead::RunTest(const FString& Parameters)
 {
 	const FHawkeyeTestWorld TestWorld;
 	AHawkeyePauseTestController* PC = HawkeyePauseTest::Spawn(TestWorld);
-	AHawkeyeCharacter* Frank = Cast<AHawkeyeCharacter>(TestWorld.SpawnActor(
+	AHawkeyeCharacter* Kate = Cast<AHawkeyeCharacter>(TestWorld.SpawnActor(
 		AHawkeyeCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator));
-	if (!PC || !Frank)
+	if (!PC || !Kate)
 	{
 		AddError(TEXT("Could not spawn the controller and pawn."));
 		return false;
 	}
 
-	PC->Possess(Frank);
+	PC->Possess(Kate);
 	TestTrue(TEXT("Pausing is allowed while alive"), PC->CanTogglePause());
 
-	UHealthComponent* Health = Frank->GetHealthComponent();
+	UHealthComponent* Health = Kate->GetHealthComponent();
 	if (!Health)
 	{
 		AddError(TEXT("The pawn has no health component."));

@@ -171,38 +171,38 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeSettingsDriveLookDelta, "Hawkeye.Settin
 bool FHawkeyeSettingsDriveLookDelta::RunTest(const FString& Parameters)
 {
 	const FHawkeyeTestWorld TestWorld;
-	AHawkeyeAimTestCharacter* Frank = Cast<AHawkeyeAimTestCharacter>(TestWorld.SpawnActor(
+	AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(TestWorld.SpawnActor(
 		AHawkeyeAimTestCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator));
-	if (!Frank)
+	if (!Kate)
 	{
 		AddError(TEXT("Could not spawn the test character."));
 		return false;
 	}
 
 	// No game instance subsystem in a test world, so the character's own property is the source.
-	TestFalse(TEXT("No subsystem was found"), Frank->TestHasSettingsSensitivity());
-	const float Fallback = Frank->TestLookSensitivity();
+	TestFalse(TEXT("No subsystem was found"), Kate->TestHasSettingsSensitivity());
+	const float Fallback = Kate->TestLookSensitivity();
 	TestEqual(TEXT("The C++ fallback default is 0.2"), Fallback, 0.2f);
 	TestEqual(TEXT("Hip look scales by the fallback"),
-		static_cast<float>(Frank->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 10.f * Fallback);
+		static_cast<float>(Kate->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 10.f * Fallback);
 
 	FHawkeyeSettings Settings;
 	Settings.LookSensitivity = 0.5f;
-	Frank->TestApplySettings(Settings);
+	Kate->TestApplySettings(Settings);
 
-	TestTrue(TEXT("The subsystem value is now in use"), Frank->TestHasSettingsSensitivity());
+	TestTrue(TEXT("The subsystem value is now in use"), Kate->TestHasSettingsSensitivity());
 	TestEqual(TEXT("Hip look scales by the setting, not the property"),
-		static_cast<float>(Frank->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 5.f);
+		static_cast<float>(Kate->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 5.f);
 	TestEqual(TEXT("Pitch uses the same scale"),
-		static_cast<float>(Frank->ComputeLookDelta(FVector2D(0.f, -4.f), false).Y), -2.f);
+		static_cast<float>(Kate->ComputeLookDelta(FVector2D(0.f, -4.f), false).Y), -2.f);
 	TestEqual(TEXT("Aiming applies AimLookMultiplier on top"),
-		static_cast<float>(Frank->ComputeLookDelta(FVector2D(10.f, 0.f), true).X), 5.f * Frank->TestAimLookMultiplier());
+		static_cast<float>(Kate->ComputeLookDelta(FVector2D(10.f, 0.f), true).X), 5.f * Kate->TestAimLookMultiplier());
 
 	// A second broadcast wins: the slider is live while the pause menu is open.
 	Settings.LookSensitivity = 0.1f;
-	Frank->TestApplySettings(Settings);
+	Kate->TestApplySettings(Settings);
 	TestEqual(TEXT("A later change takes effect immediately"),
-		static_cast<float>(Frank->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 1.f);
+		static_cast<float>(Kate->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 1.f);
 
 	return true;
 }

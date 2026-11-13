@@ -11,7 +11,7 @@ class UTakedownable : public UInterface
 };
 
 /**
- * Implemented by anything the player can silently take down (thugs, wardens).
+ * Implemented by anything the player can silently take down (the thugs, elves included).
  * Implement OnTakedown in the actor's Blueprint to play the animation, ragdoll, drop a weapon, etc.
  */
 class HAWKEYE_API ITakedownable

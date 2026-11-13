@@ -56,7 +56,7 @@ TSharedRef<SWidget> UMissionEndCardWidget::RebuildWidget()
 			}
 		};
 
-		// The mission name is the headline; the line under it is Frank's, so it reads smaller.
+		// The mission name is the headline; the line under it is Kate's, so it reads smaller.
 		AddText(MissionNameText, TEXT("MissionNameText"), 56, FMargin(0.f, 0.f, 0.f, 24.f));
 		AddText(LineText, TEXT("LineText"), 22, FMargin(0.f, 0.f, 0.f, 0.f));
 		AddText(PromptText, TEXT("PromptText"), 16, FMargin(0.f, 96.f, 0.f, 0.f));

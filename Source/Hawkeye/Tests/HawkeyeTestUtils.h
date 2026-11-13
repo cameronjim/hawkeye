@@ -274,7 +274,7 @@ public:
 };
 
 /**
- * Frank with his protected aim state opened up. Sprinting and the FOV blend are driven by the
+ * Kate with her protected aim state opened up. Sprinting and the FOV blend are driven by the
  * input handlers and Tick in the real game, neither of which a headless test can run.
  */
 UCLASS()
