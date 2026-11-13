@@ -1,0 +1,139 @@
+"""Bake the shop signs' lettering: a signed-distance atlas of capital letters, digits and a little punctuation in four
+faces of Roboto, the font that ships with the engine (Engine/Content/Slate/Fonts), into one RGBA texture, and the
+glyph advances M_Facade lays the names out with (claude-docs/city-look.md, look pass 3).
+
+Plain CPython with Pillow and numpy, not the editor (the editor's Python has neither). The outputs are committed:
+
+    Tools/Data/look/sign_atlas.png      1024 x 1024, 8 x 8 cells of 128 px; R Bold, G Bold Condensed, B Regular,
+                                        A Bold Italic; 0.5 on the outline, 1 inside, SPREAD px either side
+    Tools/Editor/_sign_font.py          GLYPHS, ADVANCE[face][glyph] in cell widths, the cell metrics
+
+    python Tools/Editor/bake_sign_atlas.py            # rebake (about a minute)
+    python Tools/Editor/bake_sign_atlas.py --check    # exit 1 if the committed files are not what this bakes
+
+The distance is exact to the outline as Pillow's FreeType rasterises it at 4x: every texel's distance to the nearest
+boundary midpoint between an inside and an outside sample, signed by coverage.
+"""
+
+import os
+import sys
+import zlib
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FONT_DIR = os.environ.get("HAWKEYE_UE_ROOT", r"C:\Program Files\Epic Games\UE_5.8")
+FONT_DIR = os.path.join(FONT_DIR, "Engine", "Content", "Slate", "Fonts")
+FACES = ("Roboto-Bold.ttf", "Roboto-BoldCondensed.ttf", "Roboto-Regular.ttf", "Roboto-BoldItalic.ttf")
+GLYPHS = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&'-.$/"
+GRID = 8
+CELL = 128                 # px
+SUPER = 4                  # rasterised at 4x, measured back to 1x
+FONT_PX = 90               # Roboto's cap height is 0.711 em: 64 px caps
+ORIGIN_X = 20              # px from the cell's left to the pen
+BASELINE = 96              # px from the cell's top
+CAP = 64
+SPREAD = 16.0              # px of distance either side of the outline that the 0..1 range covers
+PNG_PATH = os.path.join(ROOT, "Tools", "Data", "look", "sign_atlas.png")
+PY_PATH = os.path.join(ROOT, "Tools", "Editor", "_sign_font.py")
+
+
+def _png(width, height, rgba_rows):
+    """A minimal RGBA8 PNG (no Pillow encoder, so the bytes do not depend on its version)."""
+    import struct
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    raw = b"".join(b"\x00" + bytes(row) for row in rgba_rows)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+def _sdf(mask, np):
+    """mask: (CELL*SUPER)^2 bool. Returns CELL x CELL floats 0..1 (0.5 on the outline)."""
+    s = SUPER
+    inside = mask
+    # boundary midpoints between 4-neighbours that differ, in 1x pixel units
+    pts = []
+    dx = inside[:, 1:] != inside[:, :-1]
+    ys, xs = np.nonzero(dx)
+    pts.append(np.stack([(xs + 1.0) / s, (ys + 0.5) / s], axis=1))
+    dy = inside[1:, :] != inside[:-1, :]
+    ys, xs = np.nonzero(dy)
+    pts.append(np.stack([(xs + 0.5) / s, (ys + 1.0) / s], axis=1))
+    pts = np.concatenate(pts, axis=0)
+    cy, cx = np.mgrid[0:CELL, 0:CELL]
+    centres = np.stack([cx.ravel() + 0.5, cy.ravel() + 0.5], axis=1)
+    cover = inside.reshape(CELL, s, CELL, s).mean(axis=(1, 3)).ravel() >= 0.5
+    if len(pts) == 0:
+        d = np.full(len(centres), SPREAD)
+    else:
+        d = np.empty(len(centres))
+        for i in range(0, len(centres), 1024):
+            c = centres[i:i + 1024]
+            dd = ((c[:, None, :] - pts[None, :, :]) ** 2).sum(axis=2)
+            d[i:i + 1024] = np.sqrt(dd.min(axis=1))
+    signed = np.where(cover, d, -d)
+    return np.clip(0.5 + signed / (2.0 * SPREAD), 0.0, 1.0).reshape(CELL, CELL)
+
+
+def bake():
+    """(png bytes, python source)."""
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFont
+
+    size = CELL * GRID
+    atlas = np.zeros((size, size, 4), dtype=np.uint8)
+    advances = []
+    for f, face in enumerate(FACES):
+        font = ImageFont.truetype(os.path.join(FONT_DIR, face), FONT_PX * SUPER)
+        adv = []
+        for g, ch in enumerate(GLYPHS):
+            adv.append(round(font.getlength(ch) / SUPER / CELL, 5))
+            img = Image.new("L", (CELL * SUPER, CELL * SUPER), 0)
+            if ch != " ":
+                ImageDraw.Draw(img).text((ORIGIN_X * SUPER, BASELINE * SUPER), ch, fill=255, font=font, anchor="ls")
+            mask = np.asarray(img) >= 128
+            sdf = _sdf(mask, np)
+            gx, gy = g % GRID, g // GRID
+            atlas[gy * CELL:(gy + 1) * CELL, gx * CELL:(gx + 1) * CELL, f] = np.round(sdf * 255.0).astype(np.uint8)
+            print("baked", face, repr(ch))
+        advances.append(adv)
+    png = _png(size, size, [atlas[y].ravel().tolist() for y in range(size)])
+    lines = [
+        '"""Generated by bake_sign_atlas.py; do not edit. The sign atlas\'s glyphs and their advances."""',
+        "",
+        "GLYPHS = {0!r}".format(GLYPHS),
+        "FACES = {0!r}".format(FACES),
+        "GRID = {0}".format(GRID),
+        "CELL = {0}".format(CELL),
+        "ORIGIN_X = {0}                 # px".format(ORIGIN_X),
+        "BASELINE = {0}                 # px from the cell's top".format(BASELINE),
+        "CAP = {0}                      # px".format(CAP),
+        "SPREAD = {0}                 # px".format(SPREAD),
+        "# ADVANCE[face][glyph]: the pen's advance in cell widths",
+        "ADVANCE = [",
+    ]
+    for adv in advances:
+        lines.append("    [" + ", ".join("{0:.5f}".format(a) for a in adv) + "],")
+    lines.append("]")
+    return png, "\n".join(lines) + "\n"
+
+
+def main(argv):
+    png, src = bake()
+    if "--check" in argv:
+        same = (os.path.isfile(PNG_PATH) and open(PNG_PATH, "rb").read() == png
+                and os.path.isfile(PY_PATH) and open(PY_PATH, encoding="utf-8").read() == src)
+        print("sign atlas", "matches" if same else "DIFFERS from the committed files")
+        return 0 if same else 1
+    os.makedirs(os.path.dirname(PNG_PATH), exist_ok=True)
+    with open(PNG_PATH, "wb") as out:
+        out.write(png)
+    with open(PY_PATH, "w", encoding="utf-8", newline="\n") as out:
+        out.write(src)
+    print("wrote", PNG_PATH, len(png), "bytes and", PY_PATH)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
