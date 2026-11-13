@@ -136,6 +136,175 @@ FLook L;
 """
 
 # --------------------------------------------------------------------------------------------------------------------
+# shops: trades, their signs (a 5 x 7 pixel font drawn in the shader) and their interiors
+# --------------------------------------------------------------------------------------------------------------------
+
+# 5 x 7 glyphs, rows top to bottom, '#' lit.
+FONT = {
+    " ": ["....."] * 7,
+    "A": [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+    "B": ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
+    "C": [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."],
+    "D": ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."],
+    "E": ["#####", "#....", "#....", "####.", "#....", "#....", "#####"],
+    "F": ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
+    "G": [".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".####"],
+    "H": ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+    "I": [".###.", "..#..", "..#..", "..#..", "..#..", "..#..", ".###."],
+    "K": ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"],
+    "L": ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
+    "M": ["#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"],
+    "N": ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
+    "O": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+    "P": ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
+    "Q": [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"],
+    "R": ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
+    "S": [".####", "#....", "#....", ".###.", "....#", "....#", "####."],
+    "T": ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."],
+    "U": ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+    "W": ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "#.#.#", ".#.#."],
+    "Y": ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
+    "Z": ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
+    "&": [".##..", "#..#.", "#.#..", ".#...", "#.#.#", "#..#.", ".##.#"],
+}
+GLYPHS = sorted(FONT)
+
+# Generic trades only (no brands): (sign, interior kind). Kinds: 0 laundromat, 1 grocery, 2 food, 3 hardware,
+# 4 pharmacy, 5 barber or salon, 6 cleaners or tailor, 7 flowers.
+SHOPS = [
+    ("LAUNDROMAT", 0), ("DELI & GROCERY", 1), ("PIZZA", 2), ("HARDWARE", 3), ("PHARMACY", 4), ("BARBER", 5),
+    ("BAKERY", 2), ("CLEANERS", 6), ("LIQUORS", 1), ("NAIL SALON", 5), ("CAFE", 2), ("TAILOR", 6), ("FLOWERS", 7),
+    ("DINER", 2), ("WINE & LIQUOR", 1), ("GROCERY", 1),
+]
+
+
+def _glyph_rows(ch):
+    return [int(row.replace("#", "1").replace(".", "0"), 2) for row in FONT[ch]]
+
+
+def shop_hlsl():
+    """FShop: the font, the shop names, the sign colours and the shop interiors, as HLSL."""
+    font = [v for ch in GLYPHS for v in _glyph_rows(ch)]
+    chars, starts, lengths = [], [], []
+    for name, _kind in SHOPS:
+        starts.append(len(chars))
+        lengths.append(len(name))
+        chars.extend(GLYPHS.index(ch) for ch in name)
+    kinds = [kind for _name, kind in SHOPS]
+
+    def arr(name, values):
+        return "static const uint {0}[{1}] = {{{2}}};".format(name, len(values), ", ".join(str(v) for v in values))
+
+    tables = "\n".join([arr("FONT", font), arr("NAME_CHARS", chars), arr("NAME_START", starts),
+                        arr("NAME_LEN", lengths), arr("NAME_KIND", kinds),
+                        "static const float SHOP_NAMES = {0}.0;".format(len(SHOPS))])
+    return tables + "\n" + SHOP_STRUCT
+
+
+SHOP_STRUCT = r"""
+struct FShop
+{
+    FLook L;
+    float3 SignColours(float seed, out float3 ink)
+    {
+        float h = L.H21(float2(seed, 9.4));
+        if (h < 0.2) { ink = float3(0.80, 0.78, 0.70); return float3(0.40, 0.035, 0.03); }
+        if (h < 0.4) { ink = float3(0.80, 0.78, 0.70); return float3(0.025, 0.11, 0.05); }
+        if (h < 0.6) { ink = float3(0.85, 0.65, 0.10); return float3(0.02, 0.03, 0.11); }
+        if (h < 0.8) { ink = float3(0.03, 0.03, 0.03); return float3(0.55, 0.52, 0.45); }
+        ink = float3(0.75, 0.55, 0.20); return float3(0.025, 0.025, 0.028);
+    }
+    // A shop interior: a box room behind the glass (see FLook.Room), furnished by kind. Light is the lamp share,
+    // Tint the light's colour.
+    float3 Room(float2 g, float3 r, float W, float Floor, float Ceil, float D, int kind, float seed, out float Light, out float3 Tint)
+    {
+        float tx = r.x > 0.0 ? (0.5 * W - g.x) / r.x : (r.x < 0.0 ? (-0.5 * W - g.x) / r.x : 1e6);
+        float ty = r.y > 0.0 ? (Ceil - g.y) / r.y : (r.y < 0.0 ? (Floor - g.y) / r.y : 1e6);
+        float tz = D / max(r.z, 1e-3);
+        float t = min(tx, min(ty, tz));
+        float3 h = float3(g.x + r.x * t, g.y + r.y * t, r.z * t);
+        float y = h.y - Floor;
+        float hv = L.H21(float2(seed, 3.9));
+        float3 wall = kind == 0 ? float3(0.62, 0.66, 0.68) : (kind == 2 ? float3(0.55, 0.35, 0.22) : (kind == 4 ? float3(0.70, 0.71, 0.70) : (kind == 5 ? float3(0.50, 0.46, 0.44) : float3(0.52, 0.48, 0.40))));
+        wall *= lerp(0.8, 1.1, hv);
+        bool fluor = kind == 0 || kind == 1 || kind == 3 || kind == 4 || kind == 6;
+        Tint = fluor ? float3(0.88, 0.95, 1.0) : float3(1.0, 0.82, 0.60);
+        Light = fluor ? 1.0 : 0.35 + 1.2 / (1.0 + dot(h.xz - float2(0.0, 0.5 * D), h.xz - float2(0.0, 0.5 * D)) / 60000.0);
+        float3 c = wall;
+        // what lines a wall, by kind, along a coordinate a across it
+        float a = (t == tz) ? h.x : h.z;
+        float item = L.H21(float2(floor(a / 7.0), floor(y / 40.0)) + seed * 17.0);
+        if (t == tz || t == tx)
+        {
+            if (kind == 0)
+            {
+                // washers and dryers, two rows of white boxes with round doors
+                float cx = frac(a / 72.0) * 72.0 - 36.0;
+                float rowy = y < 95.0 ? y - 47.0 : y - 145.0;
+                if (y < 190.0 && abs(cx) < 33.0)
+                {
+                    c = length(float2(cx, rowy)) < 20.0 ? (length(float2(cx, rowy)) < 16.0 ? float3(0.06, 0.07, 0.08) : float3(0.35, 0.36, 0.37)) : float3(0.72, 0.72, 0.70);
+                }
+            }
+            else if (kind == 1 || kind == 3 || kind == 4)
+            {
+                // shelves of goods; hardware is darker and dense, the pharmacy pale
+                float rowv = y / 40.0;
+                float3 goods = kind == 3 ? lerp(float3(0.35, 0.18, 0.08), float3(0.30, 0.30, 0.30), item) : (kind == 4 ? lerp(float3(0.70, 0.70, 0.68), float3(0.45, 0.55, 0.65), item) : lerp(float3(0.45, 0.35, 0.25), float3(0.30, 0.35, 0.40), item));
+                goods = lerp(goods, kind == 3 ? float3(0.60, 0.25, 0.05) : float3(0.55, 0.20, 0.12), step(0.86, item));
+                goods *= (frac(a / 7.0) < 0.12 || frac(rowv) > 0.85) ? 0.4 : 1.0;
+                c = y < 200.0 ? (frac(rowv) < 0.1 ? float3(0.28, 0.28, 0.28) : goods) : wall;
+                if (kind == 1 && t == tx && y < 190.0)
+                {
+                    // the drinks fridges glow
+                    c = frac(a / 70.0) < 0.06 ? float3(0.2, 0.2, 0.2) : lerp(float3(0.75, 0.80, 0.85), goods, 0.5);
+                }
+            }
+            else if (kind == 2)
+            {
+                // a counter, a menu board over it
+                if (y < 105.0) { c = lerp(float3(0.45, 0.45, 0.45), float3(0.30, 0.16, 0.08), step(0.5, hv)); }
+                else if (t == tz && y > 150.0 && y < 230.0) { c = frac(y / 12.0) < 0.25 && frac(a / 30.0) < 0.8 ? float3(0.75, 0.72, 0.60) : float3(0.04, 0.04, 0.04); }
+            }
+            else if (kind == 5)
+            {
+                // mirrors over the chairs
+                if (y > 100.0 && y < 200.0 && t == tx) { c = float3(0.55, 0.62, 0.68); }
+                else if (y < 95.0 && frac(a / 110.0) < 0.5) { c = lerp(float3(0.30, 0.04, 0.04), float3(0.04, 0.04, 0.04), step(0.5, hv)); }
+            }
+            else if (kind == 6)
+            {
+                // racks of clothes in plastic
+                if (y > 70.0 && y < 210.0) { c = lerp(float3(0.20, 0.22, 0.30), float3(0.60, 0.58, 0.55), L.H21(float2(floor(a / 6.0), seed))) * (frac(a / 6.0) < 0.15 ? 0.5 : 1.0); }
+            }
+            else
+            {
+                // flowers: buckets of colour under greenery
+                float blob = L.VN(float2(a, y) / 18.0 + seed * 5.0);
+                c = y < 150.0 ? lerp(float3(0.05, 0.18, 0.06), lerp(float3(0.65, 0.10, 0.15), float3(0.75, 0.65, 0.15), item), step(0.62, blob)) : wall;
+            }
+        }
+        else if (r.y > 0.0)
+        {
+            // ceiling and its tubes
+            c = float3(0.72, 0.72, 0.70);
+            if (fluor && frac(h.z / 160.0) < 0.06 && abs(h.x) < 0.3 * W) { c = float3(1.0, 1.0, 1.0); Light = 4.0; }
+        }
+        else
+        {
+            float2 tile = float2(h.x, h.z) / (kind == 5 ? 30.0 : 40.0);
+            float check = step(0.5, frac(0.5 * (floor(tile.x) + floor(tile.y))));
+            c = kind == 5 ? lerp(float3(0.06, 0.06, 0.06), float3(0.70, 0.70, 0.68), check) : (kind == 0 || kind == 4 ? lerp(float3(0.62, 0.62, 0.60), float3(0.55, 0.56, 0.55), check) : (kind == 2 ? lerp(float3(0.45, 0.10, 0.08), float3(0.65, 0.63, 0.58), check) : lerp(float3(0.30, 0.29, 0.27), float3(0.36, 0.35, 0.33), check)));
+        }
+        return c;
+    }
+};
+FShop S;
+"""
+
+SHOP_HLSL = shop_hlsl()
+
+# --------------------------------------------------------------------------------------------------------------------
 # the facade
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -388,44 +557,74 @@ if (inWin > 0.5)
     }
 }
 
-// The storefronts under the sign band, on the taller buildings.
+// The storefronts under the sign band, on the taller buildings (SHOP_HLSL): bays 280, 330 or 400 cm per building,
+// a shop per bay with its own trade, sign, interior and gate.
 float ground = tall * step(0.5, vert) * step(z, 395.0);
 if (ground > 0.5)
 {
-    float sU = u / 320.0;
+    float pitchS = bs < 0.33 ? 280.0 : (bs < 0.66 ? 330.0 : 400.0);
+    float pier = lerp(36.0, 70.0, bs2);
+    float sU = u / pitchS;
     float shop = floor(sU);
-    float su = (frac(sU) - 0.5) * 320.0;
+    float su = (frac(sU) - 0.5) * pitchS;
+    float halfGlass = 0.5 * (pitchS - pier);
     float sseed = L.H21(float2(shop, floor(dpl / 100.0)) + 0.37);
+    int trade = (int)floor(L.H21(float2(sseed, 11.3)) * SHOP_NAMES);
+    int kind = (int)NAME_KIND[trade];
     if (z > 300.0)
     {
-        float3 signCol = sseed < 0.25 ? float3(0.40, 0.04, 0.03) : (sseed < 0.5 ? float3(0.03, 0.12, 0.06) : (sseed < 0.75 ? float3(0.03, 0.04, 0.12) : float3(0.42, 0.40, 0.36)));
-        float panel = step(abs(su), 150.0) * step(310.0, z) * step(z, 385.0);
+        float3 inkCol;
+        float3 signCol = S.SignColours(sseed, inkCol);
+        float halfPanel = 0.5 * pitchS - 12.0;
+        float panel = step(abs(su), halfPanel) * step(310.0, z) * step(z, 386.0);
         col = lerp(float3(0.03, 0.03, 0.035), signCol, panel);
-        float lw = lerp(70.0, 125.0, L.H21(float2(shop, 1.9)));
-        float lc = floor(su / 11.0);
-        float lh = lerp(9.0, 15.0, L.H21(float2(lc, shop + 0.5)));
-        float lf = frac(su / 11.0);
-        float stroke = step(lf, 0.18) + step(0.82, lf) + step(abs(z - 347.0), 2.0) * step(0.4, L.H21(float2(lc, shop + 2.5))) + step(abs(z - 347.0 - lh + 2.0), 2.0) * step(0.3, L.H21(float2(lc, shop + 3.5)));
-        float letters = panel * step(abs(su), lw) * step(abs(z - 347.0), lh) * saturate(stroke) * step(0.12, L.H21(float2(lc, shop)));
-        float3 ink = sseed < 0.75 ? float3(0.80, 0.78, 0.70) : float3(0.05, 0.05, 0.05);
-        col = lerp(col, ink, letters);
+        // The trade's name in a 5 x 7 pixel face, centred and fitted to the panel: regular, bold or condensed.
+        float ink = 0.0;
+        {
+            int face = (int)floor(L.H21(float2(sseed, 5.7)) * 3.0);
+            int len = (int)NAME_LEN[trade];
+            float tw = 2.0 * halfPanel - 24.0;
+            float s = min(52.0 / 7.0, tw / (6.0 * len));
+            float sx = face == 2 ? s * 0.75 : s;
+            float sy = face == 2 ? min(s * 1.2, 60.0 / 7.0) : s;
+            // read left to right as the viewer sees the face, whichever way the face's coordinate runs
+            float readDir = dot(V, n) >= 0.0 ? -1.0 : 1.0;
+            float2 q = float2(readDir * su / sx + 3.0 * len, 3.5 - (z - 348.0) / sy);
+            if (q.x >= 0.0 && q.x < 6.0 * len && q.y >= 0.0 && q.y < 7.0)
+            {
+                int ci = (int)floor(q.x / 6.0);
+                int gc = (int)floor(q.x - 6.0 * ci);
+                int row = (int)floor(q.y);
+                uint bits = FONT[NAME_CHARS[NAME_START[trade] + ci] * 7 + row];
+                float on = gc < 5 ? (float)((bits >> (4 - gc)) & 1u) : 0.0;
+                if (face == 1 && gc > 0)
+                {
+                    on = max(on, (float)((bits >> (5 - gc)) & 1u));
+                }
+                // far away a letter cell is a pixel or two: its average ink instead of aliasing
+                ink = lerp(on, 0.35, saturate(fwu / sx - 0.5)) * panel;
+            }
+        }
+        col = lerp(col, inkCol, ink);
         rough = 0.45;
         nrm = n;
-        emis += col * Glow * 0.5 * panel * (1.0 - Day) * step(0.4, sseed);
+        emis += col * Glow * 0.6 * panel * (1.0 - Day) * step(0.45, L.H21(float2(sseed, 6.9)));
         if (z > 391.0)
         {
             snow = 1.0;
             nrm = normalize(n + up * 2.0);
         }
     }
-    else if (z > 40.0 && abs(su) < 128.0)
+    else if (z > 40.0 && abs(su) < halfGlass)
     {
-        float open = max(step(L.H21(float2(sseed, 2.1)), LitFrac + 0.2), step(0.5, Day));
+        // Open at night: about half; by day all but the empty ones.
+        float vacant = step(L.H21(float2(sseed, 2.7)), 0.15);
+        float open = (1.0 - vacant) * max(step(L.H21(float2(sseed, 2.1)), LitFrac + 0.2), step(0.5, Day));
         if (open < 0.5)
         {
             // the roll-down gate, ribbed, tagged
             float rib = frac((z - 40.0) / 7.0);
-            col = float3(0.30, 0.30, 0.31) * lerp(0.7, 1.05, L.VN(float2(su / 40.0, z / 60.0) + sseed * 9.0)) * (rib < 0.15 ? 0.6 : 1.0);
+            col = lerp(float3(0.30, 0.30, 0.31), float3(0.20, 0.21, 0.22), L.H21(float2(sseed, 4.4))) * lerp(0.7, 1.05, L.VN(float2(su / 40.0, z / 60.0) + sseed * 9.0)) * (rib < 0.15 ? 0.6 : 1.0);
             nrm = normalize(n + up * (rib < 0.15 ? -0.6 : (rib > 0.85 ? 0.6 : 0.0)));
             rough = 0.45;
             float tag = smoothstep(0.6, 0.66, L.FBM(float2(su, z) / 35.0 + sseed * 20.0));
@@ -435,11 +634,14 @@ if (ground > 0.5)
         {
             float tg = 8.0 / r.z;
             float2 g = float2(su + r.x * tg, (z - 40.0) + r.y * tg);
-            float pane = step(abs(g.x), 120.0) * step(5.0, g.y) * step(g.y, 255.0) * (1.0 - step(abs(g.x - 20.0), 3.0)) * (1.0 - step(abs(g.y - 210.0), 3.0));
+            float hw = halfGlass - 6.0;
+            float mull = L.H21(float2(sseed, 7.3)) < 0.5 ? 0.0 : hw * (L.H21(float2(sseed, 7.4)) - 0.5);
+            float transom = lerp(195.0, 225.0, L.H21(float2(sseed, 7.5)));
+            float pane = step(abs(g.x), hw) * step(5.0, g.y) * step(g.y, 255.0) * (1.0 - step(abs(g.x - mull), 3.0)) * (1.0 - step(abs(g.y - transom), 3.0));
             nrm = n;
             if (pane < 0.5)
             {
-                col = float3(0.03, 0.03, 0.03);
+                col = L.H21(float2(sseed, 7.6)) < 0.6 ? float3(0.03, 0.03, 0.03) : float3(0.25, 0.25, 0.24);
                 rough = 0.4;
             }
             else
@@ -447,13 +649,15 @@ if (ground > 0.5)
                 col = float3(0.012, 0.013, 0.015);
                 rough = 0.05;
                 float light = 1.0;
-                float3 inside = L.Room(g, r, 300.0, 0.0, -40.0, 260.0, 650.0, sseed, 1.0, light);
-                emis = inside * light * Glow * 1.3 * lerp(float3(0.9, 0.95, 1.0), LitCol, 0.3);
+                float3 tintS;
+                float3 inside = S.Room(g, r, 2.0 * hw + 60.0, -25.0, 260.0, lerp(450.0, 800.0, L.H21(float2(sseed, 8.1))), kind, sseed, light, tintS);
+                // By day the shop is darker than the street and its colours wash out.
+                inside = lerp(inside, dot(inside, float3(0.3, 0.6, 0.1)).xxx, 0.4 * Day);
+                emis = inside * light * Glow * 1.3 * tintS * lerp(1.0, 0.45, Day);
             }
         }
     }
 }
-
 // Cornice with dentils under the parapet, its shadow under it.
 if (tall > 0.5 && vert > 0.5 && rel > 90.0 && rel < 145.0)
 {
@@ -488,7 +692,7 @@ NormalWS = nrm;
 return col;
 """
 
-FACADE_HLSL = LIB_HLSL + FACADE_BODY
+FACADE_HLSL = LIB_HLSL + SHOP_HLSL + FACADE_BODY
 
 # --------------------------------------------------------------------------------------------------------------------
 # the ground
@@ -520,7 +724,7 @@ asph *= lerp(1.0, lerp(0.85, 1.18, L.H21(floor(WP.xy / 1.2))), saturate(1.0 - fw
 float2 pc = floor(float2(along / 420.0, across / 260.0));
 asph = lerp(asph, float3(0.028, 0.028, 0.03), 0.8 * step(0.82, L.H21(pc + 3.7)));
 float cr = abs(L.VN(float2(along, across) / 90.0) - 0.5);
-float crack = (1.0 - smoothstep(0.0, 0.015 + fw * 0.002, cr)) * saturate(1.5 - fw / 2.0);
+float crack = (1.0 - smoothstep(0.0, 0.01 + fw * 0.002, cr)) * saturate(1.5 - fw / 2.0) * step(0.62, L.VN(float2(along, across) / 700.0));
 asph *= 1.0 - 0.6 * crack;
 
 // Snow: wheel tracks worn to wet asphalt, compacted snow and slush between them, a plowed ridge at the kerb.
@@ -532,9 +736,9 @@ float x = across + 0.5 * lanes * laneW;
 float lx = frac(x / laneW) * laneW - 0.5 * laneW;
 float wob = (L.VN(float2(along / 700.0, floor(x / laneW) * 3.0)) - 0.5) * 60.0;
 float trackD = min(abs(lx - wob - 80.0), abs(lx - wob + 80.0));
-float track = 1.0 - smoothstep(16.0, 40.0, trackD + (L.VN(float2(along / 60.0, lx / 20.0)) - 0.5) * 20.0);
+float track = 1.0 - smoothstep(20.0, 46.0, trackD + (L.VN(float2(along / 60.0, lx / 20.0)) - 0.5) * 18.0);
 float sn = L.FBM(float2(along, across) / 120.0);
-float cover = saturate(0.5 + 0.9 * (sn - 0.5));
+float cover = saturate(0.72 + 0.7 * (sn - 0.5));
 cover = lerp(cover, 0.03, track * (1.0 - park));
 float ridge = hasFrame * smoothstep(halfW - 110.0, halfW - 15.0, a);
 cover = max(cover, ridge);
@@ -545,12 +749,12 @@ if (hasFrame < 0.5)
 }
 float slushy = saturate(1.0 - abs(cover - 0.45) * 3.0);
 float3 snowC = float3(0.60, 0.60, 0.61) * lerp(0.78, 1.0, L.VN(WP.xy / 40.0));
-float3 slushC = float3(0.20, 0.19, 0.17);
+float3 slushC = float3(0.17, 0.155, 0.135);
 float3 col = lerp(asph, slushC, saturate(cover * 2.0));
 col = lerp(col, snowC, saturate(cover * 2.0 - 1.0));
-col = lerp(col, float3(0.32, 0.30, 0.27), ridge * 0.6 * L.VN(WP.xy / 60.0));
+col = lerp(col, float3(0.24, 0.22, 0.19), ridge * lerp(0.45, 0.9, L.VN(WP.xy / 60.0)));
 float wet = 1.0 - saturate(cover * 2.0);
-float rough = lerp(0.7, 0.1, wet * lerp(0.55, 1.0, L.VN(WP.xy / 300.0)));
+float rough = lerp(0.7, 0.22, wet * lerp(0.55, 1.0, L.VN(WP.xy / 300.0)));
 rough = lerp(rough, 0.3, slushy);
 rough = lerp(rough, 0.72, saturate(cover * 2.0 - 1.0));
 float yl = step(900.0, halfW) * step(abs(abs(across) - 10.0), 5.0);
@@ -825,9 +1029,186 @@ def build_ground(m, material, kind):
     m.connect_property(node, unreal.MaterialProperty.MP_NORMAL, "NormalWS")
 
 
+# --------------------------------------------------------------------------------------------------------------------
+# the cloud deck, the street blocks, the cars, road paint (look pass 2)
+# --------------------------------------------------------------------------------------------------------------------
+
+# A low overcast on the inside of a sphere round the district (generate_city's City_CloudDeck): unlit, a slow
+# drifting texture of cloud bellies projected on a plane overhead, brighter at the zenith by day (an overcast sky's
+# luminance, CIE), and by night a dull orange-brown lit from below by the city, brightest at the horizon.
+CLOUD_BODY = r"""
+float3 d = normalize(-V);
+float el = saturate(d.z);
+float2 p = d.xy / max(d.z + 0.12, 0.12) * 1.6 + float2(T * 0.0035, T * 0.0018);
+float c = L.FBM(p * 1.3) * 0.65 + L.FBM(p * 4.1 + 7.0) * 0.35;
+float belly = smoothstep(0.35, 0.75, c);
+float3 dayC = lerp(float3(0.70, 0.72, 0.75), float3(0.92, 0.93, 0.95), belly) * DayLum * lerp(0.75, 1.15, el);
+float3 nightC = lerp(float3(0.060, 0.034, 0.020), float3(0.095, 0.058, 0.034), 1.0 - belly) * NightLum * lerp(1.35, 0.7, el);
+return lerp(nightC, dayC, Day);
+"""
+CLOUD_HLSL = LIB_HLSL + CLOUD_BODY
+
+# The street blocks that stand in for cover (the parkour test blocks): Kind 0 a concrete jersey barrier with an
+# orange and white band, 1 a dark green steel dumpster with vertical ribs and rust, 2 a granite block wall.
+BLOCK_BODY = r"""
+float3 n = normalize(N);
+float3 up = float3(0.0, 0.0, 1.0);
+float2 t2 = normalize(float2(-n.y, n.x) + float2(1e-4, 0.0));
+float u = dot(WP.xy, t2);
+float z = WP.z;
+int kind = (int)round(Kind);
+float3 col;
+float rough;
+float3 nrm = n;
+float side = 1.0 - step(0.7, abs(n.z));
+if (kind == 0)
+{
+    col = float3(0.42, 0.41, 0.39) * lerp(0.8, 1.1, L.FBM(float2(u, z) / 25.0)) * lerp(0.6, 1.0, saturate((z - 15.0) / 60.0));
+    float band = side * step(abs(z - Top + 22.0), 8.0);
+    float stripe = step(0.5, frac((u + z) / 40.0));
+    col = lerp(col, lerp(float3(0.60, 0.18, 0.02), float3(0.70, 0.70, 0.66), stripe), band);
+    rough = lerp(0.9, 0.5, band);
+}
+else if (kind == 1)
+{
+    float rib = frac(u / 28.0);
+    col = float3(0.025, 0.08, 0.045) * lerp(0.75, 1.1, L.VN(float2(u, z) / 30.0));
+    float rust = smoothstep(0.62, 0.72, L.FBM(float2(u, z) / 18.0 + 3.0)) * side;
+    col = lerp(col, float3(0.20, 0.08, 0.03), rust);
+    col = lerp(col, float3(0.01, 0.01, 0.01), side * step(z, 12.0));
+    nrm = normalize(n + side * float3(t2, 0.0) * (rib < 0.12 ? 0.8 : (rib > 0.88 ? -0.8 : 0.0)));
+    rough = lerp(0.5, 0.85, rust);
+}
+else
+{
+    float2 bc = float2(u / 60.0 + 0.5 * floor(z / 30.0), z / 30.0);
+    float j = max(L.Joint(bc.x, fwidth(bc.x), 0.02), L.Joint(bc.y, fwidth(bc.y), 0.04));
+    col = float3(0.33, 0.32, 0.31) * lerp(0.8, 1.15, L.H21(floor(bc))) * lerp(0.9, 1.05, L.H21(floor(WP.xy * 0.7 + z)));
+    col = lerp(col, float3(0.15, 0.15, 0.15), j);
+    rough = 0.8;
+}
+Rough = rough;
+NormalWS = nrm;
+return col;
+"""
+BLOCK_HLSL = LIB_HLSL + BLOCK_BODY
+
+# Parked cars (SM_City_ParkedCar, instanced): local position (cm, +X forward, ground at 0) splits the box car into
+# tyres, bumpers, painted body with a trim line, glass round the cabin, a roof; lamps front and back.
+CAR_BODY = r"""
+float3 n = normalize(N);
+float zl = LP.z;
+float3 col = Paint;
+float rough = 0.28;
+float3 emis = float3(0.0, 0.0, 0.0);
+if (zl < 30.0) { col = float3(0.02, 0.02, 0.022); rough = 0.8; }
+else if (zl < 42.0) { col = float3(0.035, 0.035, 0.038); rough = 0.6; }
+else if (zl > 100.0 && zl < 132.0 && abs(n.z) < 0.6) { col = float3(0.015, 0.017, 0.02); rough = 0.05; }
+if (abs(zl - 72.0) < 1.5 && abs(n.z) < 0.6) { col = float3(0.15, 0.15, 0.16); }
+if (abs(LP.x) > 222.0 && zl > 62.0 && zl < 76.0 && abs(LP.y) > 45.0)
+{
+    bool front = LP.x > 0.0;
+    col = front ? float3(0.75, 0.75, 0.72) : float3(0.45, 0.02, 0.02);
+    emis = (front ? float3(1.0, 0.95, 0.85) : float3(1.0, 0.05, 0.03)) * Glow * (1.0 - Day) * 0.3;
+}
+Rough = rough;
+Emis = emis;
+return col;
+"""
+CAR_HLSL = LIB_HLSL + CAR_BODY
+
+# Road paint (crosswalk bars): white thermoplastic, worn through to the asphalt where the tyres run, grey with grime.
+PAINT_BODY = r"""
+float wear = smoothstep(0.55, 0.75, L.FBM(WP.xy / 35.0));
+float3 col = lerp(float3(0.62, 0.62, 0.60), float3(0.05, 0.05, 0.055), wear * 0.8) * lerp(0.8, 1.0, L.VN(WP.xy / 8.0));
+Rough = lerp(0.55, 0.2, wear);
+return col;
+"""
+PAINT_HLSL = LIB_HLSL + PAINT_BODY
+
+
+def _unlit(m, material):
+    import unreal
+    m.c.set_props(material, [("shading_model", unreal.MaterialShadingModel.MSM_UNLIT), ("two_sided", True)],
+                  material.get_name())
+
+
+def build_cloud_deck(m, material):
+    """M_CloudDeck: CLOUD_HLSL, unlit, two-sided, DayLum / NightLum parameters."""
+    import unreal
+    _unlit(m, material)
+    inputs = [
+        ("V", m.expr(material, "MaterialExpressionCameraVectorWS", -1600, 0)),
+        ("T", m.time_node(material, -1600, 100)),
+        ("Day", day_node(m, material, -2300, 300)),
+        ("DayLum", m.scalar_param(material, "DayLuminance", CLOUD_DAY, -1600, 400)),
+        ("NightLum", m.scalar_param(material, "NightLuminance", CLOUD_NIGHT, -1600, 500)),
+    ]
+    node = custom(m, material, CLOUD_HLSL, inputs, [], -900, 0, "CloudDeck")
+    m.connect_property(node, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+def _lit_with_snow(m, material, node, x=-400):
+    import unreal
+    snow = m.function_call(material, m.ensure_snow_function(), x, 0)
+    m.connect(node, "", snow, "BaseColor")
+    m.connect(node, "Rough", snow, "Roughness")
+    m.connect(m.constant(material, 1.0, x - 250, 150), "", snow, "Coverage")
+    m.connect_property(snow, unreal.MaterialProperty.MP_BASE_COLOR, "BaseColor")
+    m.connect_property(snow, unreal.MaterialProperty.MP_ROUGHNESS, "Roughness")
+    return snow
+
+
+def build_street_block(m, material):
+    """M_StreetBlock: BLOCK_HLSL with Kind and Top (cm, the block's top), snow on top."""
+    import unreal
+    _world_space_normals(m, material)
+    inputs = [
+        ("WP", m.world_position(material, -1600, 0)),
+        ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100)),
+        ("Kind", m.scalar_param(material, "Kind", 0.0, -1600, 200)),
+        ("Top", m.scalar_param(material, "Top", 90.0, -1600, 300)),
+    ]
+    node = custom(m, material, BLOCK_HLSL, inputs, [("Rough", 1), ("NormalWS", 3)], -900, 0, "StreetBlock")
+    m.connect_property(node, unreal.MaterialProperty.MP_NORMAL, "NormalWS")
+    snow = _lit_with_snow(m, material, node)
+    m.connect_property(snow, unreal.MaterialProperty.MP_EMISSIVE_COLOR, "Emissive")
+
+
+def build_car(m, material):
+    """M_Car: CAR_HLSL, Color, snow on the roof and bonnet, lamps lit at night."""
+    import unreal
+    inputs = [
+        ("LP", m.expr(material, "MaterialExpressionLocalPosition", -1600, 0)),
+        ("N", m.expr(material, "MaterialExpressionVertexNormalWS", -1600, 100)),
+        ("Paint", m.vector_param(material, "Color", (0.1, 0.1, 0.11), -1600, 200)),
+        ("Glow", m.constant(material, m.EMISSIVE_INTENSITY_FACTOR, -1600, 300)),
+        ("Day", day_node(m, material, -2300, 400)),
+    ]
+    node = custom(m, material, CAR_HLSL, inputs, [("Rough", 1), ("Emis", 3)], -900, 0, "Car")
+    snow = _lit_with_snow(m, material, node)
+    total = m.add(material, None, None, -150, 250)
+    m.connect(node, "Emis", total, "A")
+    m.connect(snow, "Emissive", total, "B")
+    m.connect_property(total, unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+def build_paint(m, material):
+    """M_RoadPaint: PAINT_HLSL."""
+    import unreal
+    inputs = [("WP", m.world_position(material, -1600, 0))]
+    node = custom(m, material, PAINT_HLSL, inputs, [("Rough", 1)], -900, 0, "RoadPaint")
+    m.connect_property(node, unreal.MaterialProperty.MP_BASE_COLOR)
+    m.connect_property(node, unreal.MaterialProperty.MP_ROUGHNESS, "Rough")
+
+
+CLOUD_DAY = 3.0       # the deck's luminance by day and night, against the fixed exposure (EV100 1; bias 0 / +2)
+CLOUD_NIGHT = 1.0
+
 def _source_hash():
     import hashlib
-    text = "\n".join((FACADE_HLSL, ROAD_HLSL, SIDEWALK_HLSL, PARK_HLSL))
+    text = "\n".join((FACADE_HLSL, ROAD_HLSL, SIDEWALK_HLSL, PARK_HLSL, CLOUD_HLSL, BLOCK_HLSL, CAR_HLSL, PAINT_HLSL,
+                      repr((CLOUD_DAY, CLOUD_NIGHT))))
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
 
 

@@ -675,6 +675,11 @@ M_PARK_SNOW = MATERIALS_PATH + "/M_ParkSnow"
 M_STREET_ASPHALT = MATERIALS_PATH + "/M_StreetAsphalt"
 M_LAMP_HEAD = MATERIALS_PATH + "/M_LampHead"
 M_NIGHT_STARS = MATERIALS_PATH + "/M_NightStars"
+M_CLOUD_DECK = MATERIALS_PATH + "/M_CloudDeck"           # the overcast (look pass 2)
+M_STREET_BLOCK = MATERIALS_PATH + "/M_StreetBlock"       # barrier, dumpster and wall looks for the parkour blocks
+M_CAR = MATERIALS_PATH + "/M_Car"                         # parked cars
+M_ROAD_PAINT = MATERIALS_PATH + "/M_RoadPaint"            # crosswalks
+STREET_BLOCKS = {"Barrier": (0.0, 105.0), "Dumpster": (1.0, 165.0), "Wall": (2.0, 105.0)}   # name: (Kind, Top cm)
 M_WINDOW_LIT = MATERIALS_PATH + "/M_WindowLit"     # the dressing's lit window cards: M_Facade's window, always lit
 
 # Snow: world-aligned on faces whose normal is more than SNOW_NORMAL_Z up.
@@ -1106,6 +1111,46 @@ def _build_facade(material):
     grid this replaced, is no longer built."""
     import _look
     _look.build_facade(sys.modules[__name__], material)
+
+
+def _build_cloud_deck(material):
+    import _look
+    _look.build_cloud_deck(sys.modules[__name__], material)
+
+
+def _build_street_block(material):
+    import _look
+    _look.build_street_block(sys.modules[__name__], material)
+
+
+def _build_car(material):
+    import _look
+    _look.build_car(sys.modules[__name__], material)
+
+
+def _build_road_paint(material):
+    import _look
+    _look.build_paint(sys.modules[__name__], material)
+
+
+def ensure_street_look():
+    """The look pass 2 materials: {"cloud", "paint", "blocks": {name: MI}, "car": M_Car}."""
+    out = {
+        "cloud": ensure_look_material(M_CLOUD_DECK, _build_cloud_deck),
+        "paint": ensure_look_material(M_ROAD_PAINT, _build_road_paint),
+        "car": ensure_look_material(M_CAR, _build_car, instanced=True),
+    }
+    block = ensure_look_material(M_STREET_BLOCK, _build_street_block)
+    out["blocks"] = {name: ensure_material_instance(MATERIALS_PATH + "/MI_StreetBlock_" + name, block,
+                                                    scalars=[("Kind", kind), ("Top", top)])
+                     for name, (kind, top) in sorted(STREET_BLOCKS.items())}
+    return out
+
+
+def ensure_car_instance(name, rgb):
+    """MI_Car_<name> under M_Car."""
+    parent = ensure_look_material(M_CAR, _build_car, instanced=True)
+    return ensure_material_instance(MATERIALS_PATH + "/MI_Car_" + name, parent, vectors=[("Color", rgb)])
 
 
 def _build_window_lit(material):
