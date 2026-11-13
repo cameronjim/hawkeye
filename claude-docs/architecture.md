@@ -509,7 +509,8 @@ The second module, `HawkeyeEditor` (Editor, Default loading phase), and the runt
   it and the component calls the query for the shared math (`ChoosePick`, `IsOnScreen`, the release point).
 - `FGrappleReachWorld` (runtime): a profile from a pawn, a scene either from `DA_EastVillage_CityProps`, the map data and
   the `CityBuilding` actors (editor world) or from the actors a game world spawned, and an oracle with the component's
-  traces. `FlushPendingPhysicsState` gives an unticked world (a commandlet's) its collision before any trace.
+  traces: both call `HawkeyeGrappleTraces` (`GrappleTraces.h`: the sight line, the anchor's and the start's supports,
+  the zip's two capsule sweeps), each with its own ignore list. `FlushPendingPhysicsState` gives an unticked world (a commandlet's) its collision before any trace.
 - `FGrappleAudit` (runtime): the grapple audit over a scene and an oracle, with an optional picker hook; the report,
   `grapple_audit.json` and the gate. `Hawkeye.Grapple.Audit` is this with Kate's own traces and picker plugged in; the
   commandlet's run of it on the district matches the test's to the anchor.
