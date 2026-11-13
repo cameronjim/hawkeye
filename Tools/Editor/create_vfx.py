@@ -628,11 +628,12 @@ EFFECTS = {
         spark_streaks("Clods", 10, (0.4, 0.7), (0.08, 0.09, 0.11, 1.0), (5.0, 5.0, 9.0, 9.0), (0, 0, 1), 55,
                       (220, 420), gravity=-900, drag=1.0).material("M_Vfx_Snow"),
     ],
-    # Light snow round the camera: 800 flakes recycled into view, drifting down in a light wind.
+    # Light snow round the camera: 800 flakes recycled into view, drifting down in a light wind. None nearer than 3.5 m\r
+    # and smaller (look pass 2): a flake by the lens was a big soft white disc in every street shot.
     "NS_Snowfall": [
         (Emitter("Flakes", "RecycleParticlesInView")
-         .burst(800).life(30, 60).color(*(WHITE_SNOW + (0.9,))).size(5.0, 9.0)
-         .i("View Recycler", "Near / Far Distance", vec2(120, 1400))
+         .burst(800).life(30, 60).color(*(WHITE_SNOW + (0.9,))).size(3.5, 7.0)
+         .i("View Recycler", "Near / Far Distance", vec2(350, 1400))
          .i("View Recycler", "Recycle Velocity", vec(0, 0, -70))
          .i("Wind Force", "Wind Speed", vec(45, 20, 0))
          .i("Wind Force", "Use Depth Buffer", "False")
