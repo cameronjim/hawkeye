@@ -461,6 +461,7 @@ picks back or front, `gameplay-semantics.md`, "Authored clips"); out of the knoc
 lay onto the capsule over 0.3 s, out of the ragdoll the physics weight falls 1 to 0 over 0.3 s. Strips:
 `getup_from_clip.png`, `getup_from_ragdoll.png`.
 
+<<<<<<< HEAD
 ## Hands on the bodies (fixed 2026-11-24)
 
 Symptoms: fingers splayed straight like claws, wrists cocked, palms the wrong way, arms held out from the body.
@@ -484,6 +485,26 @@ clavicles are left alone. `HAND_CURL_DEGREES` (0) adds bend to fingers a driver 
 prints the frames each skeleton gives. `verify_content` (`check_hand_chains`) fails if a body retargeter has an unmapped
 finger chain or no offsets on the hands. `Hawkeye.Screenshot.Bodies` ends with `hands_<who>_<rest, fist, bow>.png`
 close-ups (thug, heavy, Clint, Kate).
+=======
+## The weld clips (written 2026-11-23; not yet built or seen)
+
+`build_clips.py` also makes, per rig, six hit reactions by where the blow landed and how hard (`HitHead_`, `HitGut_`, `HitLegs_` x
+`Light`, `Heavy`: roles `HitHeadLight` ... `HitLegsHeavy`), and on Kate's rig a jab, cross, hook and front kick (`Strike_Jab`,
+`Strike_Cross`, `Strike_Hook`, `Strike_FrontKick`), all at rate 1.0.
+- A reaction's first frame IS the damaged pose (the game starts it at `hit_peak_s` 0 with no blend after the freeze begins), then it
+  settles slowly. The capsule slides back by the eased knock-back (10 / 28 cm over 0.3 s, `knock_share`), so a planted foot holds
+  `PLANT_HOLD` (55%) of the slide in the world and a stepping foot steps back with it.
+- A strike has 4 to 6 frames of anticipation, 4 of swing, a 3-frame hold at full extension from the frame its hit window opens
+  (`hit_s`), a follow-through and a recovery, the weight through the hips, and an early step-in on `root_pos` (the motion warp scales
+  it: the peak speed stays under the 1,100 cm/s cap because the step is done by 0.2 s). Hands are keyed as offsets from the solved
+  shoulder (`shoulder_keys`).
+- Each clip's measures go into `clips.json` "extra" (`hit_peak_s`, `knockback_cm`, `contact_cm`, `contact_height_cm`, `wide`);
+  `create_combat_anims.py` bakes them into the anim set's `ClipData` (a manifest line's own key of the same name wins). `contact_cm`
+  is the striking bone's flat reach from the capsule at the hit frame plus the knuckles (9 cm) or toes (14) and the body's depth to the
+  bone the warp aims at (16), times the rig's scale (Kate's 0.93).
+- All sixteen manifest lines are `in_set: false`: imported, not worn. A clip goes in only when its strip beats the one it replaces
+  (`Hawkeye.Screenshot.Clips`: `<clip>.png` against `<clip>_before.png`; `contact_light_<tag>.png` and `contact_heavy_<tag>.png`, eight
+  frames round a live blow, `-ContactStripTag=before` on the old build). Say which did not beat theirs.
 
 ## Known limits
 

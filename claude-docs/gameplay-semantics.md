@@ -2326,6 +2326,52 @@ group pass lets several come at once, Spider-Man style, and keeps every blow ans
   with the view rather than along its flight; the arrow still flies to the reticle. Clint shares
   Kate's skeleton and settings; the archers take the same scales on their own aim offset.
 
+## The weld (written 2026-11-23, from "the punching isn't right ... the hit animation where they turn white is just weird")
+Contact was fine (the audit: the fist is 0 to 16 cm from the body at the damage frame); the presentation was not. A landed
+blow and its reaction are now one event. Rules in `UHawkeyeHitContactRules` (`ComputeHitStopSecondsAfter`,
+`ComputeVibration*`, `ComputeVictimTurn`, `ComputeVictimNudge`, `ComputeKnockbackProfile`, `ComputeReactionStart`,
+`ClampPhysicalBlend`, `ClassifyBoneRegion`, `SelectRegionForHeight`, `ShouldAlignVictim`), `UCombatAnimSet` (`HitRoleForImpact`,
+`FCombatClipData`), `UHawkeyeMeleeRules` (`ScoreAttackVariant`, `PickAttackVariant`), `FHawkeyeMeleePress`
+(`Player/HawkeyeMeleePress.h`) and `HawkeyeVfxMath` (`PickPuffVariant`, `ComputePuffScale`), tested by `Hawkeye.MeleeWeld.*`
+and `Hawkeye.HitContact.*`. Numbers are data: `FHawkeyeWeldTuning` (`Weld`) and `FHawkeyeHitStopTuning` on each hit reaction
+component, `bLightAttackOnPress` on Kate. On the hit frame, in this order:
+1. **Freeze** (`UHitReactionComponent::BeginFreeze`, from `UMeleeComponent::DeliverImpact`): the attacker and the victim only,
+   each on its own clock (`CustomTimeDilation` 0.001), for the hit-stop's length (50 to 90 ms by weight; unchanged), counted in
+   the world's clock. The world's time is not touched. A blow within 0.15 s of the last freezes for 40% of its own length
+   (it got none before). Kept global on purpose: the parry's stop (`ApplyTimeWarp`), the perfect dodge, the finisher's slow
+   motion and the quiver wheel. Lost with it: a third party's AI, tokens and a boss's combo clock run on through a freeze
+   (90 ms at most).
+2. **Snap**: the victim's reaction clip starts at its `HitPeakTime` (`FCombatClipData`, baked) with blend-in 0 (`HawkeyeCombatAnim::
+   PlayHitReaction`); a clip with no baked peak starts at 0 and blends in over 0.05 s. The clip is chosen by side, zone and weight
+   (`HitRoleForImpact`): from the front, `HitHead/Gut/Legs` x `Light/Heavy` by the region of the struck bone (heavy at weight 0.6),
+   else the side's clip or `HitHeavy`, as before.
+3. **Vibrate**: both meshes (the driver; the look is attached) move along the blow, 2.5 cm for a light and 4 for a heavy,
+   flipping side 2 to 4 times over the freeze and decaying, the other party starting the other way. Never the capsule.
+4. **Align** (thugs only, not Kate, not a boss mid-swing, not a body on the floor): over the freeze he turns up to 25 degrees
+   toward the attacker and is nudged up to 15 cm along the line so the spacing is the clip's contact distance, with strike
+   magnetism's wall and ledge checks (`IsMovePathClear`).
+5. **Knock-back**: one eased displacement (a root motion source, speed (1 - t) ^ 2 over 0.3 s) of the clip's `KnockbackCm`, else
+   10 cm for a light reaction and 28 for a heavy: what the old shove (250 and 500 cm/s) slid a thug. It waits out the freeze on
+   his stopped clock, so it starts at the release. `LaunchCharacter` stays only for a stagger with no blow behind it (a parry, a
+   boss's).
+6. **Flinch**: the physical reaction starts at the release (it already waited out the stop) and its blend is capped at 0.5
+   (`PeakBlend`, was 0.8). Kate's and Clint's flinch stays off.
+- **No flash.** `AThugCharacter::FlashHit` and the material's `HitFlash` are gone; the red telegraph stays. A landed blow plays one
+  of four `NS_MeleePuff_A..D` dust puffs (`UMeleeComponent::ImpactPuffVfx`; size, count, spread differ) at the contact point
+  along the blow, a hash picks it (never the last), weight scales it 0.8 to 1.5. The same for a thug's blow on Kate.
+  `NS_MeleeSpark` and Kate's `SpawnMeleeSpark` are gone with it.
+- **Light on the press** (`bLightAttackOnPress`, default true): the press starts the light (or buffers it, or is the parry).
+  Held to `HeavyHoldSeconds` (0.4 s): if the light has not reached its hit window it is cancelled and the heavy takes its place; if it
+  has (a light's hit window is 0.25 s in, so almost always) the heavy is armed as the next blow and goes the moment she can swing
+  (a combo window cuts the recovery), with the light buffer's 0.3 s of grace after the release. A parry on the press is the whole
+  of that press. False: the light on the release, as before. A heavy therefore now costs a light first (15 damage, a hit-stop).
+- **Variant by situation**: a role with more than one clip, and baked data on them, picks by `ScoreAttackVariant` (reach against the
+  distance, hit height against the region aimed at, wide swings for a target off to the side, a cost for repeating) instead of
+  manifest order. A clip's `ContactDistance` replaces the attack's 66 / 88 / 70 cm constant, `ContactHeight` picks the region.
+- Clips: `Tools/Blender/build_clips.py` makes the six zone reactions per rig and Kate's jab, cross, hook and front kick, built around
+  the hit frame; they are in the manifest as `in_set: false` until their strips beat the clips they would replace
+  (claude-docs/animation.md, "The weld clips").
+
 ## Authored clips (built 2026-11-13; pipeline in claude-docs/animation.md, "Authored clips")
 Rules in `UHawkeyeHitContactRules` (`IsLyingOnBack`, `ComputeGetUpAlignment`, `ResolveHitDuringGetUp`) and
 `UCombatAnimSet` (`GetUpRoleFor`, `HitRoleForBlow`), tested by `Hawkeye.AuthoredClips.*`; seen in `Hawkeye.Screenshot.Clips`.
