@@ -37,7 +37,9 @@ CHARACTERS_TAG = "HawkeyeCharacters"
 ROLES = ["Light1", "Light2", "Light3", "Heavy", "Kick", "Parry", "DodgeForward", "DodgeBack", "DodgeLeft", "DodgeRight",
          "HitFront", "HitBack", "HitLeft", "HitRight", "Knockdown", "GetUp", "FinisherAttacker", "FinisherVictim",
          "FinisherBow", "BowDraw", "BowAimIdle", "BowFire", "BowNock", "GetUpFront", "HitHeavy", "TakedownAttacker", "TakedownVictim",
-         "HitHeadLight", "HitHeadHeavy", "HitGutLight", "HitGutHeavy", "HitLegsLight", "HitLegsHeavy"]
+         "HitHeadLight", "HitHeadHeavy", "HitGutLight", "HitGutHeavy", "HitLegsLight", "HitLegsHeavy",
+         "LandStandLight", "LandStandHeavy", "LandWalkLight", "LandWalkHeavy", "LandRunLight", "LandRunHeavy", "LandSprintLight",
+         "LandSprintHeavy", "LandRoll", "LandStumble", "FallLoop"]
 
 # (character, data asset, the folder its montages are in, the Blueprints that wear it)
 CHARACTERS = [

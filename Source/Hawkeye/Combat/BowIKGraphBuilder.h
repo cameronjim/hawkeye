@@ -18,8 +18,11 @@ class USkeleton;
  *   -> Slot DefaultSlot (full-body clips) -> cached -> Layered blend per bone: UpperBody slot, then the
  *      aim offset (when one is given; X AimOffsetYaw, Y AimOffsetPitch, alpha AimOffsetAlpha), from spine_01 up
  *   -> to component space
+ *   -> ModifyBone pelvis (add TraversalPelvisRotation and TraversalPelvisOffset), spine_01..03 (add the traversal
+ *      spine turns), each at Alpha TraversalAlpha so they are skipped off a grapple trip
  *   -> ModifyBone spine_01 (add HitLean) -> ModifyBone SpineBone (add SpineTwist)
  *   -> ModifyBone NeckBone (add NeckTwist)
+ *   -> ModifyBone NeckBone (add TraversalNeckRotation), thigh_l, thigh_r, calf_l, calf_r (the traversal leg turns)
  *   -> TwoBoneIK hand_l to LeftHandTarget, elbow to LeftElbowTarget, alpha LeftArmAlpha
  *   -> TwoBoneIK hand_r to RightHandTarget, elbow to RightElbowTarget, alpha RightArmAlpha
  *   -> to local space -> Output Pose

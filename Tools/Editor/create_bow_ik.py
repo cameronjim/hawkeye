@@ -32,7 +32,7 @@ import create_blueprints as cb  # noqa: E402
 
 ANIM_PATH = "/Game/Blueprints/Animation"
 BUILD_TAG = "HawkeyeBuild"
-IK_BUILD = "bow-ik-4"   # bump when UHawkeyeBowIKGraphBuilder's graph changes (2: hit lean, arm alphas; 3: clip slots; 4: aim offset)
+IK_BUILD = "bow-ik-5"   # bump when UHawkeyeBowIKGraphBuilder's graph changes (2: hit lean, arm alphas; 3: clip slots; 4: aim offset; 5: traversal pose nodes)
 MANIFEST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Data", "Anims", "manifest.json")
 
 # (asset, skeleton, the mesh's own post-process AnimBP class to chain or None, spine bone, neck bone,

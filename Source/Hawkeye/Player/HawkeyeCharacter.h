@@ -16,8 +16,10 @@
 #include "Player/HawkeyeSpringArmComponent.h"
 #include "Player/HawkeyeSprintToggle.h"
 #include "Settings/HawkeyeSettings.h"
+#include "Traversal/TraversalPoseRules.h"
 #include "HawkeyeCharacter.generated.h"
 
+class UAnimMontage;
 class UAnimSequence;
 class AThugCharacter;
 class UBowComponent;
@@ -145,6 +147,22 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Falling")
 	void NotifyGrappleLanded();
+
+	// --- Traversal body pose (HawkeyeCharacterTraversalPose.cpp; gameplay-semantics.md, "Traversal body pose") ---
+
+	/** The grapple trip's body pose over time. The bow-IK anim instance steps it every update; everything here is visual only. */
+	FTraversalPoseState& GetTraversalPoseState() { return TraversalPoseState; }
+
+	const FHawkeyeTraversalPoseSettings& GetTraversalPoseSettings() const { return TraversalPoseSettings; }
+
+	/** What the pose reads this frame, from the movement and the grapple, in world space. Never writes anything. */
+	FTraversalPoseInput BuildTraversalPoseInput(float DeltaSeconds) const;
+
+	/** The most downward speed (cm/s) since this fall began: what a landing's impact is measured by. */
+	float GetFallPeakSpeed() const { return FallPeakSpeed; }
+
+	/** True while a landing clip plays in place of the scripted roll spin. */
+	bool IsRollClipPlaying() const { return bRollClipPlaying; }
 
 	/** True once GiveKeycard(KeycardId) has been called for that id. Forwards to the inventory. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")
@@ -1175,6 +1193,19 @@ protected:
 	/** Roll, stumble or dip, and fall damage, for a landing FallHeight below the top of the arc. */
 	void ApplyLanding(float FallHeight);
 
+	/**
+	 * The look of a landing, chosen by impact speed (HawkeyeCharacterTraversalPose.cpp): the sample's landing clip for the
+	 * speed band and the ground speed when the anim set has one, the legs' absorb when it does not. The roll, stumble and
+	 * dip the fall height chose are not touched. Called by ApplyLanding after it has decided them.
+	 */
+	void BeginLandingPose(float FallHeight);
+
+	/** Plays the fall loop clip while the body pose says she is falling after a release, and ends it with the fall. */
+	void UpdateTraversalClips(float DeltaSeconds);
+
+	/** Blends the fall loop out. */
+	void StopFallLoop(float BlendOutSeconds);
+
 	/** Walks the footstep tracker on by this frame's ground travel and plays a step when one is due. */
 	void UpdateFootsteps();
 
@@ -2080,6 +2111,30 @@ protected:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Hawkeye|Falling")
 	float LastFallHeight = 0.f;
+
+	/** Every number of the grapple trip's body pose and the landing poses; tuned on BP_Kate. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hawkeye|Traversal Pose")
+	FHawkeyeTraversalPoseSettings TraversalPoseSettings;
+
+	/** Falls from below this are the sample's to land (a hop, a step); a release from a zip always gets its own landing. cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hawkeye|Traversal Pose", meta = (ClampMin = "0.0"))
+	float LandingPoseMinHeight = 150.f;
+
+	/** The pose's springs and phase; stepped by the bow-IK anim instance, never saved. */
+	FTraversalPoseState TraversalPoseState;
+
+	/** The most downward speed this fall, cm/s; reset when a fall starts and when it lands. */
+	float FallPeakSpeed = 0.f;
+
+	/** A roll clip plays: the scripted spin and squash are left out, the capsule and travel are the roll's as before. */
+	bool bRollClipPlaying = false;
+
+	/** Cycles a landing role's variants (the foot she lands on). */
+	int32 LandingVariantCursor = 0;
+
+	/** The fall loop montage while it plays. */
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> ActiveFallLoop;
 
 	UPROPERTY(Transient)
 	EHawkeyeLanding LandingState = EHawkeyeLanding::None;

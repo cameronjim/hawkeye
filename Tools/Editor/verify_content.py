@@ -1273,8 +1273,8 @@ def check_combat_anims():
     for abp in ("ABP_BowIK_Post", "ABP_BowIK_Post_Thug"):
         graph = c.load_or_none("/Game/Blueprints/Animation/" + abp)
         tag = unreal.EditorAssetLibrary.get_metadata_tag(graph, "HawkeyeBuild") if graph is not None else ""
-        if (tag or "").split(":")[0] != "bow-ik-4":
-            fail("{0} is build '{1}', not bow-ik-4 (the aim offset); run create_bow_ik".format(abp, tag))
+        if (tag or "").split(":")[0] != "bow-ik-5":
+            fail("{0} is build '{1}', not bow-ik-5 (the traversal pose nodes); run create_bow_ik".format(abp, tag))
 
 
 def main():

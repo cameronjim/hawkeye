@@ -4,6 +4,7 @@
 #include "Animation/AnimInstance.h"
 #include "Combat/BowHandIKTypes.h"
 #include "Combat/StrikePose.h"
+#include "Traversal/TraversalPoseRules.h"
 #include "BowIKAnimInstance.generated.h"
 
 class UBlendSpace;
@@ -33,6 +34,12 @@ class UBowComponent;
  * toward the arrow line (ComputeStringCorrectionAlpha), the spine drops the side-on turn the clip already
  * has, and the aim offset (AimOffset, when the graph has one) pitches and turns the upper body toward
  * the aim instead of the spine turn. See gameplay-semantics.md, "Combat animation clips".
+ *
+ * The same graph carries the grapple trip's body pose (gameplay-semantics.md, "Traversal body pose"): on a character
+ * that has one (AHawkeyeCharacter), every update steps its FTraversalPoseState from its movement and writes the pelvis,
+ * spine, neck, hip and knee turns the graph adds in component space, plus the two hands (through the same left and right
+ * arm IK as the strike and the hang, and only while the bow is down). Everyone else leaves TraversalAlpha at 0 and the
+ * nodes are skipped. hawkeye.ZipPose 0 turns the whole layer off.
  */
 UCLASS(Transient, Blueprintable)
 class HAWKEYE_API UHawkeyeBowIKAnimInstance : public UAnimInstance
@@ -118,8 +125,27 @@ public:
 	/** This frame's hit lean: WorldDirection (flat, the way to lean) at Alpha (0..1). */
 	void SetHitLean(const FVector& WorldDirection, float Alpha);
 
-	/** Writes the graph's inputs from the bow targets, the strike override and the hit lean. */
+	/** Writes the graph's inputs from the bow targets, the strike override, the traversal pose's hands and the hit lean. */
 	void ComposeOutputs();
+
+	/**
+	 * Steps the owner's traversal pose by DeltaSeconds and applies it (ApplyTraversalPose); the owner's own state and
+	 * settings. Does nothing for an owner without one, and clears the pose while hawkeye.ZipPose is 0.
+	 * NativeUpdateAnimation calls it before the bow's update.
+	 */
+	void UpdateTraversalPose(float DeltaSeconds);
+
+	/**
+	 * Takes Pose (an actor frame pose, tests pass their own) into the graph's variables: every turn written in
+	 * component space and every offset in the mesh's own units. An inactive pose clears them all.
+	 */
+	void ApplyTraversalPose(const FTraversalPoseOutput& Pose);
+
+	/** The last traversal pose applied, in the actor's frame. */
+	const FTraversalPoseOutput& GetTraversalPose() const { return TraversalPose; }
+
+	/** hawkeye.ZipPose: 1 (default) draws the traversal pose, 0 leaves the sample's pose alone, for before and after shots. */
+	static bool IsTraversalPoseEnabled();
 
 	/** hand_l's target, component space. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Bow IK")
@@ -221,6 +247,41 @@ public:
 	UPROPERTY(Transient, BlueprintReadWrite, Category = "Bow IK|Strike")
 	float StrikeLeftHandAlpha = 0.f;
 
+	/** 0 or 1: the traversal pose nodes run only while it is on. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	float TraversalAlpha = 0.f;
+
+	/** Added to pelvis, component space (the whole body's tip and the hips' lag and sink). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalPelvisRotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FVector TraversalPelvisOffset = FVector::ZeroVector;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalSpine01Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalSpine02Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalSpine03Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalNeckRotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalThighLRotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalThighRRotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalCalfLRotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Traversal Pose")
+	FRotator TraversalCalfRRotation = FRotator::ZeroRotator;
+
 protected:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
@@ -241,6 +302,19 @@ protected:
 
 	/** How far off the arrow line the clip's string hand was, cm. */
 	float StringOffLine = 0.f;
+
+	/** The traversal pose last applied (actor frame) and its hands in component space for ComposeOutputs. */
+	FTraversalPoseOutput TraversalPose;
+	FVector TraversalLeftHand = FVector::ZeroVector;
+	FVector TraversalLeftElbow = FVector::ZeroVector;
+	FVector TraversalRightHand = FVector::ZeroVector;
+	FVector TraversalRightElbow = FVector::ZeroVector;
+	float TraversalLeftAlpha = 0.f;
+	float TraversalRightAlpha = 0.f;
+
+	/** Where the owner was last update: a jump past what she can run is a teleport. */
+	FVector LastActorLocation = FVector::ZeroVector;
+	bool bHaveLastActorLocation = false;
 
 	/** Last update's string hand target and alpha, component space: the IK's share of the last pose's hand. */
 	FVector LastRightTarget = FVector::ZeroVector;

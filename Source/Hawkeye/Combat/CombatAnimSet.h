@@ -4,6 +4,7 @@
 #include "Engine/DataAsset.h"
 #include "Combat/HitContactRules.h"
 #include "Combat/StrikePose.h"
+#include "Traversal/TraversalPoseRules.h"
 #include "CombatAnimSet.generated.h"
 
 class UAnimMontage;
@@ -60,11 +61,28 @@ enum class ECombatAnimRole : uint8
 	HitGutLight,
 	HitGutHeavy,
 	HitLegsLight,
-	HitLegsHeavy
+	HitLegsHeavy,
+	/**
+	 * Landings (the Game Animation Sample's M_Neutral_Jump_F_Land_*, root motion taken out; ELandingClip): light or heavy by
+	 * impact speed, stand, walk, run or sprint by the speed along the ground. Variants alternate the foot she lands on.
+	 */
+	LandStandLight,
+	LandStandHeavy,
+	LandWalkLight,
+	LandWalkHeavy,
+	LandRunLight,
+	LandRunHeavy,
+	LandSprintLight,
+	LandSprintHeavy,
+	/** The roll and the stumble a landing's fall height chose (the landing rules, not the speed). */
+	LandRoll,
+	LandStumble,
+	/** Should loop: the fall after a release. */
+	FallLoop
 };
 
 /** The last role: loops over every slot run to here. */
-constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::HitLegsHeavy;
+constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::FallLoop;
 
 /**
  * More clips for one role, after the role's own slot: the slot is variant 0, these are 1, 2, ...
@@ -212,6 +230,9 @@ public:
 	/** The get-up for a body on its back (GetUp) or face down (GetUpFront, or GetUp when the set has none). */
 	static ECombatAnimRole GetUpRoleFor(const UCombatAnimSet* Set, bool bOnBack);
 
+	/** The role of a landing clip (None for ELandingClip::None). */
+	static ECombatAnimRole LandingRoleFor(ELandingClip Clip);
+
 	/** The dodge for a dash toward Side of the one dodging (Front is a dash forward). */
 	static ECombatAnimRole DodgeRoleFor(EHawkeyeHitDirection Side);
 
@@ -301,6 +322,41 @@ public:
 	/** Should hold its last frame (he is handed to the ragdoll from it). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Takedown")
 	TSoftObjectPtr<UAnimMontage> TakedownVictim;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandStandLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandStandHeavy;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandWalkLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandWalkHeavy;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandRunLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandRunHeavy;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandSprintLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandSprintHeavy;
+
+	/** Plays in place of the scripted 360 degree spin; the capsule shrink and the 200 cm of travel stay the roll's own. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandRoll;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> LandStumble;
+
+	/** Should loop (the montage's one section loops). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
+	TSoftObjectPtr<UAnimMontage> FallLoop;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Finisher")
 	TSoftObjectPtr<UAnimMontage> FinisherAttacker;

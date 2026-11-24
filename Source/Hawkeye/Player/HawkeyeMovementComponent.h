@@ -50,6 +50,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Movement|Zip")
 	bool IsZipRedirecting() const { return IsZipping() && bZipRedirecting; }
 
+	/** 0 at the start of the hop, 1 at its end; 0 outside it. The body's launch pose reads it. */
+	UFUNCTION(BlueprintPure, Category = "Movement|Zip")
+	float GetZipHopFraction() const
+	{
+		return IsZipHopping() && ZipHopSeconds > 0.f ? FMath::Clamp(HopElapsed / ZipHopSeconds, 0.f, 1.f) : 0.f;
+	}
+
 	/** 0 at the start of the line, 1 at the landing point; 0 while not zipping. */
 	UFUNCTION(BlueprintPure, Category = "Movement|Zip")
 	float GetZipProgress() const;

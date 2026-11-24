@@ -1916,6 +1916,7 @@ void AHawkeyeCharacter::Tick(float DeltaSeconds)
 	UpdateSlide(DeltaSeconds);
 	UpdateFalling(DeltaSeconds);
 	UpdateLanding(DeltaSeconds);
+	UpdateTraversalClips(DeltaSeconds);
 	UpdateFootsteps();
 	UpdateMovementDebugSample(DeltaSeconds);
 	UpdateMaxWalkSpeed();
@@ -3384,6 +3385,7 @@ void AHawkeyeCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, ui
 		// Measured from the top of the arc, so a jump off a roof counts its rise as well.
 		FallApexZ = GetActorLocation().Z;
 		FallSeconds = 0.f;
+		FallPeakSpeed = 0.f;
 		EndSlide();
 		// Not rising: stepped off an edge or out of the sample's traversal. Any way off a zip, a hang or one of
 		// our moves counts, a jump's let-go and the hop's push off the wall included, since that is what she lets go of.
@@ -3409,6 +3411,7 @@ void AHawkeyeCharacter::UpdateFalling(float DeltaSeconds)
 	{
 		FallApexZ = FMath::Max(FallApexZ, GetActorLocation().Z);
 		FallSeconds += FMath::Max(DeltaSeconds, 0.f);
+		FallPeakSpeed = FMath::Max(FallPeakSpeed, -static_cast<float>(Movement->Velocity.Z));
 		// A real fall stands her up; a lip or a one-frame flick to falling keeps the crouch.
 		const float Drop = FallApexZ - GetActorLocation().Z;
 		if (IsCrouchWanted() && !bIsSliding && !IsRolling() && !bDowned && FallSeconds >= CrouchKeepFallSeconds
@@ -3587,6 +3590,7 @@ void AHawkeyeCharacter::ApplyLanding(float FallHeight)
 				*GetNameSafe(this), Damage, Fraction * 100.f, FallHeight, HealthComponent->GetCurrentHealth());
 		}
 	}
+	BeginLandingPose(FallHeight);
 	UpdateMaxWalkSpeed();
 }
 
@@ -3628,6 +3632,7 @@ void AHawkeyeCharacter::StartRoll(const FVector& Direction)
 
 	EndSlide();
 	StopAim();
+	bRollClipPlaying = false;
 	RollDirection = Direction.GetSafeNormal2D();
 	LandingState = EHawkeyeLanding::Roll;
 	LandingElapsed = 0.f;
@@ -3711,6 +3716,7 @@ void AHawkeyeCharacter::EndRoll()
 		}
 	}
 	bRollOwnsCrouch = false;
+	bRollClipPlaying = false;
 	LandingState = EHawkeyeLanding::None;
 	LandingElapsed = 0.f;
 	// The lens's pitch is the camera update's (the roll's dip, eased back by GetLandingCameraPitch, less the fight camera's
@@ -3735,8 +3741,9 @@ void AHawkeyeCharacter::UpdateLanding(float DeltaSeconds)
 		{
 			EndRoll();
 		}
-		else
+		else if (!bRollClipPlaying)
 		{
+			// A roll clip does the body's turn; the scripted spin is the fallback without one.
 			ApplyRollPose();
 		}
 		break;

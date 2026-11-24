@@ -40,7 +40,36 @@ const TSoftObjectPtr<UAnimMontage>* UCombatAnimSet::FindSlot(ECombatAnimRole Rol
 	case ECombatAnimRole::HitGutHeavy: return &HitGutHeavy;
 	case ECombatAnimRole::HitLegsLight: return &HitLegsLight;
 	case ECombatAnimRole::HitLegsHeavy: return &HitLegsHeavy;
+	case ECombatAnimRole::LandStandLight: return &LandStandLight;
+	case ECombatAnimRole::LandStandHeavy: return &LandStandHeavy;
+	case ECombatAnimRole::LandWalkLight: return &LandWalkLight;
+	case ECombatAnimRole::LandWalkHeavy: return &LandWalkHeavy;
+	case ECombatAnimRole::LandRunLight: return &LandRunLight;
+	case ECombatAnimRole::LandRunHeavy: return &LandRunHeavy;
+	case ECombatAnimRole::LandSprintLight: return &LandSprintLight;
+	case ECombatAnimRole::LandSprintHeavy: return &LandSprintHeavy;
+	case ECombatAnimRole::LandRoll: return &LandRoll;
+	case ECombatAnimRole::LandStumble: return &LandStumble;
+	case ECombatAnimRole::FallLoop: return &FallLoop;
 	default: return nullptr;
+	}
+}
+
+ECombatAnimRole UCombatAnimSet::LandingRoleFor(ELandingClip Clip)
+{
+	switch (Clip)
+	{
+	case ELandingClip::StandLight: return ECombatAnimRole::LandStandLight;
+	case ELandingClip::StandHeavy: return ECombatAnimRole::LandStandHeavy;
+	case ELandingClip::WalkLight: return ECombatAnimRole::LandWalkLight;
+	case ELandingClip::WalkHeavy: return ECombatAnimRole::LandWalkHeavy;
+	case ELandingClip::RunLight: return ECombatAnimRole::LandRunLight;
+	case ELandingClip::RunHeavy: return ECombatAnimRole::LandRunHeavy;
+	case ELandingClip::SprintLight: return ECombatAnimRole::LandSprintLight;
+	case ELandingClip::SprintHeavy: return ECombatAnimRole::LandSprintHeavy;
+	case ELandingClip::Roll: return ECombatAnimRole::LandRoll;
+	case ELandingClip::Stumble: return ECombatAnimRole::LandStumble;
+	default: return ECombatAnimRole::None;
 	}
 }
 

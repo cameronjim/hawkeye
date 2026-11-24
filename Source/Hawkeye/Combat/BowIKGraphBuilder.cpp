@@ -182,6 +182,33 @@ namespace HawkeyeBowIKGraph
 		return Node;
 	}
 
+	/**
+	 * One of the traversal pose's bone turns: Bone gets Rotation (component space, added to the animation's) from the
+	 * instance variable RotationMember, and the offset from OffsetMember when there is one. The node is skipped
+	 * (Alpha 0) while no traversal pose is on, which is every frame for everyone but Kate on a grapple trip.
+	 */
+	static UAnimGraphNode_ModifyBone* AddTraversalBone(FWiring& Wiring, FName Bone, FName RotationMember, FName OffsetMember, int32 X)
+	{
+		const bool bOffset = !OffsetMember.IsNone();
+		UAnimGraphNode_ModifyBone* Node = AddNode<UAnimGraphNode_ModifyBone>(Wiring.Graph, X, 400,
+			[Bone, bOffset](UAnimGraphNode_ModifyBone& N)
+			{
+				N.Node.BoneToModify.BoneName = Bone;
+				N.Node.TranslationMode = bOffset ? BMM_Additive : BMM_Ignore;
+				N.Node.TranslationSpace = BCS_ComponentSpace;
+				N.Node.ScaleMode = BMM_Ignore;
+				N.Node.RotationMode = BMM_Additive;
+				N.Node.RotationSpace = BCS_ComponentSpace;
+			});
+		Wiring.Variable(RotationMember, Node, TEXT("Rotation"), X - 40, 620);
+		if (bOffset)
+		{
+			Wiring.Variable(OffsetMember, Node, TEXT("Translation"), X - 40, 700);
+		}
+		Wiring.Variable(GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalAlpha), Node, TEXT("Alpha"), X - 40, 780);
+		return Node;
+	}
+
 	static UAnimGraphNode_TwoBoneIK* AddArm(FWiring& Wiring, FName Hand, FName Target, FName Elbow, FName Alpha, int32 X)
 	{
 		UAnimGraphNode_TwoBoneIK* Node = AddNode<UAnimGraphNode_TwoBoneIK>(Wiring.Graph, X, 0,
@@ -296,18 +323,59 @@ namespace HawkeyeBowIKGraph
 			[](UAnimGraphNode_LocalToComponentSpace&) {});
 		Wiring.Pose(Last, ToComponent, TEXT("to component space"));
 
+		// The grapple trip's body, before everything that aims or leans: the pelvis carries the whole body's tip, the
+		// spine adds its share, and the arms' IK below then reaches from where the shoulders ended up.
+		UEdGraphNode* TraversalPelvis = AddTraversalBone(Wiring, TEXT("pelvis"),
+			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalPelvisRotation),
+			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalPelvisOffset), -1380);
+		Wiring.Pose(ToComponent, TraversalPelvis, TEXT("traversal pelvis"));
+		UEdGraphNode* Previous = TraversalPelvis;
+		const TPair<FName, FName> TraversalSpine[] = {
+			{ TEXT("spine_01"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalSpine01Rotation) },
+			{ TEXT("spine_02"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalSpine02Rotation) },
+			{ TEXT("spine_03"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalSpine03Rotation) },
+		};
+		int32 TraversalX = -1360;
+		for (const TPair<FName, FName>& Spine : TraversalSpine)
+		{
+			UEdGraphNode* Node = AddTraversalBone(Wiring, Spine.Key, Spine.Value, NAME_None, TraversalX);
+			Wiring.Pose(Previous, Node, TEXT("traversal spine"));
+			Previous = Node;
+			TraversalX += 20;
+		}
+
 		// The lean from a hit tips the whole upper body from the lower spine, before the aim's turn.
 		UEdGraphNode* Lean = AddTwist(Wiring, HitLeanBone, GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, HitLean), -1275);
-		Wiring.Pose(ToComponent, Lean, TEXT("hit lean"));
+		Wiring.Pose(Previous, Lean, TEXT("hit lean"));
 		UEdGraphNode* Spine = AddTwist(Wiring, SpineBone, GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, SpineTwist), -1150);
 		Wiring.Pose(Lean, Spine, TEXT("spine twist"));
 		UEdGraphNode* Neck = AddTwist(Wiring, NeckBone, GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, NeckTwist), -900);
 		Wiring.Pose(Spine, Neck, TEXT("neck twist"));
 
+		// The head toward the anchor with the body's tip taken back, then the hips and knees: the legs trailing the rope.
+		UEdGraphNode* TraversalNeck = AddTraversalBone(Wiring, NeckBone,
+			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalNeckRotation), NAME_None, -800);
+		Wiring.Pose(Neck, TraversalNeck, TEXT("traversal neck"));
+		const TPair<FName, FName> TraversalLegs[] = {
+			{ TEXT("thigh_l"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalThighLRotation) },
+			{ TEXT("thigh_r"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalThighRRotation) },
+			{ TEXT("calf_l"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalCalfLRotation) },
+			{ TEXT("calf_r"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalCalfRRotation) },
+		};
+		Previous = TraversalNeck;
+		TraversalX = -780;
+		for (const TPair<FName, FName>& Leg : TraversalLegs)
+		{
+			UEdGraphNode* Node = AddTraversalBone(Wiring, Leg.Key, Leg.Value, NAME_None, TraversalX);
+			Wiring.Pose(Previous, Node, TEXT("traversal leg"));
+			Previous = Node;
+			TraversalX += 30;
+		}
+
 		UEdGraphNode* Left = AddArm(Wiring, TEXT("hand_l"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, LeftHandTarget),
 			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, LeftElbowTarget),
 			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, LeftArmAlpha), -650);
-		Wiring.Pose(Neck, Left, TEXT("bow arm IK"));
+		Wiring.Pose(Previous, Left, TEXT("bow arm IK"));
 		UEdGraphNode* Right = AddArm(Wiring, TEXT("hand_r"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, RightHandTarget),
 			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, RightElbowTarget),
 			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, RightArmAlpha), -400);
