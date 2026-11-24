@@ -461,6 +461,30 @@ picks back or front, `gameplay-semantics.md`, "Authored clips"); out of the knoc
 lay onto the capsule over 0.3 s, out of the ragdoll the physics weight falls 1 to 0 over 0.3 s. Strips:
 `getup_from_clip.png`, `getup_from_ragdoll.png`.
 
+## Hands on the bodies (fixed 2026-11-24)
+
+Symptoms: fingers splayed straight like claws, wrists cocked, palms the wrong way, arms held out from the body.
+Causes, all in the retarget (`create_kate_look.ensure_retargeter`, which builds every body's `RTG_<Who>_To_Body`):
+
+1. **Retarget pose.** The bodies are built in a T-pose (palms down, straight fingers); the drivers' reference is an
+   A-pose with relaxed fingers. The engine's `auto_align_all_bones(CHAIN_TO_CHAIN)` (`IKRetargeterPoseGenerator.cpp`)
+   turns each bone by the shortest rotation onto the source chain's direction: it never matches roll, skips the last
+   bone of every chain (the hand, each finger's third joint) and single-bone chains (clavicle). So the body kept its
+   T-pose wrist roll and straight fingers.
+2. **Hand goals copied the source bone's absolute rotation** (`blend_to_source_rotation` 1.0, `IKChainsOp.cpp`
+   `CalculateGoalRotation`): a different roll on a skeleton with other bone axes. Now 0: the hand goes to the driver's
+   hand but turns by its change only (the bow grip and a hang's hands still sit on the driver's).
+3. The finger chains were mapped all along (`ue4` / `uefn` chain maps, `auto_map_chains`); that was not the problem.
+
+Fix: `Tools/Editor/_handpose.py` (plain maths, `Tools/test-handpose.ps1`) builds a frame per arm bone and finger joint
+from the joint positions on both skeletons (direction along the bone, roll from the palm normal, which both give by the
+same formula; a finger's last joint carries on the bend before it), turns each target bone onto the source's frame and
+writes the local offsets into the `HawkeyeAligned` retarget pose (global = parent global * local ref * offset). The
+clavicles are left alone. `HAND_CURL_DEGREES` (0) adds bend to fingers a driver holds straighter. `Tools/Editor/probe_handpose.py`
+prints the frames each skeleton gives. `verify_content` (`check_hand_chains`) fails if a body retargeter has an unmapped
+finger chain or no offsets on the hands. `Hawkeye.Screenshot.Bodies` ends with `hands_<who>_<rest, fist, bow>.png`
+close-ups (thug, heavy, Clint, Kate).
+
 ## Known limits
 
 - Kate's clip-timed lights land at 0.25 s, not the procedural 0.1 s (a clip needs a visible swing).
