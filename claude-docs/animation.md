@@ -486,6 +486,23 @@ prints the frames each skeleton gives. `verify_content` (`check_hand_chains`) fa
 finger chain or no offsets on the hands. `Hawkeye.Screenshot.Bodies` ends with `hands_<who>_<rest, fist, bow>.png`
 close-ups (thug, heavy, Clint, Kate).
 
+**Thugs and the heavy, second pass (2026-11-24).** The thug's and heavy's hands still read badly after the first fix: the
+UE4 mannequin that drives them rests its hand with the index and thumb hooked, and its hands hang beside a narrower body's
+thighs, so on the superhero body (shoulders far wider than the hips) they hovered in front of the groin. Three changes, all in
+`RTG_Thug_To_Body` (the heavy shares it), none touching Kate's or Clint's retargeters (their stamps are unchanged):
+1. `_handpose.RELAXED_HAND` replaces the fingers' bend (and a little thumb) with a table: the four fingers curl together, a little
+   more toward the little finger (about 28 / 42 / 26 degrees at the index's three joints), each finger keeping its own spread. The
+   rest hand is a loose fist rather than a claw; the index and thumb still nearly meet on the right hand.
+2. `_handpose.adduct` swings the arm chain 14 degrees toward the midline about the shoulder (`THUG_ARM_ADDUCT_DEGREES`).
+3. The hand goals' translation blend is 0 (`THUG_HAND_TRANSLATION`; `create_kate_look._hands_to_driver(translation)`): the arms'
+   own forward kinematics place the hands, not the driver's hand positions. Strike hands are the bow-IK graph's and the bat is
+   placed by `AThugCharacter`, so nothing needed the driver's exact hand place on a thug. Kate and Clint keep 1.
+Still off: the rest pose is the template's bent-elbow guard, so the hands sit at the belt in front, not on the thighs; the
+heavy's bat is drawn in front of the hand, not through the fist (its grip is `BatGripFromEnd`, not tuned here).
+**The grey checkered block on the thug's right wrist** was the gunner's pistol (`PistolComponent` and `PistolGrip`, engine cubes
+at his side): the cube's own material is the editor grid. `AThugCharacter::TintProps` gives the pistol, its grip and the held bat
+the engine's shape material in a colour (`PistolColor` gunmetal, `BatColor` dark wood). The riot shield already did this.
+
 ## The weld clips (written 2026-11-23; not yet built or seen)
 
 `build_clips.py` also makes, per rig, six hit reactions by where the blow landed and how hard (`HitHead_`, `HitGut_`, `HitLegs_` x
@@ -535,6 +552,8 @@ channel's slots in `ComposeOutputs`, only while no strike has the arm and the bo
 graph (thugs, the archer, Clint standing) has no `AHawkeyeCharacter` pose state and `TraversalAlpha` 0: nothing is
 evaluated. Teleports (a jump past what she can run in a frame) reset the state; the engine resets the dynamics nodes itself.
 `hawkeye.ZipPose 0|1` is a console variable read by the instance.
+
+**Heavy landings play at 1.6** (`HeavyLandingRate`, `FTraversalPoseRules::LandingClipRate`; 2026-11-24): the sample's crouch at the bottom held about 0.6 s. In the `land_heavy` strip (frames at 0, 0.1, 0.2, 0.3, 0.4, 0.55, 0.75, 1.0 s from touchdown, `_on`) the deepest crouch is at 0.4 to 0.55 s and she is rising by 0.75, a hold of about 0.3 s. Not fixed: the clip's first 0.3 s after the capsule is down still shows the legs tucked with the feet 10 to 15 cm up (its approach pose), which reads as floating. `land_heavy_side_on_before.png` is the old strip. `BeginLandingPose` now logs the landing's clip and rate at Log level.
 
 Landing and fall clips are montages in the combat set (`ECombatAnimRole::LandStandLight .. LandSprintHeavy, LandRoll,
 LandStumble, FallLoop`; `UCombatAnimSet::LandingRoleFor`). `Tools/Editor/create_traversal_anims.py` (a `create_all` step before
