@@ -62,7 +62,8 @@ FVector2D FTraversalPoseRules::RopeTilt(const FVector& LocalRopeDirection, float
 	{
 		return FVector2D::ZeroVector;
 	}
-	const float FromVertical = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(static_cast<float>(Rope.Z), -1.f, 1.f)));
+	const float FromVertical =
+		FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(static_cast<float>(Rope.Z), -1.f, 1.f)));
 	return (Flat / Size) * (FromVertical * Weight);
 }
 
@@ -97,7 +98,8 @@ FQuat FTraversalPoseRules::ScaledTurn(const FVector& Axis, float Degrees, float 
 	return FQuat(Unit, FMath::DegreesToRadians(Degrees * Weight));
 }
 
-FQuat FTraversalPoseRules::ActorToComponent(const FQuat& Local, const FQuat& ActorRotation, const FQuat& ComponentRotation)
+FQuat FTraversalPoseRules::ActorToComponent(
+	const FQuat& Local, const FQuat& ActorRotation, const FQuat& ComponentRotation)
 {
 	// The same turn about world axes, then written in the component's axes.
 	const FQuat World = ActorRotation * Local * ActorRotation.Inverse();
@@ -133,19 +135,19 @@ float FTraversalPoseRules::ArrivalSeconds(EArrivalKind Kind, const FHawkeyeTrave
 {
 	switch (Kind)
 	{
-	case EArrivalKind::StepDown:
-		return Settings.StepDownSeconds;
-	case EArrivalKind::Brake:
-		return Settings.BrakeSeconds;
-	case EArrivalKind::SlideOut:
-		return Settings.SlideOutSeconds;
-	default:
-		return 0.f;
+		case EArrivalKind::StepDown:
+			return Settings.StepDownSeconds;
+		case EArrivalKind::Brake:
+			return Settings.BrakeSeconds;
+		case EArrivalKind::SlideOut:
+			return Settings.SlideOutSeconds;
+		default:
+			return 0.f;
 	}
 }
 
-ELandingClip FTraversalPoseRules::ClassifyLanding(float ImpactSpeed, float GroundSpeed, bool bRoll, bool bStumble,
-	const FHawkeyeTraversalPoseSettings& Settings)
+ELandingClip FTraversalPoseRules::ClassifyLanding(
+	float ImpactSpeed, float GroundSpeed, bool bRoll, bool bStumble, const FHawkeyeTraversalPoseSettings& Settings)
 {
 	if (bRoll)
 	{
@@ -192,8 +194,8 @@ void FTraversalPoseState::Reset()
 	*this = FTraversalPoseState();
 }
 
-void FTraversalPoseState::BeginLanding(ELandingClip Clip, float ImpactSpeed, bool bClipPlays,
-	const FHawkeyeTraversalPoseSettings& Settings)
+void FTraversalPoseState::BeginLanding(
+	ELandingClip Clip, float ImpactSpeed, bool bClipPlays, const FHawkeyeTraversalPoseSettings& Settings)
 {
 	if (bClipPlays)
 	{
@@ -203,11 +205,12 @@ void FTraversalPoseState::BeginLanding(ELandingClip Clip, float ImpactSpeed, boo
 		return;
 	}
 	// How hard she hit, 0 at the light threshold to 1 at twice the heavy one.
-	const float Hardness = FMath::Clamp(
-		(ImpactSpeed - Settings.LightImpactSpeed) / FMath::Max(Settings.HeavyImpactSpeed * 2.f - Settings.LightImpactSpeed, 1.f),
+	const float Hardness = FMath::Clamp((ImpactSpeed - Settings.LightImpactSpeed) /
+			FMath::Max(Settings.HeavyImpactSpeed * 2.f - Settings.LightImpactSpeed, 1.f),
 		0.f, 1.f);
-	const bool bHeavy = Clip == ELandingClip::StandHeavy || Clip == ELandingClip::WalkHeavy || Clip == ELandingClip::RunHeavy
-		|| Clip == ELandingClip::SprintHeavy || Clip == ELandingClip::Stumble || Clip == ELandingClip::Roll;
+	const bool bHeavy = Clip == ELandingClip::StandHeavy || Clip == ELandingClip::WalkHeavy ||
+		Clip == ELandingClip::RunHeavy || Clip == ELandingClip::SprintHeavy || Clip == ELandingClip::Stumble ||
+		Clip == ELandingClip::Roll;
 	if (Clip == ELandingClip::None)
 	{
 		LandingSeconds = -1.f;
@@ -221,12 +224,13 @@ void FTraversalPoseState::BeginLanding(ELandingClip Clip, float ImpactSpeed, boo
 	FadeOutOverride = -1.f;
 }
 
-void FTraversalPoseState::UpdatePhase(const FTraversalPoseInput& Input, float DeltaSeconds,
-	const FHawkeyeTraversalPoseSettings& Settings)
+void FTraversalPoseState::UpdatePhase(
+	const FTraversalPoseInput& Input, float DeltaSeconds, const FHawkeyeTraversalPoseSettings& Settings)
 {
 	if (Input.bZipping)
 	{
-		const ETraversalPhase Next = Input.bHopping ? ETraversalPhase::Launch
+		const ETraversalPhase Next = Input.bHopping
+			? ETraversalPhase::Launch
 			: (Input.bRedirecting ? ETraversalPhase::Redirect : ETraversalPhase::Pull);
 		if (Next != Phase)
 		{
@@ -267,33 +271,33 @@ void FTraversalPoseState::UpdatePhase(const FTraversalPoseInput& Input, float De
 		PhaseSeconds += DeltaSeconds;
 		switch (Phase)
 		{
-		case ETraversalPhase::Arrive:
-			ArrivalElapsed += DeltaSeconds;
-			if (ArrivalElapsed >= FTraversalPoseRules::ArrivalSeconds(Arrival, Settings) || Input.bFalling)
-			{
-				Phase = ETraversalPhase::None;
-				Arrival = EArrivalKind::None;
-			}
-			break;
-		case ETraversalPhase::Release:
-			if (!Input.bFalling)
-			{
-				Phase = ETraversalPhase::None;
-			}
-			else if (PhaseSeconds >= Settings.ReleaseSeconds)
-			{
-				Phase = ETraversalPhase::Fall;
-				PhaseSeconds = 0.f;
-			}
-			break;
-		case ETraversalPhase::Fall:
-			if (!Input.bFalling)
-			{
-				Phase = ETraversalPhase::None;
-			}
-			break;
-		default:
-			break;
+			case ETraversalPhase::Arrive:
+				ArrivalElapsed += DeltaSeconds;
+				if (ArrivalElapsed >= FTraversalPoseRules::ArrivalSeconds(Arrival, Settings) || Input.bFalling)
+				{
+					Phase = ETraversalPhase::None;
+					Arrival = EArrivalKind::None;
+				}
+				break;
+			case ETraversalPhase::Release:
+				if (!Input.bFalling)
+				{
+					Phase = ETraversalPhase::None;
+				}
+				else if (PhaseSeconds >= Settings.ReleaseSeconds)
+				{
+					Phase = ETraversalPhase::Fall;
+					PhaseSeconds = 0.f;
+				}
+				break;
+			case ETraversalPhase::Fall:
+				if (!Input.bFalling)
+				{
+					Phase = ETraversalPhase::None;
+				}
+				break;
+			default:
+				break;
 		}
 	}
 	if (LandingSeconds >= 0.f)
@@ -317,79 +321,85 @@ void FTraversalPoseState::AimTargets(const FTraversalPoseInput& Input, const FHa
 	Out.WeightTarget = 1.f;
 	switch (Phase)
 	{
-	case ETraversalPhase::Launch:
-	{
-		// The crouch-load: peaks 60% through the hop, then lets go into the jerk. The reach starts at once.
-		const float F = FMath::Clamp(Input.HopFraction, 0.f, 1.f);
-		const float Load = Smooth(0.f, 0.6f, F) * (1.f - 0.6f * Smooth(0.6f, 1.f, F));
-		Out.Goal[TiltForward] = Settings.LaunchLeanDegrees * Load;
-		Out.Goal[Sink] = Settings.LaunchSinkCm * Load;
-		Out.Goal[ThighL] = Out.Goal[ThighR] = -Settings.LaunchHipFlex * Load;
-		Out.Goal[CalfL] = Out.Goal[CalfR] = Settings.LaunchKnee * Load;
-		Out.Goal[LeftArm] = Smooth(0.1f, 0.7f, F);
-		Out.Goal[RightArm] = 0.6f * Smooth(0.3f, 1.f, F);
-		// The hop is 0.15 s, so the crouch is followed on a quick spring; the line's pull goes back to the slower ones.
-		for (const EChannel Channel : { TiltForward, ThighL, ThighR, CalfL, CalfR, Sink })
+		case ETraversalPhase::Launch:
 		{
-			Out.HalfLife[Channel] = Settings.LaunchHalfLife;
+			// The crouch-load: peaks 60% through the hop, then lets go into the jerk. The reach starts at once.
+			const float F = FMath::Clamp(Input.HopFraction, 0.f, 1.f);
+			const float Load = Smooth(0.f, 0.6f, F) * (1.f - 0.6f * Smooth(0.6f, 1.f, F));
+			Out.Goal[TiltForward] = Settings.LaunchLeanDegrees * Load;
+			Out.Goal[Sink] = Settings.LaunchSinkCm * Load;
+			Out.Goal[ThighL] = Out.Goal[ThighR] = -Settings.LaunchHipFlex * Load;
+			Out.Goal[CalfL] = Out.Goal[CalfR] = Settings.LaunchKnee * Load;
+			Out.Goal[LeftArm] = Smooth(0.1f, 0.7f, F);
+			Out.Goal[RightArm] = 0.6f * Smooth(0.3f, 1.f, F);
+			// The hop is 0.15 s, so the crouch is followed on a quick spring; the line's pull goes back to the slower
+			// ones.
+			for (const EChannel Channel : {TiltForward, ThighL, ThighR, CalfL, CalfR, Sink})
+			{
+				Out.HalfLife[Channel] = Settings.LaunchHalfLife;
+			}
+			break;
 		}
-		break;
-	}
-	case ETraversalPhase::Pull:
-	case ETraversalPhase::Redirect:
-	{
-		const FVector2D Rope = FTraversalPoseRules::RopeTilt(LocalRope, Settings.RopeTiltWeight);
-		const FVector2D Lean = FTraversalPoseRules::AccelerationTilt(LocalAcceleration, Settings.Gravity, Settings.AccelLeanStrength);
-		const FVector2D Tilt = FTraversalPoseRules::ClampTilt(Rope + Lean, Settings.MaxTiltDegrees);
-		Out.Goal[TiltForward] = static_cast<float>(Tilt.X);
-		Out.Goal[TiltRight] = static_cast<float>(Tilt.Y);
-		// The legs trail the way she travels, one leading. They never swing so far that the feet go past MaxLegTotal.
-		const float Trail = FMath::Min(Settings.MaxLegTrail * Speed01, FMath::Max(0.f, Settings.MaxLegTotal - static_cast<float>(Tilt.Size())));
-		Out.Goal[ThighR] = Trail;
-		Out.Goal[ThighL] = Trail - Settings.LeadLegAdvance * Speed01;
-		Out.Goal[CalfR] = Settings.KneeBendBase + Trail * Settings.KneeBendPerTrail;
-		Out.Goal[CalfL] = Settings.KneeBendBase * 0.6f + FMath::Max(0.f, Out.Goal[ThighL]) * Settings.KneeBendPerTrail;
-		// Hauled up sharply she sags below the hand; hauled forward the hips lag behind it.
-		Out.Goal[Sink] = FMath::Clamp(static_cast<float>(LocalAcceleration.Z) / FMath::Max(Settings.Gravity, 1.f) * Settings.MaxSinkCm,
-			-Settings.MaxSinkCm, Settings.MaxSinkCm);
-		Out.Goal[Lag] = FMath::Clamp(static_cast<float>(LocalAcceleration.X) * Settings.LagPerAcceleration, -Settings.MaxLagCm,
-			Settings.MaxLagCm);
-		Out.Goal[LeftArm] = 1.f;
-		Out.Goal[RightArm] = 1.f;
-		break;
-	}
-	case ETraversalPhase::Release:
-		// The tuck: knees up, the hands let go of the line and come out for balance.
-		Out.Goal[TiltForward] = 8.f;
-		Out.Goal[ThighL] = -Settings.TuckHipFlex;
-		Out.Goal[ThighR] = -Settings.TuckHipFlex * 0.8f;
-		Out.Goal[CalfL] = Settings.TuckKnee;
-		Out.Goal[CalfR] = Settings.TuckKnee * 1.1f;
-		Out.Goal[LeftArm] = 0.7f;
-		Out.Goal[RightArm] = 0.7f;
-		Out.Goal[ArmsOut] = 1.f;
-		break;
-	case ETraversalPhase::Fall:
-	{
-		// Reacting to how fast she is dropping: arms out and up, legs braced, the back arching.
-		const float Down = FMath::Max(0.f, -static_cast<float>(Input.Velocity.Z));
-		const float Fast = FMath::Clamp(Down / FMath::Max(Settings.FallFullSpeed, 1.f), 0.f, 1.f);
-		const float Brace = 0.4f + 0.6f * Fast;
-		// With the fall loop clip playing the legs and arms are its own; the pose is only a reaction on top.
-		const float Share = Input.bFallClipPlays ? 0.3f : 1.f;
-		Out.Goal[TiltForward] = -Settings.FallArch * Fast;
-		Out.Goal[ThighL] = -Settings.FallHipFlex * Brace * Share;
-		Out.Goal[ThighR] = -Settings.FallHipFlex * Brace * 0.6f * Share;
-		Out.Goal[CalfL] = Settings.FallKnee * (1.f - 0.4f * Fast) * Share;
-		Out.Goal[CalfR] = Settings.FallKnee * (1.f - 0.4f * Fast) * 1.3f * Share;
-		Out.Goal[LeftArm] = (0.35f + 0.65f * Fast) * (Input.bFallClipPlays ? 0.f : 1.f);
-		Out.Goal[RightArm] = (0.35f + 0.65f * Fast) * (Input.bFallClipPlays ? 0.f : 1.f);
-		Out.Goal[ArmsOut] = 1.f;
-		break;
-	}
-	default:
-		Out.WeightTarget = 0.f;
-		break;
+		case ETraversalPhase::Pull:
+		case ETraversalPhase::Redirect:
+		{
+			const FVector2D Rope = FTraversalPoseRules::RopeTilt(LocalRope, Settings.RopeTiltWeight);
+			const FVector2D Lean =
+				FTraversalPoseRules::AccelerationTilt(LocalAcceleration, Settings.Gravity, Settings.AccelLeanStrength);
+			const FVector2D Tilt = FTraversalPoseRules::ClampTilt(Rope + Lean, Settings.MaxTiltDegrees);
+			Out.Goal[TiltForward] = static_cast<float>(Tilt.X);
+			Out.Goal[TiltRight] = static_cast<float>(Tilt.Y);
+			// The legs trail the way she travels, one leading. They never swing so far that the feet go past
+			// MaxLegTotal.
+			const float Trail = FMath::Min(Settings.MaxLegTrail * Speed01,
+				FMath::Max(0.f, Settings.MaxLegTotal - static_cast<float>(Tilt.Size())));
+			Out.Goal[ThighR] = Trail;
+			Out.Goal[ThighL] = Trail - Settings.LeadLegAdvance * Speed01;
+			Out.Goal[CalfR] = Settings.KneeBendBase + Trail * Settings.KneeBendPerTrail;
+			Out.Goal[CalfL] =
+				Settings.KneeBendBase * 0.6f + FMath::Max(0.f, Out.Goal[ThighL]) * Settings.KneeBendPerTrail;
+			// Hauled up sharply she sags below the hand; hauled forward the hips lag behind it.
+			Out.Goal[Sink] = FMath::Clamp(
+				static_cast<float>(LocalAcceleration.Z) / FMath::Max(Settings.Gravity, 1.f) * Settings.MaxSinkCm,
+				-Settings.MaxSinkCm, Settings.MaxSinkCm);
+			Out.Goal[Lag] = FMath::Clamp(static_cast<float>(LocalAcceleration.X) * Settings.LagPerAcceleration,
+				-Settings.MaxLagCm, Settings.MaxLagCm);
+			Out.Goal[LeftArm] = 1.f;
+			Out.Goal[RightArm] = 1.f;
+			break;
+		}
+		case ETraversalPhase::Release:
+			// The tuck: knees up, the hands let go of the line and come out for balance.
+			Out.Goal[TiltForward] = 8.f;
+			Out.Goal[ThighL] = -Settings.TuckHipFlex;
+			Out.Goal[ThighR] = -Settings.TuckHipFlex * 0.8f;
+			Out.Goal[CalfL] = Settings.TuckKnee;
+			Out.Goal[CalfR] = Settings.TuckKnee * 1.1f;
+			Out.Goal[LeftArm] = 0.7f;
+			Out.Goal[RightArm] = 0.7f;
+			Out.Goal[ArmsOut] = 1.f;
+			break;
+		case ETraversalPhase::Fall:
+		{
+			// Reacting to how fast she is dropping: arms out and up, legs braced, the back arching.
+			const float Down = FMath::Max(0.f, -static_cast<float>(Input.Velocity.Z));
+			const float Fast = FMath::Clamp(Down / FMath::Max(Settings.FallFullSpeed, 1.f), 0.f, 1.f);
+			const float Brace = 0.4f + 0.6f * Fast;
+			// With the fall loop clip playing the legs and arms are its own; the pose is only a reaction on top.
+			const float Share = Input.bFallClipPlays ? 0.3f : 1.f;
+			Out.Goal[TiltForward] = -Settings.FallArch * Fast;
+			Out.Goal[ThighL] = -Settings.FallHipFlex * Brace * Share;
+			Out.Goal[ThighR] = -Settings.FallHipFlex * Brace * 0.6f * Share;
+			Out.Goal[CalfL] = Settings.FallKnee * (1.f - 0.4f * Fast) * Share;
+			Out.Goal[CalfR] = Settings.FallKnee * (1.f - 0.4f * Fast) * 1.3f * Share;
+			Out.Goal[LeftArm] = (0.35f + 0.65f * Fast) * (Input.bFallClipPlays ? 0.f : 1.f);
+			Out.Goal[RightArm] = (0.35f + 0.65f * Fast) * (Input.bFallClipPlays ? 0.f : 1.f);
+			Out.Goal[ArmsOut] = 1.f;
+			break;
+		}
+		default:
+			Out.WeightTarget = 0.f;
+			break;
 	}
 }
 
@@ -403,48 +413,48 @@ void FTraversalPoseState::ArrivalTargets(const FHawkeyeTraversalPoseSettings& Se
 	}
 	switch (Arrival)
 	{
-	case EArrivalKind::StepDown:
-	{
-		const float Env = FTraversalPoseRules::DipEnvelope(T, 0.08f);
-		Out.Goal[Sink] = 7.f * Env;
-		Out.Goal[ThighL] = Out.Goal[ThighR] = -12.f * Env;
-		Out.Goal[CalfL] = Out.Goal[CalfR] = 22.f * Env;
-		Out.Goal[TiltForward] = 5.f * Env;
-		break;
-	}
-	case EArrivalKind::Brake:
-	{
-		// A braking two-step: the knees take the speed, the near foot plants, then the other, the chest comes back.
-		const float Env = FTraversalPoseRules::DipEnvelope(T, 0.1f);
-		const float StepL = FTraversalPoseRules::Pulse(T, 0.12f, 0.07f);
-		const float StepR = FTraversalPoseRules::Pulse(T, 0.3f, 0.08f);
-		Out.Goal[Sink] = 14.f * Env;
-		Out.Goal[TiltForward] = -8.f * Env;
-		Out.Goal[ThighL] = -(20.f * Env + 24.f * StepL);
-		Out.Goal[ThighR] = -(20.f * Env + 22.f * StepR);
-		Out.Goal[CalfL] = 40.f * Env + 12.f * StepL;
-		Out.Goal[CalfR] = 40.f * Env + 12.f * StepR;
-		Out.Goal[LeftArm] = Out.Goal[RightArm] = 0.5f * Env;
-		Out.Goal[ArmsOut] = 0.7f;
-		break;
-	}
-	case EArrivalKind::SlideOut:
-	{
-		// A slide out: sat back on the heels with the legs forward and the arms out.
-		const float Env = FTraversalPoseRules::DipEnvelope(T, 0.14f);
-		Out.Goal[Sink] = 30.f * Env;
-		Out.Goal[TiltForward] = -20.f * Env;
-		Out.Goal[ThighL] = -50.f * Env;
-		Out.Goal[ThighR] = -35.f * Env;
-		Out.Goal[CalfL] = 60.f * Env;
-		Out.Goal[CalfR] = 85.f * Env;
-		Out.Goal[LeftArm] = Out.Goal[RightArm] = 0.8f * Env;
-		Out.Goal[ArmsOut] = 1.f;
-		break;
-	}
-	default:
-		Out.WeightTarget = 0.f;
-		break;
+		case EArrivalKind::StepDown:
+		{
+			const float Env = FTraversalPoseRules::DipEnvelope(T, 0.08f);
+			Out.Goal[Sink] = 7.f * Env;
+			Out.Goal[ThighL] = Out.Goal[ThighR] = -12.f * Env;
+			Out.Goal[CalfL] = Out.Goal[CalfR] = 22.f * Env;
+			Out.Goal[TiltForward] = 5.f * Env;
+			break;
+		}
+		case EArrivalKind::Brake:
+		{
+			// A braking two-step: the knees take the speed, the near foot plants, then the other, the chest comes back.
+			const float Env = FTraversalPoseRules::DipEnvelope(T, 0.1f);
+			const float StepL = FTraversalPoseRules::Pulse(T, 0.12f, 0.07f);
+			const float StepR = FTraversalPoseRules::Pulse(T, 0.3f, 0.08f);
+			Out.Goal[Sink] = 14.f * Env;
+			Out.Goal[TiltForward] = -8.f * Env;
+			Out.Goal[ThighL] = -(20.f * Env + 24.f * StepL);
+			Out.Goal[ThighR] = -(20.f * Env + 22.f * StepR);
+			Out.Goal[CalfL] = 40.f * Env + 12.f * StepL;
+			Out.Goal[CalfR] = 40.f * Env + 12.f * StepR;
+			Out.Goal[LeftArm] = Out.Goal[RightArm] = 0.5f * Env;
+			Out.Goal[ArmsOut] = 0.7f;
+			break;
+		}
+		case EArrivalKind::SlideOut:
+		{
+			// A slide out: sat back on the heels with the legs forward and the arms out.
+			const float Env = FTraversalPoseRules::DipEnvelope(T, 0.14f);
+			Out.Goal[Sink] = 30.f * Env;
+			Out.Goal[TiltForward] = -20.f * Env;
+			Out.Goal[ThighL] = -50.f * Env;
+			Out.Goal[ThighR] = -35.f * Env;
+			Out.Goal[CalfL] = 60.f * Env;
+			Out.Goal[CalfR] = 85.f * Env;
+			Out.Goal[LeftArm] = Out.Goal[RightArm] = 0.8f * Env;
+			Out.Goal[ArmsOut] = 1.f;
+			break;
+		}
+		default:
+			Out.WeightTarget = 0.f;
+			break;
 	}
 }
 
@@ -462,8 +472,8 @@ void FTraversalPoseState::LandingTargets(const FHawkeyeTraversalPoseSettings& Se
 	Out.Goal[TiltForward] = LandingLean * Env;
 }
 
-FTraversalPoseOutput FTraversalPoseState::Compose(const FTraversalPoseInput& Input,
-	const FHawkeyeTraversalPoseSettings& Settings, const FVector& LocalRope) const
+FTraversalPoseOutput FTraversalPoseState::Compose(
+	const FTraversalPoseInput& Input, const FHawkeyeTraversalPoseSettings& Settings, const FVector& LocalRope) const
 {
 	using namespace HawkeyeTraversalPoseMath;
 	FTraversalPoseOutput Out;
@@ -484,12 +494,12 @@ FTraversalPoseOutput FTraversalPoseState::Compose(const FTraversalPoseInput& Inp
 	const float Pelvic = FMath::Clamp(Settings.PelvisTiltShare, 0.f, 1.f);
 	Out.Pelvis = FTraversalPoseRules::QuatFromTilt(TipForward * Pelvic * W, TipRight * Pelvic * W);
 	const float SpineShare = (1.f - Pelvic) * W;
-	Out.Spine[0] = FTraversalPoseRules::QuatFromTilt(TipForward * SpineShare * static_cast<float>(Spread.X),
-		TipRight * SpineShare * static_cast<float>(Spread.X));
-	Out.Spine[1] = FTraversalPoseRules::QuatFromTilt(TipForward * SpineShare * static_cast<float>(Spread.Y),
-		TipRight * SpineShare * static_cast<float>(Spread.Y));
-	Out.Spine[2] = FTraversalPoseRules::QuatFromTilt(TipForward * SpineShare * static_cast<float>(Spread.Z),
-		TipRight * SpineShare * static_cast<float>(Spread.Z));
+	Out.Spine[0] = FTraversalPoseRules::QuatFromTilt(
+		TipForward * SpineShare * static_cast<float>(Spread.X), TipRight * SpineShare * static_cast<float>(Spread.X));
+	Out.Spine[1] = FTraversalPoseRules::QuatFromTilt(
+		TipForward * SpineShare * static_cast<float>(Spread.Y), TipRight * SpineShare * static_cast<float>(Spread.Y));
+	Out.Spine[2] = FTraversalPoseRules::QuatFromTilt(
+		TipForward * SpineShare * static_cast<float>(Spread.Z), TipRight * SpineShare * static_cast<float>(Spread.Z));
 	Out.PelvisOffset = FVector(-Value[Lag], 0.f, -Value[Sink]) * W;
 
 	// The hips swing about the body's own right axis: the pelvis's tip carries it round.
@@ -501,27 +511,32 @@ FTraversalPoseOutput FTraversalPoseState::Compose(const FTraversalPoseInput& Inp
 
 	// The head: the tip taken back so it stays level, and a look toward the anchor while she is on the rope.
 	const float OnRope = FMath::Clamp(Value[LeftArm], 0.f, 1.f) * (1.f - FMath::Clamp(Value[ArmsOut], 0.f, 1.f));
-	const float LookPitch = FMath::Clamp(ElevationDegrees(LocalRope) * Settings.HeadLookWeight, 0.f, Settings.MaxHeadPitch);
+	const float LookPitch =
+		FMath::Clamp(ElevationDegrees(LocalRope) * Settings.HeadLookWeight, 0.f, Settings.MaxHeadPitch);
 	const float LookYaw = FTraversalPoseRules::ClampAngle(
-		FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(LocalRope.Y), static_cast<float>(LocalRope.X))) * Settings.HeadLookWeight,
+		FMath::RadiansToDegrees(FMath::Atan2(static_cast<float>(LocalRope.Y), static_cast<float>(LocalRope.X))) *
+			Settings.HeadLookWeight,
 		Settings.MaxHeadYaw);
-	const FQuat Level = FTraversalPoseRules::QuatFromTilt(-TipForward * Settings.HeadStabilise * W, -TipRight * Settings.HeadStabilise * W);
+	const FQuat Level = FTraversalPoseRules::QuatFromTilt(
+		-TipForward * Settings.HeadStabilise * W, -TipRight * Settings.HeadStabilise * W);
 	// Pitching up is a turn about -Y, turning right one about +Z.
-	const FQuat Look = FTraversalPoseRules::ScaledTurn(FVector::UpVector, LookYaw, OnRope * W)
-		* FTraversalPoseRules::ScaledTurn(-FVector::RightVector, LookPitch, OnRope * W);
+	const FQuat Look = FTraversalPoseRules::ScaledTurn(FVector::UpVector, LookYaw, OnRope * W) *
+		FTraversalPoseRules::ScaledTurn(-FVector::RightVector, LookPitch, OnRope * W);
 	Out.Neck = Look * Level;
 
 	// The hands, from the capsule centre. The shoulders ride the whole tip (pelvis and spine together).
 	const FQuat Body = FTraversalPoseRules::QuatFromTilt(TipForward * W, TipRight * W);
 	const FVector PelvisAt = Settings.PelvisFromCentre + Out.PelvisOffset;
 	const FVector LeftShoulder = PelvisAt + Body.RotateVector(Settings.ShoulderFromPelvis);
-	const FVector RightShoulder = PelvisAt + Body.RotateVector(FVector(Settings.ShoulderFromPelvis.X, -Settings.ShoulderFromPelvis.Y,
-		Settings.ShoulderFromPelvis.Z));
+	const FVector RightShoulder = PelvisAt +
+		Body.RotateVector(
+			FVector(Settings.ShoulderFromPelvis.X, -Settings.ShoulderFromPelvis.Y, Settings.ShoulderFromPelvis.Z));
 	const float Out01 = FMath::Clamp(Value[ArmsOut], 0.f, 1.f);
 
 	const FVector RopeHand = LeftShoulder + LocalRope * Settings.ArmReach;
 	const FVector RopeElbow = LeftShoulder + Body.RotateVector(FVector(-12.f, -22.f, -30.f));
-	const FVector LeftOut = PelvisAt + Body.RotateVector(FVector(Settings.HandsOut.X, -Settings.HandsOut.Y, Settings.HandsOut.Z));
+	const FVector LeftOut =
+		PelvisAt + Body.RotateVector(FVector(Settings.HandsOut.X, -Settings.HandsOut.Y, Settings.HandsOut.Z));
 	const FVector LeftOutElbow = LeftShoulder + Body.RotateVector(FVector(-5.f, -30.f, 8.f));
 	Out.LeftHand = FMath::Lerp(RopeHand, LeftOut, Out01);
 	Out.LeftElbow = FMath::Lerp(RopeElbow, LeftOutElbow, Out01);
@@ -537,7 +552,8 @@ FTraversalPoseOutput FTraversalPoseState::Compose(const FTraversalPoseInput& Inp
 	return Out;
 }
 
-FTraversalPoseOutput FTraversalPoseState::Step(const FTraversalPoseInput& Input, const FHawkeyeTraversalPoseSettings& Settings)
+FTraversalPoseOutput FTraversalPoseState::Step(
+	const FTraversalPoseInput& Input, const FHawkeyeTraversalPoseSettings& Settings)
 {
 	const float Dt = FMath::Clamp(Input.DeltaSeconds, 0.f, 0.1f);
 	if (Input.bTeleported)
@@ -563,13 +579,15 @@ FTraversalPoseOutput FTraversalPoseState::Step(const FTraversalPoseInput& Input,
 	const FQuat Inverse = Input.ActorRotation.Inverse();
 	const FVector LocalAcceleration = Inverse.RotateVector(Acceleration);
 	// Without a rope direction the body takes the rope a little up and ahead of her, which is what a launch looks like.
-	const FVector LocalRope = Input.RopeDirection.IsNearlyZero() ? FVector(0.6, 0., 0.8)
+	const FVector LocalRope = Input.RopeDirection.IsNearlyZero()
+		? FVector(0.6, 0., 0.8)
 		: Inverse.RotateVector(Input.RopeDirection.GetSafeNormal());
 
 	FTargets Targets;
 	for (int32 Channel = 0; Channel < Count; ++Channel)
 	{
-		Targets.HalfLife[Channel] = Channel <= TiltRight ? Settings.TiltHalfLife
+		Targets.HalfLife[Channel] = Channel <= TiltRight
+			? Settings.TiltHalfLife
 			: (Channel >= LeftArm ? Settings.ArmHalfLife : Settings.LegHalfLife);
 	}
 	if (Phase == ETraversalPhase::Arrive)
@@ -587,7 +605,8 @@ FTraversalPoseOutput FTraversalPoseState::Step(const FTraversalPoseInput& Input,
 
 	for (int32 Channel = 0; Channel < Count; ++Channel)
 	{
-		FTraversalPoseRules::SpringStep(Value[Channel], Speed[Channel], Targets.Goal[Channel], Targets.HalfLife[Channel], Dt);
+		FTraversalPoseRules::SpringStep(
+			Value[Channel], Speed[Channel], Targets.Goal[Channel], Targets.HalfLife[Channel], Dt);
 	}
 
 	const float FadeOut = FadeOutOverride >= 0.f ? FadeOutOverride : Settings.WeightOutSeconds;

@@ -150,28 +150,53 @@ public:
 
 	// --- Traversal body pose (HawkeyeCharacterTraversalPose.cpp; gameplay-semantics.md, "Traversal body pose") ---
 
-	/** The grapple trip's body pose over time. The bow-IK anim instance steps it every update; everything here is visual only. */
-	FTraversalPoseState& GetTraversalPoseState() { return TraversalPoseState; }
+	/** The grapple trip's body pose over time. The bow-IK anim instance steps it every update; everything here is
+	 * visual only. */
+	FTraversalPoseState& GetTraversalPoseState()
+	{
+		return TraversalPoseState;
+	}
 
-	const FHawkeyeTraversalPoseSettings& GetTraversalPoseSettings() const { return TraversalPoseSettings; }
+	const FHawkeyeTraversalPoseSettings& GetTraversalPoseSettings() const
+	{
+		return TraversalPoseSettings;
+	}
 
 	/** What the pose reads this frame, from the movement and the grapple, in world space. Never writes anything. */
 	FTraversalPoseInput BuildTraversalPoseInput(float DeltaSeconds) const;
 
 	/**
-	 * The point the body pose takes the rope to while she zips with no grapple anchor (a screenshot pass or a test that moves
-	 * her along a line by hand). With a real anchor its marker is the rope's end and this is ignored.
+	 * The point the body pose takes the rope to while she zips with no grapple anchor (a screenshot pass or a test that
+	 * moves her along a line by hand). With a real anchor its marker is the rope's end and this is ignored.
 	 */
-	void SetTraversalRopeTarget(const FVector& World) { TraversalRopeOverride = World; }
-	void ClearTraversalRopeTarget() { TraversalRopeOverride.Reset(); }
-	bool HasTraversalRopeTarget() const { return TraversalRopeOverride.IsSet(); }
-	FVector GetTraversalRopeTarget() const { return TraversalRopeOverride.Get(FVector::ZeroVector); }
+	void SetTraversalRopeTarget(const FVector& World)
+	{
+		TraversalRopeOverride = World;
+	}
+	void ClearTraversalRopeTarget()
+	{
+		TraversalRopeOverride.Reset();
+	}
+	bool HasTraversalRopeTarget() const
+	{
+		return TraversalRopeOverride.IsSet();
+	}
+	FVector GetTraversalRopeTarget() const
+	{
+		return TraversalRopeOverride.Get(FVector::ZeroVector);
+	}
 
 	/** The most downward speed (cm/s) since this fall began: what a landing's impact is measured by. */
-	float GetFallPeakSpeed() const { return FallPeakSpeed; }
+	float GetFallPeakSpeed() const
+	{
+		return FallPeakSpeed;
+	}
 
 	/** True while a landing clip plays in place of the scripted roll spin. */
-	bool IsRollClipPlaying() const { return bRollClipPlaying; }
+	bool IsRollClipPlaying() const
+	{
+		return bRollClipPlaying;
+	}
 
 	/** True once GiveKeycard(KeycardId) has been called for that id. Forwards to the inventory. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")
@@ -1203,9 +1228,9 @@ protected:
 	void ApplyLanding(float FallHeight);
 
 	/**
-	 * The look of a landing, chosen by impact speed (HawkeyeCharacterTraversalPose.cpp): the sample's landing clip for the
-	 * speed band and the ground speed when the anim set has one, the legs' absorb when it does not. The roll, stumble and
-	 * dip the fall height chose are not touched. Called by ApplyLanding after it has decided them.
+	 * The look of a landing, chosen by impact speed (HawkeyeCharacterTraversalPose.cpp): the sample's landing clip for
+	 * the speed band and the ground speed when the anim set has one, the legs' absorb when it does not. The roll,
+	 * stumble and dip the fall height chose are not touched. Called by ApplyLanding after it has decided them.
 	 */
 	void BeginLandingPose(float FallHeight);
 
@@ -2125,7 +2150,8 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hawkeye|Traversal Pose")
 	FHawkeyeTraversalPoseSettings TraversalPoseSettings;
 
-	/** Falls from below this are the sample's to land (a hop, a step); a release from a zip always gets its own landing. cm. */
+	/** Falls from below this are the sample's to land (a hop, a step); a release from a zip always gets its own
+	 * landing. cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hawkeye|Traversal Pose", meta = (ClampMin = "0.0"))
 	float LandingPoseMinHeight = 150.f;
 
@@ -2138,7 +2164,8 @@ protected:
 	/** The most downward speed this fall, cm/s; reset when a fall starts and when it lands. */
 	float FallPeakSpeed = 0.f;
 
-	/** A roll clip plays: the scripted spin and squash are left out, the capsule and travel are the roll's as before. */
+	/** A roll clip plays: the scripted spin and squash are left out, the capsule and travel are the roll's as before.
+	 */
 	bool bRollClipPlaying = false;
 
 	/** Cycles a landing role's variants (the foot she lands on). */

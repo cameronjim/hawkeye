@@ -11,8 +11,8 @@ class USkeleton;
 /**
  * One chain (or single bone) the body look simulates with the engine's AnimDynamics (no physics asset, no plugin): a
  * ponytail, a quiver. Everything is a data field so a costume's chains are a list in a script, not code. The simulation
- * runs in component space with only part of the actor's own motion passed in, clamped, so a character at 18 m/s does not
- * throw them about; a teleport resets them (the engine does that for every AnimDynamics node).
+ * runs in component space with only part of the actor's own motion passed in, clamped, so a character at 18 m/s does
+ * not throw them about; a teleport resets them (the engine does that for every AnimDynamics node).
  */
 USTRUCT(BlueprintType)
 struct HAWKEYE_API FHawkeyeDynamicsChain
@@ -49,7 +49,8 @@ struct HAWKEYE_API FHawkeyeDynamicsChain
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dynamics", meta = (ClampMin = "0.0"))
 	float VelocityDrag = 0.2f;
 
-	/** The most acceleration (cm/s^2, each axis) the actor's motion can pass to the bodies: 18 m/s and a 6000 cm/s^2 zip clamped to this. */
+	/** The most acceleration (cm/s^2, each axis) the actor's motion can pass to the bodies: 18 m/s and a 6000 cm/s^2
+	 * zip clamped to this. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dynamics", meta = (ClampMin = "0.0"))
 	float MaxAcceleration = 1200.f;
 
@@ -87,13 +88,13 @@ public:
 		const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter);
 
 	/**
-	 * BuildRetargetFromParent with an AnimDynamics node per chain in Chains after the retarget. A chain whose bones are not
-	 * on Skeleton is left out and logged (the look's skeleton may not have its simulation bones yet); with none left the
-	 * graph is the plain one. Returns the Blueprint dirty and unsaved, or null (reasons logged).
+	 * BuildRetargetFromParent with an AnimDynamics node per chain in Chains after the retarget. A chain whose bones are
+	 * not on Skeleton is left out and logged (the look's skeleton may not have its simulation bones yet); with none
+	 * left the graph is the plain one. Returns the Blueprint dirty and unsaved, or null (reasons logged).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
-	static UAnimBlueprint* BuildRetargetWithDynamics(const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter,
-		const TArray<FHawkeyeDynamicsChain>& Chains);
+	static UAnimBlueprint* BuildRetargetWithDynamics(const FString& PackageName, USkeleton* Skeleton,
+		UIKRetargeter* Retargeter, const TArray<FHawkeyeDynamicsChain>& Chains);
 
 	/** How many AnimDynamics nodes Blueprint's anim graph holds, for verify scripts. -1 without a graph. */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")

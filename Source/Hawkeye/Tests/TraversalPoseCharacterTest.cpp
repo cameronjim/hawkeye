@@ -11,9 +11,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The traversal body pose as the character feeds it (claude-docs/gameplay-semantics.md, "Traversal body pose"): what the
- * input reads from the zip, that the pose is only visual (the zip goes exactly where it did), and that the landing outcomes
- * the fall height chose are the ones they were.
+ * The traversal body pose as the character feeds it (claude-docs/gameplay-semantics.md, "Traversal body pose"): what
+ * the input reads from the zip, that the pose is only visual (the zip goes exactly where it did), and that the landing
+ * outcomes the fall height chose are the ones they were.
  */
 namespace HawkeyeTraversalPoseCharacterTest
 {
@@ -75,7 +75,8 @@ bool FHawkeyeTraversalPoseInput::RunTest(const FString& Parameters)
 	FTraversalPoseInput Line = Kate->BuildTraversalPoseInput(0.02f);
 	TestTrue(TEXT("on the line after the hop"), Line.bZipping && !Line.bHopping);
 	TestEqual(TEXT("no hop fraction on the line"), Line.HopFraction, 0.f);
-	TestTrue(TEXT("the line speed is at least the zip's slowest start"), Line.ZipLineSpeed >= Movement->ZipMinStartSpeed - 1.f);
+	TestTrue(TEXT("the line speed is at least the zip's slowest start"),
+		Line.ZipLineSpeed >= Movement->ZipMinStartSpeed - 1.f);
 	TestTrue(TEXT("and her velocity is the real one"), Line.Velocity.Equals(Kate->GetVelocity(), 0.01f));
 
 	// A chain from the air turns her onto the new line.
@@ -108,7 +109,8 @@ bool FHawkeyeTraversalPoseVisualOnly::RunTest(const FString& Parameters)
 	{
 		Plain->TestTickMovement(1.f / 60.f);
 		Posed->TestTickMovement(1.f / 60.f);
-		const FTraversalPoseOutput Pose = Posed->GetTraversalPoseState().Step(Posed->BuildTraversalPoseInput(1.f / 60.f), Settings);
+		const FTraversalPoseOutput Pose =
+			Posed->GetTraversalPoseState().Step(Posed->BuildTraversalPoseInput(1.f / 60.f), Settings);
 		MostTilt = FMath::Max(MostTilt, static_cast<float>(Pose.Tilt.Size()));
 	}
 	TestTrue(TEXT("the pose did something (the body tipped)"), MostTilt > 5.f);
@@ -149,7 +151,8 @@ bool FHawkeyeTraversalPoseLandings::RunTest(const FString& Parameters)
 	TestTrue(TEXT("450 cm moving is still a roll"), Kate->IsRolling());
 	TestEqual(TEXT("still 0.5 s long"), Kate->TestRollSeconds(), 0.5f);
 	TestEqual(TEXT("still half-height 50"), Kate->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(), 50.f);
-	TestTrue(TEXT("the pose has a landing under way (no clip in a test: the legs absorb it)"), Kate->GetTraversalPoseState().IsLanding());
+	TestTrue(TEXT("the pose has a landing under way (no clip in a test: the legs absorb it)"),
+		Kate->GetTraversalPoseState().IsLanding());
 	TestFalse(TEXT("no roll clip plays, so the scripted spin is the roll's body"), Kate->IsRollClipPlaying());
 	Kate->TestTickLanding(0.6f);
 	TestFalse(TEXT("and the roll still ends on time"), Kate->IsRecoveringFromLanding());
@@ -183,12 +186,16 @@ bool FHawkeyeTraversalPoseRoles::RunTest(const FString& Parameters)
 
 	// Every landing role has a slot on the set: assign a montage to each and read it back.
 	UCombatAnimSet* Set = NewObject<UCombatAnimSet>();
-	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::LandStandLight); Value <= static_cast<uint8>(ECombatAnimRole::FallLoop); ++Value)
+	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::LandStandLight);
+		 Value <= static_cast<uint8>(ECombatAnimRole::FallLoop); ++Value)
 	{
-		TestFalse(*FString::Printf(TEXT("role %d starts empty"), Value), Set->HasMontage(static_cast<ECombatAnimRole>(Value)));
+		TestFalse(*FString::Printf(TEXT("role %d starts empty"), Value),
+			Set->HasMontage(static_cast<ECombatAnimRole>(Value)));
 	}
-	Set->LandRunHeavy = TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(TEXT("/Game/Test/AM_LandRunHeavy_Lfoot.AM_LandRunHeavy_Lfoot")));
-	Set->FallLoop = TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(TEXT("/Game/Test/AM_FallLoop_Neutral.AM_FallLoop_Neutral")));
+	Set->LandRunHeavy =
+		TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(TEXT("/Game/Test/AM_LandRunHeavy_Lfoot.AM_LandRunHeavy_Lfoot")));
+	Set->FallLoop =
+		TSoftObjectPtr<UAnimMontage>(FSoftObjectPath(TEXT("/Game/Test/AM_FallLoop_Neutral.AM_FallLoop_Neutral")));
 	TestTrue(TEXT("the heavy run slot is the heavy run role's"), Set->HasMontage(ECombatAnimRole::LandRunHeavy));
 	TestTrue(TEXT("the fall loop slot is the fall loop role's"), Set->HasMontage(ECombatAnimRole::FallLoop));
 	TestFalse(TEXT("and the light run is still empty"), Set->HasMontage(ECombatAnimRole::LandRunLight));
@@ -201,8 +208,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeTraversalPoseApply, "Hawkeye.Traversal.
 
 bool FHawkeyeTraversalPoseApply::RunTest(const FString& Parameters)
 {
-	// The anim instance turns an actor-frame pose into the graph's variables: an inactive pose clears them, an active one
-	// puts the alpha on and the turns in component space. No mesh in a test, so only the clearing and the alpha are read.
+	// The anim instance turns an actor-frame pose into the graph's variables: an inactive pose clears them, an active
+	// one puts the alpha on and the turns in component space. No mesh in a test, so only the clearing and the alpha are
+	// read.
 	USkeletalMeshComponent* Mesh = NewObject<USkeletalMeshComponent>(GetTransientPackage());
 	UHawkeyeBowIKAnimInstance* Instance = NewObject<UHawkeyeBowIKAnimInstance>(Mesh);
 	FTraversalPoseOutput Pose;
@@ -212,8 +220,9 @@ bool FHawkeyeTraversalPoseApply::RunTest(const FString& Parameters)
 	TestEqual(TEXT("with no owner nothing is written"), Instance->TraversalAlpha, 0.f);
 	Instance->ApplyTraversalPose(FTraversalPoseOutput());
 	TestEqual(TEXT("an inactive pose is alpha 0"), Instance->TraversalAlpha, 0.f);
-	TestTrue(TEXT("and every turn is the identity"), Instance->TraversalPelvisRotation.IsNearlyZero()
-		&& Instance->TraversalThighLRotation.IsNearlyZero() && Instance->TraversalNeckRotation.IsNearlyZero());
+	TestTrue(TEXT("and every turn is the identity"),
+		Instance->TraversalPelvisRotation.IsNearlyZero() && Instance->TraversalThighLRotation.IsNearlyZero() &&
+			Instance->TraversalNeckRotation.IsNearlyZero());
 	TestTrue(TEXT("hawkeye.ZipPose is on by default"), UHawkeyeBowIKAnimInstance::IsTraversalPoseEnabled());
 	return true;
 }

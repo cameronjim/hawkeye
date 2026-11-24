@@ -550,8 +550,9 @@ FVector UGrappleComponent::GetZipLineStart() const
 		return GetOwner() ? GetOwner()->GetActorLocation() : FVector::ZeroVector;
 	}
 	const USkeletalMeshComponent* Mesh = Character->GetMesh();
-	// The hand people see: the look's, when she has one. The driver's hand is the one the traversal pose puts on the rope and
-	// the look's is retargeted onto it, but a longer arm can fall a few centimetres short, and the line must leave what is drawn.
+	// The hand people see: the look's, when she has one. The driver's hand is the one the traversal pose puts on the
+	// rope and the look's is retargeted onto it, but a longer arm can fall a few centimetres short, and the line must
+	// leave what is drawn.
 	if (const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Character))
 	{
 		const USkeletalMeshComponent* Body = Hawkeye->GetBodyMesh();

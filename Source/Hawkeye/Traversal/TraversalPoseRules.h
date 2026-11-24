@@ -74,23 +74,28 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	float ReferenceSpeed = 1800.f;
 
 	/** atan2(horizontal acceleration, gravity) is scaled by this (0.3 to 0.7 reads as weight; Insomniac-style). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float AccelLeanStrength = 0.5f;
 
-	/** Accelerations above this are clamped before they lean the body (the hop's end hands over 600 cm/s in a frame), cm/s^2. */
+	/** Accelerations above this are clamped before they lean the body (the hop's end hands over 600 cm/s in a frame),
+	 * cm/s^2. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0"))
 	float MaxAcceleration = 8000.f;
 
 	/** How far the body's axis tips toward the rope: this fraction of the rope's angle from vertical. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float RopeTiltWeight = 0.5f;
 
 	/** The most the whole body tips (rope tilt plus acceleration lean), degrees. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "80.0"))
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "80.0"))
 	float MaxTiltDegrees = 55.f;
 
 	/** Share of the tip taken by the pelvis; the rest is spread over the spine by SpineWeights. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Lean", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float PelvisTiltShare = 0.6f;
 
 	/** spine_01, spine_02, spine_03 shares of the rest of the tip; normalised to sum to 1, the lower spine heavier. */
@@ -140,7 +145,8 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Legs")
 	float MaxLegTotal = 75.f;
 
-	/** Knees, bent slightly even at rest, and how much more they bend as the legs trail (degrees; per degree of trail). */
+	/** Knees, bent slightly even at rest, and how much more they bend as the legs trail (degrees; per degree of trail).
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Legs")
 	float KneeBendBase = 18.f;
 
@@ -165,7 +171,8 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arms")
 	FVector ShoulderFromPelvis = FVector(0.f, -18.f, 50.f);
 
-	/** How far from the shoulder the rope hand reaches along the rope, cm (a little under the arm's length, so the elbow stays soft). */
+	/** How far from the shoulder the rope hand reaches along the rope, cm (a little under the arm's length, so the
+	 * elbow stays soft). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arms", meta = (ClampMin = "0.0"))
 	float ArmReach = 38.f;
 
@@ -178,11 +185,13 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	FVector HandsOut = FVector(8.f, 55.f, 58.f);
 
 	/** The head turns toward the anchor by this much of the way, and never past these. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HeadLookWeight = 0.5f;
 
 	/** How much of the body's tip the neck takes back so the head stays level. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float HeadStabilise = 0.8f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head")
@@ -191,7 +200,8 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head")
 	float MaxHeadYaw = 40.f;
 
-	/** The crouch-load before the jerk: pelvis down, hips and knees bent, the chest over, all peaking 60% through the hop. */
+	/** The crouch-load before the jerk: pelvis down, hips and knees bent, the chest over, all peaking 60% through the
+	 * hop. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
 	float LaunchSinkCm = 16.f;
 
@@ -300,7 +310,7 @@ struct HAWKEYE_API FTraversalPoseOutput
 	FVector2D Tilt = FVector2D::ZeroVector;
 	FQuat Pelvis = FQuat::Identity;
 	FVector PelvisOffset = FVector::ZeroVector;
-	FQuat Spine[3] = { FQuat::Identity, FQuat::Identity, FQuat::Identity };
+	FQuat Spine[3] = {FQuat::Identity, FQuat::Identity, FQuat::Identity};
 	FQuat Neck = FQuat::Identity;
 	FQuat ThighL = FQuat::Identity;
 	FQuat ThighR = FQuat::Identity;
@@ -317,10 +327,14 @@ struct HAWKEYE_API FTraversalPoseOutput
 	/** The landing's clip when one plays, the pose is then only the legs' absorb. */
 	EArrivalKind Arrival = EArrivalKind::None;
 
-	bool IsActive() const { return Weight > 0.001f; }
+	bool IsActive() const
+	{
+		return Weight > 0.001f;
+	}
 };
 
-/** The traversal body pose's pure maths (claude-docs/gameplay-semantics.md, "Traversal body pose"; tested in Hawkeye.Traversal.Pose.*). */
+/** The traversal body pose's pure maths (claude-docs/gameplay-semantics.md, "Traversal body pose"; tested in
+ * Hawkeye.Traversal.Pose.*). */
 struct HAWKEYE_API FTraversalPoseRules
 {
 	/** ln 2 times 4: the critically damped spring's damping for a half-life of 1 s. */
@@ -328,8 +342,8 @@ struct HAWKEYE_API FTraversalPoseRules
 
 	/**
 	 * One exact step of a critically damped spring toward Goal with the given half-life (Holden, "Spring-It-On"):
-	 * y = 2 ln 2 / h, x' = e^(-y dt) (j0 + j1 dt) + goal with j0 = x - goal and j1 = v + y j0. Does not overshoot with no
-	 * velocity, and gives the same answer for one big step as many small ones.
+	 * y = 2 ln 2 / h, x' = e^(-y dt) (j0 + j1 dt) + goal with j0 = x - goal and j1 = v + y j0. Does not overshoot with
+	 * no velocity, and gives the same answer for one big step as many small ones.
 	 */
 	static void SpringStep(float& Value, float& Velocity, float Goal, float HalfLife, float DeltaSeconds);
 
@@ -339,15 +353,16 @@ struct HAWKEYE_API FTraversalPoseRules
 	/** The acceleration lean as (forward, right) degrees, from an acceleration in the actor frame. */
 	static FVector2D AccelerationTilt(const FVector& LocalAcceleration, float Gravity, float Scale);
 
-	/** The tip toward the rope as (forward, right) degrees: Weight times the rope's angle from vertical, toward its horizontal side. */
+	/** The tip toward the rope as (forward, right) degrees: Weight times the rope's angle from vertical, toward its
+	 * horizontal side. */
 	static FVector2D RopeTilt(const FVector& LocalRopeDirection, float Weight);
 
 	/** Tilt scaled down (never turned) so its length is at most MaxDegrees. */
 	static FVector2D ClampTilt(const FVector2D& Tilt, float MaxDegrees);
 
 	/**
-	 * The turn that tips the actor's up toward (Forward, Right) by their length in degrees: about the axis up x direction.
-	 * Positive Forward leans the head toward +X.
+	 * The turn that tips the actor's up toward (Forward, Right) by their length in degrees: about the axis up x
+	 * direction. Positive Forward leans the head toward +X.
 	 */
 	static FQuat QuatFromTilt(float ForwardDegrees, float RightDegrees);
 
@@ -361,7 +376,8 @@ struct HAWKEYE_API FTraversalPoseRules
 	 */
 	static FQuat ActorToComponent(const FQuat& Local, const FQuat& ActorRotation, const FQuat& ComponentRotation);
 
-	/** Seconds-long envelope (t / a) e^(1 - t / a): rises to 1 at t = a, then falls away; 0 before 0. For a dip that recovers. */
+	/** Seconds-long envelope (t / a) e^(1 - t / a): rises to 1 at t = a, then falls away; 0 before 0. For a dip that
+	 * recovers. */
 	static float DipEnvelope(float Seconds, float Attack);
 
 	/** exp(-((t - c) / w)^2): a short pulse at Centre (the braking steps). */
@@ -378,8 +394,8 @@ struct HAWKEYE_API FTraversalPoseRules
 	 * otherwise impact speed (cm/s, down) under LightImpactSpeed is None, under HeavyImpactSpeed Light, else Heavy,
 	 * and GroundSpeed picks stand, walk, run or sprint.
 	 */
-	static ELandingClip ClassifyLanding(float ImpactSpeed, float GroundSpeed, bool bRoll, bool bStumble,
-		const FHawkeyeTraversalPoseSettings& Settings);
+	static ELandingClip ClassifyLanding(
+		float ImpactSpeed, float GroundSpeed, bool bRoll, bool bStumble, const FHawkeyeTraversalPoseSettings& Settings);
 
 	/** Impact speed of a free fall of Height cm under Gravity, cm/s: what a fall height means as speed. */
 	static float ImpactSpeedFromHeight(float Height, float Gravity);
@@ -402,13 +418,23 @@ struct HAWKEYE_API FTraversalPoseState
 	 * A landing from a fall: the legs absorb it as ImpactSpeed asks, unless a clip plays (bClipPlays), when the pose
 	 * only follows the clip with nothing added. Call once, as she touches down.
 	 */
-	void BeginLanding(ELandingClip Clip, float ImpactSpeed, bool bClipPlays, const FHawkeyeTraversalPoseSettings& Settings);
+	void BeginLanding(
+		ELandingClip Clip, float ImpactSpeed, bool bClipPlays, const FHawkeyeTraversalPoseSettings& Settings);
 
 	void Reset();
 
-	ETraversalPhase GetPhase() const { return Phase; }
-	EArrivalKind GetArrival() const { return Arrival; }
-	bool IsLanding() const { return LandingSeconds >= 0.f; }
+	ETraversalPhase GetPhase() const
+	{
+		return Phase;
+	}
+	EArrivalKind GetArrival() const
+	{
+		return Arrival;
+	}
+	bool IsLanding() const
+	{
+		return LandingSeconds >= 0.f;
+	}
 
 	/** The channels the springs smooth. */
 	enum EChannel : int32
@@ -427,7 +453,10 @@ struct HAWKEYE_API FTraversalPoseState
 		Count
 	};
 
-	float GetChannel(EChannel Channel) const { return Value[Channel]; }
+	float GetChannel(EChannel Channel) const
+	{
+		return Value[Channel];
+	}
 
 private:
 	struct FTargets
@@ -438,7 +467,8 @@ private:
 		float WeightTarget = 0.f;
 	};
 
-	void UpdatePhase(const FTraversalPoseInput& Input, float DeltaSeconds, const FHawkeyeTraversalPoseSettings& Settings);
+	void UpdatePhase(
+		const FTraversalPoseInput& Input, float DeltaSeconds, const FHawkeyeTraversalPoseSettings& Settings);
 	void AimTargets(const FTraversalPoseInput& Input, const FHawkeyeTraversalPoseSettings& Settings,
 		const FVector& LocalAcceleration, const FVector& LocalRope, FTargets& Out) const;
 	void ArrivalTargets(const FHawkeyeTraversalPoseSettings& Settings, FTargets& Out) const;

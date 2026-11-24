@@ -37,9 +37,9 @@ class UBowComponent;
  *
  * The same graph carries the grapple trip's body pose (gameplay-semantics.md, "Traversal body pose"): on a character
  * that has one (AHawkeyeCharacter), every update steps its FTraversalPoseState from its movement and writes the pelvis,
- * spine, neck, hip and knee turns the graph adds in component space, plus the two hands (through the same left and right
- * arm IK as the strike and the hang, and only while the bow is down). Everyone else leaves TraversalAlpha at 0 and the
- * nodes are skipped. hawkeye.ZipPose 0 turns the whole layer off.
+ * spine, neck, hip and knee turns the graph adds in component space, plus the two hands (through the same left and
+ * right arm IK as the strike and the hang, and only while the bow is down). Everyone else leaves TraversalAlpha at 0
+ * and the nodes are skipped. hawkeye.ZipPose 0 turns the whole layer off.
  */
 UCLASS(Transient, Blueprintable)
 class HAWKEYE_API UHawkeyeBowIKAnimInstance : public UAnimInstance
@@ -125,7 +125,8 @@ public:
 	/** This frame's hit lean: WorldDirection (flat, the way to lean) at Alpha (0..1). */
 	void SetHitLean(const FVector& WorldDirection, float Alpha);
 
-	/** Writes the graph's inputs from the bow targets, the strike override, the traversal pose's hands and the hit lean. */
+	/** Writes the graph's inputs from the bow targets, the strike override, the traversal pose's hands and the hit
+	 * lean. */
 	void ComposeOutputs();
 
 	/**
@@ -142,9 +143,13 @@ public:
 	void ApplyTraversalPose(const FTraversalPoseOutput& Pose);
 
 	/** The last traversal pose applied, in the actor's frame. */
-	const FTraversalPoseOutput& GetTraversalPose() const { return TraversalPose; }
+	const FTraversalPoseOutput& GetTraversalPose() const
+	{
+		return TraversalPose;
+	}
 
-	/** hawkeye.ZipPose: 1 (default) draws the traversal pose, 0 leaves the sample's pose alone, for before and after shots. */
+	/** hawkeye.ZipPose: 1 (default) draws the traversal pose, 0 leaves the sample's pose alone, for before and after
+	 * shots. */
 	static bool IsTraversalPoseEnabled();
 
 	/** hand_l's target, component space. */

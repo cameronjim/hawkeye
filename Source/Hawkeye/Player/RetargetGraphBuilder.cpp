@@ -110,7 +110,8 @@ namespace HawkeyeRetargetGraph
 	}
 
 	/** The way a bone points, in its own frame: the dominant axis (with its sign) of its first child's rest offset. */
-	static FVector AlongBoneAxis(const FReferenceSkeleton& Reference, FName Bone, AnimPhysTwistAxis& OutAxis, const FVector& Fallback)
+	static FVector AlongBoneAxis(
+		const FReferenceSkeleton& Reference, FName Bone, AnimPhysTwistAxis& OutAxis, const FVector& Fallback)
 	{
 		FVector Along = Fallback;
 		const int32 Index = Reference.FindBoneIndex(Bone);
@@ -135,7 +136,8 @@ namespace HawkeyeRetargetGraph
 				break;
 			}
 		}
-		OutAxis = FMath::Abs(Along.X) > 0.5 ? AnimPhysTwistAxis::AxisX
+		OutAxis = FMath::Abs(Along.X) > 0.5
+			? AnimPhysTwistAxis::AxisX
 			: (FMath::Abs(Along.Y) > 0.5 ? AnimPhysTwistAxis::AxisY : AnimPhysTwistAxis::AxisZ);
 		return Along;
 	}
@@ -146,8 +148,10 @@ namespace HawkeyeRetargetGraph
 		return Bone.IsNone() || Skeleton.GetReferenceSkeleton().FindBoneIndex(Bone) != INDEX_NONE;
 	}
 
-	/** One AnimDynamics node for Chain, its bodies set up from the skeleton: a cone round each bone's own axis and a spring back. */
-	static UAnimGraphNode_AnimDynamics* AddDynamicsNode(UEdGraph& Graph, const FHawkeyeDynamicsChain& Chain, const USkeleton& Skeleton, int32 X)
+	/** One AnimDynamics node for Chain, its bodies set up from the skeleton: a cone round each bone's own axis and a
+	 * spring back. */
+	static UAnimGraphNode_AnimDynamics* AddDynamicsNode(
+		UEdGraph& Graph, const FHawkeyeDynamicsChain& Chain, const USkeleton& Skeleton, int32 X)
 	{
 		FGraphNodeCreator<UAnimGraphNode_AnimDynamics> Creator(Graph);
 		UAnimGraphNode_AnimDynamics* Node = Creator.CreateNode(/*bSelectNewNode=*/false);
@@ -297,8 +301,8 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics(const FS
 		}
 		else
 		{
-			UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent(%s): no dynamics for %s..%s: %s is missing a bone."), *PackageName,
-				*Chain.BoundBone.ToString(), *Chain.ChainEnd.ToString(), *GetNameSafe(Skeleton));
+			UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent(%s): no dynamics for %s..%s: %s is missing a bone."),
+				*PackageName, *Chain.BoundBone.ToString(), *Chain.ChainEnd.ToString(), *GetNameSafe(Skeleton));
 		}
 	}
 	UEdGraphNode* Last = Retarget;
@@ -354,8 +358,9 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics(const FS
 		return nullptr;
 	}
 	Blueprint->MarkPackageDirty();
-	UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent: %s built, %s from the parent mesh onto %s, %d dynamics chain(s)."),
-		*PackageName, *GetNameSafe(Retargeter), *GetNameSafe(Skeleton), Usable.Num());
+	UE_LOG(LogHawkeye, Log,
+		TEXT("BuildRetargetFromParent: %s built, %s from the parent mesh onto %s, %d dynamics chain(s)."), *PackageName,
+		*GetNameSafe(Retargeter), *GetNameSafe(Skeleton), Usable.Num());
 	return Blueprint;
 #else
 	UE_LOG(LogHawkeye, Error, TEXT("BuildRetargetFromParent(%s): editor builds only."), *PackageName);

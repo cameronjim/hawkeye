@@ -41,16 +41,16 @@
  *   UnrealEditor-Cmd.exe Hawkeye.uproject -game -windowed -ResX=1280 -ResY=720 -unattended -nosplash -log
  *       -ExecCmds="Automation RunTests Hawkeye.Screenshot.Traversal; Quit"
  *
- * On the district street by the PlayerStart (level ground, AI off) Kate is moved along a line by the zip movement itself
- * (the line cleared by a capsule sweep, found by turning the heading away from walls), or dropped from a height. Each
- * scenario runs twice, hawkeye.ZipPose 0 and 1, and the world's time is held at fixed times for a shot from each view; the
- * frames are laid side by side into Saved/Screenshots/Traversal/<scenario>_<side|three_quarter>_<off|on>.png, the single
- * frames in Saved/Screenshots/Traversal/Frames/. A yellow line is drawn from her rope hand to the anchor.
+ * On the district street by the PlayerStart (level ground, AI off) Kate is moved along a line by the zip movement
+ * itself (the line cleared by a capsule sweep, found by turning the heading away from walls), or dropped from a height.
+ * Each scenario runs twice, hawkeye.ZipPose 0 and 1, and the world's time is held at fixed times for a shot from each
+ * view; the frames are laid side by side into Saved/Screenshots/Traversal/<scenario>_<side|three_quarter>_<off|on>.png,
+ * the single frames in Saved/Screenshots/Traversal/Frames/. A yellow line is drawn from her rope hand to the anchor.
  *
- * Scenarios: launch (the hop), pull (the line), redirect (a chain's turn), release (let go into the fall and the landing
- * after), arrive_fast, arrive_medium and arrive_slow (the three arrival classes), land_light, land_heavy and land_roll.
- * With the pose on it also checks, in the log and as errors: the phase the pose is in at each key moment, the body tipped
- * mid-pull, and that her drawn hand is on the rope hand's target (within 45 cm; a warning past 25).
+ * Scenarios: launch (the hop), pull (the line), redirect (a chain's turn), release (let go into the fall and the
+ * landing after), arrive_fast, arrive_medium and arrive_slow (the three arrival classes), land_light, land_heavy and
+ * land_roll. With the pose on it also checks, in the log and as errors: the phase the pose is in at each key moment,
+ * the body tipped mid-pull, and that her drawn hand is on the rope hand's target (within 45 cm; a warning past 25).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotTraversal, "Hawkeye.Screenshot.Traversal",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
@@ -97,7 +97,8 @@ namespace HawkeyeTraversalShots
 		TFunction<void(FStage&, UWorld&)> Start;
 		/** Fires once when the world has run this long since Start. */
 		TArray<TPair<double, TFunction<void(FStage&, UWorld&)>>> Events;
-		/** The reference moment is this long after Start (>= 0), or, when negative, the moment the zip ends / she touches down. */
+		/** The reference moment is this long after Start (>= 0), or, when negative, the moment the zip ends / she
+		 * touches down. */
 		double Reference = 0.0;
 		bool bReferenceIsZipEnd = false;
 		bool bReferenceIsTouchdown = false;
@@ -128,7 +129,8 @@ namespace HawkeyeTraversalShots
 		}
 	}
 
-	/** The nearest ground to Start where everything within 150 cm is within 3 cm of its height (the clip strips' test). */
+	/** The nearest ground to Start where everything within 150 cm is within 3 cm of its height (the clip strips' test).
+	 */
 	static FVector FindLevelGround(UWorld* World, const AActor* Ignore, const FVector& Start, const FVector& Along)
 	{
 		const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
@@ -136,8 +138,8 @@ namespace HawkeyeTraversalShots
 		auto Probe = [World, &Query](const FVector& XY, float FromZ, FVector& Out)
 		{
 			FHitResult Hit;
-			if (!World->LineTraceSingleByChannel(Hit, FVector(XY.X, XY.Y, FromZ + 200.f), FVector(XY.X, XY.Y, FromZ - 400.f),
-					ECC_Visibility, Query))
+			if (!World->LineTraceSingleByChannel(
+					Hit, FVector(XY.X, XY.Y, FromZ + 200.f), FVector(XY.X, XY.Y, FromZ - 400.f), ECC_Visibility, Query))
 			{
 				return false;
 			}
@@ -146,7 +148,7 @@ namespace HawkeyeTraversalShots
 		};
 		for (int32 Ring = 0; Ring <= 16; ++Ring)
 		{
-			for (const FVector& Direction : { -Side, Side, Along, -Along })
+			for (const FVector& Direction : {-Side, Side, Along, -Along})
 			{
 				FVector Centre;
 				if (!Probe(Start + Direction * (Ring * 50.f), Start.Z, Centre))
@@ -157,7 +159,7 @@ namespace HawkeyeTraversalShots
 				for (int32 Spoke = 0; Spoke < 12 && bLevel; ++Spoke)
 				{
 					const FVector Out = FRotator(0.f, Spoke * 30.f, 0.f).Vector();
-					for (const float Reach : { 40.f, 90.f, 150.f })
+					for (const float Reach : {40.f, 90.f, 150.f})
 					{
 						FVector At;
 						if (!Probe(Centre + Out * Reach, Centre.Z, At) || FMath::Abs(At.Z - Centre.Z) > 3.f)
@@ -184,14 +186,16 @@ namespace HawkeyeTraversalShots
 	 * The far end of a line from From along Heading (flat), Length long and Rise up, that Kate's capsule can sweep; the
 	 * heading is turned in steps of 25 degrees to either side and the line shortened when a wall is in the way.
 	 */
-	static FVector FindClearEnd(UWorld& World, const ACharacter& Kate, const FVector& From, const FVector& Heading, float Length, float Rise)
+	static FVector FindClearEnd(
+		UWorld& World, const ACharacter& Kate, const FVector& From, const FVector& Heading, float Length, float Rise)
 	{
 		const UCapsuleComponent* Capsule = Kate.GetCapsuleComponent();
-		const FCollisionShape Shape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
+		const FCollisionShape Shape =
+			FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
 		FCollisionQueryParams Query(SCENE_QUERY_STAT(TraversalShotLine), false, &Kate);
 		FVector Best = From + Heading.GetSafeNormal2D() * Length * 0.5f + FVector(0.f, 0.f, Rise * 0.5f);
 		float BestScore = -1.f;
-		for (const float Scale : { 1.f, 0.8f, 0.6f })
+		for (const float Scale : {1.f, 0.8f, 0.6f})
 		{
 			for (int32 Turn = 0; Turn <= 8; ++Turn)
 			{
@@ -199,7 +203,8 @@ namespace HawkeyeTraversalShots
 				const FVector Direction = FRotator(0.f, Angle, 0.f).RotateVector(Heading.GetSafeNormal2D());
 				const FVector End = From + Direction * Length * Scale + FVector(0.f, 0.f, Rise * Scale);
 				FHitResult Hit;
-				const bool bBlocked = World.SweepSingleByChannel(Hit, From, End, FQuat::Identity, ECC_Pawn, Shape, Query);
+				const bool bBlocked =
+					World.SweepSingleByChannel(Hit, From, End, FQuat::Identity, ECC_Pawn, Shape, Query);
 				if (!bBlocked)
 				{
 					return End;
@@ -230,7 +235,8 @@ namespace HawkeyeTraversalShots
 		}
 		Movement->ZipSpeed = Stage.DefaultZipSpeed;
 		Kate->ClearTraversalRopeTarget();
-		Kate->TeleportTo(Stage.Feet + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
+		Kate->TeleportTo(
+			Stage.Feet + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
 			Stage.Along.Rotation(), false, true);
 		Kate->SetActorRotation(Stage.Along.Rotation());
 		Movement->StopMovementImmediately();
@@ -264,7 +270,8 @@ namespace HawkeyeTraversalShots
 	static TArray<FScenario> MakeScenarios()
 	{
 		TArray<FScenario> Out;
-		const auto GroundLaunch = [](FStage& Stage, UWorld& World, float Length, float Rise, float YawDegrees) -> FVector
+		const auto GroundLaunch = [](FStage& Stage, UWorld& World, float Length, float Rise,
+									  float YawDegrees) -> FVector
 		{
 			AHawkeyeCharacter* Kate = Stage.Kate.Get();
 			StandKate(Stage, World);
@@ -297,17 +304,18 @@ namespace HawkeyeTraversalShots
 			S.Reference = 0.55;
 			S.Start = [GroundLaunch](FStage& Stage, UWorld& World) { GroundLaunch(Stage, World, 2200.f, 700.f, 30.f); };
 			S.Events.Add({0.55, [](FStage& Stage, UWorld& World)
-			{
-				AHawkeyeCharacter* Kate = Stage.Kate.Get();
-				if (!Kate || !Kate->GetHawkeyeMovement()->IsZipping())
 				{
-					return;
-				}
-				const FVector Now = Kate->GetActorLocation();
-				const FVector Heading = FRotator(0.f, -70.f, 0.f).RotateVector(Kate->GetVelocity().GetSafeNormal2D());
-				const FVector End = FindClearEnd(World, *Kate, Now, Heading, 1500.f, 350.f);
-				ZipAlong(Stage, Now, End, /*bHop=*/false);
-			}});
+					AHawkeyeCharacter* Kate = Stage.Kate.Get();
+					if (!Kate || !Kate->GetHawkeyeMovement()->IsZipping())
+					{
+						return;
+					}
+					const FVector Now = Kate->GetActorLocation();
+					const FVector Heading =
+						FRotator(0.f, -70.f, 0.f).RotateVector(Kate->GetVelocity().GetSafeNormal2D());
+					const FVector End = FindClearEnd(World, *Kate, Now, Heading, 1500.f, 350.f);
+					ZipAlong(Stage, Now, End, /*bHop=*/false);
+				}});
 			Out.Add(S);
 		}
 		{
@@ -318,12 +326,12 @@ namespace HawkeyeTraversalShots
 			S.Reference = 0.6;
 			S.Start = [GroundLaunch](FStage& Stage, UWorld& World) { GroundLaunch(Stage, World, 2200.f, 900.f, 0.f); };
 			S.Events.Add({0.6, [](FStage& Stage, UWorld&)
-			{
-				if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
 				{
-					Kate->GetHawkeyeMovement()->ReleaseZip(/*bJump=*/true);
-				}
-			}});
+					if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+					{
+						Kate->GetHawkeyeMovement()->ReleaseZip(/*bJump=*/true);
+					}
+				}});
 			Out.Add(S);
 		}
 		const auto Arrival = [&Out](const TCHAR* Name, float ZipSpeed)
@@ -452,59 +460,59 @@ namespace HawkeyeTraversalShots
 			DrawRope(*World, *Kate);
 			switch (Phase)
 			{
-			case EPhase::Setup:
-				SetPoseEnabled(bPoseOn);
-				Scenario.Start(*Stage, *World);
-				StartedAt = World->GetTimeSeconds();
-				bTouchedDown = false;
-				Phase = EPhase::Running;
-				break;
-			case EPhase::Running:
-				return Running(*World, *Kate);
-			case EPhase::Freeze:
-				UGameplayStatics::SetGlobalTimeDilation(World, 0.0001f);
-				Frame(*Kate, /*bQuarter=*/false);
-				Since = FPlatformTime::Seconds();
-				Phase = EPhase::SettleSide;
-				break;
-			case EPhase::SettleSide:
-				if (FPlatformTime::Seconds() - Since >= HoldSettle)
-				{
-					Check(*Kate);
-					Shoot(TEXT("side"));
-					Phase = EPhase::WaitSide;
-				}
-				break;
-			case EPhase::WaitSide:
-				if (HawkeyeShots::GetOutstanding(Test) == 0)
-				{
-					Frame(*Kate, /*bQuarter=*/true);
+				case EPhase::Setup:
+					SetPoseEnabled(bPoseOn);
+					Scenario.Start(*Stage, *World);
+					StartedAt = World->GetTimeSeconds();
+					bTouchedDown = false;
+					Phase = EPhase::Running;
+					break;
+				case EPhase::Running:
+					return Running(*World, *Kate);
+				case EPhase::Freeze:
+					UGameplayStatics::SetGlobalTimeDilation(World, 0.0001f);
+					Frame(*Kate, /*bQuarter=*/false);
 					Since = FPlatformTime::Seconds();
-					Phase = EPhase::SettleQuarter;
-				}
-				break;
-			case EPhase::SettleQuarter:
-				if (FPlatformTime::Seconds() - Since >= ViewSettle)
-				{
-					Shoot(TEXT("three_quarter"));
-					Phase = EPhase::WaitQuarter;
-				}
-				break;
-			case EPhase::WaitQuarter:
-				if (HawkeyeShots::GetOutstanding(Test) == 0)
-				{
+					Phase = EPhase::SettleSide;
+					break;
+				case EPhase::SettleSide:
+					if (FPlatformTime::Seconds() - Since >= HoldSettle)
+					{
+						Check(*Kate);
+						Shoot(TEXT("side"));
+						Phase = EPhase::WaitSide;
+					}
+					break;
+				case EPhase::WaitSide:
+					if (HawkeyeShots::GetOutstanding(Test) == 0)
+					{
+						Frame(*Kate, /*bQuarter=*/true);
+						Since = FPlatformTime::Seconds();
+						Phase = EPhase::SettleQuarter;
+					}
+					break;
+				case EPhase::SettleQuarter:
+					if (FPlatformTime::Seconds() - Since >= ViewSettle)
+					{
+						Shoot(TEXT("three_quarter"));
+						Phase = EPhase::WaitQuarter;
+					}
+					break;
+				case EPhase::WaitQuarter:
+					if (HawkeyeShots::GetOutstanding(Test) == 0)
+					{
+						UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+						++Hold;
+						Phase = Hold >= Scenario.Times.Num() ? EPhase::Cleanup : EPhase::Running;
+					}
+					break;
+				case EPhase::Cleanup:
 					UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
-					++Hold;
-					Phase = Hold >= Scenario.Times.Num() ? EPhase::Cleanup : EPhase::Running;
-				}
-				break;
-			case EPhase::Cleanup:
-				UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
-				StandKate(*Stage, *World);
-				Phase = EPhase::Done;
-				return true;
-			default:
-				return true;
+					StandKate(*Stage, *World);
+					Phase = EPhase::Done;
+					return true;
+				default:
+					return true;
 			}
 			return false;
 		}
@@ -569,8 +577,8 @@ namespace HawkeyeTraversalShots
 		{
 			if (Elapsed > 12.0)
 			{
-				Test->AddError(FString::Printf(TEXT("%s (pose %s): the moment for frame %d never came in 12 s."), *Scenario.Name,
-					bPoseOn ? TEXT("on") : TEXT("off"), Hold));
+				Test->AddError(FString::Printf(TEXT("%s (pose %s): the moment for frame %d never came in 12 s."),
+					*Scenario.Name, bPoseOn ? TEXT("on") : TEXT("off"), Hold));
 				Phase = EPhase::Cleanup;
 			}
 			return false;
@@ -580,9 +588,11 @@ namespace HawkeyeTraversalShots
 		{
 			const UHawkeyeMovementComponent* Movement = Kate.GetHawkeyeMovement();
 			const USkeletalMeshComponent* Body = Kate.GetBodyMesh();
-			if (Movement && Movement->IsZipping() && Body && Body->DoesSocketExist(FName(TEXT("hand_l"))) && Kate.HasTraversalRopeTarget())
+			if (Movement && Movement->IsZipping() && Body && Body->DoesSocketExist(FName(TEXT("hand_l"))) &&
+				Kate.HasTraversalRopeTarget())
 			{
-				DrawDebugLine(&World, Body->GetSocketLocation(FName(TEXT("hand_l"))), Kate.GetTraversalRopeTarget(), FColor::Yellow, false, 0.f, 0, 2.f);
+				DrawDebugLine(&World, Body->GetSocketLocation(FName(TEXT("hand_l"))), Kate.GetTraversalRopeTarget(),
+					FColor::Yellow, false, 0.f, 0, 2.f);
 			}
 		}
 
@@ -617,7 +627,8 @@ namespace HawkeyeTraversalShots
 		{
 			const FString Mode = bPoseOn ? TEXT("on") : TEXT("off");
 			const FString Strip = FString::Printf(TEXT("%s_%s_%s"), *Scenario.Name, View, *Mode);
-			const FString File = OutDir() / TEXT("Frames") / FString::Printf(TEXT("%s_%d_%+.2fs.png"), *Strip, Hold, HeldAt);
+			const FString File =
+				OutDir() / TEXT("Frames") / FString::Printf(TEXT("%s_%d_%+.2fs.png"), *Strip, Hold, HeldAt);
 			Stage->Frames.FindOrAdd(Strip).Add(File);
 			HawkeyeShots::Request(Test, File, /*bShowUI=*/false);
 		}
@@ -631,43 +642,57 @@ namespace HawkeyeTraversalShots
 			{
 				if (Hold == 0)
 				{
-					Test->AddWarning(FString::Printf(TEXT("%s: no bow hands post-process running (the pose layer rides on it)."), *Scenario.Name));
+					Test->AddWarning(FString::Printf(
+						TEXT("%s: no bow hands post-process running (the pose layer rides on it)."), *Scenario.Name));
 				}
 				return;
 			}
 			const FTraversalPoseOutput& Pose = Hands->GetTraversalPose();
-			Test->AddInfo(FString::Printf(TEXT("%s pose %s frame %d (%+.2f s): phase %s weight %.2f tilt (%.1f, %.1f) arrival %s speed %.0f"),
-				*Scenario.Name, bPoseOn ? TEXT("on") : TEXT("off"), Hold, HeldAt, *UEnum::GetValueAsString(Pose.Phase), Pose.Weight,
-				Pose.Tilt.X, Pose.Tilt.Y, *UEnum::GetValueAsString(Pose.Arrival), Kate.GetVelocity().Size()));
+			Test->AddInfo(FString::Printf(
+				TEXT("%s pose %s frame %d (%+.2f s): phase %s weight %.2f tilt (%.1f, %.1f) arrival %s speed %.0f"),
+				*Scenario.Name, bPoseOn ? TEXT("on") : TEXT("off"), Hold, HeldAt, *UEnum::GetValueAsString(Pose.Phase),
+				Pose.Weight, Pose.Tilt.X, Pose.Tilt.Y, *UEnum::GetValueAsString(Pose.Arrival),
+				Kate.GetVelocity().Size()));
 			if (!bPoseOn)
 			{
-				Test->TestFalse(*FString::Printf(TEXT("%s: pose off draws nothing (frame %d)"), *Scenario.Name, Hold), Pose.IsActive());
+				Test->TestFalse(*FString::Printf(TEXT("%s: pose off draws nothing (frame %d)"), *Scenario.Name, Hold),
+					Pose.IsActive());
 				return;
 			}
 			if (Scenario.Name == TEXT("pull") && Hold >= 3)
 			{
-				Test->TestTrue(*FString::Printf(TEXT("pull frame %d: in the pull phase (is %s)"), Hold, *UEnum::GetValueAsString(Pose.Phase)),
+				Test->TestTrue(*FString::Printf(TEXT("pull frame %d: in the pull phase (is %s)"), Hold,
+								   *UEnum::GetValueAsString(Pose.Phase)),
 					Pose.Phase == ETraversalPhase::Pull);
-				Test->TestTrue(*FString::Printf(TEXT("pull frame %d: the body is tipped over 8 degrees (%.1f)"), Hold, Pose.Tilt.Size()), Pose.Tilt.Size() > 8.f);
+				Test->TestTrue(*FString::Printf(TEXT("pull frame %d: the body is tipped over 8 degrees (%.1f)"), Hold,
+								   Pose.Tilt.Size()),
+					Pose.Tilt.Size() > 8.f);
 				const USkeletalMeshComponent* Body = Kate.GetBodyMesh();
 				if (Body && Body->DoesSocketExist(FName(TEXT("hand_l"))))
 				{
 					const FVector Target = Kate.GetActorTransform().TransformPositionNoScale(Pose.LeftHand);
-					const float Off = static_cast<float>(FVector::Dist(Body->GetSocketLocation(FName(TEXT("hand_l"))), Target));
+					const float Off =
+						static_cast<float>(FVector::Dist(Body->GetSocketLocation(FName(TEXT("hand_l"))), Target));
 					if (Off > 25.f)
 					{
-						Test->AddWarning(FString::Printf(TEXT("pull frame %d: her drawn hand is %.0f cm off the rope hand's target."), Hold, Off));
+						Test->AddWarning(FString::Printf(
+							TEXT("pull frame %d: her drawn hand is %.0f cm off the rope hand's target."), Hold, Off));
 					}
-					Test->TestTrue(*FString::Printf(TEXT("pull frame %d: her drawn hand is on the rope hand's target (%.0f cm off)"), Hold, Off), Off < 45.f);
+					Test->TestTrue(*FString::Printf(
+									   TEXT("pull frame %d: her drawn hand is on the rope hand's target (%.0f cm off)"),
+									   Hold, Off),
+						Off < 45.f);
 				}
 			}
 			if (Scenario.Name == TEXT("arrive_fast") && Hold == 1)
 			{
-				Test->TestEqual(TEXT("arrive_fast: the line speed makes a slide out"), static_cast<int32>(Pose.Arrival), static_cast<int32>(EArrivalKind::SlideOut));
+				Test->TestEqual(TEXT("arrive_fast: the line speed makes a slide out"), static_cast<int32>(Pose.Arrival),
+					static_cast<int32>(EArrivalKind::SlideOut));
 			}
 			if (Scenario.Name == TEXT("arrive_slow") && Hold == 1)
 			{
-				Test->TestEqual(TEXT("arrive_slow: the line speed makes a step-down"), static_cast<int32>(Pose.Arrival), static_cast<int32>(EArrivalKind::StepDown));
+				Test->TestEqual(TEXT("arrive_slow: the line speed makes a step-down"), static_cast<int32>(Pose.Arrival),
+					static_cast<int32>(EArrivalKind::StepDown));
 			}
 		}
 
@@ -693,66 +718,72 @@ bool FHawkeyeScreenshotTraversal::RunTest(const FString& Parameters)
 	using namespace HawkeyeTraversalShots;
 	if (!FApp::CanEverRender())
 	{
-		AddWarning(TEXT("Skipped (no RHI): the traversal strips. Run it from the standalone game (-game, no -nullrhi)."));
+		AddWarning(
+			TEXT("Skipped (no RHI): the traversal strips. Run it from the standalone game (-game, no -nullrhi)."));
 		return true;
 	}
 	TSharedRef<FStage> Stage = MakeShared<FStage>();
 	AutomationOpenMap(TEXT("/Game/Maps/L_District_EastVillage"));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(5.f));
-	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Stage]()
-	{
-		UWorld* World = FindWorld();
-		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-		AHawkeyeCharacter* Kate = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
-		if (!Kate || !Kate->GetHawkeyeMovement())
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand(
+		[this, Stage]()
 		{
-			AddError(TEXT("Traversal strips: no player."));
+			UWorld* World = FindWorld();
+			APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+			AHawkeyeCharacter* Kate = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
+			if (!Kate || !Kate->GetHawkeyeMovement())
+			{
+				AddError(TEXT("Traversal strips: no player."));
+				return true;
+			}
+			for (TActorIterator<AThugCharacter> It(World); It; ++It)
+			{
+				if (AThugAIController* Brain = Cast<AThugAIController>(It->GetController()))
+				{
+					Brain->SetThinkingEnabled(false);
+				}
+			}
+			HawkeyeFreezePartner(World);
+			Stage->Kate = Kate;
+			Stage->DefaultZipSpeed = Kate->GetHawkeyeMovement()->ZipSpeed;
+			Stage->Feet =
+				Kate->GetActorLocation() - FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+			Stage->Along = FVector::ForwardVector;
+			if (TActorIterator<APlayerStart> Start(World); Start)
+			{
+				Stage->Along = Start->GetActorForwardVector().GetSafeNormal2D();
+				const FVector From = Start->GetActorLocation() + FVector(0.f, 0.f, 200.f);
+				FCollisionQueryParams Query(SCENE_QUERY_STAT(TraversalShotGround), false, Kate);
+				FHitResult Hit;
+				if (World->LineTraceSingleByChannel(Hit, From, From - FVector(0.f, 0.f, 3000.f), ECC_Visibility, Query))
+				{
+					Stage->Feet = FindLevelGround(World, Kate, Hit.ImpactPoint, Stage->Along);
+				}
+			}
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			if (ACameraActor* Camera =
+					World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params))
+			{
+				Camera->GetCameraComponent()->PostProcessSettings.bOverride_MotionBlurAmount = true;
+				Camera->GetCameraComponent()->PostProcessSettings.MotionBlurAmount = 0.f;
+				Stage->Camera = Camera;
+			}
+			APointLight* Light =
+				World->SpawnActor<APointLight>(APointLight::StaticClass(), FTransform::Identity, Params);
+			if (UPointLightComponent* Lamp = Light ? Light->PointLightComponent.Get() : nullptr)
+			{
+				Lamp->SetMobility(EComponentMobility::Movable);
+				Lamp->SetIntensityUnits(ELightUnits::Lumens);
+				Lamp->SetIntensity(700.f);
+				Lamp->SetAttenuationRadius(1400.f);
+				Lamp->SetCastShadows(false);
+			}
+			Stage->Light = Light;
+			AddInfo(FString::Printf(TEXT("Traversal strips on %s facing %s."), *Stage->Feet.ToCompactString(),
+				*Stage->Along.Rotation().ToCompactString()));
 			return true;
-		}
-		for (TActorIterator<AThugCharacter> It(World); It; ++It)
-		{
-			if (AThugAIController* Brain = Cast<AThugAIController>(It->GetController()))
-			{
-				Brain->SetThinkingEnabled(false);
-			}
-		}
-		HawkeyeFreezePartner(World);
-		Stage->Kate = Kate;
-		Stage->DefaultZipSpeed = Kate->GetHawkeyeMovement()->ZipSpeed;
-		Stage->Feet = Kate->GetActorLocation() - FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-		Stage->Along = FVector::ForwardVector;
-		if (TActorIterator<APlayerStart> Start(World); Start)
-		{
-			Stage->Along = Start->GetActorForwardVector().GetSafeNormal2D();
-			const FVector From = Start->GetActorLocation() + FVector(0.f, 0.f, 200.f);
-			FCollisionQueryParams Query(SCENE_QUERY_STAT(TraversalShotGround), false, Kate);
-			FHitResult Hit;
-			if (World->LineTraceSingleByChannel(Hit, From, From - FVector(0.f, 0.f, 3000.f), ECC_Visibility, Query))
-			{
-				Stage->Feet = FindLevelGround(World, Kate, Hit.ImpactPoint, Stage->Along);
-			}
-		}
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		if (ACameraActor* Camera = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params))
-		{
-			Camera->GetCameraComponent()->PostProcessSettings.bOverride_MotionBlurAmount = true;
-			Camera->GetCameraComponent()->PostProcessSettings.MotionBlurAmount = 0.f;
-			Stage->Camera = Camera;
-		}
-		APointLight* Light = World->SpawnActor<APointLight>(APointLight::StaticClass(), FTransform::Identity, Params);
-		if (UPointLightComponent* Lamp = Light ? Light->PointLightComponent.Get() : nullptr)
-		{
-			Lamp->SetMobility(EComponentMobility::Movable);
-			Lamp->SetIntensityUnits(ELightUnits::Lumens);
-			Lamp->SetIntensity(700.f);
-			Lamp->SetAttenuationRadius(1400.f);
-			Lamp->SetCastShadows(false);
-		}
-		Stage->Light = Light;
-		AddInfo(FString::Printf(TEXT("Traversal strips on %s facing %s."), *Stage->Feet.ToCompactString(), *Stage->Along.Rotation().ToCompactString()));
-		return true;
-	}));
+		}));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
 
 	const TArray<FScenario> Scenarios = MakeScenarios();
@@ -766,37 +797,40 @@ bool FHawkeyeScreenshotTraversal::RunTest(const FString& Parameters)
 				{
 					Director->ReportTimeout();
 					return true;
-				}, 90.f));
+				},
+				90.f));
 			ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.5f));
 		}
 	}
-	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
-	{
-		SetPoseEnabled(true);
-		if (UWorld* World = FindWorld())
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand(
+		[]()
 		{
-			UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
-		}
-		return true;
-	}));
+			SetPoseEnabled(true);
+			if (UWorld* World = FindWorld())
+			{
+				UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+			}
+			return true;
+		}));
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(this, 120.f));
-	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Stage]()
-	{
-		for (const TPair<FString, TArray<FString>>& Strip : Stage->Frames)
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand(
+		[this, Stage]()
 		{
-			const FString Out = OutDir() / (Strip.Key + TEXT(".png"));
-			FString Why;
-			if (Stitch(Strip.Value, Out, Why))
+			for (const TPair<FString, TArray<FString>>& Strip : Stage->Frames)
 			{
-				AddInfo(FString::Printf(TEXT("Wrote %s (%d frames)."), *Out, Strip.Value.Num()));
+				const FString Out = OutDir() / (Strip.Key + TEXT(".png"));
+				FString Why;
+				if (Stitch(Strip.Value, Out, Why))
+				{
+					AddInfo(FString::Printf(TEXT("Wrote %s (%d frames)."), *Out, Strip.Value.Num()));
+				}
+				else
+				{
+					AddError(FString::Printf(TEXT("%s: %s"), *Out, *Why));
+				}
 			}
-			else
-			{
-				AddError(FString::Printf(TEXT("%s: %s"), *Out, *Why));
-			}
-		}
-		return true;
-	}));
+			return true;
+		}));
 	return true;
 }
 

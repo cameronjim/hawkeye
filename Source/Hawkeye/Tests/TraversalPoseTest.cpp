@@ -34,8 +34,8 @@ namespace HawkeyeTraversalPoseTest
 	}
 
 	/** Frames of free fall or standing after the zip, with the given state of the ground. */
-	static FTraversalPoseOutput RunAfter(FTraversalPoseState& State, const FHawkeyeTraversalPoseSettings& S, bool bFalling,
-		bool bGrounded, int32 Frames, const FVector& Velocity = FVector::ZeroVector)
+	static FTraversalPoseOutput RunAfter(FTraversalPoseState& State, const FHawkeyeTraversalPoseSettings& S,
+		bool bFalling, bool bGrounded, int32 Frames, const FVector& Velocity = FVector::ZeroVector)
 	{
 		FTraversalPoseOutput Out;
 		for (int32 Index = 0; Index < Frames; ++Index)
@@ -53,8 +53,8 @@ namespace HawkeyeTraversalPoseTest
 	/** The angle between two directions, degrees. */
 	static float AngleBetween(const FVector& A, const FVector& B)
 	{
-		return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(static_cast<float>(FVector::DotProduct(A.GetSafeNormal(), B.GetSafeNormal())),
-			-1.f, 1.f)));
+		return FMath::RadiansToDegrees(FMath::Acos(
+			FMath::Clamp(static_cast<float>(FVector::DotProduct(A.GetSafeNormal(), B.GetSafeNormal())), -1.f, 1.f)));
 	}
 }
 
@@ -101,7 +101,8 @@ bool FHawkeyeTraversalPoseSpring::RunTest(const FString& Parameters)
 		FTraversalPoseRules::SpringStep(KickX, KickV, 0.f, 0.1f, 1.f / 60.f);
 		Peak = FMath::Max(Peak, KickX);
 	}
-	TestTrue(TEXT("a velocity kick of 500 deg/s swings the tilt out to about 13 degrees (v / (y e))"), Peak > 11.f && Peak < 15.f);
+	TestTrue(TEXT("a velocity kick of 500 deg/s swings the tilt out to about 13 degrees (v / (y e))"),
+		Peak > 11.f && Peak < 15.f);
 	TestEqual(TEXT("and it settles back to the goal"), KickX, 0.f, 1e-3f);
 
 	// The engine's own critically damped smoothing (smoothing time = half-life / ln 2) is the same spring.
@@ -121,23 +122,29 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeTraversalPoseLean, "Hawkeye.Traversal.P
 bool FHawkeyeTraversalPoseLean::RunTest(const FString& Parameters)
 {
 	using namespace HawkeyeTraversalPoseTest;
-	TestEqual(TEXT("1 g sideways at strength 0.5 leans 22.5 degrees"), FTraversalPoseRules::LeanDegrees(980.f, 980.f, 0.5f), 22.5f, 0.01f);
+	TestEqual(TEXT("1 g sideways at strength 0.5 leans 22.5 degrees"),
+		FTraversalPoseRules::LeanDegrees(980.f, 980.f, 0.5f), 22.5f, 0.01f);
 	TestEqual(TEXT("no acceleration, no lean"), FTraversalPoseRules::LeanDegrees(0.f, 980.f, 0.5f), 0.f, 0.001f);
-	TestEqual(TEXT("the zip's own 6000 cm/s^2 at 0.5 is about 40 degrees"), FTraversalPoseRules::LeanDegrees(6000.f, 980.f, 0.5f), 40.36f, 0.1f);
+	TestEqual(TEXT("the zip's own 6000 cm/s^2 at 0.5 is about 40 degrees"),
+		FTraversalPoseRules::LeanDegrees(6000.f, 980.f, 0.5f), 40.36f, 0.1f);
 	TestTrue(TEXT("a harder pull leans further, never past atan's 90 times the scale"),
-		FTraversalPoseRules::LeanDegrees(60000.f, 980.f, 0.5f) < 45.f
-			&& FTraversalPoseRules::LeanDegrees(60000.f, 980.f, 0.5f) > FTraversalPoseRules::LeanDegrees(6000.f, 980.f, 0.5f));
+		FTraversalPoseRules::LeanDegrees(60000.f, 980.f, 0.5f) < 45.f &&
+			FTraversalPoseRules::LeanDegrees(60000.f, 980.f, 0.5f) >
+				FTraversalPoseRules::LeanDegrees(6000.f, 980.f, 0.5f));
 
 	const FVector2D Forward = FTraversalPoseRules::AccelerationTilt(FVector(980.f, 0.f, 500.f), 980.f, 0.5f);
 	TestEqual(TEXT("forward acceleration leans the head forward"), static_cast<float>(Forward.X), 22.5f, 0.01f);
-	TestEqual(TEXT("and not sideways; vertical acceleration does not lean"), static_cast<float>(Forward.Y), 0.f, 0.001f);
+	TestEqual(
+		TEXT("and not sideways; vertical acceleration does not lean"), static_cast<float>(Forward.Y), 0.f, 0.001f);
 	const FVector2D Side = FTraversalPoseRules::AccelerationTilt(FVector(0.f, -980.f, 0.f), 980.f, 0.5f);
 	TestEqual(TEXT("acceleration to the left leans the head left"), static_cast<float>(Side.Y), -22.5f, 0.01f);
 
 	const FVector Up45(FMath::Cos(PI / 4.f), 0.f, FMath::Sin(PI / 4.f));
 	const FVector2D Rope = FTraversalPoseRules::RopeTilt(Up45, 0.5f);
-	TestEqual(TEXT("a rope 45 up and ahead tips the body 0.5 x 45 = 22.5 toward it"), static_cast<float>(Rope.X), 22.5f, 0.01f);
-	TestEqual(TEXT("a rope straight up tips it nowhere"), static_cast<float>(FTraversalPoseRules::RopeTilt(FVector::UpVector, 0.5f).Size()), 0.f, 0.001f);
+	TestEqual(TEXT("a rope 45 up and ahead tips the body 0.5 x 45 = 22.5 toward it"), static_cast<float>(Rope.X), 22.5f,
+		0.01f);
+	TestEqual(TEXT("a rope straight up tips it nowhere"),
+		static_cast<float>(FTraversalPoseRules::RopeTilt(FVector::UpVector, 0.5f).Size()), 0.f, 0.001f);
 	const FVector2D Horizontal = FTraversalPoseRules::RopeTilt(FVector(0.f, 1.f, 0.f), 0.5f);
 	TestEqual(TEXT("a level rope to the right tips it 45 to the right"), static_cast<float>(Horizontal.Y), 45.f, 0.01f);
 
@@ -173,7 +180,8 @@ bool FHawkeyeTraversalPoseQuats::RunTest(const FString& Parameters)
 {
 	using namespace HawkeyeTraversalPoseTest;
 	const FVector LeanedUp = FTraversalPoseRules::QuatFromTilt(30.f, 0.f).RotateVector(FVector::UpVector);
-	TestEqual(TEXT("a forward tilt of 30 leans up 30 degrees toward +X"), AngleBetween(LeanedUp, FVector::UpVector), 30.f, 0.01f);
+	TestEqual(TEXT("a forward tilt of 30 leans up 30 degrees toward +X"), AngleBetween(LeanedUp, FVector::UpVector),
+		30.f, 0.01f);
 	TestTrue(TEXT("toward +X"), LeanedUp.X > 0.49 && FMath::Abs(LeanedUp.Y) < 1e-4);
 	const FVector Right = FTraversalPoseRules::QuatFromTilt(0.f, 20.f).RotateVector(FVector::UpVector);
 	TestTrue(TEXT("a tilt to the right leans toward +Y"), Right.Y > 0.33 && FMath::Abs(Right.X) < 1e-4);
@@ -185,12 +193,14 @@ bool FHawkeyeTraversalPoseQuats::RunTest(const FString& Parameters)
 	const FQuat Hip = FTraversalPoseRules::ScaledTurn(FVector::RightVector, 30.f, 1.f);
 	const FVector Foot = Hip.RotateVector(FVector(0.f, 0.f, -1.f));
 	TestTrue(TEXT("a positive hip swing puts the foot behind (-X) and still below"), Foot.X < -0.49 && Foot.Z < -0.8);
-	TestTrue(TEXT("a weight of 0 is no turn"), FTraversalPoseRules::ScaledTurn(FVector::RightVector, 30.f, 0.f).Equals(FQuat::Identity));
+	TestTrue(TEXT("a weight of 0 is no turn"),
+		FTraversalPoseRules::ScaledTurn(FVector::RightVector, 30.f, 0.f).Equals(FQuat::Identity));
 	TestTrue(TEXT("half the weight is half the angle"),
-		FMath::Abs(FTraversalPoseRules::ScaledTurn(FVector::RightVector, 30.f, 0.5f).GetAngle() - FMath::DegreesToRadians(15.f)) < 1e-4);
+		FMath::Abs(FTraversalPoseRules::ScaledTurn(FVector::RightVector, 30.f, 0.5f).GetAngle() -
+			FMath::DegreesToRadians(15.f)) < 1e-4);
 
-	// Into the component's axes: with the mesh turned -90 about up from the actor (the mannequin's), the same turn of the
-	// world is the same turn in world space, whatever axes it is written in.
+	// Into the component's axes: with the mesh turned -90 about up from the actor (the mannequin's), the same turn of
+	// the world is the same turn in world space, whatever axes it is written in.
 	const FQuat Actor = FRotator(0.f, 40.f, 0.f).Quaternion();
 	const FQuat Component = Actor * FRotator(0.f, -90.f, 0.f).Quaternion();
 	const FQuat Local = FTraversalPoseRules::QuatFromTilt(25.f, 10.f);
@@ -198,7 +208,8 @@ bool FHawkeyeTraversalPoseQuats::RunTest(const FString& Parameters)
 	const FVector UpInComponent = FVector::UpVector;
 	const FVector WorldA = Component.RotateVector(InComponent.RotateVector(UpInComponent));
 	const FVector WorldB = Actor.RotateVector(Local.RotateVector(FVector::UpVector));
-	TestTrue(TEXT("the actor's turn and its component-space form tip up the same way in the world"), WorldA.Equals(WorldB, 1e-4));
+	TestTrue(TEXT("the actor's turn and its component-space form tip up the same way in the world"),
+		WorldA.Equals(WorldB, 1e-4));
 	TestTrue(TEXT("with the component on the actor's own axes it is unchanged"),
 		FTraversalPoseRules::ActorToComponent(Local, Actor, Actor).Equals(Local, 1e-5));
 	return true;
@@ -239,7 +250,8 @@ bool FHawkeyeTraversalPosePhases::RunTest(const FString& Parameters)
 	In.ZipLineSpeed = 0.f;
 	In.Velocity = FVector(600.f, 0.f, 0.f);
 	Is(TEXT("the zip ends on the floor: arrive"), State.Step(In, S).Phase, ETraversalPhase::Arrive);
-	TestEqual(TEXT("at 600 cm/s the line was a step-down"), static_cast<int32>(State.GetArrival()), static_cast<int32>(EArrivalKind::StepDown));
+	TestEqual(TEXT("at 600 cm/s the line was a step-down"), static_cast<int32>(State.GetArrival()),
+		static_cast<int32>(EArrivalKind::StepDown));
 	for (int32 Index = 0; Index < 40; ++Index)
 	{
 		State.Step(In, S);
@@ -307,11 +319,13 @@ bool FHawkeyeTraversalPoseClasses::RunTest(const FString& Parameters)
 	Arrival(TEXT("1300 cm/s: still braking"), 1300.f, EArrivalKind::Brake);
 	Arrival(TEXT("1301 cm/s: a slide out"), 1301.f, EArrivalKind::SlideOut);
 	Arrival(TEXT("the top speed, 1800: a slide out"), 1800.f, EArrivalKind::SlideOut);
-	TestTrue(TEXT("a slide takes longer than a step"), FTraversalPoseRules::ArrivalSeconds(EArrivalKind::SlideOut, S)
-		> FTraversalPoseRules::ArrivalSeconds(EArrivalKind::StepDown, S));
+	TestTrue(TEXT("a slide takes longer than a step"),
+		FTraversalPoseRules::ArrivalSeconds(EArrivalKind::SlideOut, S) >
+			FTraversalPoseRules::ArrivalSeconds(EArrivalKind::StepDown, S));
 	TestEqual(TEXT("no arrival, no time"), FTraversalPoseRules::ArrivalSeconds(EArrivalKind::None, S), 0.f);
 
-	auto Land = [this, &S](const TCHAR* What, float Impact, float Ground, ELandingClip Want, bool bRoll = false, bool bStumble = false)
+	auto Land = [this, &S](const TCHAR* What, float Impact, float Ground, ELandingClip Want, bool bRoll = false,
+					bool bStumble = false)
 	{
 		TestEqual(What, static_cast<int32>(FTraversalPoseRules::ClassifyLanding(Impact, Ground, bRoll, bStumble, S)),
 			static_cast<int32>(Want));
@@ -329,16 +343,20 @@ bool FHawkeyeTraversalPoseClasses::RunTest(const FString& Parameters)
 	Land(TEXT("a roll that came in slowly is still a roll"), 100.f, 450.f, ELandingClip::Roll, true);
 	Land(TEXT("a stumble is a stumble"), 900.f, 0.f, ELandingClip::Stumble, false, /*bStumble=*/true);
 
-	// Today's thresholds in speed: the roll height (400 cm) is a fall of 885 cm/s, so every roll is above the heavy band.
+	// Today's thresholds in speed: the roll height (400 cm) is a fall of 885 cm/s, so every roll is above the heavy
+	// band.
 	const float RollSpeed = FTraversalPoseRules::ImpactSpeedFromHeight(400.f, S.Gravity);
 	TestEqual(TEXT("a 400 cm fall hits at 885 cm/s"), RollSpeed, 885.4f, 0.5f);
 	TestTrue(TEXT("a fall too short to roll (300 cm) is a heavy landing, not a roll"),
 		FTraversalPoseRules::ImpactSpeedFromHeight(300.f, S.Gravity) >= S.HeavyImpactSpeed);
-	TestTrue(TEXT("a 100 cm drop is a light landing"), FTraversalPoseRules::ImpactSpeedFromHeight(100.f, S.Gravity) >= S.LightImpactSpeed
-		&& FTraversalPoseRules::ImpactSpeedFromHeight(100.f, S.Gravity) < S.HeavyImpactSpeed);
-	TestTrue(TEXT("a 30 cm step is none"), FTraversalPoseRules::ImpactSpeedFromHeight(30.f, S.Gravity) < S.LightImpactSpeed);
+	TestTrue(TEXT("a 100 cm drop is a light landing"),
+		FTraversalPoseRules::ImpactSpeedFromHeight(100.f, S.Gravity) >= S.LightImpactSpeed &&
+			FTraversalPoseRules::ImpactSpeedFromHeight(100.f, S.Gravity) < S.HeavyImpactSpeed);
+	TestTrue(
+		TEXT("a 30 cm step is none"), FTraversalPoseRules::ImpactSpeedFromHeight(30.f, S.Gravity) < S.LightImpactSpeed);
 
-	TestEqual(TEXT("the dip envelope peaks at 1 at the attack time"), FTraversalPoseRules::DipEnvelope(0.1f, 0.1f), 1.f, 1e-4f);
+	TestEqual(TEXT("the dip envelope peaks at 1 at the attack time"), FTraversalPoseRules::DipEnvelope(0.1f, 0.1f), 1.f,
+		1e-4f);
 	TestEqual(TEXT("it is 0 before it starts"), FTraversalPoseRules::DipEnvelope(0.f, 0.1f), 0.f, 1e-6f);
 	TestTrue(TEXT("and mostly gone half a second on"), FTraversalPoseRules::DipEnvelope(0.5f, 0.1f) < 0.1f);
 	TestEqual(TEXT("a pulse is 1 at its centre"), FTraversalPoseRules::Pulse(0.3f, 0.3f, 0.08f), 1.f, 1e-5f);
@@ -364,7 +382,8 @@ bool FHawkeyeTraversalPosePull::RunTest(const FString& Parameters)
 
 	// The rope hand is toward the anchor from the shoulder: ahead and up.
 	TestTrue(TEXT("the rope hand is above and ahead of the pelvis"), Out.LeftHand.Z > 40.f && Out.LeftHand.X > 10.f);
-	TestTrue(TEXT("and the free hand is back of it, out on the right"), Out.RightHand.X < Out.LeftHand.X - 30.f && Out.RightHand.Y > 20.f);
+	TestTrue(TEXT("and the free hand is back of it, out on the right"),
+		Out.RightHand.X < Out.LeftHand.X - 30.f && Out.RightHand.Y > 20.f);
 	TestTrue(TEXT("the rope hand is on the left"), Out.LeftHand.Y < 0.f);
 
 	// The legs trail: the foot ends up behind her.
@@ -372,20 +391,23 @@ bool FHawkeyeTraversalPosePull::RunTest(const FString& Parameters)
 	const FVector FootL = Out.ThighL.RotateVector(FVector(0.f, 0.f, -1.f));
 	TestTrue(TEXT("the trailing leg's foot is behind"), FootR.X < -0.3);
 	TestTrue(TEXT("the leading leg trails less"), FootL.X > FootR.X);
-	TestTrue(TEXT("both knees bent"), Out.CalfL.GetAngle() > FMath::DegreesToRadians(5.f) && Out.CalfR.GetAngle() > FMath::DegreesToRadians(15.f));
+	TestTrue(TEXT("both knees bent"),
+		Out.CalfL.GetAngle() > FMath::DegreesToRadians(5.f) && Out.CalfR.GetAngle() > FMath::DegreesToRadians(15.f));
 
 	// Total of the pelvis and spine shares is the whole tip.
-	float Total = static_cast<float>(Out.Pelvis.GetAngle()) + static_cast<float>(Out.Spine[0].GetAngle())
-		+ static_cast<float>(Out.Spine[1].GetAngle()) + static_cast<float>(Out.Spine[2].GetAngle());
-	TestEqual(TEXT("pelvis and the three spine shares add to the whole tip"), FMath::RadiansToDegrees(Total), 30.f, 0.6f);
-	TestTrue(TEXT("the lower spine takes more than the upper"), Out.Spine[0].GetAngle() > Out.Spine[1].GetAngle()
-		&& Out.Spine[1].GetAngle() > Out.Spine[2].GetAngle());
+	float Total = static_cast<float>(Out.Pelvis.GetAngle()) + static_cast<float>(Out.Spine[0].GetAngle()) +
+		static_cast<float>(Out.Spine[1].GetAngle()) + static_cast<float>(Out.Spine[2].GetAngle());
+	TestEqual(
+		TEXT("pelvis and the three spine shares add to the whole tip"), FMath::RadiansToDegrees(Total), 30.f, 0.6f);
+	TestTrue(TEXT("the lower spine takes more than the upper"),
+		Out.Spine[0].GetAngle() > Out.Spine[1].GetAngle() && Out.Spine[1].GetAngle() > Out.Spine[2].GetAngle());
 	TestTrue(TEXT("the neck takes most of the tip back (head level)"), Out.Neck.GetAngle() > 0.f);
 
 	// The pose is on the actor's frame: turning the actor changes nothing in it.
 	FTraversalPoseState Turned;
 	const FTraversalPoseOutput TurnedOut = RunPull(Turned, S, 1800.f, 30.f, 180, 70.f);
-	TestEqual(TEXT("facing another way gives the same tilt in the actor's frame"), static_cast<float>(TurnedOut.Tilt.X), static_cast<float>(Out.Tilt.X), 0.1f);
+	TestEqual(TEXT("facing another way gives the same tilt in the actor's frame"), static_cast<float>(TurnedOut.Tilt.X),
+		static_cast<float>(Out.Tilt.X), 0.1f);
 
 	// Slower is a gentler pose: less trail.
 	FTraversalPoseState Slow;
@@ -423,7 +445,8 @@ bool FHawkeyeTraversalPoseMotion::RunTest(const FString& Parameters)
 		const FTraversalPoseOutput Out = State.Step(In, S);
 		MostSink = FMath::Max(MostSink, static_cast<float>(-Out.PelvisOffset.Z));
 		SinkAtEnd = -static_cast<float>(Out.PelvisOffset.Z);
-		TestEqual(TEXT("the hop is the launch phase"), static_cast<int32>(Out.Phase), static_cast<int32>(ETraversalPhase::Launch));
+		TestEqual(TEXT("the hop is the launch phase"), static_cast<int32>(Out.Phase),
+			static_cast<int32>(ETraversalPhase::Launch));
 	}
 	TestTrue(TEXT("the pelvis dips in the hop (crouch-load)"), MostSink > 2.f);
 	TestTrue(TEXT("the reach is on at the end of the hop"), State.GetChannel(FTraversalPoseState::LeftArm) > 0.4f);
@@ -458,7 +481,8 @@ bool FHawkeyeTraversalPoseMotion::RunTest(const FString& Parameters)
 	for (int32 Index = 0; Index < 7; ++Index)
 	{
 		const float Alpha = static_cast<float>(Index + 1) / 6.f;
-		const FVector Direction = FMath::Lerp(FVector(1.f, 0.f, 0.36f), FVector(0.f, 1.f, 0.35f), FMath::Min(1.f, Alpha)).GetSafeNormal();
+		const FVector Direction =
+			FMath::Lerp(FVector(1.f, 0.f, 0.36f), FVector(0.f, 1.f, 0.35f), FMath::Min(1.f, Alpha)).GetSafeNormal();
 		Turn.Velocity = Direction * 1800.f;
 		Turn.bRedirecting = Index < 6;
 		Out = Chain.Step(Turn, S);
@@ -466,14 +490,17 @@ bool FHawkeyeTraversalPoseMotion::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("before the chain there is no side tilt"), BeforeSide, 0.f, 0.5f);
 	TestTrue(TEXT("through the chain the body swings out sideways (> 8 degrees)"), MostSide > 8.f);
-	TestTrue(TEXT("and the redirect phase was entered"), Chain.GetPhase() == ETraversalPhase::Pull || Chain.GetPhase() == ETraversalPhase::Redirect);
+	TestTrue(TEXT("and the redirect phase was entered"),
+		Chain.GetPhase() == ETraversalPhase::Pull || Chain.GetPhase() == ETraversalPhase::Redirect);
 
 	// The pose fades out after the pull is over, and a teleport clears it at once.
 	FTraversalPoseState Fade;
 	RunPull(Fade, S, 1800.f, 30.f, 120);
-	FTraversalPoseOutput After = RunAfter(Fade, S, /*bFalling=*/false, /*bGrounded=*/true, 150, FVector(600.f, 0.f, 0.f));
+	FTraversalPoseOutput After =
+		RunAfter(Fade, S, /*bFalling=*/false, /*bGrounded=*/true, 150, FVector(600.f, 0.f, 0.f));
 	TestFalse(TEXT("two and a half seconds after an arrival nothing is left"), After.IsActive());
-	TestTrue(TEXT("and every channel is at rest"), FMath::Abs(Fade.GetChannel(FTraversalPoseState::TiltForward)) < 1e-3f);
+	TestTrue(
+		TEXT("and every channel is at rest"), FMath::Abs(Fade.GetChannel(FTraversalPoseState::TiltForward)) < 1e-3f);
 
 	FTraversalPoseState Reset;
 	RunPull(Reset, S, 1800.f, 30.f, 60);
@@ -482,7 +509,8 @@ bool FHawkeyeTraversalPoseMotion::RunTest(const FString& Parameters)
 	Teleport.bTeleported = true;
 	Teleport.bGrounded = true;
 	TestFalse(TEXT("a teleport drops the pose on the spot"), Reset.Step(Teleport, S).IsActive());
-	TestEqual(TEXT("with no zip in memory"), static_cast<int32>(Reset.GetPhase()), static_cast<int32>(ETraversalPhase::None));
+	TestEqual(
+		TEXT("with no zip in memory"), static_cast<int32>(Reset.GetPhase()), static_cast<int32>(ETraversalPhase::None));
 	return true;
 }
 
@@ -523,13 +551,17 @@ bool FHawkeyeTraversalPoseArrive::RunTest(const FString& Parameters)
 	Arrive(500.f, StepSink, StepSeconds, StepKind);
 	Arrive(1000.f, BrakeSink, BrakeSeconds, BrakeKind);
 	Arrive(1800.f, SlideSink, SlideSeconds, SlideKind);
-	TestEqual(TEXT("500 cm/s arrives as a step-down"), static_cast<int32>(StepKind), static_cast<int32>(EArrivalKind::StepDown));
-	TestEqual(TEXT("1000 cm/s arrives braking"), static_cast<int32>(BrakeKind), static_cast<int32>(EArrivalKind::Brake));
-	TestEqual(TEXT("1800 cm/s arrives sliding"), static_cast<int32>(SlideKind), static_cast<int32>(EArrivalKind::SlideOut));
+	TestEqual(TEXT("500 cm/s arrives as a step-down"), static_cast<int32>(StepKind),
+		static_cast<int32>(EArrivalKind::StepDown));
+	TestEqual(
+		TEXT("1000 cm/s arrives braking"), static_cast<int32>(BrakeKind), static_cast<int32>(EArrivalKind::Brake));
+	TestEqual(
+		TEXT("1800 cm/s arrives sliding"), static_cast<int32>(SlideKind), static_cast<int32>(EArrivalKind::SlideOut));
 	TestTrue(TEXT("the pelvis goes lower the faster she came in"), StepSink < BrakeSink && BrakeSink < SlideSink);
 	TestTrue(TEXT("a step-down is a few centimetres (3 to 9)"), StepSink > 3.f && StepSink < 9.f);
 	TestTrue(TEXT("a slide out is deep (over 15 cm)"), SlideSink > 15.f);
-	TestTrue(TEXT("and the poses last longer the faster she came"), StepSeconds < BrakeSeconds && BrakeSeconds < SlideSeconds);
+	TestTrue(TEXT("and the poses last longer the faster she came"),
+		StepSeconds < BrakeSeconds && BrakeSeconds < SlideSeconds);
 	TestTrue(TEXT("every arrival is over inside two seconds"), SlideSeconds < 2.f);
 
 	// A landing from a fall: heavier hits sink further; a clip leaves the pose to the clip.

@@ -136,6 +136,13 @@ Rules: `gameplay-semantics.md`, "Flashback".
   and, with `UHawkeyeBowIKAnimInstance` as its post-process AnimBP (built by
   `UHawkeyeBowIKGraphBuilder`), the two-hand IK. Thugs with a bow have their own. One bow per
   character: `DA_Bow_Kate`, `DA_Bow_Clint`. Rules: "Bow and arrows".
+- `FTraversalPoseState` / `FTraversalPoseRules` (`Traversal/TraversalPoseRules.h`, pure): Kate's body on a grapple trip and
+  in a landing: phase (launch, pull, redirect, release, fall, arrive), the tilt toward the rope and the acceleration lean,
+  critically damped springs, the arrival and landing classes. `AHawkeyeCharacter` owns the state and its
+  `FHawkeyeTraversalPoseSettings` (`HawkeyeCharacterTraversalPose.cpp` also holds the input and the landing looks);
+  `UHawkeyeBowIKAnimInstance` steps it each update and the post-process graph's bone nodes draw it; the landing clips are roles
+  of `UCombatAnimSet`. All visual: nothing writes the movement. Rules and setup: "Traversal body pose" in
+  `gameplay-semantics.md` and `animation.md`.
 - `UArrowDefinition` (primary data asset): one arrow type, its projectile, on-hit effect,
   damage, cap and whether it can be pulled back out. `AArrowProjectile` flies, hits, embeds
   and is recoverable. A new arrow is a new asset. The quiver has seven slots

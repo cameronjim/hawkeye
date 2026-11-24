@@ -10,7 +10,8 @@
 #include "Player/HawkeyeCharacter.h"
 
 static TAutoConsoleVariable<int32> CVarHawkeyeZipPose(TEXT("hawkeye.ZipPose"), 1,
-	TEXT("1 (default) draws the grapple trip's body pose (the hang, the launch, the landings' legs) over the sample's pose; "
+	TEXT("1 (default) draws the grapple trip's body pose (the hang, the launch, the landings' legs) over the sample's "
+		 "pose; "
 		 "0 leaves the sample's pose alone, for before and after shots."),
 	ECVF_Default);
 
@@ -123,11 +124,12 @@ void UHawkeyeBowIKAnimInstance::UpdateTraversalPose(float DeltaSeconds)
 		return;
 	}
 	FTraversalPoseInput Input = Owner->BuildTraversalPoseInput(DeltaSeconds);
-	// A teleport (a fast travel, a respawn) moves her further in a frame than she can run; nothing of the pose carries over.
+	// A teleport (a fast travel, a respawn) moves her further in a frame than she can run; nothing of the pose carries
+	// over.
 	const FVector Here = Owner->GetActorLocation();
 	const float Jump = static_cast<float>(FVector::Dist(Here, LastActorLocation));
-	Input.bTeleported = bHaveLastActorLocation
-		&& Jump > FMath::Max(300.f, Input.Velocity.Size() * FMath::Max(DeltaSeconds, 0.f) * 3.f + 150.f);
+	Input.bTeleported = bHaveLastActorLocation &&
+		Jump > FMath::Max(300.f, Input.Velocity.Size() * FMath::Max(DeltaSeconds, 0.f) * 3.f + 150.f);
 	LastActorLocation = Here;
 	bHaveLastActorLocation = true;
 	ApplyTraversalPose(State.Step(Input, Owner->GetTraversalPoseSettings()));
@@ -141,7 +143,8 @@ void UHawkeyeBowIKAnimInstance::ApplyTraversalPose(const FTraversalPoseOutput& P
 	if (!Mesh || !Owner || !Pose.IsActive())
 	{
 		TraversalAlpha = 0.f;
-		TraversalPelvisRotation = TraversalSpine01Rotation = TraversalSpine02Rotation = TraversalSpine03Rotation = FRotator::ZeroRotator;
+		TraversalPelvisRotation = TraversalSpine01Rotation = TraversalSpine02Rotation = TraversalSpine03Rotation =
+			FRotator::ZeroRotator;
 		TraversalNeckRotation = TraversalThighLRotation = TraversalThighRRotation = FRotator::ZeroRotator;
 		TraversalCalfLRotation = TraversalCalfRRotation = FRotator::ZeroRotator;
 		TraversalPelvisOffset = FVector::ZeroVector;
@@ -151,9 +154,7 @@ void UHawkeyeBowIKAnimInstance::ApplyTraversalPose(const FTraversalPoseOutput& P
 	const FQuat ActorRotation = Owner->GetActorQuat();
 	const FQuat ComponentRotation = Mesh->GetComponentQuat();
 	auto Turn = [&ActorRotation, &ComponentRotation](const FQuat& Local)
-	{
-		return FRotator(FTraversalPoseRules::ActorToComponent(Local, ActorRotation, ComponentRotation));
-	};
+	{ return FRotator(FTraversalPoseRules::ActorToComponent(Local, ActorRotation, ComponentRotation)); };
 	TraversalAlpha = 1.f;
 	TraversalPelvisRotation = Turn(Pose.Pelvis);
 	TraversalSpine01Rotation = Turn(Pose.Spine[0]);
@@ -170,9 +171,7 @@ void UHawkeyeBowIKAnimInstance::ApplyTraversalPose(const FTraversalPoseOutput& P
 	const FTransform Frame(Owner->GetActorQuat(), Owner->GetActorLocation());
 	TraversalPelvisOffset = Component.InverseTransformVector(Frame.TransformVector(Pose.PelvisOffset));
 	auto ToComponent = [&Component, &Frame](const FVector& Local)
-	{
-		return Component.InverseTransformPosition(Frame.TransformPosition(Local));
-	};
+	{ return Component.InverseTransformPosition(Frame.TransformPosition(Local)); };
 	TraversalLeftHand = ToComponent(Pose.LeftHand);
 	TraversalLeftElbow = ToComponent(Pose.LeftElbow);
 	TraversalRightHand = ToComponent(Pose.RightHand);
@@ -243,7 +242,8 @@ void UHawkeyeBowIKAnimInstance::ComposeOutputs()
 		LeftElbowTarget = StrikeLeftElbowTarget;
 		LeftArmAlpha = FMath::Clamp(StrikeLeftHandAlpha, 0.f, 1.f);
 	}
-	// The grapple trip's hands (the rope hand and the free one) when no strike or bow has the arm: the bow wins past half.
+	// The grapple trip's hands (the rope hand and the free one) when no strike or bow has the arm: the bow wins past
+	// half.
 	if (TraversalLeftAlpha > 0.f && StrikeLeftHandAlpha <= 0.f && BowAlpha < 0.5f)
 	{
 		LeftHandTarget = TraversalLeftHand;
