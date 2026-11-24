@@ -1,4 +1,6 @@
 #include "World/ThugCharacter.h"
+#include "ReferenceSkeleton.h"
+#include "Engine/SkeletalMesh.h"
 
 #include "AIController.h"
 #include "Animation/AnimInstance.h"
@@ -184,14 +186,16 @@ AThugCharacter::AThugCharacter()
 		}
 		return Part;
 	};
-	// Slide 20 x 3.5 x 4 cm along the pistol's X; the grip hangs under its back half.
+	// Slide 18 x 3 x 3.2 cm along the pistol's X; the grip (3.2 x 3 x 10 cm, leaned back 15 degrees) hangs under its back half.
+	// A child's relative location is in the parent's scaled space, so it is written as centimetres over the slide's scale.
 	PistolComponent = MakeProp(TEXT("Pistol"), Cube.Succeeded() ? Cube.Object : nullptr, GetCapsuleComponent());
 	PistolComponent->SetUsingAbsoluteLocation(true);
 	PistolComponent->SetUsingAbsoluteRotation(true);
-	PistolComponent->SetWorldScale3D(FVector(0.2f, 0.035f, 0.04f));
+	PistolComponent->SetWorldScale3D(FVector(0.18f, 0.03f, 0.032f));
 	PistolGrip = MakeProp(TEXT("PistolGrip"), Cube.Succeeded() ? Cube.Object : nullptr, PistolComponent);
-	PistolGrip->SetRelativeLocationAndRotation(FVector(-0.3f, 0.f, -1.6f), FRotator(-15.f, 0.f, 0.f));
-	PistolGrip->SetRelativeScale3D(FVector(0.18f, 0.9f, 2.6f));
+	PistolGrip->SetRelativeLocationAndRotation(
+		FVector(PistolGripCenterCm.X / 0.18f, 0.f, PistolGripCenterCm.Z / 0.032f), FRotator(-15.f, 0.f, 0.f));
+	PistolGrip->SetRelativeScale3D(FVector(3.2f / 18.f, 1.f, 10.f / 3.2f));
 
 	// The riot shield: a slab placed in the world each tick (no animation holds it up). No collision: what
 	// it stops is decided by the arc rule, and a blocked arrow is moved onto its face.
@@ -378,7 +382,10 @@ void AThugCharacter::UpdateHeldWeaponPose()
 	// along Z about its centre, scaled to the bat's length.
 	const FVector Direction = ComputeBatDirection();
 	const float Length = 100.f * HeldWeaponComponent->GetRelativeScale3D().Z;
-	const FVector Hand = SkeletalMesh->GetSocketLocation(HeldWeaponSocketName);
+	FVector Hand = SkeletalMesh->GetSocketLocation(HeldWeaponSocketName);
+	FVector Along, Across, Palm;
+	// The visible hand's fist when there is one: the bat goes through it.
+	GetBodyHandGrip(HawkeyeBodyPose::Right, Hand, Along, Across, Palm);
 	HeldWeaponComponent->SetWorldLocationAndRotation(Hand + Direction * (Length * 0.5f - BatGripFromEnd),
 		FRotationMatrix::MakeFromZ(Direction).Rotator());
 }
@@ -452,7 +459,81 @@ USkeletalMeshComponent* AThugCharacter::ApplyBodyLook()
 		return LookMesh;
 	}
 	LookMesh = HawkeyeBodyLook::Apply(*GetMesh(), BodyLook);
+	if (LookMesh)
+	{
+		// The pistol and the bat ride the visible hand, placed after the look's bones are written.
+		LookMesh->RegisterOnBoneTransformsFinalizedDelegate(
+			FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this, &AThugCharacter::OnLookBonesFinalized));
+	}
 	return LookMesh;
+}
+
+void AThugCharacter::OnLookBonesFinalized()
+{
+	if (bLimp || bCollapsing)
+	{
+		return;
+	}
+	UpdatePistolPose();
+	if (!bKnockedDown)
+	{
+		UpdateHeldWeaponPose();
+	}
+}
+
+bool AThugCharacter::GetBodyHandGrip(int32 Side, FVector& OutCenter, FVector& OutAlong, FVector& OutAcross, FVector& OutPalm) const
+{
+	if (!LookMesh || !LookMesh->GetSkeletalMeshAsset())
+	{
+		return false;
+	}
+	if (!bBodyHandFramesBuilt)
+	{
+		const FReferenceSkeleton& Reference = LookMesh->GetSkeletalMeshAsset()->GetRefSkeleton();
+		BodyHandFrames[HawkeyeBodyPose::Left] = HawkeyeBodyPose::ComputeHandFrame(Reference, HawkeyeBodyPose::Left);
+		BodyHandFrames[HawkeyeBodyPose::Right] = HawkeyeBodyPose::ComputeHandFrame(Reference, HawkeyeBodyPose::Right);
+		bBodyHandFramesBuilt = true;
+	}
+	const HawkeyeBodyPose::FHandFrame& Frame = BodyHandFrames[Side == HawkeyeBodyPose::Left ? 0 : 1];
+	const FName Hand(Side == HawkeyeBodyPose::Left ? TEXT("hand_l") : TEXT("hand_r"));
+	if (!Frame.bValid || LookMesh->GetBoneIndex(Hand) == INDEX_NONE)
+	{
+		return false;
+	}
+	const FTransform Bone = LookMesh->GetSocketTransform(Hand, RTS_World);
+	const FQuat Rotation = Bone.GetRotation();
+	const float Scale = static_cast<float>(LookMesh->GetComponentScale().X);
+	OutAlong = Rotation.RotateVector(Frame.Along);
+	OutAcross = Rotation.RotateVector(Frame.Across);
+	OutPalm = Rotation.RotateVector(Frame.Palm);
+	// The knuckle line's middle, a little into the palm and out along the fingers: where a handle lies in a closed hand.
+	OutCenter = Bone.GetLocation() + Rotation.RotateVector(Frame.Knuckles) * Scale + (OutPalm * FistPalmCm + OutAlong * FistAlongCm) * Scale;
+	return true;
+}
+
+HawkeyeBodyPose::FWish AThugCharacter::GetBodyPoseWish() const
+{
+	HawkeyeBodyPose::FWish Wish;
+	if (bLimp || bCollapsing || bKnockedDown)
+	{
+		return Wish;
+	}
+	const bool bSwinging = MeleeComponent && MeleeComponent->IsAttacking();
+	const bool bPistol = IsGunner() && PistolComponent && PistolComponent->IsVisible();
+	const bool bBat = HeldWeaponComponent && HeldWeaponComponent->IsVisible();
+	Wish.bGrip[HawkeyeBodyPose::Right] = bPistol || bBat;
+	Wish.bFist[HawkeyeBodyPose::Right] = bSwinging && !Wish.bGrip[HawkeyeBodyPose::Right];
+	Wish.bFist[HawkeyeBodyPose::Left] = bSwinging;
+	Wish.ArmRest = HawkeyeBodyPose::RestArmWeight(bSwinging || bWeaponRaised, GetVelocity().Size2D());
+	if (bBat)
+	{
+		Wish.PropAxis[HawkeyeBodyPose::Right] = ComputeBatDirection();
+	}
+	else if (bPistol && bWeaponRaised)
+	{
+		Wish.PropAxis[HawkeyeBodyPose::Right] = PistolComponent->GetUpVector();
+	}
+	return Wish;
 }
 
 USkeletalMeshComponent* AThugCharacter::GetBodyMesh() const
@@ -584,7 +665,17 @@ void AThugCharacter::UpdatePistolPose()
 		PistolComponent->SetWorldLocationAndRotation(ShoulderPoint + Aim.RotateVector(PistolRaisedOffset), Aim);
 		return;
 	}
-	// At his side, pointing down and forward.
+	// At his side: through the visible hand's fist when there is one. The handle runs across the knuckles (up toward the
+	// index finger), the muzzle along the fingers and a little away from the thigh.
+	FVector Center, Along, Across, Palm;
+	if (GetBodyHandGrip(HawkeyeBodyPose::Right, Center, Along, Across, Palm))
+	{
+		const float Out = FMath::DegreesToRadians(PistolMuzzleOutDegrees);
+		const FVector Muzzle = (Along * FMath::Cos(Out) - Palm * FMath::Sin(Out)).GetSafeNormal();
+		const FQuat Rotation = FRotationMatrix::MakeFromXZ(Muzzle, Across).ToQuat();
+		PistolComponent->SetWorldLocationAndRotation(Center - Rotation.RotateVector(PistolGripCenterCm), Rotation);
+		return;
+	}
 	PistolComponent->SetWorldLocationAndRotation(HandPoint, FRotator(-60.f, GetActorRotation().Yaw, 0.f));
 }
 

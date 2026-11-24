@@ -7,6 +7,7 @@
 #include "GameFramework/Character.h"
 #include "ISpudObject.h"
 #include "Player/BodyLook.h"
+#include "Player/BodyPose.h"
 #include "World/ThugTypes.h"
 #include "ThugCharacter.generated.h"
 
@@ -254,6 +255,21 @@ public:
 	/** Smoked grey polycarbonate. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Shield")
 	FLinearColor ShieldColor = FLinearColor(0.06f, 0.07f, 0.08f);
+
+	/** The pistol's grip block's centre in the pistol's own frame, cm: the point that sits in the fist. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	FVector PistolGripCenterCm = FVector(-4.5f, 0.f, -7.f);
+
+	/** How far the muzzle turns from the fingers' line away from the thigh, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float PistolMuzzleOutDegrees = 18.f;
+
+	/** Where a handle lies in a closed hand: past the knuckle line's middle by this much into the palm and along the fingers, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float FistPalmCm = 2.4f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float FistAlongCm = 0.8f;
 
 	/** The gunner's pistol and its grip: gunmetal, where the engine cube would show its editor grid (the grey checker on a thug's wrist). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
@@ -845,6 +861,19 @@ public:
 	/** Puts BodyLook on (once; PostInitializeComponents calls it). The look's mesh, or null. Public for tests. */
 	USkeletalMeshComponent* ApplyBodyLook();
 
+	/**
+	 * What his hands are doing now (claude-docs/animation.md, "Hands, third pass"): a fist while a swing is on and the hand
+	 * holds nothing, a grip on the pistol or the bat, the rest arm while he stands at ease. UHawkeyeBodyAnimInstance eases
+	 * it into the visible body's hand poses.
+	 */
+	HawkeyeBodyPose::FWish GetBodyPoseWish() const;
+
+	/**
+	 * The visible hand's fist in the world (Side 0 left, 1 right): where a held handle passes through it, and the hand's
+	 * axes there. False without a body look (the driver's hand socket is then what props follow).
+	 */
+	bool GetBodyHandGrip(int32 Side, FVector& OutCenter, FVector& OutAlong, FVector& OutAcross, FVector& OutPalm) const;
+
 protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
@@ -861,6 +890,9 @@ protected:
 
 	/** Places the pistol (raised or lowered) and hides it for anyone but the gunner. Called from Tick. */
 	void UpdatePistolPose();
+
+	/** The look's bones were just written: the pistol and the bat follow its hand, not last frame's. */
+	void OnLookBonesFinalized();
 
 	/** Gives the pistol, its grip and the held bat the shape material in their colours, once, before anyone sees them. */
 	void TintProps();
@@ -996,6 +1028,10 @@ protected:
 	/** The look's mesh while BodyLook is on; null otherwise. */
 	UPROPERTY(Transient)
 	TObjectPtr<USkeletalMeshComponent> LookMesh;
+
+	/** The look's hands' axes in their bones' frames, per side, computed once from its skeleton. */
+	mutable HawkeyeBodyPose::FHandFrame BodyHandFrames[2];
+	mutable bool bBodyHandFramesBuilt = false;
 
 	/** Whichever of IdleAnim / WalkAnim / RunAnim is playing, so Tick only re-plays on a real change. */
 	UPROPERTY(Transient)
