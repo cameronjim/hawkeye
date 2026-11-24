@@ -711,7 +711,7 @@ def hit_zone(rig, zone, heavy):
     fr = tuple(rig.idle_foot("r"))
     hl = tuple(rig.idle_hand("l"))
     hr = tuple(rig.idle_hand("r"))
-    k = 1.7 if heavy else 1.0
+    k = 2.4 if heavy else 1.6
     t = 0.8 if heavy else 0.55
     shove = (HEAVY_SHOVE if heavy else LIGHT_SHOVE) / RIG_SCALE[rig.kind]
     steps_r = [(0.04, 0.22)] if heavy else [(0.05, 0.2)]
@@ -732,6 +732,7 @@ def hit_zone(rig, zone, heavy):
         hand_l = [(0.0, add(hl, V(2, -8, 12))), (0.15, add(hl, V(0, -4, 6))), (0.35, add(hl, V(0, -1, 1))), (t, hl)]
         hand_r = [(0.0, add(hr, V(-2, -8, 10))), (0.15, add(hr, V(0, -4, 5))), (0.35, add(hr, V(0, -1, 1))), (t, hr)]
     elif zone == "Gut":
+        k = 1.25 if not heavy else 1.8      # the fold is deep already; more flips the arms' elbows round the belly
         body["chest"] = T([(0.0, V(26 * k, 0, 0)), (0.1, V(32 * k, 0, 0)), (0.25, V(22 * k, 0, 0)), (mid + 0.05, V(8 * k, 0, 0)),
                            (t * 0.85, V(-1.5, 0, 0)), (t, V(0, 0, 0))])
         body["neck"] = T([(0.0, V(14 * k, 0, 0)), (0.12, V(18 * k, 0, 0)), (0.3, V(8 * k, 0, 0)), (t * 0.85, V(-2, 0, 0)), (t, V(0, 0, 0))])
@@ -742,8 +743,8 @@ def hit_zone(rig, zone, heavy):
         # Both hands to the belly, then out and down.
         belly_l = add(P, V(8, -18, 20))
         belly_r = add(P, V(-8, -18, 20))
-        hand_l = [(0.0, belly_l), (0.3, add(belly_l, V(2, -2, 2))), (0.55, add(hl, V(0, -4, 4))), (t, hl)]
-        hand_r = [(0.0, belly_r), (0.3, add(belly_r, V(-2, -2, 2))), (0.55, add(hr, V(0, -4, 4))), (t, hr)]
+        hand_l = [(0.0, belly_l), (0.1, belly_l), (0.2, belly_l), (0.3, add(belly_l, V(2, -2, 2))), (0.55, add(hl, V(0, -4, 4))), (t, hl)]
+        hand_r = [(0.0, belly_r), (0.1, belly_r), (0.2, belly_r), (0.3, add(belly_r, V(-2, -2, 2))), (0.55, add(hr, V(0, -4, 4))), (t, hr)]
     else:
         drop = 12.0 * k
         body["pelvis_pos"] = T([(0.0, add(P, V(0, 3 * k, -drop * 0.8))), (0.1, add(P, V(0, 4 * k, -drop))),
@@ -764,7 +765,7 @@ def hit_zone(rig, zone, heavy):
     return ck.Clip(name, t, body, fade_in=0.0, fade_out=0.12, torso_clear=False,
                    strip_times=[0.0, 0.04, 0.1, 0.17, 0.25, 0.34, 0.45, t],
                    extra={"span": (-110.0, 110.0), "hit_peak_s": 0.0,
-                          "knockback_cm": HEAVY_SHOVE if heavy else LIGHT_SHOVE, "pop_degrees": 50.0 if heavy else 30.0})
+                          "knockback_cm": HEAVY_SHOVE if heavy else LIGHT_SHOVE, "pop_degrees": 64.0 if heavy else 40.0})
 
 
 def hit_head_light(rig):

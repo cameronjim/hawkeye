@@ -3112,7 +3112,7 @@ void AHawkeyeCharacter::HandleStaggered(UHealthComponent* /*Health*/, AActor* Da
 	// By the side, the zone (head, gut, legs) and the weight; from its damaged pose with no blend (the weld).
 	const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
 	const HawkeyeCombatAnim::FReactionPlayed Played = HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side,
-		HeavyReactionWeight, Weld);
+		HeavyReactionWeight, Weld, UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away) == EHawkeyeHitDirection::Front);
 	if (Blow && HitReactionComponent)
 	{
 		// One eased displacement of the clip's own distance (or the old shove's), from the freeze's release.

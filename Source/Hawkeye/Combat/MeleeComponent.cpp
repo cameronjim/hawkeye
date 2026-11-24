@@ -1187,7 +1187,7 @@ bool UMeleeComponent::ResolveSweep()
 					Down->Knockdown(WeakOwner.Get());
 				}
 			});
-			Thug->PlayHitPose(Impact);
+			Thug->PlayHitPose(Impact, Owner);
 		}
 		else
 		{

@@ -82,10 +82,12 @@ namespace HawkeyeCombatAnim
 	/**
 	 * The hit reaction for Blow (null: a blow with no impact, from the side Side only), on Mesh: the role by the side it came
 	 * from, the region its bone is in and its weight (UCombatAnimSet::HitRoleForImpact), played on its damaged pose with
-	 * no blend (PlayReactionRole); the side's clip when the chosen one is not in the set or does not play.
+	 * no blend (PlayReactionRole); the side's clip when the chosen one is not in the set or does not play. The zone clips are
+	 * authored facing the blow, so they are chosen when the attacker stands in front of him (bAttackerInFront: where he stands,
+	 * not the way the limb travelled: a roundhouse comes in from the side but hits the man facing it).
 	 */
 	HAWKEYE_API FReactionPlayed PlayHitReaction(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, const FHawkeyeStrikeImpact* Blow,
-		EHawkeyeHitDirection Side, float HeavyWeight, const FHawkeyeWeldTuning& Tuning);
+		EHawkeyeHitDirection Side, float HeavyWeight, const FHawkeyeWeldTuning& Tuning, bool bAttackerInFront = false);
 
 	/**
 	 * Plays Role's montage from Set on Mesh: at rate 1, or fitted to take FitToSeconds when that is

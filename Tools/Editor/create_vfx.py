@@ -485,7 +485,7 @@ def smoke_stream(name, rate, life, color, size, radius, speed, cone_angle, drift
 
 
 WHITE_SNOW = (0.85, 0.88, 0.95)
-DUST = (0.95, 0.92, 0.86, 0.8)
+DUST = (0.96, 0.95, 0.93, 0.9)
 
 
 def dust_puff(name, count, life, color, size, speed, cone_angle, radius):
@@ -498,7 +498,7 @@ def dust_puff(name, count, life, color, size, speed, cone_angle, radius):
     e.i("Add Velocity", "Origin Offset", vec(0, 0, 0))
     e.gravity(0, 0, 25).drag(3.5).fade((0.0, 0.0), (0.12, 1.0), (0.6, 0.6), (1.0, 0.0)).grow((0.0, 0.7), (1.0, 2.3)).limit(20000)
     e.once(life[1] + 0.05)
-    return e.material("M_Vfx_Smoke").no_shadow()
+    return e.material("M_Vfx_Snow").no_shadow()
 
 EFFECTS = {
     # The smoke arrow: a billow that fills 500 cm at once, then keeps coming for six seconds, drifting.
@@ -583,7 +583,7 @@ EFFECTS = {
     # A blow landing (2026-11-23, replacing NS_MeleeSpark's gold star and streaks, which read as a comic book): a small dust
     # or cloth puff at the contact point, thrown in a cone along the blow (the system's X). Four variants that differ in
     # size, count, spread and speed; the game picks one per blow without repeating the last and scales it by the blow's
-    # weight (HawkeyeVfxMath::PickPuffVariant, ComputePuffScale). Soft smoke sprites only: no glow, no colour, nothing
+    # weight (HawkeyeVfxMath::PickPuffVariant, ComputePuffScale). Snow-material sprites (the smoke one is lit dark at night and was not seen): no glow, no colour, nothing
     # that could be taken for the old whole-body flash.
     "NS_MeleePuff_A": [
         dust_puff("Puff", 12, (0.30, 0.50), DUST, (20, 30), (110, 240), 38, 4),

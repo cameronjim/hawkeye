@@ -91,12 +91,18 @@ namespace HawkeyeCombatAnim
 	}
 
 	FReactionPlayed PlayHitReaction(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, const FHawkeyeStrikeImpact* Blow,
-		EHawkeyeHitDirection Side, float HeavyWeight, const FHawkeyeWeldTuning& Tuning)
+		EHawkeyeHitDirection Side, float HeavyWeight, const FHawkeyeWeldTuning& Tuning, bool bAttackerInFront)
 	{
 		FReactionPlayed Result;
 		const EHawkeyeContactRegion Region = Blow ? UHawkeyeHitContactRules::ClassifyBoneRegion(Blow->Bone) : EHawkeyeContactRegion::Torso;
 		const float Weight = Blow ? Blow->Weight : 0.f;
-		ECombatAnimRole Role = UCombatAnimSet::HitRoleForImpact(Set, Side, Region, Weight, HeavyWeight);
+		ECombatAnimRole Role = UCombatAnimSet::HitRoleForImpact(Set, bAttackerInFront ? EHawkeyeHitDirection::Front : Side, Region, Weight,
+			HeavyWeight);
+		if (bAttackerInFront && Role == ECombatAnimRole::HitFront && Side != EHawkeyeHitDirection::Front)
+		{
+			// No zone clip for it: the side the blow really came from, as before.
+			Role = UCombatAnimSet::HitRoleForBlow(Set, Side, Weight, HeavyWeight);
+		}
 		float KnockbackCm = -1.f;
 		UAnimMontage* Played = PlayReactionRole(Mesh, Set, Role, Tuning, &KnockbackCm);
 		if (!Played && Role != UCombatAnimSet::HitRoleFor(Side))

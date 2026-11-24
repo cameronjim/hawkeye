@@ -690,7 +690,8 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 			: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
 		const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
 		const HawkeyeCombatAnim::FReactionPlayed Played = !bLimp
-			? HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side, HeavyReactionWeight, Weld)
+			? HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side, HeavyReactionWeight, Weld,
+				UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away) == EHawkeyeHitDirection::Front)
 			: HawkeyeCombatAnim::FReactionPlayed();
 		if (Blow && HitReactionComponent)
 		{
@@ -1189,15 +1190,17 @@ void AThugCharacter::ApplyCombatAnimSet()
 	}
 }
 
-void AThugCharacter::PlayHitPose(const FHawkeyeStrikeImpact& Blow)
+void AThugCharacter::PlayHitPose(const FHawkeyeStrikeImpact& Blow, const AActor* Attacker)
 {
 	if (bLimp || bKnockedDown)
 	{
 		return;
 	}
+	const FVector ToAttacker = Attacker ? Attacker->GetActorLocation() - GetActorLocation() : -Blow.Direction;
 	const EHawkeyeHitDirection Side = UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow.Direction);
 	const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
-	HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, &Blow, Side, HeavyReactionWeight, Weld);
+	HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, &Blow, Side, HeavyReactionWeight, Weld,
+		UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), ToAttacker) == EHawkeyeHitDirection::Front);
 }
 
 bool AThugCharacter::PlayCombatClip(ECombatAnimRole ClipRole, float FitToSeconds)
