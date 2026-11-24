@@ -108,6 +108,27 @@ def _file_stamp(path):
     return "{0}:{1}:{2}".format(os.path.basename(path), st.st_size, int(st.st_mtime))
 
 
+def _glb_joints(path):
+    """The joint names of a .glb's first skin (a read of its JSON chunk; no engine call). Empty when it has none."""
+    import struct  # noqa: PLC0415 - only this check
+
+    with open(path, "rb") as handle:
+        header = handle.read(20)
+        if len(header) < 20 or header[:4] != b"glTF":
+            return set()
+        length = struct.unpack_from("<I", header, 12)[0]
+        doc = json.loads(handle.read(length).decode("utf-8"))
+    nodes = doc.get("nodes", [])
+    skins = doc.get("skins") or [{}]
+    return set(nodes[j].get("name", "") for j in skins[0].get("joints", []))
+
+
+def skeleton_names(skeleton):
+    """Bone names of a skeleton as it is loaded now."""
+    pose = unreal.AnimPoseExtensions.get_reference_pose(skeleton)
+    return [str(b) for b in unreal.AnimPoseExtensions.get_bone_names(pose)]
+
+
 def tag_of(asset):
     try:
         return unreal.EditorAssetLibrary.get_metadata_tag(asset, BUILD_TAG) or ""
@@ -681,7 +702,15 @@ def import_built(who, skeleton):
         return None
     stamp = "built-2|{0}|{1}".format(BUILT_LODS, _file_stamp(path))
     existing = c.load_or_none(full)
-    if existing is not None and tag_of(existing) == stamp:
+    # Bones the costume carries that the skeleton lacks (Kate's ponytail and quiver, built after the skeleton was saved
+    # without them) mean the mesh is imported again, whatever its stamp says.
+    missing = sorted(_glb_joints(path) - set(skeleton_names(skeleton))) if existing is not None else []
+    if missing:
+        c.log("info", full, "the skeleton lacks {0}: importing again".format(", ".join(missing)))
+    if existing is not None and tag_of(existing) == stamp and not missing:
+        # A mesh with bones its skeleton did not have (Kate's ponytail and quiver) adds them to the skeleton when loaded,
+        # in memory; the skeleton is saved with them, or the AnimBPs compile without them and a game run finds NaNs.
+        c.save(skeleton, only_if_dirty=True)
         c.log("exists", full)
         return existing
     staging = "{0}/Import_{1}".format(BUILT, who.capitalize())
@@ -707,6 +736,8 @@ def import_built(who, skeleton):
     lods = _generate_lods(mesh)
     set_tag(mesh, stamp)
     c.save(mesh)
+    # The import added the costume's own bones (ponytail_01.., quiver_01..) to the shared skeleton: save it.
+    c.save(skeleton)
     c.log("imported", full, "from {0} onto {1}; {2}".format(os.path.basename(path), skeleton.get_name(), lods))
     return mesh
 
