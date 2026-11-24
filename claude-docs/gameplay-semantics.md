@@ -433,18 +433,13 @@ The rig is `UHawkeyeSpringArmComponent` (`Player/HawkeyeSpringArmComponent.h`, `
   forward tumble of the body. Landing while still is a 0.4 s stumble from 0 back to run
   speed. Both procedural; the sample has land clips but no roll. Grapple landings never
   trigger either. Fall damage is still zero below 900 cm. Fall damage begins at 900 cm and never kills from a
-  rooftop you can reach by grapple.
+  rooftop you can reach by grapple. (Since the traversal body pose, "Traversal body pose" below, the body of a roll, a
+  stumble and every landing from a release is drawn by clip or by the legs' absorb; none of these numbers, the lock, the
+  capsule or the damage changed.)
 - Camera looking up: from +5 degrees the arm shortens, the socket rises and the view widens, and the
   pivot lifts as far as it takes to keep the lens off the pavement (the numbers are in "Camera rules").
   Pitch is clamped to [-70, +75]. Above about 53 degrees Kate drops out of the bottom of the frame rather
   than filling it.
-  rooftop you can reach by grapple. (Since the traversal body pose, "Traversal body pose" below, the body of a roll, a
-  stumble and every landing from a release is drawn by clip or by the legs' absorb; none of these numbers, the lock, the
-  capsule or the damage changed.)
-- Camera looking up: between +20 and +60 degrees of pitch the arm shortens 350 to 220,
-  the socket Z rises 60 to 110, and the pivot lifts 0 to 150 cm in world space (without
-  the lift the lens sat on the pavement). Pitch is clamped to [-70, +75]. Above about
-  53 degrees Kate drops out of the bottom of the frame rather than filling it.
 - Grapple arrow (built 2026-09-26): valid anchors are within 2500 cm, farther than 300 cm
   (so the anchor just landed beside doesn't stay lit), within 30 degrees of the camera
   forward, on the screen 2 degrees inside every edge (`IsOnScreen`, the camera's field of view
