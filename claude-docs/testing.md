@@ -17,7 +17,7 @@ the Tests folder holds about 140 files):
 | Missions and flow | `Mission`, `Objective`, `MissionFlow`, `Flashback`, `Chase`, `Crime`, `Challenge`, `Phone`, `Dialogue`, `Hints` |
 | Combat | `Melee`, `Takedown`, `Dodge`, `Fight`, `Tokens`, `Bow`, `BowIK`, `Arrow`, `TrickArrow`, `ReturnFlight`, `AimAssist`, `Weapon` (the thugs' pistol and Kate's `Hands`), `CombatAnim` |
 | Thugs and partner | `Thug`, `ThugTree`, `Gunner`, `Archer`, `Heavy`, `Partner`, `Lucky` |
-| Movement and traversal | `Movement`, `Sprint`, `Crouch`, `Camera`, `Parkour`, `Grapple`, `FireEscape`, `Gasp`, `Animation`, `BodyLook` |
+| Movement and traversal | `Movement`, `Sprint`, `Crouch`, `Camera`, `Parkour`, `Grapple`, `FireEscape`, `Gasp`, `Animation`, `BodyLook`, `Traversal.Pose` (the body pose's spring, lean, tilt clamp, phases, arrival and landing classes, pull, motion; and on the character: the input, that it never moves her, the landing outcomes kept) |
 | World and UI | `Interior`, `Door`, `Pickup`, `Inventory`, `FastTravel`, `TimeOfDay`, `Map`, `Hud`, `Pause`, `Input`, `Settings`, `Accessibility`, `Character` |
 | Save, audio, effects, tools | `Save`, `Load`, `Music`, `Audio`, `Vfx`, `Playtest`, `Smoke` |
 | Standalone only (below) | `Lap`, `Screenshot`, `Perf`, `Audit` |
@@ -224,6 +224,18 @@ thug 170 cm off: fails when her nearest fist or foot is more than 35 cm from his
 unless he is a ragdoll) and `knockout_settled.png` (once asleep: fails past 400 cm from where he stood, the pelvis over
 45 cm up, or no settle within 6 s). Ragdoll captures hold time at the crawl (0.02), never the 0.0001 stop: a near-zero
 step blew the solver up and threw the body over the roofs.
+
+## 2h2. Traversal strips (written 2026-11-23)
+
+`Hawkeye.Screenshot.Traversal` (standalone `-game`, a few minutes): on the district street by the PlayerStart, Kate is moved by
+the zip movement itself along swept-clear lines, or dropped, and the world's time is held at fixed times for a shot from the side
+and from the front three-quarter, each scenario with `hawkeye.ZipPose` 0 and 1. Scenarios `launch`, `pull`, `redirect`, `release`,
+`arrive_fast`, `arrive_medium`, `arrive_slow`, `land_light`, `land_heavy`, `land_roll`; 8 frames each, laid side by side into
+`Saved/Screenshots/Traversal/<scenario>_<side|three_quarter>_<off|on>.png` (frames in `Frames/`, a yellow line from her drawn hand to
+the rope's end). It fails when the pose is drawing with the pose off, when mid-pull the body is not tipped over 8 degrees or her
+drawn hand is more than 45 cm off the rope hand's target (a warning past 25), and when the fast and slow arrivals are not a slide
+out and a step-down. Read the strips: the pose reads as physical when the body leans into the pull and swings through a chain, the
+legs trail and the hand stays on the line, and each arrival and landing matches its speed.
 
 ## 2i. The traversal audit (a gate since 2026-11-11)
 

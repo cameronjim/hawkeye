@@ -339,7 +339,8 @@ reach (her shoulder is about 12 cm higher) and her arm stays straight, a few cm 
 
 **Hair and cloth.** Sparrow's mesh has no clothing assets, and her hair, hood, skirt and feather bones are not
 simulated here (her Paragon AnimBP did that with AnimDynamics, which this AnimBP does not run): they follow their
-parents rigidly. Nothing simulates, so a zip, a vault or a fast-travel teleport cannot throw them about.
+parents rigidly. Nothing simulates, so a zip, a vault or a fast-travel teleport cannot throw them about. (The built Kate's
+ponytail and quiver do simulate, see "Secondary motion".)
 
 **Swapping the look** (a licensed Kate later): put the new skeletal mesh in, point `create_kate_look.py`'s
 `SPARROW_MESH`, chain map, material slots and `HIDDEN_BONES` at it (or set `BP_Kate.BodyLook` by hand for a test),
@@ -485,7 +486,6 @@ clavicles are left alone. `HAND_CURL_DEGREES` (0) adds bend to fingers a driver 
 prints the frames each skeleton gives. `verify_content` (`check_hand_chains`) fails if a body retargeter has an unmapped
 finger chain or no offsets on the hands. `Hawkeye.Screenshot.Bodies` ends with `hands_<who>_<rest, fist, bow>.png`
 close-ups (thug, heavy, Clint, Kate).
-=======
 ## The weld clips (written 2026-11-23; not yet built or seen)
 
 `build_clips.py` also makes, per rig, six hit reactions by where the blow landed and how hard (`HitHead_`, `HitGut_`, `HitLegs_` x
@@ -505,6 +505,76 @@ close-ups (thug, heavy, Clint, Kate).
 - All sixteen manifest lines are `in_set: false`: imported, not worn. A clip goes in only when its strip beats the one it replaces
   (`Hawkeye.Screenshot.Clips`: `<clip>.png` against `<clip>_before.png`; `contact_light_<tag>.png` and `contact_heavy_<tag>.png`, eight
   frames round a live blow, `-ContactStripTag=before` on the old build). Say which did not beat theirs.
+=======
+## Traversal body pose (written 2026-11-23, not yet seen in the engine; the rules are `gameplay-semantics.md`, "Traversal body pose")
+
+Why: the sample's motion matching knows nothing about a zip. The movement component carried the capsule along a line, the
+only rotation was the yaw to the landing, the sample showed a generic pose, and a roll was a scripted spin. The pose below
+answers it per phase (Insomniac's way: authored or chosen per traversal phase, physics only has to look plausible) and the
+engine is not asked to simulate her.
+
+**Route.** The bow IK post-process graph (`ABP_BowIK_Post`, `UHawkeyeBowIKGraphBuilder`, `UHawkeyeBowIKAnimInstance`): it
+already runs on Kate's and Clint's driver after the sample's graph, its hand IK already takes strike and hang hands, and the
+visible body inherits it through Retarget Pose From Mesh exactly as it inherits the roll. A new AnimInstance base or a
+Control Rig would have meant a second post-process on a mesh that takes one. The graph is now (build tag `bow-ik-5`):
+
+    ... -> to component space
+    -> ModifyBone pelvis (rotation, offset), spine_01, spine_02, spine_03     (TraversalAlpha: skipped off a trip)
+    -> hit lean, spine twist, neck twist                                       (the bow's and the melee's, as before)
+    -> ModifyBone neck, thigh_l, thigh_r, calf_l, calf_r                       (TraversalAlpha)
+    -> TwoBoneIK hand_l, hand_r                                                (the same IKs; the strike, hang and traversal take them in turn)
+    -> to local space
+
+All of them additive in component space, `Rotation`/`Translation` pins from `UPROPERTY`s on the instance
+(`TraversalPelvisRotation`, `TraversalSpine01Rotation`, ... `TraversalCalfRRotation`, `TraversalAlpha`). Each update the
+instance steps the owner's `FTraversalPoseState` (`AHawkeyeCharacter::GetTraversalPoseState`, input from
+`BuildTraversalPoseInput`: the movement's zip flags and hop fraction, `Velocity`, the rope from the anchor's marker, nothing
+written) and `ApplyTraversalPose` turns its actor-frame result into component space (`FTraversalPoseRules::ActorToComponent`:
+the same world turn, written in the mesh's axes; offsets divided by the mesh's 0.93 scale). The hands go through the strike
+channel's slots in `ComposeOutputs`, only while no strike has the arm and the bow is under half up. Everyone else on the
+graph (thugs, the archer, Clint standing) has no `AHawkeyeCharacter` pose state and `TraversalAlpha` 0: nothing is
+evaluated. Teleports (a jump past what she can run in a frame) reset the state; the engine resets the dynamics nodes itself.
+`hawkeye.ZipPose 0|1` is a console variable read by the instance.
+
+Landing and fall clips are montages in the combat set (`ECombatAnimRole::LandStandLight .. LandSprintHeavy, LandRoll,
+LandStumble, FallLoop`; `UCombatAnimSet::LandingRoleFor`). `Tools/Editor/create_traversal_anims.py` (a `create_all` step before
+`create_combat_anims`) copies the sample's clips from `/Game/Characters/UEFN_Mannequin/Animations/Jump` (already on the
+mannequin's skeleton: no retarget) to `.../Animations/Traversal` with root motion off and the root locked (the setting the dodge
+and hit clips use, `apply_root_motion` in the import script), makes an `AM_<Role>_<Lfoot|Rfoot>` montage of each in the folder
+`create_combat_anims` reads, and logs the pelvis at the start, middle and end with the root locked (a warning when it is
+over 40 cm off the capsule or under 40 cm high: the lock did not take). The anim set cycles the two feet. Without the sample
+in Content the script logs one line and the legs' absorb draws every landing.
+
+Not seen yet, to check with the strips: that the root lock keeps the landing clips on the capsule (the pelvis lines say), that
+the hand reaches (`hand_l` on the body look against the pose's target), and the pelvis and spine turns against the retarget
+(Sparrow's and the built Kate's proportions differ from the mannequin's).
+
+`Hawkeye.Screenshot.Traversal` (standalone `-game`): per scenario and mode, `Saved/Screenshots/Traversal/<scenario>_<side |
+three_quarter>_<off|on>.png`, the frames in `Frames/`. A yellow line is drawn from the drawn hand to the rope's end.
+
+## Secondary motion (written 2026-11-23, not yet seen in the engine)
+
+AnimDynamics, the engine's own (no physics asset, no plugin; Kawaii Physics, MIT, stays the fallback if it proves inadequate and
+Cameron is told first). `UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics` takes `FHawkeyeDynamicsChain`s and puts the
+body look's pose into component space through one node per chain and back; a chain whose bones the look's skeleton lacks is
+left out with a log line (a Kate built before the bones existed is unchanged). `create_kate_look.ensure_anim_bp(dynamics=...)`
+is the script side and `import_bodies.KATE_DYNAMICS` the list. Each node simulates in component space with only part of the
+actor's motion passed in (`AccelerationScale` 0.55, `VelocityDrag` 0.2) and clamped (`MaxAcceleration` 1200 cm/s^2, the
+actor's turning 8 rad/s and 60 rad/s^2) so an 18 m/s zip does not throw it about; each body is a cone round its bone's own
+axis (found from the skeleton: the dominant axis of the child's rest offset) with a spring back to the pose. The engine
+resets every AnimDynamics node on a teleport (`USkeletalMeshComponent::OnUpdateTransform`).
+
+Bones: the built Kate had none worth simulating (her ponytail's 26 locks were skinned to Head and neck_01, the quiver to
+spine_02 and 03). `Tools/Blender/build_kate.py` now adds, with `costume.Body.add_bone`: `ponytail_01..04` under Head down the
+ponytail's axis (joints at 0.12, 0.35, 0.60 and 0.85 of its length, the head holding the tie) and a leaf `ponytail_05` so the
+engine finds the last bone's axis; `quiver_01` under spine_03 from the quiver's mouth to its bottom and its leaf
+`quiver_02`, the quiver's own pieces (not the strap) handing weight from the spine to it down their length (85% at the bottom).
+`--no-dynamics-bones` builds the old skeleton and weights. **It must be built into a staging folder**: `--out
+<staging>\built\kate` (the engine import reads `<assets root>\built\kate`; point `HAWKEYE_ASSETS_ROOT` at a staging copy for
+the import until it has been looked at). Not done: the jacket's hem (the top is zipped and skinned to the body, no bones),
+the game's bow on her back (a static mesh on the driver's holster bone: it rides the driver rigidly, so simulating it means
+a physics-free spring on the holster socket, not a node here), collision of the ponytail against the back (the cone limits
+only).
 
 ## Known limits
 

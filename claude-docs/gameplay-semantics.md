@@ -438,6 +438,13 @@ The rig is `UHawkeyeSpringArmComponent` (`Player/HawkeyeSpringArmComponent.h`, `
   pivot lifts as far as it takes to keep the lens off the pavement (the numbers are in "Camera rules").
   Pitch is clamped to [-70, +75]. Above about 53 degrees Kate drops out of the bottom of the frame rather
   than filling it.
+  rooftop you can reach by grapple. (Since the traversal body pose, "Traversal body pose" below, the body of a roll, a
+  stumble and every landing from a release is drawn by clip or by the legs' absorb; none of these numbers, the lock, the
+  capsule or the damage changed.)
+- Camera looking up: between +20 and +60 degrees of pitch the arm shortens 350 to 220,
+  the socket Z rises 60 to 110, and the pivot lifts 0 to 150 cm in world space (without
+  the lift the lens sat on the pavement). Pitch is clamped to [-70, +75]. Above about
+  53 degrees Kate drops out of the bottom of the frame rather than filling it.
 - Grapple arrow (built 2026-09-26): valid anchors are within 2500 cm, farther than 300 cm
   (so the anchor just landed beside doesn't stay lit), within 30 degrees of the camera
   forward, on the screen 2 degrees inside every edge (`IsOnScreen`, the camera's field of view
@@ -509,6 +516,58 @@ The rig is `UHawkeyeSpringArmComponent` (`Player/HawkeyeSpringArmComponent.h`, `
   Across streets and gaps, 88% of the roof pairs in range reach each other by the model, 85% by the audit
   (the rest: a lower roof below her own parapet's line of sight, or a third building in the view); about
   700 more pairs are farther apart than the grapple reaches.
+
+### Traversal body pose (written 2026-11-23, from "kate whenever she traverses is stiff ... they'd react to the physics")
+
+Rules in `Source/Hawkeye/Traversal/TraversalPoseRules.h` (pure; `Hawkeye.Traversal.Pose.*`), setup in `animation.md`,
+"Traversal body pose". **Everything here is visual.** It reads `Velocity`, the zip's own state and the anchor, and writes
+only bone turns, two hand targets and montages; the movement, the capsule, root motion, `ZipAcceleration`,
+`ReleaseVelocityScale`, the sweeps and `FindAnchorSupports` are untouched, so the traversal audit and the laps are the
+same runs (`Hawkeye.Traversal.Pose.NeverMovesHer` zips two characters, one with the pose stepped every tick, to the same
+point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off for before and after shots.
+- Phase, from the movement each frame: Launch (the zip's hop), Pull (on the line), Redirect (a chain's turn onto a new
+  line), Release (the 0.3 s, `ReleaseSeconds`, after the zip ends in the air), Fall (still in the air after it), Arrive (the
+  zip ended on the floor), else None. A fall that was never a zip is None: the sample lands and falls as before.
+- Pull and Redirect: the whole body tips toward the rope by `RopeTiltWeight` (0.5) of the rope's angle from vertical,
+  plus an acceleration lean, `atan2(horizontal acceleration, 980) x AccelLeanStrength (0.5)`, the acceleration being the
+  change of `Velocity` per frame clamped to 8000 cm/s^2 (the hop's end hands over 600 cm/s in a frame), the two added as
+  (forward, right) vectors and clamped to `MaxTiltDegrees` (55) in length. Critically damped spring (Holden, half-life
+  0.10 s) on the tilt, 0.15 s on the legs and sink, 0.06 s on the arms; a tilt velocity of `LaunchKickDegPerSecond` (500)
+  is added where the hop hands over to the line (a visible jerk of about 13 degrees that settles), and a redirect's
+  sideways acceleration swings the body through. The pelvis takes 0.6 of the tilt, the spine 0.4 split 0.5, 0.3, 0.2
+  down spine_01..03 (weights normalised to sum to 1); the neck takes 0.8 of it back so the head stays level and looks up
+  toward the anchor by half its elevation (at most 45 degrees up, 40 round). The legs trail the way she goes by
+  `MaxLegTrail` (30 degrees at 1800 cm/s, never past 75 degrees with the tip), the right leg straight back and the left
+  14 degrees less, knees bent 18 degrees and more with the trail; the pelvis sinks up to 10 cm when she is hauled up and
+  lags up to 12 cm behind a forward pull. The rope hand (left, the bow hand, the one the line leaves) is IK'd to a point
+  38 cm from the shoulder along the rope; the free hand is IK'd back and out for balance.
+- The line leaves the hand people see: `UGrappleComponent::GetZipLineStart` reads `hand_l` on the body look (Kate's built
+  suit or Sparrow) when she has one, and the driver's otherwise, so the line starts on the drawn hand even where a longer
+  arm falls a few centimetres short of the driver's.
+- Launch: the hop (0.15 s, unchanged) is the anticipation: pelvis down up to 16 cm, hips 28 and knees 45 degrees
+  flexed and the chest 14 degrees over, peaking 60% through, on a 0.04 s spring, the rope hand reaching from the start of
+  the hop. A hop that short cannot carry a longer wind-up; lengthening it is a movement change (`ZipHopSeconds`).
+- Arrive, by the line speed she arrived at (not the 600 cm/s she walks on at): under 700 cm/s a step-down (0.35 s, 7 cm
+  down, knees 22), up to 1300 a braking two-step (0.7 s, 14 cm down, the chest back 8 degrees, a left plant at 0.12 s and a
+  right at 0.30 s, knees 40, arms half out), above that a slide out (0.9 s, 30 cm down, sat back 20 degrees with the legs
+  forward and the arms out). The velocity she leaves with is the movement's, as before.
+- Release: a tuck (hips 50, knees 75 degrees) for 0.3 s, the hand off the line and the arms out; then Fall: arms out and up
+  and legs braced in proportion to how fast she drops (`FallFullSpeed` 1200 cm/s), the back arching up to 8 degrees. With
+  the anim set's `FallLoop` clip playing, the fall pose shrinks to a 0.3 reaction on top of it.
+- Landings from falls pick their look by impact speed (the most downward `Velocity.Z` of the fall, or the free-fall speed of
+  the height when none was tracked) and the speed along the ground, in `FTraversalPoseRules::ClassifyLanding`: under 350 cm/s
+  none; 350 to 700 light; 700 up heavy; stand under 80 cm/s, walk under 300, run under 600, sprint above; **a roll or a stumble
+  the landing rules chose from the fall height keeps its look** (`Roll`, `Stumble`), so today's outcomes at today's heights
+  are what they were: 400 cm is 885 cm/s and every roll is heavy, a 100 cm drop is light, a 30 cm step is none. The clip is
+  the sample's `M_Neutral_Jump_F_Land_*` for that band (anim set roles `LandStandLight` .. `LandSprintHeavy`, the foot she
+  lands on alternating), `LandRoll` in place of the scripted 360 degree spin (the capsule shrink, the 200 cm and the input lock
+  stay the roll's, `StartRoll`), `LandStumble` fitted to `StumbleSeconds`; with no clip in the set the legs' absorb (sink 5 to
+  26 cm, knees 14 to 70 degrees by how hard) draws it, and the scripted spin stays. Only landings the pose owns get a look: a
+  release from a zip, one that rolls, stumbles or dips, and falls from `LandingPoseMinHeight` (150 cm) up; a hop or a step is
+  the sample's. Fall damage, the roll lock, the stumble's speed ramp and the dip are the old code, untouched.
+- Tests: the pure rules, `Hawkeye.Traversal.Pose.Spring`, `.Lean`, `.Quats`, `.Phases`, `.Classes`, `.Pull`, `.Motion`,
+  `.Arrive`; on the character, `.InputFollowsTheZip`, `.NeverMovesHer`, `.LandingOutcomesKept`, `.LandingRoles`,
+  `.AppliedToTheGraph`. The strips: `Hawkeye.Screenshot.Traversal` (`testing.md`).
 
 ## Bow and arrows (built 2026-09-26; the rules below hold, with these notes)
 - Data: `UBowDefinition` (DA_Bow_Kate 0.8 s draw, DA_Bow_Clint 1.0 s) and
