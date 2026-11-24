@@ -202,8 +202,8 @@ driver's in every shot.
 - A teleport turns Kate's capsule but not her body: the Game Animation Sample's AnimBP keeps the mesh's old facing until
   she moves (a 180 degree teleport in the bodies shot left her facing the old way, the holstered bow on her chest). The
   shot walks her into each facing. Not fixed in the game: fast travel and checkpoint loads may show it for a moment.
-- Kate's ponytail is skinned to the head, not simulated: it turns with the head and does not swing. Physics bones or
-  AnimDynamics in the engine would let it move.
+- Kate's ponytail and quiver are bones simulated in the engine by the Kawaii Physics plugin (animation.md, "Secondary
+  motion"); in this build's meshes they only turn with the head and spine until that is on.
 - Kate's glove edges follow the body's own edges, so the bow glove's finger ends are a little jagged close up; the
   black under-sleeve panel meets the side panel with a small purple notch under each arm; the arrow vanes are flat
   boxes.
