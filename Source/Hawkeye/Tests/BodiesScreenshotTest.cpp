@@ -270,16 +270,23 @@ public:
 			Step = 1;
 			return false;
 		}
-		if (Step > NumSubjects * 2)
+		if (Step > TotalSubjects * 2)
 		{
 			Cleanup();
 			return true;
 		}
 		// Odd steps stand the subject and frame it; even steps shoot it once it has settled.
-		const int32 Subject = (Step - 1) / 2;
+		const int32 Round = (Step - 1) / 2;
+		// The close-ups of the hands come after every full shot: the same stand and action, a camera on the hands.
+		bHandPass = Round >= NumSubjects;
+		const int32 Subject = bHandPass ? HandBase(Round) : Round;
 		if (Step % 2 == 1)
 		{
 			Stand(World, PC, Subject);
+			if (bHandPass)
+			{
+				FrameHands(PC);
+			}
 			StepStart = Now;
 			++Step;
 			return false;
@@ -319,6 +326,22 @@ private:
 	/** Kate's shots, taken once by day and once by night after the others. */
 	enum EKateShot : int32 { KFront, KBack, KRun, KCrouch, KPunch, KDraw, KTrio, NumKateShots };
 	static constexpr int32 NumSubjects = FirstKateShot + NumKateShots * 2;
+	static constexpr int32 NumHandShots = 8;
+	static constexpr int32 TotalSubjects = NumSubjects + NumHandShots;
+
+	/** The hand close-ups, in order: each is a full shot's subject seen from the hands. */
+	static int32 HandBase(int32 Round)
+	{
+		static const int32 Bases[NumHandShots] = {ThugShot, PunchShot, HeavyShot, ClintShot, DrawShot,
+			FirstKateShot + KFront, FirstKateShot + KPunch, FirstKateShot + KDraw};
+		return Bases[Round - NumSubjects];
+	}
+	static const TCHAR* HandName(int32 Round)
+	{
+		static const TCHAR* Names[NumHandShots] = {TEXT("hands_thug_rest"), TEXT("hands_thug_fist"), TEXT("hands_heavy_rest"),
+			TEXT("hands_clint_rest"), TEXT("hands_clint_bow"), TEXT("hands_kate_rest"), TEXT("hands_kate_fist"), TEXT("hands_kate_bow")};
+		return Names[Round - NumSubjects];
+	}
 
 	static bool IsKate(int32 Subject) { return Subject >= FirstKateShot; }
 	static int32 KateShot(int32 Subject) { return (Subject - FirstKateShot) % NumKateShots; }
@@ -642,10 +665,10 @@ private:
 	void StandKate(UWorld* World, APlayerController* PC, int32 Subject)
 	{
 		const int32 Shot = KateShot(Subject);
-		if (Shot == KFront && GEngine)
+		if ((Shot == KFront || bHandPass) && GEngine)
 		{
 			// Each round starts with its time of day; hawkeye.TimeOfDay does not save, and Cleanup puts back "Saved".
-			GEngine->Exec(World, KateNight(Subject) ? TEXT("hawkeye.TimeOfDay Night") : TEXT("hawkeye.TimeOfDay Day"));
+			GEngine->Exec(World, KateNight(Subject) && !bHandPass ? TEXT("hawkeye.TimeOfDay Night") : TEXT("hawkeye.TimeOfDay Day"));
 		}
 		const FVector Side = RunDirection();
 		const float Yaw = Along.Rotation().Yaw;
@@ -883,6 +906,16 @@ private:
 	void Shoot(int32 Subject)
 	{
 		using namespace HawkeyeBodyShots;
+		if (bHandPass)
+		{
+			KeepKateSeen();
+			if (APlayerController* PC = FindWorld() ? FindWorld()->GetFirstPlayerController() : nullptr)
+			{
+				FrameHands(PC);
+			}
+			HawkeyeShots::Request(Test, ShotPath(HandName(Step / 2 - 1)), /*bShowUI=*/false);
+			return;
+		}
 		const FString ShotFile = ShotName(Subject);
 		const TCHAR* const ShotLabel = *ShotFile;
 		if (IsKate(Subject))
@@ -982,6 +1015,40 @@ private:
 			const UBowComponent* Bow = Clint->GetBowComponent();
 			Test->AddInfo(FString::Printf(TEXT("%s.png: %s, drawing %d, draw %.2f."), Name, *GetNameSafe(Clint->GetBodyMesh()->GetSkeletalMeshAsset()),
 				Bow && Bow->IsDrawing() ? 1 : 0, Bow ? Bow->GetDrawFraction() : 0.f));
+		}
+	}
+
+	/** The camera onto the subject's hands (both, whatever they are doing), from where the full shot's camera is. */
+	void FrameHands(APlayerController* PC)
+	{
+		const ACharacter* Character = Cast<ACharacter>(Current.Get());
+		const USkeletalMeshComponent* Seen = nullptr;
+		if (const AThugCharacter* Thug = Cast<AThugCharacter>(Character))
+		{
+			Seen = Thug->GetBodyMesh();
+		}
+		else if (const AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Character))
+		{
+			Seen = Hawkeye->GetBodyMesh();
+		}
+		FVector Left(0.f), Right(0.f);
+		if (!Camera || !Seen || !HawkeyeBodyShots::Bone(Seen, TEXT("hand_l"), Left) || !HawkeyeBodyShots::Bone(Seen, TEXT("hand_r"), Right))
+		{
+			return;
+		}
+		const FVector Mid = (Left + Right) * 0.5f;
+		const float Spread = FVector::Dist(Left, Right);
+		const float Distance = FMath::Max(70.f, Spread * 1.3f + 40.f);
+		FVector Dir = (Camera->GetActorLocation() - Mid).GetSafeNormal();
+		// Seen from a little above, so the palms and the finger curl read.
+		Dir = (Dir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
+		const FVector Eye = Mid + Dir * Distance;
+		Camera->SetActorLocationAndRotation(Eye, (Mid - Eye).Rotation());
+		Camera->GetCameraComponent()->SetFieldOfView(40.f);
+		PC->SetViewTarget(Camera);
+		if (Light)
+		{
+			Light->SetActorLocation(Eye + FVector(0.f, 0.f, 40.f));
 		}
 	}
 
@@ -1097,6 +1164,7 @@ private:
 	TWeakObjectPtr<AHawkeyeCharacter> ClintRef;
 	TWeakObjectPtr<ALuckyCharacter> LuckyRef;
 	bool bKateOut = false;
+	bool bHandPass = false;
 	bool bWalkingIn = false;
 	bool bCrouchOnArrival = false;
 	bool bHoldingMove = false;
