@@ -970,12 +970,15 @@ KATE_BP = "/Game/Blueprints/Player/BP_Kate"
 # body, on the bones Tools/Blender/build_kate.py adds (ponytail_01..04 under Head, quiver_01 under spine_03). A chain whose bones
 # the imported skeleton does not have is left out, so Kate built before those bones existed is unchanged. Keys are
 # FHawkeyeDynamicsChain's fields in Python's names.
-KATE_DYNAMICS = [
-    {"bound_bone": "ponytail_01", "chain_end": "ponytail_04", "cone_degrees": 38.0, "angular_spring": 45.0, "damping": 1.3,
-     "acceleration_scale": 0.55, "velocity_drag": 0.2, "max_acceleration": 1200.0},
-    {"bound_bone": "quiver_01", "cone_degrees": 12.0, "angular_spring": 160.0, "damping": 1.6, "acceleration_scale": 0.35,
-     "velocity_drag": 0.1, "max_acceleration": 900.0},
-]
+KATE_DYNAMICS = []
+# OFF (2026-11-24): the chains below went into the look's AnimBP and put NaNs in ponytail_01 on the first frame (a hard assert in
+# BonePose.h, a crash in a standalone run). The ponytail as a chain, as four single bodies in series, and the quiver as one
+# body all did it, with and without the angular spring, the sim-space clamps and the cone/target constraints, while the same
+# graph with no node is clean. Cause not found. The bones stay on the skeleton; put these back to try again:
+#   {"bound_bone": "ponytail_01", "chain_end": "ponytail_04", "cone_degrees": 38.0, "angular_spring": 45.0, "damping": 1.3,
+#    "acceleration_scale": 0.55, "velocity_drag": 0.2, "max_acceleration": 1200.0},
+#   {"bound_bone": "quiver_01", "cone_degrees": 12.0, "angular_spring": 160.0, "damping": 1.6, "acceleration_scale": 0.35,
+#    "velocity_drag": 0.1, "max_acceleration": 900.0},
 
 
 def ensure_kate(female, built):
