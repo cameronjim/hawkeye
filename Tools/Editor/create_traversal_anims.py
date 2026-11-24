@@ -2,11 +2,11 @@
 
 The Game Animation Sample ships landing clips on Kate's own skeleton (the UEFN mannequin), in
 /Game/Characters/UEFN_Mannequin/Animations/Jump: M_Neutral_Jump_F_Land_<Stand, Walk, Run, Sprint>_<Light, Heavy>_<Lfoot,
-Rfoot>, M_Neutral_Jump_F_Land_Roll_*, M_Neutral_Jump_F_Land_Stumble_* and M_Neutral_Jump_Loop_Fall. The sample's graph does
+Rfoot> and M_Neutral_Jump_Loop_Fall (no roll or stumble clip: it has none). The sample's graph does
 not play them for a grapple's fall. This copies each into /Game/Characters/UEFN_Mannequin/Animations/Traversal with root
 motion off and the root locked (the capsule moves her, never a clip: the same setting the dodge and hit clips use), and builds
 an AM_<Role>_<Foot> montage of it in the folder create_combat_anims.py reads, so the next step puts them in DA_AnimSet_Kate
-under the roles LandStandLight .. LandStumble and FallLoop (ECombatAnimRole). No retarget: the clips are already on the skeleton.
+under the roles LandStandLight .. LandSprintHeavy and FallLoop (ECombatAnimRole). No retarget: the clips are already on the skeleton.
 
     AM_LandRunHeavy_Lfoot, AM_LandRunHeavy_Rfoot     the two feet she lands on alternate (the role's variants)
 
@@ -27,26 +27,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 import import_combat_anims as ica  # noqa: E402
 
-BUILD = "traversal-anims-1"   # bump when the clip list or the montage layout below changes
+BUILD = "traversal-anims-2"   # bump when the clip list or the montage layout below changes
 SOURCE_FOLDER = "/Game/Characters/UEFN_Mannequin/Animations/Jump"
 SEQUENCE_FOLDER = "/Game/Characters/UEFN_Mannequin/Animations/Traversal"
 MONTAGE_FOLDER = "/Game/Characters/UEFN_Mannequin/Animations/Combat"
 CHARACTERS = ["kate"]
 
-# (role, the sample's clip without its foot, layout)
-_LAND = {"slot": "DefaultSlot", "blend_in": 0.08, "blend_out": 0.2}
-_TAKE = {"slot": "DefaultSlot", "blend_in": 0.08, "blend_out": 0.15}
+# (role, the sample's clip without its foot, layout). The sample's landing clips run 2 to 4 s because they carry on into
+# the stand or the run; the montage keeps the landing itself (end_s) and blends out of it into the locomotion that is
+# already playing underneath.
+_LIGHT = {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.25, "end_s": 0.8}
+_HEAVY = {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.3, "end_s": 1.2}
+# The sample has no roll and no stumble clip (M_Neutral_Jump_F_Land_Roll / _Stumble do not exist): the roll stays the
+# scripted spin and the stumble the legs' absorb, ECombatAnimRole::LandRoll and LandStumble stay empty.
 ROLES = [
-    ("LandStandLight", "M_Neutral_Jump_F_Land_Stand_Light", _LAND),
-    ("LandStandHeavy", "M_Neutral_Jump_F_Land_Stand_Heavy", _LAND),
-    ("LandWalkLight", "M_Neutral_Jump_F_Land_Walk_Light", _LAND),
-    ("LandWalkHeavy", "M_Neutral_Jump_F_Land_Walk_Heavy", _LAND),
-    ("LandRunLight", "M_Neutral_Jump_F_Land_Run_Light", _LAND),
-    ("LandRunHeavy", "M_Neutral_Jump_F_Land_Run_Heavy", _LAND),
-    ("LandSprintLight", "M_Neutral_Jump_F_Land_Sprint_Light", _LAND),
-    ("LandSprintHeavy", "M_Neutral_Jump_F_Land_Sprint_Heavy", _LAND),
-    ("LandRoll", "M_Neutral_Jump_F_Land_Roll", _TAKE),
-    ("LandStumble", "M_Neutral_Jump_F_Land_Stumble", _TAKE),
+    ("LandStandLight", "M_Neutral_Jump_F_Land_Stand_Light", _LIGHT),
+    ("LandStandHeavy", "M_Neutral_Jump_F_Land_Stand_Heavy", _HEAVY),
+    ("LandWalkLight", "M_Neutral_Jump_F_Land_Walk_Light", _LIGHT),
+    ("LandWalkHeavy", "M_Neutral_Jump_F_Land_Walk_Heavy", _HEAVY),
+    ("LandRunLight", "M_Neutral_Jump_F_Land_Run_Light", _LIGHT),
+    ("LandRunHeavy", "M_Neutral_Jump_F_Land_Run_Heavy", _HEAVY),
+    ("LandSprintLight", "M_Neutral_Jump_F_Land_Sprint_Light", _LIGHT),
+    ("LandSprintHeavy", "M_Neutral_Jump_F_Land_Sprint_Heavy", _HEAVY),
 ]
 FEET = ("Lfoot", "Rfoot")
 # The fall after letting go: one clip that loops.
