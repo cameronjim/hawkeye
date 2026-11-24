@@ -45,6 +45,9 @@
     4d1c. import_authored_clips   the get-ups and hit reactions Tools/Blender/build_clips.py keys on the drivers'
                                   skeletons, from outside the repo (HAWKEYE_ASSETS_ROOT/built/clips): FBX import, retarget,
                                   AM_ montages, through import_combat_anims (skipped, one line each, when not built)
+    4d1d. create_traversal_anims  the Game Animation Sample's landing clips (stand, walk, run, sprint, light and heavy, the
+                                  roll, the stumble) and fall loop, copied in place and made AM_ montages in the combat
+                                  folder, for the roles LandStandLight .. FallLoop (skipped, one line, without the sample)
     4d2. create_combat_anims      DA_AnimSet_Kate/_Clint/_Thug/_Archer filled from whatever AM_ combat
                                   montages Tools/import-anims.ps1 has made (none on a fresh clone), set
                                   on BP_Kate, BP_Clint, BP_Thug and BP_Archer (after the bow IK graph,
@@ -110,6 +113,7 @@ STEPS = [
     ("kate look", "create_kate_look"),
     ("bodies", "import_bodies"),
     ("authored clips", "import_authored_clips"),
+    ("traversal anims", "create_traversal_anims"),
     ("combat anims", "create_combat_anims"),
     ("audio defaults", "create_blueprints", "apply_audio_defaults"),
     ("vfx defaults", "create_blueprints", "apply_vfx_defaults"),
