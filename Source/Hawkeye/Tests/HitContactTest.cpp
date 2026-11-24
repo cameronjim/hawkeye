@@ -12,7 +12,8 @@
 
 /**
  * Contact, reaction and knockout (claude-docs/gameplay-semantics.md): the warp's caps and the honest whiff, the region a
- * blow aims at, the limb and the way it travels, the reaction it picks, the hit-stop and who it holds, and a knockout's
+ * blow aims at, the limb and the way it travels, the reaction it picks, the hit-stop and who it holds (each party on its own
+ * clock), and a knockout's
  * throw. Pure rules first, then a thug and Kate in a test world for what must not change (parry, guard, the telegraph).
  */
 namespace HawkeyeHitContactTest
@@ -179,11 +180,14 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Heavier, longer"), UHawkeyeHitContactRules::ComputeHitStopSeconds(0.3f, Tuning)
 		< UHawkeyeHitContactRules::ComputeHitStopSeconds(0.6f, Tuning));
 	TestTrue(TEXT("50 to 90 ms: three to five frames at 60"), Tuning.MinSeconds >= 0.05f - 0.0001f && Tuning.MaxSeconds <= 0.09f + 0.0001f);
-	// Two blows at once never stack into a freeze: the second, inside the gap, gets none of its own.
+	// A chain: a blow inside the gap after the last freezes for 40% of its own length (it used to get none), never stacking.
 	TestEqual(TEXT("No stop before: the full one"), UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(1.f, Tuning, -1.f),
 		Tuning.MaxSeconds, 0.0001f);
-	TestEqual(TEXT("Inside the gap after the last: none"),
-		UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(1.f, Tuning, Tuning.MinGapSeconds * 0.5f), 0.f);
+	TestEqual(TEXT("Inside the gap after the last: 40% of its own"),
+		UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(1.f, Tuning, Tuning.MinGapSeconds * 0.5f), Tuning.MaxSeconds * 0.4f, 0.0001f);
+	TestEqual(TEXT("A light inside it: 40% of the light's"),
+		UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(0.3f, Tuning, 0.05f),
+		UHawkeyeHitContactRules::ComputeHitStopSeconds(0.3f, Tuning) * 0.4f, 0.0001f);
 	TestEqual(TEXT("Past it: its own again"),
 		UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(0.3f, Tuning, Tuning.MinGapSeconds + 0.01f),
 		UHawkeyeHitContactRules::ComputeHitStopSeconds(0.3f, Tuning), 0.0001f);
@@ -203,19 +207,19 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Her light"), Kate->GetMeleeHitStopSeconds(false), 0.062f, 0.001f);
 	TestEqual(TEXT("Her heavy"), Kate->GetMeleeHitStopSeconds(true), 0.09f, 0.001f);
 
-	// The stop is the world's, as the parry's, so every clock holds together; the body only remembers it.
-	Kate->ApplyHitStop(0.05f, FHawkeyeHitStopTuning().Dilation);
-	TestEqual(TEXT("The world's time slows"), Kate->GetWorld()->GetWorldSettings()->TimeDilation, FHawkeyeHitStopTuning().Dilation,
-		0.0001f);
-	TestEqual(TEXT("Her own does not (no clock of hers falls behind the others)"), Kate->CustomTimeDilation, 1.f);
+	// The freeze is the two bodies' own, each on its own clock: the world's time is not touched.
 	UHitReactionComponent* Reaction = Kate->GetHitReactionComponent();
 	TestNotNull(TEXT("She has a reaction component"), Reaction);
 	if (Reaction)
 	{
-		Reaction->BeginHitStop(0.05f);
+		Reaction->BeginFreeze(0.05f, FVector::ForwardVector, 0.3f, false);
+		TestTrue(TEXT("She is frozen"), Reaction->IsFrozen());
+		TestTrue(TEXT("Her own clock stops"), Kate->CustomTimeDilation <= Reaction->Weld.FreezeDilation + 0.0001f);
+		TestEqual(TEXT("The world's time does not"), Kate->GetWorld()->GetWorldSettings()->TimeDilation, 1.f, 0.0001f);
 		TestTrue(TEXT("Her reaction waits for it"), Reaction->IsHitStopped());
+		Reaction->BeginFreeze(0.05f, FVector::ForwardVector, 1.f, false);
+		TestEqual(TEXT("A second blow while frozen counts twice"), Reaction->GetFreezeCount(), 2);
 	}
-	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeHitContactKnockout, "Hawkeye.HitContact.KnockoutImpulse",
@@ -324,9 +328,10 @@ bool FHawkeyeHitContactUnchanged::RunTest(const FString& Parameters)
 	TestEqual(TEXT("It lands at his guard's share"), Before - Health->GetCurrentHealth(), 15.f * 0.3f, 0.01f);
 	TestTrue(TEXT("Still winding up: a guarded boss is not staggered by a light"), His->IsWindingUp());
 	TestEqual(TEXT("His telegraph's clock did not move"), His->GetPhaseRemaining(), TelegraphLeft, 0.0001f);
-	TestEqual(TEXT("Nobody's own clock is touched"), Thug->CustomTimeDilation + Kate->CustomTimeDilation, 2.f);
-	TestEqual(TEXT("The world holds, as for the parry"), Kate->GetWorld()->GetWorldSettings()->TimeDilation,
-		FHawkeyeHitStopTuning().Dilation, 0.0001f);
+	const float Frozen = Thug->GetHitReactionComponent()->Weld.FreezeDilation + 0.0001f;
+	TestTrue(TEXT("Both parties hold, each on their own clock"), Thug->CustomTimeDilation <= Frozen && Kate->CustomTimeDilation <= Frozen);
+	TestEqual(TEXT("The world's time runs on (only the parry's stop is global)"), Kate->GetWorld()->GetWorldSettings()->TimeDilation,
+		1.f, 0.0001f);
 	TestTrue(TEXT("The impact is known: its weight is her light's"),
 		Kate->GetMeleeComponent()->GetLastImpact().bValid
 			&& FMath::IsNearlyEqual(Kate->GetMeleeComponent()->GetLastImpact().Weight, 0.3f));

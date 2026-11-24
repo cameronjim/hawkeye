@@ -34,6 +34,12 @@ const TSoftObjectPtr<UAnimMontage>* UCombatAnimSet::FindSlot(ECombatAnimRole Rol
 	case ECombatAnimRole::HitHeavy: return &HitHeavy;
 	case ECombatAnimRole::TakedownAttacker: return &TakedownAttacker;
 	case ECombatAnimRole::TakedownVictim: return &TakedownVictim;
+	case ECombatAnimRole::HitHeadLight: return &HitHeadLight;
+	case ECombatAnimRole::HitHeadHeavy: return &HitHeadHeavy;
+	case ECombatAnimRole::HitGutLight: return &HitGutLight;
+	case ECombatAnimRole::HitGutHeavy: return &HitGutHeavy;
+	case ECombatAnimRole::HitLegsLight: return &HitLegsLight;
+	case ECombatAnimRole::HitLegsHeavy: return &HitLegsHeavy;
 	default: return nullptr;
 	}
 }
@@ -149,7 +155,7 @@ int32 UCombatAnimSet::PickNextVariant(int32& Cursor, int32 Count)
 int32 UCombatAnimSet::CountAssigned() const
 {
 	int32 Count = 0;
-	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(ECombatAnimRole::TakedownVictim); ++Value)
+	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(LastCombatAnimRole); ++Value)
 	{
 		const TSoftObjectPtr<UAnimMontage>* Slot = FindSlot(static_cast<ECombatAnimRole>(Value));
 		Count += (Slot && !Slot->IsNull()) ? 1 : 0;
@@ -160,7 +166,7 @@ int32 UCombatAnimSet::CountAssigned() const
 void UCombatAnimSet::Preload()
 {
 	Preloaded.Reset();
-	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(ECombatAnimRole::TakedownVictim); ++Value)
+	for (uint8 Value = static_cast<uint8>(ECombatAnimRole::Light1); Value <= static_cast<uint8>(LastCombatAnimRole); ++Value)
 	{
 		const TSoftObjectPtr<UAnimMontage>* Slot = FindSlot(static_cast<ECombatAnimRole>(Value));
 		if (Slot && !Slot->IsNull())
@@ -188,6 +194,54 @@ void UCombatAnimSet::Preload()
 	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: %d combat montages loaded of %d assigned and %d more variants."), *GetName(), Preloaded.Num(),
 		CountAssigned(), Variants);
+}
+
+const FCombatClipData* UCombatAnimSet::FindClipData(const UAnimMontage* Montage) const
+{
+	if (!Montage)
+	{
+		return nullptr;
+	}
+	return FindClipDataByPath(FSoftObjectPath(Montage));
+}
+
+const FCombatClipData* UCombatAnimSet::FindClipDataByPath(const FSoftObjectPath& Path) const
+{
+	if (Path.IsNull())
+	{
+		return nullptr;
+	}
+	return ClipData.FindByPredicate([&Path](const FCombatClipData& Entry) { return Entry.Montage.ToSoftObjectPath() == Path; });
+}
+
+ECombatAnimRole UCombatAnimSet::ZoneHitRole(EHawkeyeContactRegion Region, bool bHeavy)
+{
+	switch (Region)
+	{
+	case EHawkeyeContactRegion::Head: return bHeavy ? ECombatAnimRole::HitHeadHeavy : ECombatAnimRole::HitHeadLight;
+	case EHawkeyeContactRegion::Legs: return bHeavy ? ECombatAnimRole::HitLegsHeavy : ECombatAnimRole::HitLegsLight;
+	default: return bHeavy ? ECombatAnimRole::HitGutHeavy : ECombatAnimRole::HitGutLight;
+	}
+}
+
+bool UCombatAnimSet::IsHeavyHitRole(ECombatAnimRole Role)
+{
+	return Role == ECombatAnimRole::HitHeavy || Role == ECombatAnimRole::HitHeadHeavy || Role == ECombatAnimRole::HitGutHeavy
+		|| Role == ECombatAnimRole::HitLegsHeavy;
+}
+
+ECombatAnimRole UCombatAnimSet::HitRoleForImpact(const UCombatAnimSet* Set, EHawkeyeHitDirection Side, EHawkeyeContactRegion Region,
+	float Weight, float HeavyWeight)
+{
+	if (Set && Side == EHawkeyeHitDirection::Front)
+	{
+		const ECombatAnimRole Zone = ZoneHitRole(Region, Weight >= HeavyWeight);
+		if (Set->HasMontage(Zone))
+		{
+			return Zone;
+		}
+	}
+	return HitRoleForBlow(Set, Side, Weight, HeavyWeight);
 }
 
 ECombatAnimRole UCombatAnimSet::HitRoleFor(EHawkeyeHitDirection Side)

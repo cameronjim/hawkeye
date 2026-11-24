@@ -50,6 +50,66 @@ namespace HawkeyeCombatAnim
 		return Length > 0.f ? Instance : nullptr;
 	}
 
+	UAnimInstance* PlayWithBlend(USkeletalMeshComponent* Mesh, UAnimMontage* Montage, float PlayRate, float StartAtSeconds,
+		float BlendInSeconds)
+	{
+		UAnimInstance* Instance = PickInstance(Mesh, Montage);
+		if (!Instance)
+		{
+			return nullptr;
+		}
+		const float Length = Instance->Montage_PlayWithBlendSettings(Montage, FMontageBlendSettings(FMath::Max(BlendInSeconds, 0.f)),
+			FMath::Max(PlayRate, 0.01f), EMontagePlayReturnType::MontageLength, FMath::Max(StartAtSeconds, 0.f));
+		return Length > 0.f ? Instance : nullptr;
+	}
+
+	UAnimMontage* PlayReactionRole(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, ECombatAnimRole Role,
+		const FHawkeyeWeldTuning& Tuning, float* OutKnockbackCm)
+	{
+		if (OutKnockbackCm)
+		{
+			*OutKnockbackCm = -1.f;
+		}
+		UAnimMontage* Montage = UCombatAnimSet::Resolve(Set, Role);
+		if (!Montage || !Mesh)
+		{
+			return nullptr;
+		}
+		const FCombatClipData* Data = Set->FindClipData(Montage);
+		const FHawkeyeReactionStart Start = UHawkeyeHitContactRules::ComputeReactionStart(Data ? Data->HitPeakTime : -1.f,
+			Montage->GetPlayLength(), Tuning);
+		if (!PlayWithBlend(Mesh, Montage, 1.f, Start.StartAtSeconds, Start.BlendInSeconds))
+		{
+			return nullptr;
+		}
+		if (OutKnockbackCm && Data)
+		{
+			*OutKnockbackCm = Data->KnockbackCm;
+		}
+		return Montage;
+	}
+
+	FReactionPlayed PlayHitReaction(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, const FHawkeyeStrikeImpact* Blow,
+		EHawkeyeHitDirection Side, float HeavyWeight, const FHawkeyeWeldTuning& Tuning)
+	{
+		FReactionPlayed Result;
+		const EHawkeyeContactRegion Region = Blow ? UHawkeyeHitContactRules::ClassifyBoneRegion(Blow->Bone) : EHawkeyeContactRegion::Torso;
+		const float Weight = Blow ? Blow->Weight : 0.f;
+		ECombatAnimRole Role = UCombatAnimSet::HitRoleForImpact(Set, Side, Region, Weight, HeavyWeight);
+		float KnockbackCm = -1.f;
+		UAnimMontage* Played = PlayReactionRole(Mesh, Set, Role, Tuning, &KnockbackCm);
+		if (!Played && Role != UCombatAnimSet::HitRoleFor(Side))
+		{
+			Role = UCombatAnimSet::HitRoleFor(Side);
+			Played = PlayReactionRole(Mesh, Set, Role, Tuning, &KnockbackCm);
+		}
+		Result.bPlayed = Played != nullptr;
+		Result.Role = Role;
+		Result.bHeavy = UCombatAnimSet::IsHeavyHitRole(Role);
+		Result.KnockbackCm = KnockbackCm;
+		return Result;
+	}
+
 	UAnimInstance* PlayRole(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, ECombatAnimRole Role, float FitToSeconds)
 	{
 		UAnimMontage* Montage = UCombatAnimSet::Resolve(Set, Role);

@@ -150,8 +150,9 @@ struct HAWKEYE_API FHawkeyeStrikeImpact
 };
 
 /**
- * Hit-stop on a landed blow Kate (or Clint) is a party to: the world's time, as the parry's stop, so both bodies and every
- * clock (tokens, telegraphs, the boss's combo) hold together and nothing falls out of step.
+ * Hit-stop on a landed blow Kate (or Clint) is a party to: the attacker and the victim hold on the hit pose, each on its
+ * own clock (CustomTimeDilation; "The weld", FHawkeyeWeldTuning), for these seconds. The world keeps running: only the
+ * parry's, the finisher's and the quiver wheel's slow motion are global, because those are deliberate effects.
  */
 USTRUCT(BlueprintType)
 struct HAWKEYE_API FHawkeyeHitStopTuning
@@ -167,15 +168,96 @@ struct HAWKEYE_API FHawkeyeHitStopTuning
 	float MaxSeconds = 0.09f;
 
 	/**
-	 * A blow landing within this long (real seconds) of the last stop's start gets none of its own: two blows at once
-	 * (two thugs, or hers and his) never stack into a freeze.
+	 * A blow landing within this long (real seconds) of the last stop's start is part of a chain: it freezes the parties
+	 * for ChainScale of its own length instead of the whole (it used to get none, which left every hit of a chain after the
+	 * first soft; 2026-11-23). Two blows at once (two thugs) never stack into one long freeze.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0"))
 	float MinGapSeconds = 0.15f;
 
-	/** The world's time while it holds. */
+	/** The share of its own hit-stop a blow inside MinGapSeconds of the last gets: 40%. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|HitStop", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float Dilation = 0.1f;
+	float ChainScale = 0.4f;
+};
+
+/**
+ * The weld (gameplay-semantics.md, "The weld"): a landed blow and its reaction are one event. In this order on the hit
+ * frame: the attacker and the victim freeze on the hit pose (per actor, CustomTimeDilation near 0, the world runs on); the
+ * victim has snapped to the hit pose of his reaction clip; both vibrate along the blow while frozen; on release the
+ * knock-back is one eased displacement; the physics flinch starts at release and only adds to the clip.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FHawkeyeWeldTuning
+{
+	GENERATED_BODY()
+
+	/** An actor's CustomTimeDilation while frozen. Not exactly 0: movement and animation code divide by the step. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0001", ClampMax = "0.5"))
+	float FreezeDilation = 0.001f;
+
+	/** The mesh's offset along the blow at the first frame of the freeze, cm, for a light (weight at or under VibrationLightWeight)... */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float VibrationLightCm = 2.5f;
+
+	/** ...and for a heavy (weight 1). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float VibrationHeavyCm = 4.f;
+
+	/** The weight that gets VibrationLightCm (Kate's light is 0.3). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float VibrationLightWeight = 0.3f;
+
+	/** How many times it flips side over the freeze: 2 for a light, 4 for a heavy. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "1"))
+	int32 VibrationMinFrames = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "1"))
+	int32 VibrationMaxFrames = 4;
+
+	/** The most a victim is turned toward the attacker over the freeze, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0", ClampMax = "90.0"))
+	float MaxTurnDegrees = 25.f;
+
+	/** The most he is moved along the line to the attacker so the spacing matches the clip's designed contact distance, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float MaxNudgeCm = 15.f;
+
+	/**
+	 * The knock-back's total distance for a light and a heavy reaction, cm: what LaunchCharacter's shove (250 and 500
+	 * cm/s) slid a thug before this, measured in the melee audit, so fight spacing and lap timing hold. A clip's own
+	 * KnockbackCm (the feet it was authored with) takes over when its data has one.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float KnockbackLightCm = 10.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float KnockbackHeavyCm = 28.f;
+
+	/** How long the eased displacement takes, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.05"))
+	float KnockbackSeconds = 0.3f;
+
+	/** The speed's fall-off: (1 - t) to this power, so it starts fast and settles slowly (2: a hard start, a soft end). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "1.0", ClampMax = "4.0"))
+	float KnockbackEase = 2.f;
+
+	/** The most the physics flinch shows over the clip, 0 to 1 (it used to be 0.8). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float PhysicalBlendCap = 0.5f;
+
+	/** A reaction clip with no authored HitPeakTime blends in over this instead of snapping, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float UnauthoredBlendInSeconds = 0.05f;
+};
+
+/** Where a reaction clip starts and how it blends in (ComputeReactionStart). */
+struct HAWKEYE_API FHawkeyeReactionStart
+{
+	/** Seconds into the montage it starts at. */
+	float StartAtSeconds = 0.f;
+
+	/** Blend-in, s. 0: the victim is on the hit pose from the first frame. */
+	float BlendInSeconds = 0.f;
 };
 
 /** The struck body's physical reaction: an impulse at the struck bone, blended over the animation and recovered. */
@@ -192,9 +274,9 @@ struct HAWKEYE_API FHawkeyeHitReactionTuning
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Reaction", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float MinShare = 0.35f;
 
-	/** The most the physics shows over the animation, 0 to 1 (at weight 1). */
+	/** The most the physics shows over the animation, 0 to 1 (at weight 1). 0.5 since the weld (it was 0.8): the clip carries the reaction. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Reaction", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float PeakBlend = 0.8f;
+	float PeakBlend = 0.5f;
 
 	/** Seconds to reach the peak. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Reaction", meta = (ClampMin = "0.0"))
@@ -363,10 +445,67 @@ public:
 	static float ComputeHitStopSeconds(float Weight, const FHawkeyeHitStopTuning& Tuning);
 
 	/**
-	 * The same for a blow landing SecondsSinceLastStop (real) after the last stop began (negative: there was none): 0
-	 * inside the tuning's MinGapSeconds, so stops never stack.
+	 * The same for a blow landing SecondsSinceLastStop (real) after the last stop began (negative: there was none): inside
+	 * the tuning's MinGapSeconds, ChainScale (40%) of the blow's own, so a chain freezes on every hit but never stacks.
 	 */
 	static float ComputeHitStopSecondsAfter(float Weight, const FHawkeyeHitStopTuning& Tuning, float SecondsSinceLastStop);
+
+	/** The vibration's offset along the blow at its first frame for a blow of Weight, cm: Light at or under the light weight, Heavy at 1. */
+	static float ComputeVibrationAmplitude(float Weight, const FHawkeyeWeldTuning& Tuning);
+
+	/** How many sides the vibration flips over a freeze of a blow of Weight: Min (a light) to Max (a heavy), rounded. */
+	static int32 ComputeVibrationFrames(float Weight, const FHawkeyeWeldTuning& Tuning);
+
+	/**
+	 * The mesh's offset along the blow ElapsedSeconds into a freeze of DurationSeconds, cm, signed (positive: along the
+	 * blow; bFlip starts it the other way, for the other party): the freeze is cut into ComputeVibrationFrames equal
+	 * steps, each the opposite side of the last and smaller, down to 1 / Frames of the first at the last. 0 outside the freeze.
+	 */
+	static float ComputeVibrationOffset(float ElapsedSeconds, float DurationSeconds, float Weight, bool bFlip,
+		const FHawkeyeWeldTuning& Tuning);
+
+	/** The turn that points a body facing CurrentYaw at YawToAttacker, clamped to MaxDegrees, signed degrees (the short way round). */
+	static float ComputeVictimTurn(float CurrentYawDegrees, float YawToAttackerDegrees, float MaxDegrees);
+
+	/**
+	 * How far to move a victim along the line from the attacker (positive: away from him) so their flat distance goes from
+	 * CurrentFlatCm to DesiredFlatCm, never more than MaxCm either way. Zero for a desired distance of 0 or less (no data).
+	 */
+	static float ComputeVictimNudge(float CurrentFlatCm, float DesiredFlatCm, float MaxCm);
+
+	/**
+	 * The knock-back's speed profile: Samples strengths (0..1, the first 1) of (1 - t) ^ Ease at t = 0..1 evenly, and the
+	 * peak speed (cm/s) that makes the displacement over SecondsLong exactly DistanceCm when the strengths are joined by
+	 * straight lines (what a linear curve does). OutPeakSpeed is 0 for no distance or time.
+	 */
+	static void ComputeKnockbackProfile(float DistanceCm, float SecondsLong, float Ease, int32 Samples, float& OutPeakSpeed,
+		TArray<float>& OutStrengths);
+
+	/**
+	 * Where a reaction clip starts: at its HitPeakTime with no blend (the victim is popped onto the hit pose) when the clip's
+	 * data has one (PeakSeconds at or over 0, under PlayLength), else from its start blending in over the tuning's
+	 * UnauthoredBlendInSeconds.
+	 */
+	static FHawkeyeReactionStart ComputeReactionStart(float PeakSeconds, float PlayLength, const FHawkeyeWeldTuning& Tuning);
+
+	/**
+	 * Whether a blow turns and nudges its victim over the freeze: he is alive, not winding up a swing (a boss keeps his
+	 * swing's pose), on his feet (not down, not limp) and not the player (her facing and place are hers).
+	 */
+	static bool ShouldAlignVictim(bool bAlive, bool bWindingUp, bool bDown, bool bPlayerControlled);
+
+	/** The physics flinch's blend over the clip, capped at the tuning's PhysicalBlendCap (the clip carries the reaction). */
+	static float ClampPhysicalBlend(float Blend, const FHawkeyeWeldTuning& Tuning);
+
+	/** The region of the body a struck bone is in: head and neck, legs (pelvis, thighs, calves, feet), else the torso. */
+	static EHawkeyeContactRegion ClassifyBoneRegion(FName Bone);
+
+	/**
+	 * The region nearest ContactHeightCm among the head, torso and legs heights (all over the floor, cm); the attack's own
+	 * Preferred region when its contact height is unknown (negative).
+	 */
+	static EHawkeyeContactRegion SelectRegionForHeight(float ContactHeightCm, float HeadCm, float TorsoCm, float LegsCm,
+		EHawkeyeContactRegion Preferred);
 
 	/**
 	 * Whether a party of a landed blow plays its reaction after the hit-stop (alive, not winding up a swing: a boss

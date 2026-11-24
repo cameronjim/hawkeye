@@ -4,8 +4,11 @@
 #include "Misc/App.h"
 #include "Combat/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Curves/CurveFloat.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/RootMotionSource.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
@@ -140,6 +143,166 @@ void UHitReactionComponent::BeginHitStop(float Seconds)
 void UHitReactionComponent::EndHitStop()
 {
 	HitStopRemaining = 0.f;
+	if (bFrozen)
+	{
+		EndFreeze();
+	}
+}
+
+USkeletalMeshComponent* UHitReactionComponent::GetVibratedMesh() const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	// A ragdoll's bodies are not moved by their component's transform; a body falling has nothing to vibrate.
+	return Mesh && !Mesh->IsSimulatingPhysics() ? Mesh : nullptr;
+}
+
+void UHitReactionComponent::BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration)
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || Seconds <= 0.f)
+	{
+		return;
+	}
+	// A second blow while frozen: the vibration and the length start over; the clock to go back to is the first's.
+	if (!bFrozen)
+	{
+		SavedCustomDilation = Owner->CustomTimeDilation;
+	}
+	bFrozen = true;
+	++FreezeCount;
+	FreezeDuration = Seconds;
+	FreezeWeight = Weight;
+	bFreezeFlip = bFlipVibration;
+	FreezeAxis = BlowDirection.GetSafeNormal();
+	if (FreezeAxis.IsNearlyZero())
+	{
+		FreezeAxis = FVector::ForwardVector;
+	}
+	// Never faster than the clock it came with (a body already slowed stays slowed).
+	Owner->CustomTimeDilation = FMath::Min(SavedCustomDilation, Weld.FreezeDilation);
+	// The remaining stop is this freeze's whole length (BeginHitStop keeps the longer of two).
+	HitStopRemaining = 0.f;
+	BeginHitStop(Seconds);
+	AdvanceFreeze(0.f);
+}
+
+void UHitReactionComponent::AdvanceFreeze(float /*ElapsedSeconds*/)
+{
+	AActor* Owner = GetOwner();
+	if (!bFrozen || !Owner)
+	{
+		return;
+	}
+	const float Elapsed = FMath::Clamp(FreezeDuration - HitStopRemaining, 0.f, FreezeDuration);
+	// The mesh, along the blow, flipping side each step and fading: moved by the change so nothing else that sets the
+	// mesh's place is overwritten.
+	if (USkeletalMeshComponent* Mesh = GetVibratedMesh())
+	{
+		const float Offset = UHawkeyeHitContactRules::ComputeVibrationOffset(Elapsed, FreezeDuration, FreezeWeight, bFreezeFlip, Weld);
+		const FVector Target = FreezeAxis * Offset;
+		if (!Target.Equals(AppliedVibration, 0.001f))
+		{
+			Mesh->AddWorldOffset(Target - AppliedVibration, /*bSweep=*/false);
+			AppliedVibration = Target;
+		}
+	}
+	else
+	{
+		AppliedVibration = FVector::ZeroVector;
+	}
+	if (bAligning)
+	{
+		const float Alpha = FreezeDuration > KINDA_SMALL_NUMBER ? FMath::SmoothStep(0.f, 1.f, Elapsed / FreezeDuration) : 1.f;
+		const float Step = Alpha - AlignApplied;
+		if (Step > 0.f)
+		{
+			Owner->AddActorWorldRotation(FRotator(0.f, AlignTurnDegrees * Step, 0.f));
+			// Swept: a wall appearing since the caller's check stops him instead of putting him in it.
+			Owner->AddActorWorldOffset(AlignNudge * Step, /*bSweep=*/true);
+			AlignApplied = Alpha;
+		}
+	}
+}
+
+void UHitReactionComponent::EndFreeze()
+{
+	AActor* Owner = GetOwner();
+	if (bAligning && Owner && AlignApplied < 1.f)
+	{
+		const float Rest = 1.f - AlignApplied;
+		Owner->AddActorWorldRotation(FRotator(0.f, AlignTurnDegrees * Rest, 0.f));
+		Owner->AddActorWorldOffset(AlignNudge * Rest, /*bSweep=*/true);
+	}
+	bAligning = false;
+	AlignApplied = 0.f;
+	if (USkeletalMeshComponent* Mesh = GetVibratedMesh(); Mesh && !AppliedVibration.IsNearlyZero(0.001f))
+	{
+		Mesh->AddWorldOffset(-AppliedVibration, /*bSweep=*/false);
+	}
+	AppliedVibration = FVector::ZeroVector;
+	bFrozen = false;
+	if (Owner)
+	{
+		Owner->CustomTimeDilation = SavedCustomDilation;
+	}
+}
+
+void UHitReactionComponent::BeginAlignment(float TurnDegrees, const FVector& Nudge)
+{
+	if (!bFrozen)
+	{
+		return;
+	}
+	bAligning = true;
+	AlignTurnDegrees = TurnDegrees;
+	AlignNudge = FVector(Nudge.X, Nudge.Y, 0.f);
+	AlignApplied = 0.f;
+}
+
+void UHitReactionComponent::ApplyKnockback(const FVector& Direction, float DistanceCm)
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	const FVector Flat = Direction.GetSafeNormal2D();
+	if (!Movement || Flat.IsNearlyZero() || DistanceCm <= 0.f)
+	{
+		return;
+	}
+	constexpr int32 Samples = 9;
+	float Peak = 0.f;
+	TArray<float> Strengths;
+	UHawkeyeHitContactRules::ComputeKnockbackProfile(DistanceCm, Weld.KnockbackSeconds, Weld.KnockbackEase, Samples, Peak, Strengths);
+	if (Peak <= 0.f)
+	{
+		return;
+	}
+	if (!KnockbackCurve || !FMath::IsNearlyEqual(KnockbackCurveEase, Weld.KnockbackEase))
+	{
+		KnockbackCurve = NewObject<UCurveFloat>(this, NAME_None, RF_Transient);
+		for (int32 Index = 0; Index < Strengths.Num(); ++Index)
+		{
+			const FKeyHandle Key = KnockbackCurve->FloatCurve.AddKey(static_cast<float>(Index) / static_cast<float>(Strengths.Num() - 1),
+				Strengths[Index]);
+			KnockbackCurve->FloatCurve.SetKeyInterpMode(Key, RCIM_Linear);
+		}
+		KnockbackCurveEase = Weld.KnockbackEase;
+	}
+	// One displacement, fast at the start and settling: the force's strength follows the curve over its duration, and the
+	// speed is set so the area under it is the distance. A root motion source, like the lunge and the old shove: it beats
+	// the gait the graph asks for and stops dead at the end.
+	TSharedPtr<FRootMotionSource_ConstantForce> Shove = MakeShared<FRootMotionSource_ConstantForce>();
+	Shove->InstanceName = FName(TEXT("MeleeReactionKnockback"));
+	Shove->AccumulateMode = ERootMotionAccumulateMode::Override;
+	Shove->Priority = 5;
+	Shove->Force = Flat * Peak;
+	Shove->Duration = Weld.KnockbackSeconds;
+	Shove->StrengthOverTime = KnockbackCurve;
+	Shove->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
+	Shove->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
+	Movement->ApplyRootMotionSource(Shove);
+	UE_LOG(LogHawkeye, Verbose, TEXT("%s: knock-back %.0f cm over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()), DistanceCm,
+		Weld.KnockbackSeconds, Peak);
 }
 
 void UHitReactionComponent::PlayHitReaction(const FHawkeyeStrikeImpact& Impact)
@@ -472,7 +635,8 @@ void UHitReactionComponent::ReleaseKnockoutIfRunning()
 {
 	USkeletalMeshComponent* Ragdoll = KnockoutMesh.Get();
 	const UWorld* World = GetWorld();
-	if (!bKnockoutHeld || !Ragdoll)
+	// Held through the freeze too: the ragdoll's bodies are not on the owner's clock, so they would fly while the pose holds.
+	if (!bKnockoutHeld || !Ragdoll || bFrozen)
 	{
 		return;
 	}
@@ -505,9 +669,13 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 
 	if (HitStopRemaining > 0.f)
 	{
-		// Real time: the stop slows the world's.
+		// Real time: the freeze stops this actor's own clock (and the parry's slow motion the world's), so neither can time it.
 		HitStopRemaining -= FMath::Max(static_cast<float>(FApp::GetDeltaTime()), 0.f);
-		if (HitStopRemaining <= 0.f)
+		if (HitStopRemaining > 0.f)
+		{
+			AdvanceFreeze(0.f);
+		}
+		else
 		{
 			EndHitStop();
 		}
@@ -526,8 +694,9 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		else
 		{
 			ReactionElapsed += Step;
-			ReactionBlend = UHawkeyeHitContactRules::ComputeReactionBlend(ReactionElapsed, QueuedImpact.Weight, bReactionGuarding,
-				Reaction);
+			// The flinch starts at the release and only adds to the clip: never more than the cap.
+			ReactionBlend = UHawkeyeHitContactRules::ClampPhysicalBlend(UHawkeyeHitContactRules::ComputeReactionBlend(
+				ReactionElapsed, QueuedImpact.Weight, bReactionGuarding, Reaction), Weld);
 			Mesh->SetAllBodiesBelowPhysicsBlendWeight(ReactionRoot, ReactionBlend, false, true);
 				for (const FName Bone : KeptKinematic)
 				{

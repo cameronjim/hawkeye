@@ -8,7 +8,10 @@ class UAnimNotifyState;
 class UAnimSequenceBase;
 class UCombatAnimSet;
 class USkeletalMeshComponent;
+struct FHawkeyeStrikeImpact;
+struct FHawkeyeWeldTuning;
 enum class ECombatAnimRole : uint8;
+enum class EHawkeyeHitDirection : uint8;
 
 /**
  * Where and how a combat montage plays (claude-docs/animation.md). Shared by the melee, bow,
@@ -43,6 +46,46 @@ namespace HawkeyeCombatAnim
 	 */
 	HAWKEYE_API UAnimInstance* Play(USkeletalMeshComponent* Mesh, UAnimMontage* Montage, float PlayRate = 1.f,
 		float StartAtSeconds = 0.f);
+
+	/**
+	 * Plays Montage like Play, but blending in over BlendInSeconds (0: it is the whole pose from the first frame, a snap)
+	 * instead of the montage's own blend-in. For a hit reaction, which pops the victim onto the blow's pose.
+	 */
+	HAWKEYE_API UAnimInstance* PlayWithBlend(USkeletalMeshComponent* Mesh, UAnimMontage* Montage, float PlayRate, float StartAtSeconds,
+		float BlendInSeconds);
+
+	/**
+	 * Plays Role's clip from Set as a hit reaction (the weld, gameplay-semantics.md): from the clip's HitPeakTime with no
+	 * blend when its ClipData has one, else from its start blending in over the tuning's UnauthoredBlendInSeconds. Returns
+	 * the montage played, or null when the role is empty or did not play; OutKnockbackCm the clip's authored knock-back
+	 * (-1: none baked).
+	 */
+	HAWKEYE_API UAnimMontage* PlayReactionRole(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, ECombatAnimRole Role,
+		const FHawkeyeWeldTuning& Tuning, float* OutKnockbackCm = nullptr);
+
+	/** What PlayHitReaction did. */
+	struct FReactionPlayed
+	{
+		/** A clip is playing (false: nothing played, the caller's procedural lean carries the reaction). */
+		bool bPlayed = false;
+
+		/** The role that played. */
+		ECombatAnimRole Role = static_cast<ECombatAnimRole>(0);
+
+		/** A heavy blow's reaction (the heavy stagger or a heavy zone clip). */
+		bool bHeavy = false;
+
+		/** The clip's authored knock-back, cm; -1 when none is baked. */
+		float KnockbackCm = -1.f;
+	};
+
+	/**
+	 * The hit reaction for Blow (null: a blow with no impact, from the side Side only), on Mesh: the role by the side it came
+	 * from, the region its bone is in and its weight (UCombatAnimSet::HitRoleForImpact), played on its damaged pose with
+	 * no blend (PlayReactionRole); the side's clip when the chosen one is not in the set or does not play.
+	 */
+	HAWKEYE_API FReactionPlayed PlayHitReaction(USkeletalMeshComponent* Mesh, const UCombatAnimSet* Set, const FHawkeyeStrikeImpact* Blow,
+		EHawkeyeHitDirection Side, float HeavyWeight, const FHawkeyeWeldTuning& Tuning);
 
 	/**
 	 * Plays Role's montage from Set on Mesh: at rate 1, or fitted to take FitToSeconds when that is

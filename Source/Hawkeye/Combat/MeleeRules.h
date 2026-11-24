@@ -22,6 +22,37 @@ enum class EHawkeyeParryKind : uint8
 	Burst
 };
 
+/** One variant of a strike role as the choice sees it (from its FCombatClipData; -1: unknown). */
+struct HAWKEYE_API FHawkeyeVariantCandidate
+{
+	/** The distance the clip's warp stands the striker at, cm. */
+	float ContactDistance = -1.f;
+
+	/** The striking limb's height at the hit, cm over the floor. */
+	float ContactHeight = -1.f;
+
+	/** Sweeps in from the side (a hook, a roundhouse). */
+	bool bWideSwing = false;
+
+	bool HasData() const { return ContactDistance >= 0.f || ContactHeight >= 0.f || bWideSwing; }
+};
+
+/** The moment a variant is chosen for. */
+struct HAWKEYE_API FHawkeyeVariantSituation
+{
+	/** Flat distance, capsule to capsule, cm. */
+	float FlatDistance = 0.f;
+
+	/** Degrees between the striker's facing and the line to the target. */
+	float AngleDegrees = 0.f;
+
+	/** The height of the region aimed at over the target's feet, cm (a body on the floor: low); -1 unknown. */
+	float TargetHeight = -1.f;
+
+	/** The variant the last swing of this role played, or -1. */
+	int32 LastIndex = -1;
+};
+
 /**
  * The melee rules that are only geometry and state: where a hit came from, the lean it gives, who
  * the soft lock picks, what a parry meets, and who a finisher can take. Pure or read-only, so the
@@ -106,6 +137,20 @@ public:
 	 */
 	static bool IsAssistHitForgiven(const FVector& Origin, const FVector& SwingDirection, const FVector& Target, float TargetRadius,
 		float Reach, float ReachScale, float ForgiveDegrees);
+
+	/**
+	 * How well variant Index (Candidate) fits Situation, higher is better (gameplay-semantics.md, "The weld"): its reach
+	 * against the distance (a clip that reaches further than he stands costs 1 per 40 cm, one that falls short 1 per 120: the
+	 * warp closes a gap but never backs her off), its height against the region aimed at (1 per 40 cm), a wide swing for a
+	 * target off to the side and a straight one for a target ahead, and a small cost for playing the last variant again.
+	 */
+	static float ScoreAttackVariant(const FHawkeyeVariantCandidate& Candidate, const FHawkeyeVariantSituation& Situation, int32 Index);
+
+	/**
+	 * The variant of Candidates that fits Situation best (ScoreAttackVariant, the first of equals). INDEX_NONE when none
+	 * has any data: the caller then cycles in manifest order, as before.
+	 */
+	static int32 PickAttackVariant(const TArray<FHawkeyeVariantCandidate>& Candidates, const FHawkeyeVariantSituation& Situation);
 
 	/** True when Target is within Range of Origin (flat) and within HalfAngleDegrees of Forward. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Melee")

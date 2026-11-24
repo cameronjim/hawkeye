@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Combat/HitContactRules.h"
 #include "Combat/StrikePose.h"
 #include "CombatAnimSet.generated.h"
 
@@ -49,8 +50,21 @@ enum class ECombatAnimRole : uint8
 	HitHeavy,
 	/** The stealth takedown from behind, as a pair: the one doing it and the one it is done to. */
 	TakedownAttacker,
-	TakedownVictim
+	TakedownVictim,
+	/**
+	 * Hit reactions by where the blow landed (the struck bone's region) and how hard, from a blow in front; each starts on
+	 * its damaged pose (the clip's HitPeakTime). Without one the side's clip plays. Appended: assets store the value.
+	 */
+	HitHeadLight,
+	HitHeadHeavy,
+	HitGutLight,
+	HitGutHeavy,
+	HitLegsLight,
+	HitLegsHeavy
 };
+
+/** The last role: loops over every slot run to here. */
+constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::HitLegsHeavy;
 
 /**
  * More clips for one role, after the role's own slot: the slot is variant 0, these are 1, 2, ...
@@ -66,6 +80,48 @@ struct HAWKEYE_API FCombatAnimVariants
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
 	TArray<TSoftObjectPtr<UAnimMontage>> Montages;
+};
+
+/**
+ * What one clip says about itself that its montage cannot: baked by the content scripts from the clip's own frames
+ * (Tools/Data/Anims/manifest.json, or the authored clip's measures) into UCombatAnimSet::ClipData, looked up by montage
+ * (claude-docs/gameplay-semantics.md, "The weld"). -1 in a field: unknown, the rule's fallback applies.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FCombatClipData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
+	TSoftObjectPtr<UAnimMontage> Montage;
+
+	/**
+	 * A reaction clip: seconds into the montage of its damaged pose, where it starts (with no blend) when the blow lands, so
+	 * the victim pops onto the hit pose and holds it through the freeze. -1: starts at 0 and blends in a little.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
+	float HitPeakTime = -1.f;
+
+	/**
+	 * A strike clip: the flat distance from the striker's capsule centre to the struck region's bone at the clip's hit
+	 * frame, cm, in the game's units (the rig's scale is in it): the distance the warp stands him at. -1: the attack's own.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
+	float ContactDistance = -1.f;
+
+	/** A strike clip: the striking limb's height over the floor at the hit frame, cm. Picks the region the blow is aimed at. -1: the attack's own region. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
+	float ContactHeight = -1.f;
+
+	/** A reaction clip: how far its capsule is knocked back, cm: the shove its feet were authored to step back onto. -1: the weld tuning's. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
+	float KnockbackCm = -1.f;
+
+	/** A strike clip that sweeps in from the side (a hook, a roundhouse): the variant choice prefers it for a target off to the side. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim")
+	bool bWideSwing = false;
+
+	bool HasHitPeak() const { return HitPeakTime >= 0.f; }
 };
 
 /**
@@ -124,8 +180,28 @@ public:
 	/** Loads every assigned montage now and keeps it, so the first strike does not hitch. */
 	void Preload();
 
+	/** The data baked for Montage (a role's clip, or one of its variants), or null when there is none. */
+	const FCombatClipData* FindClipData(const UAnimMontage* Montage) const;
+
+	/** The same by the montage's path, so a variant that is not loaded can be looked up. */
+	const FCombatClipData* FindClipDataByPath(const FSoftObjectPath& Path) const;
+
 	/** The hit reaction for a blow from Side. */
 	static ECombatAnimRole HitRoleFor(EHawkeyeHitDirection Side);
+
+	/**
+	 * The hit reaction for a blow from Side that struck Region at Weight: from the front, the head, gut or legs clip of the
+	 * blow's weight (heavy at HeavyWeight or more) when Set has it; otherwise HitRoleForBlow (the side's clip, or the heavy
+	 * stagger). A blow from the side or behind always plays the side's clip: the zone clips are authored facing the blow.
+	 */
+	static ECombatAnimRole HitRoleForImpact(const UCombatAnimSet* Set, EHawkeyeHitDirection Side, EHawkeyeContactRegion Region,
+		float Weight, float HeavyWeight);
+
+	/** The zone role for Region at the given weight class. */
+	static ECombatAnimRole ZoneHitRole(EHawkeyeContactRegion Region, bool bHeavy);
+
+	/** True for a hit reaction that is a heavy blow's: the heavy stagger, or a zone clip of the heavy class. */
+	static bool IsHeavyHitRole(ECombatAnimRole Role);
 
 	/**
 	 * The hit reaction for a blow from Side at Weight (0 to 1): HitHeavy at HeavyWeight or more when Set has a HitHeavy
@@ -200,6 +276,25 @@ public:
 	TSoftObjectPtr<UAnimMontage> HitHeavy;
 
 	/** The stealth takedown's two halves, authored together; both must play or neither does. */
+	/** Hit reactions by zone and weight, from a blow in front (the head snaps, the gut folds, the legs buckle). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitHeadLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitHeadHeavy;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitGutLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitGutHeavy;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitLegsLight;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Hit")
+	TSoftObjectPtr<UAnimMontage> HitLegsHeavy;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Takedown")
 	TSoftObjectPtr<UAnimMontage> TakedownAttacker;
 
@@ -235,6 +330,10 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Variants")
 	TArray<FCombatAnimVariants> MoreVariants;
+
+	/** What each clip says about itself (its hit pose, its contact distance and height, its knock-back); filled by create_combat_anims.py. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Clip Data")
+	TArray<FCombatClipData> ClipData;
 
 private:
 	/** The slot for Role, no fallback. Null for None. */

@@ -24,6 +24,27 @@ namespace HawkeyeVfxMath
 		return FMath::Lerp(0.6f, 1.6f, FMath::Clamp((FallHeight - MinHeight) / Span, 0.f, 1.f));
 	}
 
+	int32 PickPuffVariant(int32 Variants, int32 Counter, int32 LastVariant)
+	{
+		if (Variants <= 1)
+		{
+			return 0;
+		}
+		// A multiplicative hash of the counter: the sequence looks shuffled but is the same every run.
+		const uint32 Hash = static_cast<uint32>(Counter) * 2654435761u;
+		int32 Pick = static_cast<int32>((Hash >> 13) % static_cast<uint32>(Variants));
+		if (Pick == LastVariant)
+		{
+			Pick = (Pick + 1) % Variants;
+		}
+		return Pick;
+	}
+
+	float ComputePuffScale(float Weight, float LightScale, float HeavyScale)
+	{
+		return FMath::Lerp(LightScale, HeavyScale, FMath::Clamp(Weight, 0.f, 1.f));
+	}
+
 	FVector ComputeFootstepKickDirection(const FVector& Forward, const FVector& Velocity)
 	{
 		FVector Along = FVector(Velocity.X, Velocity.Y, 0.f).GetSafeNormal();

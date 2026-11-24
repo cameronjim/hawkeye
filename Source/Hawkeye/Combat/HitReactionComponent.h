@@ -5,6 +5,7 @@
 #include "Combat/HitContactRules.h"
 #include "HitReactionComponent.generated.h"
 
+class UCurveFloat;
 class UPhysicalAnimationComponent;
 class USkeletalMeshComponent;
 
@@ -43,6 +44,38 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Hit Reaction")
 	bool IsHitStopped() const { return HitStopRemaining > 0.f; }
+
+	/**
+	 * The weld's freeze (FHawkeyeWeldTuning): this body holds on its pose for Seconds (real time) on its own clock,
+	 * CustomTimeDilation near 0, while the world runs on, and its mesh vibrates along BlowDirection (decaying, by
+	 * Weight; bFlipVibration starts it the other way, for the other party). Also notes the stop (BeginHitStop), so a
+	 * reaction and a knockout's throw wait for the release. A freeze under way is replaced by the new one.
+	 */
+	void BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration);
+
+	/** True from BeginFreeze until the freeze ends: the owner's own clock is stopped. */
+	UFUNCTION(BlueprintPure, Category = "Hit Reaction")
+	bool IsFrozen() const { return bFrozen; }
+
+	/** The length of the freeze under way (or the last), real seconds. */
+	float GetFreezeSeconds() const { return FreezeDuration; }
+
+	/** How many freezes this body has had (tests and the audit). */
+	int32 GetFreezeCount() const { return FreezeCount; }
+
+	/**
+	 * Over the freeze under way, turns the owner TurnDegrees about up and moves him by Nudge (world), eased: the victim
+	 * facing his attacker and standing where the clip's contact was designed. Ends with the freeze (the rest is applied
+	 * at once if it ends early). The caller has checked Nudge against walls and ledges.
+	 */
+	void BeginAlignment(float TurnDegrees, const FVector& Nudge);
+
+	/**
+	 * The reaction's knock-back: one eased displacement of DistanceCm along Direction (flat), over Weld.KnockbackSeconds,
+	 * a root motion source on the owner's character movement. Started at the hit, it waits out the freeze by itself (the
+	 * movement's time is the owner's, which is stopped) and so starts at the release. A character only.
+	 */
+	void ApplyKnockback(const FVector& Direction, float DistanceCm);
 
 	/** The physical reaction to Impact; waits for a hit-stop under way to end, so the body freezes, then snaps. */
 	void PlayHitReaction(const FHawkeyeStrikeImpact& Impact);
@@ -95,6 +128,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
 	FHawkeyeKnockoutTuning Knockout;
 
+	/** The weld: the freeze, the vibration, the alignment, the knock-back's ease, the physics flinch's cap. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
+	FHawkeyeWeldTuning Weld;
+
 	/**
 	 * Whether a blow's physical reaction runs at all (the hit-stop and the knockout are unaffected). Off on Kate and Clint
 	 * (2026-11-12): on Kate's look it carried her body off her (fixed), and then crashed the game now and then inside the
@@ -144,6 +181,15 @@ protected:
 
 	void EndHitStop();
 
+	/** One real step of the freeze under way: the vibration's offset, the alignment's share. */
+	void AdvanceFreeze(float ElapsedSeconds);
+
+	/** The freeze is over: the clock back, the vibration off, the alignment finished. */
+	void EndFreeze();
+
+	/** The mesh the vibration moves: the character's driver (the look is attached to it), or null when it simulates. */
+	USkeletalMeshComponent* GetVibratedMesh() const;
+
 	/** The physics state the reaction needs on Mesh (a collision-less look gets physics-only bodies that touch nothing). */
 	bool PrepareMesh(USkeletalMeshComponent& Mesh);
 
@@ -171,6 +217,29 @@ protected:
 	float HitStopRemaining = 0.f;
 	float LastHitStopSeconds = 0.f;
 	int32 HitStopCount = 0;
+
+	/** The freeze: the owner's own clock stopped, its mesh vibrating along the blow. */
+	bool bFrozen = false;
+	float FreezeDuration = 0.f;
+	float FreezeWeight = 0.f;
+	bool bFreezeFlip = false;
+	float SavedCustomDilation = 1.f;
+	int32 FreezeCount = 0;
+	FVector FreezeAxis = FVector::ForwardVector;
+	/** The world offset the vibration has put on the mesh now. */
+	FVector AppliedVibration = FVector::ZeroVector;
+
+	/** The alignment over the freeze: totals, and the share of them applied so far (0 to 1). */
+	bool bAligning = false;
+	float AlignTurnDegrees = 0.f;
+	FVector AlignNudge = FVector::ZeroVector;
+	float AlignApplied = 0.f;
+
+	/** The knock-back's strength over its time (a linear curve), built once for the ease it was built with. */
+	UPROPERTY(Transient)
+	TObjectPtr<UCurveFloat> KnockbackCurve;
+
+	float KnockbackCurveEase = 0.f;
 
 	bool bReactionQueued = false;
 	bool bReacting = false;

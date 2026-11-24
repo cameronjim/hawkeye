@@ -28,6 +28,16 @@ namespace HawkeyeVfxMath
 	HAWKEYE_API float ComputeLandingPuffScale(float FallHeight, float MinHeight = 150.f, float FullHeight = 800.f);
 
 	/**
+	 * Which of Variants impact puffs the Counter-th blow plays (Variants of NS_MeleePuff: they differ in size, count and
+	 * spread): a hash of the counter, so the order is not the list's, and never the one before it (LastVariant; -1 for
+	 * none). 0 with fewer than two.
+	 */
+	HAWKEYE_API int32 PickPuffVariant(int32 Variants, int32 Counter, int32 LastVariant);
+
+	/** The impact puff's scale for a blow of Weight (0 to 1): LightScale at 0, HeavyScale at 1. */
+	HAWKEYE_API float ComputePuffScale(float Weight, float LightScale = 0.8f, float HeavyScale = 1.5f);
+
+	/**
 	 * Which way a footstep's snow kicks: back from the way she is moving and up. Standing still (or
 	 * no Velocity) kicks behind Forward.
 	 */

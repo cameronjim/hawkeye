@@ -680,19 +680,28 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 		{
 			Away = -GetActorForwardVector();
 		}
-		// The clip for the side the blow came from (a hook from his left, a kick from behind), or the heavy stagger for a
-		// heavy blow; the stagger is the same with or without one. The heavy clip steps back two steps onto a longer shove.
+		// The clip by the side the blow came from (a hook from his left, a kick from behind), the zone its bone is in (head,
+		// gut, legs) and its weight (a heavy blow's stagger), played from its damaged pose with no blend: he is on the
+		// hit pose the frame the blow lands, and holds it through the freeze (the weld, gameplay-semantics.md).
 		const FHawkeyeStrikeImpact* Blow = HitReactionComponent && HitReactionComponent->GetPendingImpact().bValid
 			? &HitReactionComponent->GetPendingImpact() : nullptr;
 		const EHawkeyeHitDirection Side = Blow
 			? UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow->Direction)
 			: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
-		const ECombatAnimRole HitRole = UCombatAnimSet::HitRoleForBlow(CombatAnimSet, Side, Blow ? Blow->Weight : 0.f, HeavyReactionWeight);
-		const bool bHeavyClip = HitRole == ECombatAnimRole::HitHeavy && PlayCombatClip(HitRole);
-		LaunchCharacter(Away * (bHeavyClip ? HeavyHitShoveSpeed : HitShoveSpeed), true, false);
-		if (!bHeavyClip)
+		const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
+		const HawkeyeCombatAnim::FReactionPlayed Played = !bLimp
+			? HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side, HeavyReactionWeight, Weld)
+			: HawkeyeCombatAnim::FReactionPlayed();
+		if (Blow && HitReactionComponent)
 		{
-			PlayCombatClip(UCombatAnimSet::HitRoleFor(Side));
+			// One eased displacement of the distance the clip's feet were authored with (or the old shove's); it starts when the
+			// freeze lets go. A reaction with no impact behind it (a parry, a boss's stagger) keeps the old shove.
+			const float Cm = Played.KnockbackCm >= 0.f ? Played.KnockbackCm : (Played.bHeavy ? Weld.KnockbackHeavyCm : Weld.KnockbackLightCm);
+			HitReactionComponent->ApplyKnockback(Away, Cm);
+		}
+		else
+		{
+			LaunchCharacter(Away * (Played.bHeavy ? HeavyHitShoveSpeed : HitShoveSpeed), true, false);
 		}
 	}
 

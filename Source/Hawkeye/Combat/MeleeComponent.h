@@ -9,7 +9,9 @@
 class UAnimInstance;
 class UAnimMontage;
 class UAnimSequenceBase;
+class UHitReactionComponent;
 class UMotionWarpingComponent;
+class UNiagaraSystem;
 class USkeletalMeshComponent;
 class USoundBase;
 
@@ -412,9 +414,31 @@ public:
 	/** Nothing solid on the sight line from the owner's chest to Target's. */
 	bool HasStrikeSight(const AActor& Target) const;
 
+	/** Nothing solid on the sight line from From's chest to To's (bodies are stepped past). */
+	bool HasSightBetween(const AActor& From, const AActor& To) const;
+
+	/**
+	 * The same for any Mover going to To with Other in front of him (Other is not a wall, Mover is not in the way): a
+	 * victim nudged along the line to his attacker is checked with the attacker's Magnetism. OutWhy says which failed.
+	 */
+	bool IsMovePathClear(const AActor& Mover, const AActor& Other, const FVector& To, FName* OutWhy = nullptr) const;
+
+	/** The distance the current swing's warp stands the owner at, cm: its clip's baked ContactDistance, else the attack's, times his scale. */
+	float GetActiveContactDistance() const;
+
+	/** The current swing's clip's baked data (its contact distance and height), or null on the procedural path or with none baked. */
+	const FCombatClipData* GetActiveClipData() const;
+
 	/** The motion warping target a strike clip is warped to. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Melee|Animation")
 	FName WarpTargetName = FName(TEXT("CombatTarget"));
+
+	/**
+	 * The dust puffs a landed blow plays (NS_MeleePuff_A to D): one per blow, the variant by a hash that never repeats the
+	 * last, scaled by the blow's weight. The same for Kate's blows and a thug's on her.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Melee|Vfx")
+	TArray<TSoftObjectPtr<UNiagaraSystem>> ImpactPuffVfx;
 
 	/**
 	 * Fit each clip so its ANS_HitWindow opens at the attack's WindupSeconds, so the telegraph keeps its
@@ -506,8 +530,25 @@ protected:
 	/** What the landed blow is: the contact point, its direction, its weight. */
 	FHawkeyeStrikeImpact BuildImpact(const AActor& Target, const FVector* LimbPoint, const FVector& LimbVelocity) const;
 
-	/** The hit-stop on both parties and the struck body's reaction, after the damage. */
+	/**
+	 * The weld on a landed blow, after the damage (gameplay-semantics.md, "The weld"): the attacker and the victim freeze on
+	 * the hit pose (per actor), both vibrate along the blow, the victim is turned toward the attacker and nudged to the
+	 * clip's designed distance over the freeze, his physical flinch is queued for the release, and the dust puff marks the
+	 * contact point.
+	 */
 	void DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& Impact, bool bTargetAlive);
+
+	/** Turns Target toward the owner and nudges him along the line over the freeze (UHitReactionComponent::BeginAlignment). */
+	void AlignVictim(AActor& Target, UHitReactionComponent& Theirs) const;
+
+	/** The impact puff where the blow met him, along the blow, a variant by hash and a size by weight. */
+	void SpawnImpactPuff(const FHawkeyeStrikeImpact& Impact);
+
+	/** The region the blow is aimed at on Target: Preferred, or what the clip's baked contact height says, or the torso for a body on the floor. */
+	EHawkeyeContactRegion ResolveContactRegion(const AActor& Target, EHawkeyeContactRegion Preferred, bool bDown) const;
+
+	/** A bone's height over Target's feet, cm; -1 when he has no such bone. */
+	float GetRegionHeight(const AActor& Target, EHawkeyeContactRegion Region) const;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Melee")
 	EMeleePhase Phase = EMeleePhase::Idle;
@@ -579,6 +620,10 @@ protected:
 
 	/** Counts swings, so a cut montage's end event is not taken for the swing that cut it. */
 	int32 SwingSerial = 0;
+
+	/** Counts landed blows, for the puff's variant, and the variant the last one played. */
+	int32 PuffCounter = 0;
+	int32 LastPuffVariant = -1;
 
 	FHawkeyeContactPlan ContactPlan;
 	bool bContactWhiff = false;

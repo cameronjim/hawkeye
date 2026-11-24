@@ -208,6 +208,61 @@ bool UHawkeyeMeleeRules::IsAssistHitForgiven(const FVector& Origin, const FVecto
 		>= FMath::Cos(FMath::DegreesToRadians(FMath::Clamp(ForgiveDegrees, 0.f, 180.f))) - KINDA_SMALL_NUMBER;
 }
 
+float UHawkeyeMeleeRules::ScoreAttackVariant(const FHawkeyeVariantCandidate& Candidate, const FHawkeyeVariantSituation& Situation,
+	int32 Index)
+{
+	float Score = 0.f;
+	if (Candidate.ContactDistance >= 0.f)
+	{
+		const float Over = Candidate.ContactDistance - Situation.FlatDistance;
+		Score -= Over > 0.f ? Over / 40.f : -Over / 120.f;
+	}
+	else
+	{
+		Score -= 0.5f;
+	}
+	if (Candidate.ContactHeight >= 0.f && Situation.TargetHeight >= 0.f)
+	{
+		Score -= FMath::Abs(Candidate.ContactHeight - Situation.TargetHeight) / 40.f;
+	}
+	else
+	{
+		Score -= 0.25f;
+	}
+	const float Turn = FMath::Clamp(Situation.AngleDegrees / 60.f, 0.f, 1.f);
+	if (Candidate.bWideSwing)
+	{
+		Score += 0.5f * Turn - (Situation.AngleDegrees < 15.f ? 0.25f : 0.f);
+	}
+	else
+	{
+		Score -= 0.25f * Turn;
+	}
+	if (Index == Situation.LastIndex)
+	{
+		Score -= 0.75f;
+	}
+	return Score;
+}
+
+int32 UHawkeyeMeleeRules::PickAttackVariant(const TArray<FHawkeyeVariantCandidate>& Candidates, const FHawkeyeVariantSituation& Situation)
+{
+	bool bAnyData = false;
+	int32 Best = INDEX_NONE;
+	float BestScore = -TNumericLimits<float>::Max();
+	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+	{
+		bAnyData = bAnyData || Candidates[Index].HasData();
+		const float Score = ScoreAttackVariant(Candidates[Index], Situation, Index);
+		if (Score > BestScore + KINDA_SMALL_NUMBER)
+		{
+			BestScore = Score;
+			Best = Index;
+		}
+	}
+	return bAnyData ? Best : INDEX_NONE;
+}
+
 bool UHawkeyeMeleeRules::IsInFrontWithin(const FVector& Origin, const FVector& Forward, const FVector& Target, float Range,
 	float HalfAngleDegrees)
 {

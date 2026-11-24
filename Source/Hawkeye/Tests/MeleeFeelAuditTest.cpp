@@ -718,13 +718,15 @@ namespace HawkeyeMeleeAudit
 			if (S.bAfter)
 			{
 				const int32 Frame = S.FramesAfter;
-				const float Dilation = UGameplayStatics::GetGlobalTimeDilation(World);
-				if (B.HitStopFrame < 0 && Dilation < 0.99f)
+				// The freeze is per actor since 2026-11-23 (the world's time is not touched): the victim's own clock.
+				const UHitReactionComponent* Frozen = Victim->FindComponentByClass<UHitReactionComponent>();
+				const bool bFrozen = Frozen && Frozen->IsFrozen();
+				if (B.HitStopFrame < 0 && bFrozen)
 				{
 					B.HitStopFrame = Frame;
 					B.StopStartReal = FPlatformTime::Seconds();
 				}
-				else if (B.HitStopFrame >= 0 && B.HitStopRealMs <= 0.f && Dilation >= 0.99f)
+				else if (B.HitStopFrame >= 0 && B.HitStopRealMs <= 0.f && !bFrozen)
 				{
 					B.HitStopRealMs = static_cast<float>((FPlatformTime::Seconds() - B.StopStartReal) * 1000.0);
 				}

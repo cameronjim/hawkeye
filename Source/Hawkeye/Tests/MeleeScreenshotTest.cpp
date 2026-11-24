@@ -72,7 +72,7 @@
  *                     she and the thugs land on screen; she hidden or off screen fails the test)
  *   target_ring.png   her own camera, 0.1 s into a light at a hurt bat thug 170 cm in front of her: the assist's
  *                     purple ring at his feet, his health bar drawn whiter (the marker not on him fails it)
- *   hit_spark.png     the same swing, time stopped in the tick the light lands: NS_MeleeSpark on his capsule
+ *   hit_spark.png     the same swing, time stopped in the tick the light lands: the NS_MeleePuff on his capsule
  *                     toward her at chest height, under his hit flash (no spark within 2 s fails it)
  *   token_ring.png    from above and behind her, four alerted fists thugs who came at her from 7 m 5 s before:
  *                     one holding her melee token (stepping in or swinging), the others waiting on the ring 300 cm
@@ -784,7 +784,7 @@ bool FHawkeyeMeleeShot::Update()
 			TWeakObjectPtr<UWorld> WeakWorld(World);
 			SparkHook = Vfx->OnRequested.AddLambda([WeakWorld](FName Event, const FVector& At)
 			{
-				if (Event == UHawkeyeVfxSubsystem::MeleeSparkEvent && !bSparkFrozen && WeakWorld.IsValid())
+				if (Event == UHawkeyeVfxSubsystem::MeleePuffEvent && !bSparkFrozen && WeakWorld.IsValid())
 				{
 					bSparkFrozen = true;
 					SparkAt = At;
@@ -1403,7 +1403,7 @@ public:
 			TEXT("%.0f cm over his feet, %.0f cm from the lens, %s on screen; %d melee sparks asked for, time dilation %.4f; ")
 			TEXT("his health %.0f."),
 			Now - Start, *Vec(SparkAt), Thug ? FVector::Dist2D(SparkAt, Thug->GetActorLocation()) : 0.f, SparkAt.Z - Feet,
-			FVector::Dist(SparkAt, Camera), *ScreenOffset(PC, SparkAt), Vfx ? Vfx->GetRequestCount(UHawkeyeVfxSubsystem::MeleeSparkEvent) : -1,
+			FVector::Dist(SparkAt, Camera), *ScreenOffset(PC, SparkAt), Vfx ? Vfx->GetRequestCount(UHawkeyeVfxSubsystem::MeleePuffEvent) : -1,
 			World->GetWorldSettings()->TimeDilation, Thug ? Thug->GetHealthComponent()->GetCurrentHealth() : -1.f));
 		return true;
 	}

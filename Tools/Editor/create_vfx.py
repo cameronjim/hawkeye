@@ -485,6 +485,20 @@ def smoke_stream(name, rate, life, color, size, radius, speed, cone_angle, drift
 
 
 WHITE_SNOW = (0.85, 0.88, 0.95)
+DUST = (0.62, 0.58, 0.52, 0.5)
+
+
+def dust_puff(name, count, life, color, size, speed, cone_angle, radius):
+    """OmnidirectionalBurst thrown in a cone along +X (the blow): a small dust or cloth puff that rises a little, slows
+    quickly, grows and fades. The count, size, speed and cone are what tell the variants apart."""
+    e = Emitter(name, "OmnidirectionalBurst")
+    e.burst(count).life(*life).color(*color).size(*size)
+    e.i("Shape Location", "Sphere Radius", radius)
+    e.i("Add Velocity", "Velocity Mode", "In Cone").speed(*speed).cone(1, 0, 0, cone_angle)
+    e.i("Add Velocity", "Origin Offset", vec(0, 0, 0))
+    e.gravity(0, 0, 25).drag(3.5).fade((0.0, 0.0), (0.12, 1.0), (0.6, 0.6), (1.0, 0.0)).grow((0.0, 0.7), (1.0, 2.3)).limit(20000)
+    e.once(life[1] + 0.05)
+    return e.material("M_Vfx_Smoke").no_shadow()
 
 EFFECTS = {
     # The smoke arrow: a billow that fills 500 cm at once, then keeps coming for six seconds, drifting.
@@ -566,18 +580,22 @@ EFFECTS = {
         spark_streaks("Streaks", 22, (0.15, 0.3), (2.5, 1.6, 5.0, 1.0), (4.0, 20.0, 6.0, 44.0), (1, 0, 0), 75,
                       (500, 1100), gravity=0, drag=4.0),
     ],
-    # Kate's fist or foot landing (2026-09-29, combat readability): small, very bright and very short, at the
-    # contact point and out toward her (the system's X). The thug's own hit flash is what reads; this only
-    # marks where. A core, not the arrow spark's 120 cm star. Hot gold, not white (2026-09-29, hit_spark.png:
-    # a white-violet 26 cm core vanished into his white hit flash): gold reads on the flash, the red suit
-    # and the snow, and stays clear of Kate's purple and the telegraph's red-orange. The core is blended, not
-    # added, so its gold survives on his white flash (an added glow there only clips to white); the glow and
-    # the streaks round it stay additive.
-    "NS_MeleeSpark": [
-        flash("Core", 0.08, (1.0, 0.62, 0.06, 0.95), 26, direct_life=True).material("M_Vfx_Putty"),
-        flash("Glow", 0.08, (6.0, 3.2, 0.4, 1.0), 46, direct_life=True),
-        spark_streaks("Streaks", 14, (0.08, 0.16), (8.0, 4.2, 0.6, 1.0), (1.5, 7.0, 2.5, 16.0), (1, 0, 0), 75,
-                      (450, 900), gravity=0, drag=5.0),
+    # A blow landing (2026-11-23, replacing NS_MeleeSpark's gold star and streaks, which read as a comic book): a small dust
+    # or cloth puff at the contact point, thrown in a cone along the blow (the system's X). Four variants that differ in
+    # size, count, spread and speed; the game picks one per blow without repeating the last and scales it by the blow's
+    # weight (HawkeyeVfxMath::PickPuffVariant, ComputePuffScale). Soft smoke sprites only: no glow, no colour, nothing
+    # that could be taken for the old whole-body flash.
+    "NS_MeleePuff_A": [
+        dust_puff("Puff", 7, (0.30, 0.50), DUST, (7, 11), (90, 200), 38, 3),
+    ],
+    "NS_MeleePuff_B": [
+        dust_puff("Puff", 11, (0.35, 0.60), DUST, (8, 13), (60, 170), 62, 5),
+    ],
+    "NS_MeleePuff_C": [
+        dust_puff("Puff", 5, (0.40, 0.70), DUST, (11, 16), (50, 130), 30, 3),
+    ],
+    "NS_MeleePuff_D": [
+        dust_puff("Puff", 9, (0.25, 0.45), DUST, (6, 10), (110, 240), 50, 4),
     ],
     # The bow string's release: a tiny puff of breath-like haze.
     "NS_BowRelease": [

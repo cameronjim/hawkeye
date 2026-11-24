@@ -634,11 +634,13 @@ public:
 	/** The hit-stop her landed light (the chain's first) or heavy gives, real seconds (by its weight). */
 	float GetMeleeHitStopSeconds(bool bHeavy) const;
 
-	/** A landed blow's hit-stop: the world at Dilation for RealSeconds (ApplyTimeWarp; never cuts a finisher's slow motion). */
-	void ApplyHitStop(float RealSeconds, float Dilation)
+	/**
+	 * A landed blow's freeze has begun (the two bodies hold, each on its own clock: UHitReactionComponent::BeginFreeze;
+	 * the world's time is not touched). Remembers when, so a blow right after it is part of a chain.
+	 */
+	void NoteHitStop()
 	{
 		LastHitStopRealSeconds = FPlatformTime::Seconds();
-		ApplyTimeWarp(RealSeconds, Dilation);
 	}
 
 	/** Real seconds since the last landed blow's hit-stop began; -1 when there has been none. */
@@ -1126,9 +1128,6 @@ protected:
 	/** Counts the alerted thugs round her (every FightRecountSeconds) and moves the fight camera's blend. */
 	void UpdateFightCamera(float DeltaSeconds);
 
-	/** MeleeSparkVfx where her swing met HitActor: on his capsule's surface toward her, at chest height. */
-	void SpawnMeleeSpark(const AActor* HitActor, bool bHeavy) const;
-
 	/** Hides the body from its own camera while a wall has pulled the lens in to it. */
 	void UpdateBodyVisibilityForCamera();
 
@@ -1485,27 +1484,6 @@ protected:
 	/** Real seconds the punch takes, in and back. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
 	float HeavyCameraPunchSeconds = 0.1f;
-
-	/**
-	 * The spark where her strike lands (NS_MeleeSpark): small and at the contact point, so the thug's own hit
-	 * flash is what reads; a heavy's is a little bigger.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hawkeye|Melee")
-	TSoftObjectPtr<UNiagaraSystem> MeleeSparkVfx;
-
-	/** The spark's scale on a light; a heavy's is HeavySparkScale. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
-	float LightSparkScale = 1.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
-	float HeavySparkScale = 1.4f;
-
-	/**
-	 * How far her axis must be off the lens's line to the spark, cm, for it to show past her; nearer, the spark
-	 * slides round his body (up to 0.9 of his radius across) to the side the lens sees.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
-	float SparkClearance = 40.f;
 
 	/** The marker on the assist's pick: its fade after the swing. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee|Assist")

@@ -2,6 +2,8 @@
 
 #include "Hawkeye.h"
 #include "Audio/HawkeyeAudioSubsystem.h"
+#include "Vfx/HawkeyeVfxMath.h"
+#include "Vfx/HawkeyeVfxSubsystem.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Combat/AnimNotifyState_ComboWindow.h"
@@ -14,6 +16,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "MotionWarpingComponent.h"
+#include "NiagaraSystem.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/RootMotionSource.h"
@@ -23,6 +26,11 @@
 UMeleeComponent::UMeleeComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	for (const TCHAR* Letter : { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D") })
+	{
+		ImpactPuffVfx.Add(TSoftObjectPtr<UNiagaraSystem>(FSoftObjectPath(
+			FString::Printf(TEXT("/Game/VFX/NS_MeleePuff_%s.NS_MeleePuff_%s"), Letter, Letter))));
+	}
 }
 
 void UMeleeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -102,7 +110,46 @@ UAnimMontage* UMeleeComponent::PickSwingVariant(const FHawkeyeMeleeAttack& Attac
 	{
 		return nullptr;
 	}
-	const int32 Index = UCombatAnimSet::PickNextVariant(VariantCursors.FindOrAdd(Attack.AnimRole), Count);
+	int32& Cursor = VariantCursors.FindOrAdd(Attack.AnimRole);
+	int32 Index = INDEX_NONE;
+	const AActor* Target = SwingTarget.Get();
+	const AActor* Owner = GetOwner();
+	if (Count > 1 && Target && Owner)
+	{
+		// By the situation (the distance, the angle, the height of what he is aiming at, the last variant) when the
+		// variants have their baked data: a short jab for a man in his face, a hook for one off to the side, a kick for
+		// a man on the floor. Without data, in manifest order, as before.
+		TArray<FHawkeyeVariantCandidate> Candidates;
+		for (int32 Variant = 0; Variant < Count; ++Variant)
+		{
+			FHawkeyeVariantCandidate Candidate;
+			if (const FCombatClipData* Data = AnimSet->FindClipDataByPath(AnimSet->GetVariant(Attack.AnimRole, Variant).ToSoftObjectPath()))
+			{
+				Candidate.ContactDistance = Data->ContactDistance;
+				Candidate.ContactHeight = Data->ContactHeight;
+				Candidate.bWideSwing = Data->bWideSwing;
+			}
+			Candidates.Add(Candidate);
+		}
+		const AThugCharacter* Thug = Cast<AThugCharacter>(Target);
+		const bool bDown = Thug && (Thug->IsKnockedDown() || Thug->IsLimp());
+		const FVector Facing = GetSwingDirection();
+		const FVector ToTarget = (Target->GetActorLocation() - Owner->GetActorLocation()).GetSafeNormal2D();
+		FHawkeyeVariantSituation Situation;
+		Situation.FlatDistance = FVector::Dist2D(Target->GetActorLocation(), Owner->GetActorLocation());
+		Situation.AngleDegrees = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Facing, ToTarget), -1.f, 1.f)));
+		Situation.TargetHeight = bDown ? 20.f : GetRegionHeight(*Target, Attack.Contact.Region);
+		Situation.LastIndex = Cursor > 0 ? Cursor - 1 : Count - 1;
+		Index = UHawkeyeMeleeRules::PickAttackVariant(Candidates, Situation);
+		if (Index != INDEX_NONE)
+		{
+			Cursor = (Index + 1) % Count;
+		}
+	}
+	if (Index == INDEX_NONE)
+	{
+		Index = UCombatAnimSet::PickNextVariant(Cursor, Count);
+	}
 	UAnimMontage* Montage = AnimSet->ResolveVariant(Attack.AnimRole, Index);
 	if (!Montage && Index > 0)
 	{
@@ -242,11 +289,60 @@ void UMeleeComponent::UpdateWarpTarget()
 	Warp->AddOrUpdateWarpTargetFromLocationAndRotation(WarpTargetName, Plan.StandPoint, Plan.Facing.Rotation());
 }
 
+const FCombatClipData* UMeleeComponent::GetActiveClipData() const
+{
+	return AnimSet && CurrentMontage ? AnimSet->FindClipData(CurrentMontage) : nullptr;
+}
+
+float UMeleeComponent::GetActiveContactDistance() const
+{
+	const AActor* Owner = GetOwner();
+	// A bigger body (a boss drawn 1.15 times a thug) lands its blow from further off.
+	const float Scale = Owner ? FMath::Max(Owner->GetActorScale3D().X, 0.1f) : 1.f;
+	const FCombatClipData* Data = GetActiveClipData();
+	// The clip's own reach at its hit frame, baked from its frames (the rig's scale is in it), else the attack's constant.
+	const float Distance = Data && Data->ContactDistance > 0.f ? Data->ContactDistance : CurrentAttack.Contact.ContactDistance;
+	return Distance * Scale;
+}
+
+float UMeleeComponent::GetRegionHeight(const AActor& Target, EHawkeyeContactRegion Region) const
+{
+	const ACharacter* Character = Cast<ACharacter>(&Target);
+	const USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	if (!Mesh || !Mesh->GetSkeletalMeshAsset())
+	{
+		return -1.f;
+	}
+	const FName Bone = UHawkeyeHitContactRules::SelectRegionBone(Region,
+		[Mesh](FName Name) { return Mesh->GetBoneIndex(Name) != INDEX_NONE; });
+	if (Bone.IsNone())
+	{
+		return -1.f;
+	}
+	float Radius = 0.f;
+	float HalfHeight = 0.f;
+	Target.GetSimpleCollisionCylinder(Radius, HalfHeight);
+	return Mesh->GetBoneLocation(Bone).Z - (Target.GetActorLocation().Z - HalfHeight);
+}
+
+EHawkeyeContactRegion UMeleeComponent::ResolveContactRegion(const AActor& Target, EHawkeyeContactRegion Preferred, bool bDown) const
+{
+	EHawkeyeContactRegion Wanted = Preferred;
+	const FCombatClipData* Data = GetActiveClipData();
+	if (Data && Data->ContactHeight >= 0.f && !bDown)
+	{
+		// The clip's fist or foot was at this height at its hit: the region of his body nearest it.
+		Wanted = UHawkeyeHitContactRules::SelectRegionForHeight(Data->ContactHeight, GetRegionHeight(Target, EHawkeyeContactRegion::Head),
+			GetRegionHeight(Target, EHawkeyeContactRegion::Torso), GetRegionHeight(Target, EHawkeyeContactRegion::Legs), Preferred);
+	}
+	return UHawkeyeHitContactRules::SelectContactRegion(Wanted, bDown);
+}
+
 FVector UMeleeComponent::ComputeContactPoint(const AActor& Target, const FHawkeyeStrikeContact& InContact) const
 {
 	const AThugCharacter* Thug = Cast<AThugCharacter>(&Target);
 	const bool bDown = Thug && (Thug->IsKnockedDown() || Thug->IsLimp());
-	const EHawkeyeContactRegion Region = UHawkeyeHitContactRules::SelectContactRegion(InContact.Region, bDown);
+	const EHawkeyeContactRegion Region = ResolveContactRegion(Target, InContact.Region, bDown);
 	const ACharacter* Character = Cast<ACharacter>(&Target);
 	const USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
 	if (bDown || !Mesh || !Mesh->GetSkeletalMeshAsset())
@@ -266,8 +362,6 @@ FHawkeyeContactPlan UMeleeComponent::PlanCurrentContact() const
 	{
 		return FHawkeyeContactPlan();
 	}
-	// A bigger body (a boss drawn 1.15 times a thug) lands its blow from further off.
-	const float Scale = FMath::Max(Owner->GetActorScale3D().X, 0.1f);
 	const FHawkeyeStrikeContact& C = CurrentAttack.Contact;
 	// The pull never closes faster than the magnetism's speed: over the whole wind-up for a warp or a lunge (re-planned
 	// every tick as he moves, against the same budget, or a warp whose clip moves late would be refused half way), over
@@ -276,7 +370,7 @@ FHawkeyeContactPlan UMeleeComponent::PlanCurrentContact() const
 	const float PullSeconds = bSlides ? C.ApproachSeconds : static_cast<float>(SwingHitDueTime - SwingStartTime);
 	const float SlideCap = UHawkeyeMeleeRules::ComputeSlideCap(C.MaxSlide, Magnetism.MaxClosingSpeed, FMath::Max(PullSeconds, 0.05f));
 	FHawkeyeContactPlan Plan = UHawkeyeHitContactRules::PlanContact(Owner->GetActorLocation(), Owner->GetActorForwardVector(),
-		ComputeContactPoint(*Target, C), C.ContactDistance * Scale, SlideCap, C.MaxTurnDegrees);
+		ComputeContactPoint(*Target, C), GetActiveContactDistance(), SlideCap, C.MaxTurnDegrees);
 	// Never through a wall, never over a gap or off a ledge: the swing turns and whiffs instead.
 	FName Why;
 	if (Plan.bReachable && Plan.Slide >= 1.f && !IsStrikePathClear(*Target, Plan.StandPoint, &Why))
@@ -290,14 +384,19 @@ FHawkeyeContactPlan UMeleeComponent::PlanCurrentContact() const
 bool UMeleeComponent::HasStrikeSight(const AActor& Target) const
 {
 	const AActor* Owner = GetOwner();
+	return !Owner || HasSightBetween(*Owner, Target);
+}
+
+bool UMeleeComponent::HasSightBetween(const AActor& Mover, const AActor& Target) const
+{
 	const UWorld* World = GetWorld();
-	if (!Owner || !World)
+	if (!World)
 	{
 		return true;
 	}
-	const FVector From = Owner->GetActorLocation() + FVector(0.f, 0.f, Magnetism.SightHeight);
+	const FVector From = Mover.GetActorLocation() + FVector(0.f, 0.f, Magnetism.SightHeight);
 	const FVector To = Target.GetActorLocation() + FVector(0.f, 0.f, Magnetism.SightHeight);
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeStrikeSight), /*bTraceComplex=*/false, Owner);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeStrikeSight), /*bTraceComplex=*/false, &Mover);
 	Params.AddIgnoredActor(&Target);
 	// Bodies (anyone's capsule or mesh, a ragdoll) are not walls: they are stepped past and traced through.
 	for (int32 Try = 0; Try < 6; ++Try)
@@ -324,12 +423,17 @@ bool UMeleeComponent::HasStrikeSight(const AActor& Target) const
 bool UMeleeComponent::IsStrikePathClear(const AActor& Target, const FVector& StandPoint, FName* OutWhy) const
 {
 	const AActor* Owner = GetOwner();
+	return !Owner || IsMovePathClear(*Owner, Target, StandPoint, OutWhy);
+}
+
+bool UMeleeComponent::IsMovePathClear(const AActor& Owner, const AActor& Target, const FVector& StandPoint, FName* OutWhy) const
+{
 	const UWorld* World = GetWorld();
-	if (!Owner || !World)
+	if (!World)
 	{
 		return true;
 	}
-	if (!HasStrikeSight(Target))
+	if (!HasSightBetween(Owner, Target))
 	{
 		if (OutWhy)
 		{
@@ -340,9 +444,9 @@ bool UMeleeComponent::IsStrikePathClear(const AActor& Target, const FVector& Sta
 	// The floor under the owner and at every sample to where the swing stands him.
 	float HalfHeight = 0.f;
 	float Radius = 0.f;
-	Owner->GetSimpleCollisionCylinder(Radius, HalfHeight);
-	const FVector Start = Owner->GetActorLocation();
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeStrikeFloor), /*bTraceComplex=*/false, Owner);
+	Owner.GetSimpleCollisionCylinder(Radius, HalfHeight);
+	const FVector Start = Owner.GetActorLocation();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeStrikeFloor), /*bTraceComplex=*/false, &Owner);
 	Params.AddIgnoredActor(&Target);
 	auto FloorAt = [&](const FVector& XY, float FeetZ) -> TOptional<float>
 	{
@@ -560,8 +664,7 @@ FHawkeyeStrikeImpact UMeleeComponent::BuildImpact(const AActor& Target, const FV
 		const AThugCharacter* Thug = Cast<AThugCharacter>(&Target);
 		const bool bDown = Thug && (Thug->IsKnockedDown() || Thug->IsLimp());
 		const USkeletalMeshComponent* Body = Struck->GetMesh();
-		Impact.Bone = UHawkeyeHitContactRules::SelectRegionBone(
-			UHawkeyeHitContactRules::SelectContactRegion(CurrentAttack.Contact.Region, bDown),
+		Impact.Bone = UHawkeyeHitContactRules::SelectRegionBone(ResolveContactRegion(Target, CurrentAttack.Contact.Region, bDown),
 			[Body](FName Name) { return Body->GetBoneIndex(Name) != INDEX_NONE; });
 	}
 	if (LimbPoint)
@@ -595,35 +698,89 @@ void UMeleeComponent::DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& 
 	AActor* Owner = GetOwner();
 	UHitReactionComponent* Mine = Owner ? Owner->FindComponentByClass<UHitReactionComponent>() : nullptr;
 	UHitReactionComponent* Theirs = Target.FindComponentByClass<UHitReactionComponent>();
-	// The hit-stop is the world's (as the parry's), so the two bodies and every clock hold together: tokens, telegraphs
-	// and a boss's combo never fall out of step. Kate or Clint landing a blow, or taking one, stops it.
+	// The freeze is the two bodies' own (each on its own clock; the world runs on), so only the parties hold: Kate or Clint
+	// landing a blow, or taking one. In this order: (a) the freeze, (b) the victim is on the hit pose of his clip (his
+	// reaction started it from its HitPeakTime, with no blend), (c) both vibrate along the blow while frozen, (d) the
+	// knock-back is one eased displacement from the release (his reaction applied it; it waits out the freeze on his
+	// stopped clock), (e) the physical flinch starts at the release and only adds to the clip.
 	AHawkeyeCharacter* Hawkeye = Cast<AHawkeyeCharacter>(Owner);
 	if (!Hawkeye)
 	{
 		Hawkeye = Cast<AHawkeyeCharacter>(&Target);
 	}
 	const FHawkeyeHitStopTuning Tuning = Mine ? Mine->HitStop : (Theirs ? Theirs->HitStop : FHawkeyeHitStopTuning());
-	// Two blows at once (two thugs, hers and his) never stack into a freeze: the second gets no stop of its own.
+	// A blow right after the last (a chain, two thugs at once) freezes for 40% of its own length, not for none.
 	const float Seconds = UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(Impact.Weight, Tuning,
 		Hawkeye ? Hawkeye->GetSecondsSinceHitStop() : -1.f);
 	if (Hawkeye && Seconds > 0.f)
 	{
-		Hawkeye->ApplyHitStop(Seconds, Tuning.Dilation);
+		Hawkeye->NoteHitStop();
 		if (Mine)
 		{
-			Mine->BeginHitStop(Seconds);
+			Mine->BeginFreeze(Seconds, Impact.Direction, Impact.Weight, /*bFlipVibration=*/true);
 		}
 		if (Theirs)
 		{
-			Theirs->BeginHitStop(Seconds);
+			Theirs->BeginFreeze(Seconds, Impact.Direction, Impact.Weight, /*bFlipVibration=*/false);
+			AlignVictim(Target, *Theirs);
 		}
 	}
-	// The struck body reacts once the stop ends, unless he swings through it (a guarded boss keeps his swing's pose).
+	// The struck body's physical flinch waits for the freeze to end (PlayHitReaction), unless he swings through it (a
+	// guarded boss keeps his swing's pose).
 	const UMeleeComponent* TheirMelee = Target.FindComponentByClass<UMeleeComponent>();
 	if (Theirs && UHawkeyeHitContactRules::ShouldHitStop(bTargetAlive, TheirMelee && TheirMelee->IsWindingUp()))
 	{
 		Theirs->PlayHitReaction(Impact);
 	}
+	SpawnImpactPuff(Impact);
+}
+
+void UMeleeComponent::AlignVictim(AActor& Target, UHitReactionComponent& Theirs) const
+{
+	const AActor* Owner = GetOwner();
+	const ACharacter* Victim = Cast<ACharacter>(&Target);
+	const AThugCharacter* Thug = Cast<AThugCharacter>(&Target);
+	const UHealthComponent* Health = Target.FindComponentByClass<UHealthComponent>();
+	const UMeleeComponent* TheirMelee = Target.FindComponentByClass<UMeleeComponent>();
+	if (!Owner || !Victim || !UHawkeyeHitContactRules::ShouldAlignVictim(Health && Health->IsAlive(), TheirMelee && TheirMelee->IsWindingUp(),
+		Thug && (Thug->IsKnockedDown() || Thug->IsLimp()), Victim->IsPlayerControlled()))
+	{
+		return;
+	}
+	const FHawkeyeWeldTuning& Weld = Theirs.Weld;
+	// He turns to face the one who hit him, within the cap...
+	const FVector ToAttacker = (Owner->GetActorLocation() - Target.GetActorLocation()).GetSafeNormal2D();
+	const float Turn = ToAttacker.IsNearlyZero() ? 0.f
+		: UHawkeyeHitContactRules::ComputeVictimTurn(Target.GetActorRotation().Yaw, ToAttacker.Rotation().Yaw, Weld.MaxTurnDegrees);
+	// ...and is moved along the line so they stand where the clip was authored to (its contact distance), within the cap,
+	// never into a wall or off a ledge (the same checks as strike magnetism).
+	const float Flat = FVector::Dist2D(Owner->GetActorLocation(), Target.GetActorLocation());
+	float Nudge = UHawkeyeHitContactRules::ComputeVictimNudge(Flat, GetActiveContactDistance(), Weld.MaxNudgeCm);
+	const FVector Away = -ToAttacker;
+	if (FMath::Abs(Nudge) >= 1.f)
+	{
+		FName Why;
+		if (!IsMovePathClear(Target, *Owner, Target.GetActorLocation() + Away * Nudge, &Why))
+		{
+			UE_LOG(LogHawkeye, Verbose, TEXT("%s: %s is not nudged %.0f cm: %s."), *GetNameSafe(GetOwner()), *GetNameSafe(&Target), Nudge,
+				*Why.ToString());
+			Nudge = 0.f;
+		}
+	}
+	Theirs.BeginAlignment(Turn, Away * Nudge);
+}
+
+void UMeleeComponent::SpawnImpactPuff(const FHawkeyeStrikeImpact& Impact)
+{
+	if (ImpactPuffVfx.Num() == 0)
+	{
+		return;
+	}
+	const int32 Variant = HawkeyeVfxMath::PickPuffVariant(ImpactPuffVfx.Num(), PuffCounter++, LastPuffVariant);
+	LastPuffVariant = Variant;
+	// At the contact point, along the blow: the dust goes the way the fist did.
+	UHawkeyeVfxSubsystem::SpawnAt(this, ImpactPuffVfx[Variant], Impact.Point, Impact.Direction.Rotation(),
+		UHawkeyeVfxSubsystem::MeleePuffEvent, HawkeyeVfxMath::ComputePuffScale(Impact.Weight));
 }
 
 void UMeleeComponent::ResetClipState()

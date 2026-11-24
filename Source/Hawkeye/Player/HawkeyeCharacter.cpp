@@ -168,8 +168,6 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	MeleeComponent = CreateDefaultSubobject<UMeleeComponent>(TEXT("MeleeComponent"));
 	// The assist (gameplay-semantics.md, "Melee assist"): her swings close on the thug she picked and forgive him.
 	MeleeComponent->bAssistSwings = true;
-	// Small and at the contact point: the thug's hit flash is what reads (gameplay-semantics.md, "Combat readability").
-	MeleeSparkVfx = TSoftObjectPtr<UNiagaraSystem>(FSoftObjectPath(TEXT("/Game/VFX/NS_MeleeSpark.NS_MeleeSpark")));
 	LightAttack.Name = FName(TEXT("light"));
 	LightAttack.Damage = 15.f;
 	LightAttack.WindupSeconds = 0.1f;
@@ -1882,67 +1880,6 @@ float AHawkeyeCharacter::GetMeleeHitStopSeconds(bool bHeavy) const
 		: UHawkeyeHitContactRules::ComputeHitStopSeconds(Weight, FHawkeyeHitStopTuning());
 }
 
-void AHawkeyeCharacter::SpawnMeleeSpark(const AActor* HitActor, bool bHeavy) const
-{
-	if (!HitActor)
-	{
-		return;
-	}
-	float Radius = 0.f;
-	float HalfHeight = 0.f;
-	HitActor->GetSimpleCollisionCylinder(Radius, HalfHeight);
-	const FVector ToHer = (GetActorLocation() - HitActor->GetActorLocation()).GetSafeNormal2D();
-	// The front of his body toward her, at the height of whichever fist or foot is nearest him (a jab at his
-	// face, a roundhouse at his ribs; 2026-09-29: always chest height hid it behind her head from her camera).
-	float Height = 35.f;
-	if (MeleeComponent && MeleeComponent->GetLastImpact().bValid)
-	{
-		// Where the blow met him (the striking limb's sweep, or its height on his capsule).
-		Height = FMath::Clamp(MeleeComponent->GetLastImpact().Point.Z - HitActor->GetActorLocation().Z, -HalfHeight * 0.3f,
-			HalfHeight * 0.75f);
-	}
-	else if (const USkeletalMeshComponent* Body = GetMesh())
-	{
-		float Nearest = BIG_NUMBER;
-		for (const TCHAR* Bone : { TEXT("hand_r"), TEXT("hand_l"), TEXT("foot_r"), TEXT("foot_l") })
-		{
-			if (Body->GetBoneIndex(Bone) == INDEX_NONE)
-			{
-				continue;
-			}
-			const FVector At = Body->GetBoneLocation(Bone);
-			const float Off = FVector::Dist2D(At, HitActor->GetActorLocation());
-			if (Off < Nearest)
-			{
-				Nearest = Off;
-				Height = FMath::Clamp(At.Z - HitActor->GetActorLocation().Z, -HalfHeight * 0.3f, HalfHeight * 0.75f);
-			}
-		}
-	}
-	// Round his body from the point facing her toward whichever side the player's lens sees past her: from
-	// behind her (her own camera) that point is behind her head and shoulders (2026-09-29, hit_spark.png).
-	FVector Out = ToHer;
-	const APlayerController* PC = Cast<APlayerController>(GetController());
-	if (PC && PC->PlayerCameraManager)
-	{
-		const FVector Lens = PC->PlayerCameraManager->GetCameraLocation();
-		const FVector Front = HitActor->GetActorLocation() + ToHer * Radius;
-		const FVector Across = FVector::CrossProduct(FVector::UpVector, (Front - Lens).GetSafeNormal2D());
-		// Her axis off the lens's line to that point, flat, cm; inside SparkClearance she hides it.
-		const float Off = FVector::DotProduct(GetActorLocation() - Front, Across);
-		if (FMath::Abs(Off) < SparkClearance)
-		{
-			// A point on his surface Slide cm across, at most 0.9 of his radius (about 65 degrees round).
-			const float Slide = FMath::Min(SparkClearance - FMath::Abs(Off), 0.9f * Radius);
-			Out = ToHer * FMath::Sqrt(FMath::Max(Radius * Radius - Slide * Slide, 0.f)) / FMath::Max(Radius, 1.f)
-				+ Across * (Off >= 0.f ? -Slide : Slide) / FMath::Max(Radius, 1.f);
-		}
-	}
-	const FVector Contact = HitActor->GetActorLocation() + Out * Radius + FVector(0.f, 0.f, Height);
-	UHawkeyeVfxSubsystem::SpawnAt(this, MeleeSparkVfx, Contact, ToHer.Rotation(), UHawkeyeVfxSubsystem::MeleeSparkEvent,
-		(bHeavy ? HeavySparkScale : LightSparkScale) * FMath::Lerp(0.6f, 1.f, FlashScale));
-}
-
 void AHawkeyeCharacter::UpdateMoveInputTiming(float DeltaSeconds)
 {
 	if (bMoveInputThisFrame)
@@ -2711,8 +2648,8 @@ void AHawkeyeCharacter::HandleMeleeLanded(AActor* HitActor, float /*DamageDealt*
 	{
 		Combo.NotifyHit();
 	}
-	// The hit-stop holds her and him (the melee component starts it on both bodies, by the blow's weight); the lens
-	// kicks in by the same weight, and a small spark marks where the blow met him, under his own hit flash.
+	// The freeze holds her and him (the melee component starts it on both bodies, by the blow's weight) and the dust
+	// puff at the contact point is the melee component's too; the lens kicks in by the same weight.
 	const bool bHeavy = !bSwingIsLight;
 	const float Weight = MeleeComponent && MeleeComponent->GetLastImpact().bValid ? MeleeComponent->GetLastImpact().Weight
 		: (bHeavy ? 1.f : 0.3f);
@@ -2721,7 +2658,6 @@ void AHawkeyeCharacter::HandleMeleeLanded(AActor* HitActor, float /*DamageDealt*
 	{
 		CameraPunchElapsed = 0.f;
 	}
-	SpawnMeleeSpark(HitActor, bHeavy);
 }
 
 void AHawkeyeCharacter::HandleMeleeMissed(FName /*AttackName*/)
@@ -3125,12 +3061,19 @@ void AHawkeyeCharacter::HandleStaggered(UHealthComponent* /*Health*/, AActor* Da
 		? &HitReactionComponent->GetPendingImpact() : nullptr;
 	const EHawkeyeHitDirection Side = Blow ? UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow->Direction)
 		: UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away);
-	const ECombatAnimRole HitRole = UCombatAnimSet::HitRoleForBlow(CombatAnimSet, Side, Blow ? Blow->Weight : 0.f, HeavyReactionWeight);
-	const bool bHeavyClip = HitRole == ECombatAnimRole::HitHeavy && HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, HitRole) != nullptr;
-	LaunchCharacter(Away * (bHeavyClip ? PlayerHeavyStaggerShove : PlayerStaggerShove), true, false);
-	if (!bHeavyClip)
+	// By the side, the zone (head, gut, legs) and the weight; from its damaged pose with no blend (the weld).
+	const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
+	const HawkeyeCombatAnim::FReactionPlayed Played = HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side,
+		HeavyReactionWeight, Weld);
+	if (Blow && HitReactionComponent)
 	{
-		HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, UCombatAnimSet::HitRoleFor(Side));
+		// One eased displacement of the clip's own distance (or the old shove's), from the freeze's release.
+		const float Cm = Played.KnockbackCm >= 0.f ? Played.KnockbackCm : (Played.bHeavy ? Weld.KnockbackHeavyCm : Weld.KnockbackLightCm);
+		HitReactionComponent->ApplyKnockback(Away, Cm);
+	}
+	else
+	{
+		LaunchCharacter(Away * (Played.bHeavy ? PlayerHeavyStaggerShove : PlayerStaggerShove), true, false);
 	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: staggered by %s, health %.1f."), *GetNameSafe(this),
 		*GetNameSafe(DamageInstigator), HealthComponent->GetCurrentHealth());

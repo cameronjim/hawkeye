@@ -130,11 +130,142 @@ float UHawkeyeHitContactRules::ComputeHitStopSeconds(float Weight, const FHawkey
 
 float UHawkeyeHitContactRules::ComputeHitStopSecondsAfter(float Weight, const FHawkeyeHitStopTuning& Tuning, float SecondsSinceLastStop)
 {
+	const float Own = ComputeHitStopSeconds(Weight, Tuning);
 	if (SecondsSinceLastStop >= 0.f && SecondsSinceLastStop < Tuning.MinGapSeconds)
+	{
+		return Own * FMath::Clamp(Tuning.ChainScale, 0.f, 1.f);
+	}
+	return Own;
+}
+
+float UHawkeyeHitContactRules::ComputeVibrationAmplitude(float Weight, const FHawkeyeWeldTuning& Tuning)
+{
+	const float Span = FMath::Max(1.f - Tuning.VibrationLightWeight, KINDA_SMALL_NUMBER);
+	const float Alpha = FMath::Clamp((Weight - Tuning.VibrationLightWeight) / Span, 0.f, 1.f);
+	return FMath::Lerp(Tuning.VibrationLightCm, Tuning.VibrationHeavyCm, Alpha);
+}
+
+int32 UHawkeyeHitContactRules::ComputeVibrationFrames(float Weight, const FHawkeyeWeldTuning& Tuning)
+{
+	const float Span = FMath::Max(1.f - Tuning.VibrationLightWeight, KINDA_SMALL_NUMBER);
+	const float Alpha = FMath::Clamp((Weight - Tuning.VibrationLightWeight) / Span, 0.f, 1.f);
+	const int32 Low = FMath::Max(Tuning.VibrationMinFrames, 1);
+	const int32 High = FMath::Max(Tuning.VibrationMaxFrames, Low);
+	return FMath::Clamp(FMath::RoundToInt(FMath::Lerp(static_cast<float>(Low), static_cast<float>(High), Alpha)), Low, High);
+}
+
+float UHawkeyeHitContactRules::ComputeVibrationOffset(float ElapsedSeconds, float DurationSeconds, float Weight, bool bFlip,
+	const FHawkeyeWeldTuning& Tuning)
+{
+	if (DurationSeconds <= KINDA_SMALL_NUMBER || ElapsedSeconds < 0.f || ElapsedSeconds >= DurationSeconds)
 	{
 		return 0.f;
 	}
-	return ComputeHitStopSeconds(Weight, Tuning);
+	const int32 Frames = ComputeVibrationFrames(Weight, Tuning);
+	const float StepSeconds = DurationSeconds / static_cast<float>(Frames);
+	const int32 Step = FMath::Clamp(FMath::FloorToInt(ElapsedSeconds / StepSeconds), 0, Frames - 1);
+	// Each step the other side of the last and smaller: Frames steps from the full amplitude down to 1 / Frames of it.
+	const float Decay = 1.f - static_cast<float>(Step) / static_cast<float>(Frames);
+	const float Side = ((Step % 2 == 0) != bFlip) ? 1.f : -1.f;
+	return ComputeVibrationAmplitude(Weight, Tuning) * Decay * Side;
+}
+
+float UHawkeyeHitContactRules::ComputeVictimTurn(float CurrentYawDegrees, float YawToAttackerDegrees, float MaxDegrees)
+{
+	const float Wanted = FRotator::NormalizeAxis(YawToAttackerDegrees - CurrentYawDegrees);
+	const float Cap = FMath::Max(MaxDegrees, 0.f);
+	return FMath::Clamp(Wanted, -Cap, Cap);
+}
+
+float UHawkeyeHitContactRules::ComputeVictimNudge(float CurrentFlatCm, float DesiredFlatCm, float MaxCm)
+{
+	if (DesiredFlatCm <= 0.f)
+	{
+		return 0.f;
+	}
+	const float Cap = FMath::Max(MaxCm, 0.f);
+	// Desired further than he is: he is too close and is moved away; nearer: moved toward the attacker.
+	return FMath::Clamp(DesiredFlatCm - CurrentFlatCm, -Cap, Cap);
+}
+
+void UHawkeyeHitContactRules::ComputeKnockbackProfile(float DistanceCm, float SecondsLong, float Ease, int32 Samples,
+	float& OutPeakSpeed, TArray<float>& OutStrengths)
+{
+	OutPeakSpeed = 0.f;
+	OutStrengths.Reset();
+	const int32 Count = FMath::Max(Samples, 2);
+	const float Power = FMath::Max(Ease, 1.f);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const float T = static_cast<float>(Index) / static_cast<float>(Count - 1);
+		OutStrengths.Add(FMath::Pow(1.f - T, Power));
+	}
+	// Trapezoids on the unit time axis: the area under the straight lines between the samples.
+	float Area = 0.f;
+	for (int32 Index = 1; Index < Count; ++Index)
+	{
+		Area += 0.5f * (OutStrengths[Index - 1] + OutStrengths[Index]) / static_cast<float>(Count - 1);
+	}
+	if (DistanceCm > 0.f && SecondsLong > 0.f && Area > KINDA_SMALL_NUMBER)
+	{
+		OutPeakSpeed = DistanceCm / (SecondsLong * Area);
+	}
+}
+
+FHawkeyeReactionStart UHawkeyeHitContactRules::ComputeReactionStart(float PeakSeconds, float PlayLength,
+	const FHawkeyeWeldTuning& Tuning)
+{
+	FHawkeyeReactionStart Start;
+	if (PeakSeconds >= 0.f && PeakSeconds < PlayLength)
+	{
+		Start.StartAtSeconds = PeakSeconds;
+		Start.BlendInSeconds = 0.f;
+		return Start;
+	}
+	Start.BlendInSeconds = FMath::Max(Tuning.UnauthoredBlendInSeconds, 0.f);
+	return Start;
+}
+
+bool UHawkeyeHitContactRules::ShouldAlignVictim(bool bAlive, bool bWindingUp, bool bDown, bool bPlayerControlled)
+{
+	return bAlive && !bWindingUp && !bDown && !bPlayerControlled;
+}
+
+float UHawkeyeHitContactRules::ClampPhysicalBlend(float Blend, const FHawkeyeWeldTuning& Tuning)
+{
+	return FMath::Clamp(Blend, 0.f, Tuning.PhysicalBlendCap);
+}
+
+EHawkeyeContactRegion UHawkeyeHitContactRules::ClassifyBoneRegion(FName Bone)
+{
+	const FString Name = Bone.ToString();
+	if (Name.StartsWith(TEXT("head")) || Name.StartsWith(TEXT("neck")))
+	{
+		return EHawkeyeContactRegion::Head;
+	}
+	if (Name.StartsWith(TEXT("pelvis")) || Name.StartsWith(TEXT("thigh")) || Name.StartsWith(TEXT("calf"))
+		|| Name.StartsWith(TEXT("foot")) || Name.StartsWith(TEXT("ball")))
+	{
+		return EHawkeyeContactRegion::Legs;
+	}
+	return EHawkeyeContactRegion::Torso;
+}
+
+EHawkeyeContactRegion UHawkeyeHitContactRules::SelectRegionForHeight(float ContactHeightCm, float HeadCm, float TorsoCm,
+	float LegsCm, EHawkeyeContactRegion Preferred)
+{
+	if (ContactHeightCm < 0.f)
+	{
+		return Preferred;
+	}
+	const float ToHead = FMath::Abs(ContactHeightCm - HeadCm);
+	const float ToTorso = FMath::Abs(ContactHeightCm - TorsoCm);
+	const float ToLegs = FMath::Abs(ContactHeightCm - LegsCm);
+	if (ToHead <= ToTorso && ToHead <= ToLegs)
+	{
+		return EHawkeyeContactRegion::Head;
+	}
+	return ToTorso <= ToLegs ? EHawkeyeContactRegion::Torso : EHawkeyeContactRegion::Legs;
 }
 
 bool UHawkeyeHitContactRules::ShouldHitStop(bool bAlive, bool bWindingUp)
