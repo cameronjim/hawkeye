@@ -119,11 +119,11 @@ void AHawkeyeCharacter::BeginLandingPose(float FallHeight)
 		FTraversalPoseRules::ClassifyLanding(Impact, Ground, IsRolling(), IsStumbling(), Settings);
 	bool bClipPlays = false;
 	const UCombatAnimSet* Set = CombatAnimSet;
-	const ECombatAnimRole Role = UCombatAnimSet::LandingRoleFor(Clip);
-	if (Set && Role != ECombatAnimRole::None && Set->GetVariantCount(Role) > 0)
+	const ECombatAnimRole LandRole = UCombatAnimSet::LandingRoleFor(Clip);
+	if (Set && LandRole != ECombatAnimRole::None && Set->GetVariantCount(LandRole) > 0)
 	{
-		const int32 Index = UCombatAnimSet::PickNextVariant(LandingVariantCursor, Set->GetVariantCount(Role));
-		if (UAnimMontage* Montage = Set->ResolveVariant(Role, Index))
+		const int32 Index = UCombatAnimSet::PickNextVariant(LandingVariantCursor, Set->GetVariantCount(LandRole));
+		if (UAnimMontage* Montage = Set->ResolveVariant(LandRole, Index))
 		{
 			// The roll and the stumble take the time the landing rules give them; the others play as they were made.
 			const float Fit =
