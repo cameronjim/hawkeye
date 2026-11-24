@@ -63,9 +63,9 @@ bool FHawkeyeInteriorCameraArm::RunTest(const FString& Parameters)
 
 	Kate->SetIndoorCamera(true);
 	TestEqual(TEXT("Indoors the hip arm is 250"), Kate->ComputeCameraTargets(false).ArmLength, 250.f);
-	TestEqual(TEXT("Indoors, halfway up the look-up blend (285) is still capped at 250"),
+	TestEqual(TEXT("Indoors, most of the way up the look-up blend (266) is still capped at 250"),
 		Kate->ComputeCameraTargets(false, 40.f).ArmLength, 250.f);
-	TestEqual(TEXT("A steep look up shortens it further, to 220"), Kate->ComputeCameraTargets(false, 60.f).ArmLength, 220.f);
+	TestEqual(TEXT("A steep look up shortens it further, to 230"), Kate->ComputeCameraTargets(false, 60.f).ArmLength, 230.f);
 	TestEqual(TEXT("Aiming is unchanged at 180"), Kate->ComputeCameraTargets(true).ArmLength, 180.f);
 	TestEqual(TEXT("The shoulder offset is unchanged"), Kate->ComputeCameraTargets(false).SocketOffset, FVector(0.f, 70.f, 60.f));
 
