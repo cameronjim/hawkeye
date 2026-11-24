@@ -217,10 +217,21 @@ def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG
     return rtg
 
 
+def _collider(spec):
+    """One FHawkeyeDynamicsCollider from a dict of its fields in Python's names (bone, radius, length, offset, axis);
+    offset and axis are (x, y, z) tuples in the reference pose's axes, cm, Z up."""
+    collider = unreal.HawkeyeDynamicsCollider()
+    for key, value in spec.items():
+        collider.set_editor_property(key, unreal.Vector(*value) if key in ("offset", "axis") else value)
+    return collider
+
+
 def _dynamics_chains(dynamics, skeleton):
     """The chains of `dynamics` (dicts of FHawkeyeDynamicsChain's fields in Python's names: bound_bone, chain_end,
-    cone_degrees, ...) whose bones the skeleton has, as engine structs, and a text of them for the build stamp (the
-    graph is rebuilt once the simulation bones are imported, so a chain's presence is in it)."""
+    damping, stiffness, limit_angle_degrees, colliders (a list of dicts, see _collider), ...) whose bones the skeleton
+    has, as engine structs, and a text of them for the build stamp (the graph is rebuilt once the simulation bones are
+    imported, so a chain's presence is in it). A collider on a bone the skeleton lacks is dropped with a line; the
+    builder rejects a chain the skeleton cannot run (HawkeyeSecondary::DescribeProblem) and says why in LogHawkeye."""
     bones = set(ica.skeleton_bones(skeleton)) if dynamics else set()
     chains, names = [], []
     for spec in dynamics or []:
@@ -228,6 +239,12 @@ def _dynamics_chains(dynamics, skeleton):
             continue
         chain = unreal.HawkeyeDynamicsChain()
         for key, value in spec.items():
+            if key == "colliders":
+                kept = [s for s in value if s.get("bone") in bones]
+                for s in value:
+                    if s not in kept:
+                        c.log("skipped", "collider on " + str(s.get("bone")), "the skeleton has no such bone")
+                value = [_collider(s) for s in kept]
             chain.set_editor_property(key, value)
         chains.append(chain)
         names.append("{0}..{1}".format(spec.get("bound_bone"), spec.get("chain_end", "")))
@@ -258,7 +275,7 @@ def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None):
         return None
     ica.set_tag(abp, stamp)
     c.save(abp)
-    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with {0}, {1} dynamics node(s)".format(
+    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with {0}, {1} Kawaii Physics node(s)".format(
         rtg.get_name(), builder.count_dynamics_nodes(abp)))
     return abp
 
