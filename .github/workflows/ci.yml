@@ -29,6 +29,9 @@ jobs:
       # discovery picks up every Tools/Editor/test_*.py (test_geo.py, test_interior.py, ...).
       - name: unit tests
         run: python -B -m unittest discover -s Tools/Editor -p "test_*.py" -v
+      # The demo video's cutter (Tools/Demo/cut.py): list parsing, length maths, ffmpeg arguments. No ffmpeg needed.
+      - name: demo cutter tests
+        run: python -B -m unittest discover -s Tools/Demo -p "test_*.py" -v
 
   osm-determinism:
     runs-on: ubuntu-latest

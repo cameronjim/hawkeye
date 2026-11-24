@@ -1,0 +1,142 @@
+{
+  "output": "Saved/Demo/hawkeye-kate-bishop.mp4",
+  "fps": 60,
+  "width": 1920,
+  "height": 1080,
+  "bitrate": "12M",
+  "min_seconds": 75,
+  "max_seconds": 90,
+  "shots": [
+    {
+      "id": "title",
+      "type": "card",
+      "duration": 5,
+      "lines": [
+        "Hawkeye: Kate Bishop",
+        "Solo project. Work in progress.",
+        "C++ and Unreal Engine 5",
+        {"text": "Non-commercial fan project. Not affiliated with Marvel, Disney or Insomniac Games.", "size": 28}
+      ]
+    },
+    {
+      "id": "establish",
+      "type": "frames",
+      "source": "Saved/Demo/establish",
+      "start": 0,
+      "duration": 6,
+      "caption": "A block of the East Village, built from OpenStreetMap data"
+    },
+    {
+      "id": "city_generation",
+      "type": "clip",
+      "source": "Saved/Demo/screen/city_generation.mp4",
+      "start": 0,
+      "speed": 4,
+      "duration": 5,
+      "caption": "City generation: footprints and heights in, buildings, ledges and grapple anchors out"
+    },
+    {
+      "id": "zip_one",
+      "type": "frames",
+      "source": "Saved/Demo/grapple_run",
+      "start": 0,
+      "duration": 5,
+      "caption": "Grapple traversal: real movement, you keep your speed into the zip"
+    },
+    {
+      "id": "zip_two",
+      "type": "frames",
+      "source": "Saved/Demo/grapple_run",
+      "start": 6,
+      "duration": 5,
+      "caption": "The body leans into the pull and brakes on arrival"
+    },
+    {
+      "id": "mantle_landing",
+      "type": "frames",
+      "source": "Saved/Demo/grapple_run",
+      "start": 12,
+      "duration": 4,
+      "caption": "Mantles fitted to the measured ledge, and a heavy landing"
+    },
+    {
+      "id": "descent",
+      "type": "frames",
+      "source": "Saved/Demo/descent",
+      "start": 0,
+      "duration": 5,
+      "caption": "Fire escape descent: hang, drop, catch"
+    },
+    {
+      "id": "traversal_debugger",
+      "type": "clip",
+      "source": "Saved/Demo/screen/traversal_debugger.mp4",
+      "start": 0,
+      "duration": 6,
+      "caption": "Traversal Debugger: an editor tab that checks every grapple anchor and says why one fails"
+    },
+    {
+      "id": "lucky",
+      "type": "frames",
+      "source": "Saved/Demo/lucky",
+      "start": 1,
+      "duration": 5,
+      "caption": "Lucky follows, trots and sits. The rules are tested pure functions"
+    },
+    {
+      "id": "street_fight",
+      "type": "clip",
+      "source": "Saved/Demo/owner/street_fight.mp4",
+      "owner": true,
+      "start": 0,
+      "duration": 8,
+      "caption": "Combat: attack tokens decide who swings, so there are no stunlocks"
+    },
+    {
+      "id": "stealth_takedown",
+      "type": "clip",
+      "source": "Saved/Demo/owner/stealth_takedown.mp4",
+      "owner": true,
+      "start": 0,
+      "duration": 6,
+      "caption": "Stealth takedown"
+    },
+    {
+      "id": "tomas_phase",
+      "type": "clip",
+      "source": "Saved/Demo/owner/tomas_phase.mp4",
+      "owner": true,
+      "start": 0,
+      "duration": 8,
+      "caption": "Boss fight: the Tomas phase change"
+    },
+    {
+      "id": "tests_run",
+      "type": "clip",
+      "source": "Saved/Demo/screen/tests_run.mp4",
+      "start": 0,
+      "speed": 8,
+      "duration": 5,
+      "caption": "641 automation tests, run headless"
+    },
+    {
+      "id": "lap_bot",
+      "type": "clip",
+      "source": "Saved/Demo/screen/lap_bot.mp4",
+      "start": 0,
+      "duration": 4,
+      "caption": "Lap bots play the chapter from the menu"
+    },
+    {
+      "id": "end",
+      "type": "card",
+      "duration": 4,
+      "lines": [
+        "Hawkeye: Kate Bishop",
+        {"text": "Built with Claude Code as a pair.", "size": 40},
+        {"text": "I set the design and the story, play the build and decide what changes.", "size": 36},
+        {"text": "The agent writes much of the code. Characters are stand-ins.", "size": 36}
+      ]
+    }
+  ]
+}
