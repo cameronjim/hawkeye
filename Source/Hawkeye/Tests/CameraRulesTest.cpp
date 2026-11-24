@@ -267,6 +267,9 @@ bool FHawkeyeCameraPureRules::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Between the two it stays shown"), ShouldHideBody(false, 100.f, 90.f, 120.f));
 	TestTrue(TEXT("Between the two it stays hidden"), ShouldHideBody(true, 100.f, 90.f, 120.f));
 	TestFalse(TEXT("Past 120 it comes back"), ShouldHideBody(true, 125.f, 90.f, 120.f));
+	TestTrue(TEXT("but not before it has been hidden for the dwell"), ShouldHideBody(true, 125.f, 90.f, 120.f, 0.5f, 1.05f));
+	TestFalse(TEXT("and then it does"), ShouldHideBody(true, 125.f, 90.f, 120.f, 1.2f, 1.05f));
+	TestFalse(TEXT("A hide waits out the dwell too"), ShouldHideBody(false, 50.f, 90.f, 120.f, 0.5f, 1.05f));
 	return true;
 }
 
@@ -443,6 +446,29 @@ bool FHawkeyeCameraArmCuts::RunTest(const FString& Parameters)
 	Rig.Arm->ResetLag();
 	Rig.Arm->UpdateImmediately(1.f / 60.f);
 	TestEqual(TEXT("ResetLag cuts"), Rig.Arm->GetCutCount(), Start + 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeCameraArmRotationCap, "Hawkeye.Camera.Arm.RotationCatchUpIsCapped",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeCameraArmRotationCap::RunTest(const FString& Parameters)
+{
+	const FHawkeyeTestWorld TestWorld;
+	HawkeyeCameraTest::FArmRig Rig;
+	if (!TestTrue(TEXT("Rig built"), Rig.Build(TestWorld, FVector(0.f, 0.f, 90.f), 0.f, 350.f, FVector(0.f, 0.f, 0.f))))
+	{
+		return false;
+	}
+	Rig.Arm->bEnableCameraRotationLag = true;
+	Rig.Arm->UpdateImmediately(1.f / 60.f);
+	// An 80 degree swing is under the cut (90), so the lag has to cover it; its opening rate (12 times the gap) would be 16
+	// degrees in a 60 fps frame, over the 700 degrees a second cap (11.7).
+	Rig.Arm->SetWorldRotation(FRotator(0.f, 80.f, 0.f));
+	Rig.Arm->UpdateImmediately(1.f / 60.f);
+	const float Turned = static_cast<float>(FMath::Abs(Rig.Arm->PreviousDesiredRot.Yaw));
+	TestTrue(FString::Printf(TEXT("The view turned %.1f degrees, at most 700 / 60"), Turned), Turned <= 700.f / 60.f + 0.05f);
+	TestTrue(TEXT("and it did move"), Turned > 5.f);
 	return true;
 }
 

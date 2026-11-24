@@ -133,9 +133,13 @@ AThugCharacter::AThugCharacter()
 	// thug with no skeletal mesh still has to be killable - and the mesh is what gives the
 	// hit a bone name, which is where the headshot multiplier comes from.
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_HawkeyeWeapon, ECR_Block);
+	// Nobody on two legs pulls the camera in (gameplay-semantics.md, "Camera rules"): a thug beside her capsule used to put the
+	// arm's sweep inside his capsule and collapse the lens onto her for a frame.
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	if (USkeletalMeshComponent* SkeletalMesh = GetMesh())
 	{
 		SkeletalMesh->SetCollisionResponseToChannel(ECC_HawkeyeWeapon, ECR_Block);
+		SkeletalMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
 		// The mannequin is authored facing its own +Y, so a -90 degree yaw is what points it down
 		// the actor's +X and makes the walk cycle agree with the direction of travel. This lived

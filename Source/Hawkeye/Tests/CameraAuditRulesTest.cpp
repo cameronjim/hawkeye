@@ -16,7 +16,7 @@ namespace HawkeyeCameraAuditTest
 	{
 		FAuditFrame Frame;
 		Frame.Time = Time;
-		Frame.Delta = 1.f / 60.f;
+		Frame.Delta = 0.06f;
 		Frame.Pivot = FVector(0.f, 0.f, 90.f);
 		Frame.Lens = FVector(-350.f, 0.f, 150.f);
 		Frame.View = FRotator(0.f, 0.f, 0.f);
@@ -50,7 +50,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		TArray<FViolation> Found;
 		for (int32 Frame = 0; Frame < 120; ++Frame)
 		{
-			Rules.Evaluate(Calm(Frame / 60.0), Found);
+			Rules.Evaluate(Calm(Frame * 0.06), Found);
 		}
 		TestEqual(TEXT("A calm camera is no violation"), Found.Num(), 0);
 	}
@@ -63,12 +63,12 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		Frame.Lens.Z = 25.f;
 		Rules.Evaluate(Frame, Found);
 		TestEqual(TEXT("25 cm above both floors is clear"), Found.Num(), 0);
-		Frame = Calm(1.0 / 60.0);
+		Frame = Calm(0.06);
 		Frame.Lens.Z = 10.f;
 		Rules.Evaluate(Frame, Found);
 		TestEqual(TEXT("10 cm above the floor under her"), Count(Found, ERule::FloorUnderKate), 1);
 		TestEqual(TEXT("and under the lens"), Count(Found, ERule::FloorUnderLens), 1);
-		Frame = Calm(2.0 / 60.0);
+		Frame = Calm(0.12);
 		Frame.Lens.Z = -30.f;
 		Frame.FloorUnderKate = HawkeyeCameraRules::NoFloor;
 		Rules.Evaluate(Frame, Found);
@@ -93,10 +93,20 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook Rules;
 		TArray<FViolation> Found;
 		Rules.Evaluate(Calm(0.0), Found);
-		FAuditFrame Jump = Calm(1.0 / 60.0);
+		FAuditFrame Jump = Calm(0.06);
 		Jump.Lens.X = -50.f;
 		Rules.Evaluate(Jump, Found);
 		TestEqual(TEXT("300 cm in a frame is a jump"), Count(Found, ERule::LensJump), 1);
+
+		// The same jump with the arm pulled in by a wall is the informational kind.
+		FRuleBook PullRules;
+		TArray<FViolation> PullFound;
+		PullRules.Evaluate(Calm(0.0), PullFound);
+		FAuditFrame Pulled = Jump;
+		Pulled.ArmFraction = 0.3f;
+		PullRules.Evaluate(Pulled, PullFound);
+		TestEqual(TEXT("a jump the wall caused is a pull-in"), Count(PullFound, ERule::PullIn), 1);
+		TestEqual(TEXT("and not a lens jump"), Count(PullFound, ERule::LensJump), 0);
 
 		FRuleBook CutRules;
 		TArray<FViolation> CutFound;
@@ -109,7 +119,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook OrbitRules;
 		TArray<FViolation> OrbitFound;
 		OrbitRules.Evaluate(Calm(0.0), OrbitFound);
-		FAuditFrame Orbit = Calm(1.0 / 60.0);
+		FAuditFrame Orbit = Calm(0.06);
 		Orbit.View = FRotator(0.f, 9.f, 0.f);
 		Orbit.Lens = Orbit.Pivot - Orbit.View.Vector() * 350.f + FVector(0.f, 0.f, 60.f);
 		OrbitRules.Evaluate(Orbit, OrbitFound);
@@ -118,15 +128,15 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 	}
 
 	{
-		// The view turning 20 degrees in a frame is 1200 degrees a second.
+		// The view turning 60 degrees in 60 ms is 1000 degrees a second.
 		FRuleBook Rules;
 		TArray<FViolation> Found;
 		Rules.Evaluate(Calm(0.0), Found);
-		FAuditFrame Spin = Calm(1.0 / 60.0);
-		Spin.View = FRotator(0.f, 20.f, 0.f);
+		FAuditFrame Spin = Calm(0.06);
+		Spin.View = FRotator(0.f, 60.f, 0.f);
 		Spin.Lens = Spin.Pivot - Spin.View.Vector() * 350.f + FVector(0.f, 0.f, 60.f);
 		Rules.Evaluate(Spin, Found);
-		TestEqual(TEXT("1200 degrees a second is a violation"), Count(Found, ERule::AngularSpeed), 1);
+		TestEqual(TEXT("1000 degrees a second is a violation"), Count(Found, ERule::AngularSpeed), 1);
 
 		FRuleBook BeatRules;
 		TArray<FViolation> BeatFound;
@@ -147,7 +157,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook FlipRules;
 		TArray<FViolation> FlipFound;
 		FlipRules.Evaluate(Calm(0.0), FlipFound);
-		FAuditFrame Flip = Calm(1.0 / 60.0);
+		FAuditFrame Flip = Calm(0.06);
 		Flip.View = FRotator(0.f, 180.f, 0.f);
 		FlipRules.Evaluate(Flip, FlipFound);
 		TestEqual(TEXT("A yaw flip is caught"), Count(FlipFound, ERule::AngularSpeed), 1);

@@ -118,6 +118,13 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
 
+	// A partner or a thug beside her is not a wall: no character blocks the Camera channel (her own capsule is ignored by the arm anyway).
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	if (GetMesh())
+	{
+		GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	}
+
 	// The arm sweeps a sphere on the Camera channel and pulls in when it hits, so backing
 	// into a tenement puts the camera at the wall rather than inside it. It is the Hawkeye arm: lag that can be
 	// reset and is clamped, a floor rule, a shoulder-first sweep (Player/HawkeyeSpringArmComponent.h).
@@ -1994,8 +2001,14 @@ void AHawkeyeCharacter::UpdateBodyVisibilityForCamera()
 	// The arm places the lens after this tick, so this reads last frame's; a frame late is fine. Hidden inside the hide
 	// distance, shown again only beyond the show distance: a lens riding the edge of one number made her flicker.
 	const float LensDistance = FVector::Dist(FollowCamera->GetComponentLocation(), CameraBoom->GetComponentLocation());
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	const bool bWasHidden = bBodyHiddenForCamera;
 	bBodyHiddenForCamera = HawkeyeCameraRules::ShouldHideBody(bBodyHiddenForCamera, LensDistance, CameraHideBodyDistance,
-		CameraShowBodyDistance);
+		CameraShowBodyDistance, static_cast<float>(Now - BodyHiddenChangedAt), CameraBodyMinDwellSeconds);
+	if (bWasHidden != bBodyHiddenForCamera)
+	{
+		BodyHiddenChangedAt = Now;
+	}
 	if (Body->bOwnerNoSee != bBodyHiddenForCamera)
 	{
 		Body->SetOwnerNoSee(bBodyHiddenForCamera);

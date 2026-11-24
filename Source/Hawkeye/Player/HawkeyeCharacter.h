@@ -374,6 +374,9 @@ public:
 	/** NotifyTeleported on Actor when it is one of ours; anything else is left alone. For the subsystems that place pawns. */
 	static void CutCameraFor(AActor* Actor);
 
+	/** Whether the body is hidden from the camera right now (the arm pulled the lens inside the hide distance). */
+	bool IsBodyHiddenForCamera() const { return bBodyHiddenForCamera; }
+
 	/** How many camera cuts there have been (NotifyTeleported, and the arm's own teleport and pivot-jump detection). */
 	int32 GetCameraCutCount() const { return CameraCutCount + (CameraBoom ? CameraBoom->GetCutCount() : 0); }
 
@@ -1810,6 +1813,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
 	float CameraHideBodyDistance = 90.f;
 
+	/** Seconds the body keeps its hidden or shown state before it may change again: the audit holds a camera to under two toggles a second. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
+	float CameraBodyMinDwellSeconds = 1.05f;
+
 	/** The lens distance beyond which a hidden body is shown again; the gap to the hide distance is the hysteresis. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
 	float CameraShowBodyDistance = 120.f;
@@ -2261,6 +2268,7 @@ private:
 
 	/** Whether the body is hidden from the camera now (the hysteresis's memory). */
 	bool bBodyHiddenForCamera = false;
+	double BodyHiddenChangedAt = -1000.0;
 
 	/** How far the current kick pushes the lens, cm, by the blow's weight. */
 	float CameraKickDistance = 0.f;

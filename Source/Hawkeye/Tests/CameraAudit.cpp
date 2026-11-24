@@ -8,6 +8,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -35,6 +36,7 @@ namespace HawkeyeCameraAudit
 		case ERule::LensJump: return TEXT("LensJump");
 		case ERule::AngularSpeed: return TEXT("AngularSpeed");
 		case ERule::BodyToggle: return TEXT("BodyToggle");
+		case ERule::PullIn: return TEXT("PullIn");
 		default: return TEXT("?");
 		}
 	}
@@ -44,6 +46,7 @@ namespace HawkeyeCameraAudit
 	void FRuleBook::Reset()
 	{
 		bHasPrevious = false;
+		bHasReference = false;
 		ToggleTimes.Reset();
 	}
 
@@ -55,7 +58,8 @@ namespace HawkeyeCameraAudit
 			Violation.Rule = Rule;
 			Violation.Time = Frame.Time;
 			Violation.Location = Frame.Lens;
-			Violation.Mode = Frame.Mode;
+			// The frame before too: a jump is the difference between the two.
+			Violation.Mode = bHasPrevious ? Frame.Mode + TEXT(" || was ") + Previous.Mode : Frame.Mode;
 			Violation.Speed = Frame.KateSpeed;
 			Violation.Value = Value;
 			Violation.Limit = Limit;
@@ -102,25 +106,40 @@ namespace HawkeyeCameraAudit
 				static_cast<float>(ToggleTimes.Num()));
 		}
 
-		// What changed since the last frame: not on a cut, which is the one frame it may.
-		if (bHasPrevious && !Frame.bCut && Frame.Delta > KINDA_SMALL_NUMBER)
+		// What changed over the last MinWindowSeconds: speeds are measured over a window, not a frame, because the engine's
+		// frames are uneven (a 6 ms frame is often followed by a 0.6 ms one) and the same rotation divided by the short frame
+		// reads ten times too fast. A cut restarts the window (it is the one frame things may jump).
+		if (!bHasReference || Frame.bCut)
 		{
-			const float Seconds = Frame.Delta;
+			Reference = Frame;
+			bHasReference = true;
+			WindowSeconds = 0.f;
+			bWindowScripted = false;
+		}
+		else
+		{
+			WindowSeconds += Frame.Delta;
+			bWindowScripted = bWindowScripted || Frame.bScriptedBeat;
+		}
+		if (bHasReference && WindowSeconds >= Limits.MinWindowSeconds)
+		{
+			const float Seconds = WindowSeconds;
 			// The lens relative to her, in a frame that turns with the yaw (the view orbiting her is the player's to do).
-			const FVector Before = Previous.Lens - Previous.Pivot;
+			const FVector Before = Reference.Lens - Reference.Pivot;
 			const FVector Now = Frame.Lens - Frame.Pivot;
-			const FVector BeforeLocal = FRotator(0.f, -Previous.View.Yaw, 0.f).RotateVector(Before);
+			const FVector BeforeLocal = FRotator(0.f, -Reference.View.Yaw, 0.f).RotateVector(Before);
 			const FVector NowLocal = FRotator(0.f, -Frame.View.Yaw, 0.f).RotateVector(Now);
 			// The pitch's orbit too: a view that swings through an angle carries a lens that far from her through that arc.
-			const float Turned = FMath::Acos(FMath::Clamp(static_cast<float>(FVector::DotProduct(Previous.View.Vector(), Frame.View.Vector())), -1.f, 1.f));
+			const float Turned = FMath::Acos(FMath::Clamp(static_cast<float>(FVector::DotProduct(Reference.View.Vector(), Frame.View.Vector())), -1.f, 1.f));
 			const float Orbit = static_cast<float>(Before.Size()) * Turned;
 			const float Moved = static_cast<float>(FVector::Dist(BeforeLocal, NowLocal));
 			const float Speed = FMath::Max(Moved - Orbit, 0.f) / Seconds;
 			if (Speed > Limits.MaxLensSpeed)
 			{
-				Add(ERule::LensJump, Speed, Limits.MaxLensSpeed, Speed / Limits.MaxLensSpeed);
+				const bool bPulledIn = Frame.ArmFraction < Reference.ArmFraction - 0.02f || Frame.ShoulderScale < Reference.ShoulderScale - 0.02f;
+				Add(bPulledIn ? ERule::PullIn : ERule::LensJump, Speed, Limits.MaxLensSpeed, Speed / Limits.MaxLensSpeed);
 			}
-			if (!Frame.bScriptedBeat)
+			if (!bWindowScripted)
 			{
 				const float Degrees = FMath::RadiansToDegrees(Turned) / Seconds;
 				if (Degrees > Limits.MaxAngularSpeed)
@@ -128,6 +147,9 @@ namespace HawkeyeCameraAudit
 					Add(ERule::AngularSpeed, Degrees, Limits.MaxAngularSpeed, Degrees / Limits.MaxAngularSpeed);
 				}
 			}
+			Reference = Frame;
+			WindowSeconds = 0.f;
+			bWindowScripted = false;
 		}
 		Previous = Frame;
 		bHasPrevious = true;
@@ -149,6 +171,7 @@ namespace HawkeyeCameraAudit
 			int32 Cuts = 0;
 			int32 ScriptedFrames = 0;
 			int32 LastCutCount = 0;
+			TWeakObjectPtr<const AHawkeyeCharacter> LastKate;
 			bool bHasLastCut = false;
 			double ScriptedUntil = -1.0;
 			FString ScriptedWhy;
@@ -203,18 +226,41 @@ namespace HawkeyeCameraAudit
 			Out.Pivot = Kate->GetActorLocation();
 			Out.KateSpeed = static_cast<float>(Kate->GetVelocity().Size());
 			const UCharacterMovementComponent* Movement = Kate->GetCharacterMovement();
-			Out.Mode = FString::Printf(TEXT("%s%s"), Movement ? *Movement->GetMovementName() : TEXT("?"),
-				Kate->GetAimBlendAlpha() > 0.5f ? TEXT("+aim") : TEXT(""));
+			const UHawkeyeSpringArmComponent* Boom = Kate->GetCameraBoom();
+			Out.ArmFraction = Boom ? Boom->GetArmFraction() : 1.f;
+			Out.ShoulderScale = Boom ? Boom->GetShoulderScale() : 1.f;
+			const FRotator Control = PC->GetControlRotation();
+			Out.Mode = FString::Printf(TEXT("%s%s arm=%.2f shoulder=%.2f floor=%.0f len=%.0f control=%.0f/%.0f view=%.0f/%.0f dt=%.1fms blocker=%s"),
+				Movement ? *Movement->GetMovementName() : TEXT("?"), Kate->GetAimBlendAlpha() > 0.5f ? TEXT("+aim") : TEXT(""),
+				Boom ? Boom->GetArmFraction() : 0.f, Boom ? Boom->GetShoulderScale() : 0.f, Boom ? Boom->GetFloorCorrection() : 0.f,
+				Boom ? Boom->TargetArmLength : 0.f, Control.Yaw, Control.Pitch, Out.View.Yaw, Out.View.Pitch,
+				Out.Delta * 1000.f, Boom ? *Boom->GetLastStartBlocker() : TEXT(""));
 
 			const int32 CutCount = Kate->GetCameraCutCount();
 			Out.bCut = !Session.bHasLastCut || CutCount != Session.LastCutCount;
 			Session.bHasLastCut = true;
 			Session.LastCutCount = CutCount;
 			Out.bScriptedBeat = Out.Time < Session.ScriptedUntil || Kate->IsLockedOutByTakedown();
-			const USkeletalMeshComponent* Body = Kate->GetBodyMesh();
-			Out.bBodyHidden = Body && Body->bOwnerNoSee;
+			Out.bBodyHidden = Kate->IsBodyHiddenForCamera();
+			// A new pawn (a level change) has nothing to compare with.
+			if (Session.LastKate.Get() != Kate)
+			{
+				Session.LastKate = Kate;
+				Session.Rules.Reset();
+				Session.bHasLastCut = false;
+				Out.bCut = true;
+			}
 
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(CameraAudit), false, Kate);
+			// What her own centre is inside is not a wall (the arm ignores it too).
+			TArray<FOverlapResult> Inside;
+			if (World->OverlapMultiByChannel(Inside, Out.Pivot, FQuat::Identity, ECC_Camera, FCollisionShape::MakeSphere(20.f), Params))
+			{
+				for (const FOverlapResult& Overlap : Inside)
+				{
+					Params.AddIgnoredComponent(Overlap.GetComponent());
+				}
+			}
 			const float HalfHeight = Kate->GetCapsuleComponent() ? Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.f;
 			Out.FloorUnderKate = FloorBelow(World, Out.Pivot, HalfHeight + 250.f, Params);
 
@@ -275,7 +321,7 @@ namespace HawkeyeCameraAudit
 			{
 				const int32 Index = static_cast<int32>(Violation.Rule);
 				++Session->Counts[Index];
-				if (!Session->bReported[Index])
+				if (!Session->bReported[Index] && Violation.Rule != ERule::PullIn)
 				{
 					// The first of each rule fails the lap now: the test's errors are counted when it ends.
 					Session->bReported[Index] = true;

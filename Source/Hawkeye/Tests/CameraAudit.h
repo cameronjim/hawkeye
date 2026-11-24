@@ -14,7 +14,9 @@
  *   LensOverlap                      a 15 cm sphere at the lens overlaps nothing that blocks the Camera channel
  *   NearPlane                        none of the four rays from the lens to the near plane's corners hits anything
  *   LensJump                         the lens moves faster than MaxLensSpeed relative to her, once the view's own
- *                                    orbit round her is taken out, unless the frame is a flagged cut
+ *                                    orbit round her is taken out, unless the frame is a flagged cut. A jump in which the
+ *                                    arm or shoulder was pulled in by geometry (the lens cannot stay in a wall she turned
+ *                                    it into) is counted as PullIn instead: recorded and reported, not a failure
  *   AngularSpeed                     the view turns faster than MaxAngularSpeed, outside a flagged cut or scripted beat
  *   BodyToggle                       the body is hidden or shown twice in a second
  *
@@ -38,6 +40,8 @@ namespace HawkeyeCameraAudit
 		LensJump,
 		AngularSpeed,
 		BodyToggle,
+		/** Informational, does not fail a lap: a jump that is the arm pulling in against a wall (see FRuleBook). */
+		PullIn,
 		Count
 	};
 
@@ -55,6 +59,8 @@ namespace HawkeyeCameraAudit
 		 * so legitimate layers add up to well under this; a sweep snapping the lens in is metres in one frame.
 		 */
 		float MaxLensSpeed = 3000.f;
+		/** Speeds are measured over at least this long, seconds (frames are uneven: see FRuleBook::Evaluate). */
+		float MinWindowSeconds = 0.05f;
 		/** The view's turn rate, degrees/s: the aim bot's 540 and the arm's rotation lag sit under it. */
 		float MaxAngularSpeed = 720.f;
 		/** Body hide or show events in the sliding second. A violation at this many. */
@@ -79,6 +85,9 @@ namespace HawkeyeCameraAudit
 		float FloorUnderKate = HawkeyeCameraRules::NoFloor;
 		float FloorUnderLens = HawkeyeCameraRules::NoFloor;
 		bool bLensOverlap = false;
+		/** The arm's reach and shoulder fractions this frame (1 in the open). */
+		float ArmFraction = 1.f;
+		float ShoulderScale = 1.f;
 		int32 NearPlaneHits = 0;
 	};
 
@@ -114,6 +123,10 @@ namespace HawkeyeCameraAudit
 		FLimits Limits;
 		bool bHasPrevious = false;
 		FAuditFrame Previous;
+		bool bHasReference = false;
+		FAuditFrame Reference;
+		float WindowSeconds = 0.f;
+		bool bWindowScripted = false;
 		TArray<double> ToggleTimes;
 	};
 

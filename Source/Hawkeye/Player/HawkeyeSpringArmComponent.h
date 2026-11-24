@@ -58,6 +58,9 @@ public:
 	/** The fraction of the arm's reach left after the sweep and the feelers (1 in the open). */
 	float GetArmFraction() const { return ArmFraction; }
 
+	/** The component a sweep last started inside (the lens collapsed onto her), for the audit and the log. Empty if none yet. */
+	const FString& GetLastStartBlocker() const { return LastStartBlocker; }
+
 	/** How far the floor rule has raised the lens this frame, cm. */
 	float GetFloorCorrection() const { return FloorCorrection; }
 
@@ -71,6 +74,10 @@ public:
 	/** The longest it may trail her up or down, cm (0 = no limit). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Lag", meta = (ClampMin = "0.0"))
 	float LagMaxVertical = 40.f;
+
+	/** The most the lagged view turns in a second, degrees (0 = no limit): the cap on how fast it catches up with the control rotation. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Lag", meta = (ClampMin = "0.0"))
+	float MaxRotationRate = 700.f;
 
 	/** A pivot that moves further than this in one update is a cut, cm. Zip speed is 90 per frame at 20 fps; a teleport is metres. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Lag", meta = (ClampMin = "0.0"))
@@ -108,6 +115,8 @@ protected:
 	virtual void OnUpdateTransform(EUpdateTransformFlags UpdateTransformFlags, ETeleportType Teleport = ETeleportType::None) override;
 
 private:
+	void NoteStartBlocker(const FHitResult& Hit);
+
 	/** The rotation after the (substepped) rotation lag, like the engine's. */
 	FRotator LagRotation(const FRotator& DesiredRot, bool bDoRotationLag, bool bCut, float Delta);
 
@@ -149,4 +158,5 @@ private:
 	float FloorCorrection = 0.f;
 	FVector ResolvedShoulder = FVector::ZeroVector;
 	FVector2D PostSweepShake = FVector2D::ZeroVector;
+	FString LastStartBlocker;
 };

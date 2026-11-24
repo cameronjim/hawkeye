@@ -191,8 +191,9 @@ namespace HawkeyeCameraRules
 		return FMath::Clamp((Fraction * Length - Margin) / Length, 0.f, 1.f);
 	}
 
-	bool ShouldHideBody(bool bHiddenNow, float LensDistance, float HideBelow, float ShowAbove)
+	bool ShouldHideBody(bool bHiddenNow, float LensDistance, float HideBelow, float ShowAbove, float SecondsSinceChange, float MinDwell)
 	{
-		return bHiddenNow ? LensDistance <= FMath::Max(ShowAbove, HideBelow) : LensDistance < HideBelow;
+		const bool bWant = bHiddenNow ? LensDistance <= FMath::Max(ShowAbove, HideBelow) : LensDistance < HideBelow;
+		return SecondsSinceChange < MinDwell ? bHiddenNow : bWant;
 	}
 }

@@ -2,6 +2,7 @@
 
 #include "CollisionQueryParams.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
 #include "HAL/IConsoleManager.h"
@@ -53,8 +54,17 @@ void UHawkeyeSpringArmComponent::OnUpdateTransform(EUpdateTransformFlags UpdateT
 	}
 }
 
+void UHawkeyeSpringArmComponent::NoteStartBlocker(const FHitResult& Hit)
+{
+	if (Hit.bStartPenetrating)
+	{
+		LastStartBlocker = FString::Printf(TEXT("%s.%s"), *GetNameSafe(Hit.GetActor()), *GetNameSafe(Hit.GetComponent()));
+	}
+}
+
 FRotator UHawkeyeSpringArmComponent::LagRotation(const FRotator& DesiredRot, bool bDoRotationLag, bool bCut, float Delta)
 {
+	const FQuat Start(PreviousDesiredRot);
 	FRotator Result = DesiredRot;
 	if (bDoRotationLag && !bCut)
 	{
@@ -75,6 +85,17 @@ FRotator UHawkeyeSpringArmComponent::LagRotation(const FRotator& DesiredRot, boo
 		else
 		{
 			Result = FRotator(FMath::QInterpTo(FQuat(PreviousDesiredRot), FQuat(DesiredRot), Delta, CameraRotationLagSpeed));
+		}
+	}
+	// However far behind the lag is, it never catches up faster than MaxRotationRate: a flick, then a flick back, otherwise
+	// closes the gap at twelve times its size a second.
+	if (bDoRotationLag && !bCut && MaxRotationRate > 0.f && Delta > 0.f)
+	{
+		const float Step = FMath::RadiansToDegrees(static_cast<float>(Start.AngularDistance(FQuat(Result))));
+		const float Allowed = MaxRotationRate * Delta;
+		if (Step > Allowed)
+		{
+			Result = FRotator(FQuat::Slerp(Start, FQuat(Result), Allowed / Step));
 		}
 	}
 	PreviousDesiredRot = Result;
@@ -140,6 +161,7 @@ void UHawkeyeSpringArmComponent::ResolveShoulder(const FVector& Base, const FVec
 		FHitResult Hit;
 		if (World->SweepSingleByChannel(Hit, Base, Base + TargetOffset, FQuat::Identity, ProbeChannel, Probe, Query))
 		{
+			NoteStartBlocker(Hit);
 			LiftHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, static_cast<float>(TargetOffset.Size()));
 		}
 	}
@@ -154,6 +176,7 @@ void UHawkeyeSpringArmComponent::ResolveShoulder(const FVector& Base, const FVec
 		FHitResult Hit;
 		if (World->SweepSingleByChannel(Hit, Pivot, Pivot + Right * SocketOffset.Y, FQuat::Identity, ProbeChannel, Probe, Query))
 		{
+			NoteStartBlocker(Hit);
 			ShoulderHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, static_cast<float>(FMath::Abs(SocketOffset.Y)));
 		}
 	}
@@ -170,6 +193,7 @@ float UHawkeyeSpringArmComponent::SweepArm(const FVector& Shoulder, const FVecto
 	FHitResult Hit;
 	if (World->SweepSingleByChannel(Hit, Shoulder, Lens, FQuat::Identity, ProbeChannel, FCollisionShape::MakeSphere(ProbeSize), Query))
 	{
+		NoteStartBlocker(Hit);
 		MainHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, static_cast<float>((Lens - Shoulder).Size()));
 	}
 
@@ -220,13 +244,17 @@ FVector UHawkeyeSpringArmComponent::ApplyFloorRule(const FVector& Lens, const FV
 
 	// Under the lens: from just above it, but never from above a ceiling the lens is under (that would find the roof).
 	constexpr float LookAbove = 50.f;
-	FVector Start = Lens + FVector(0.f, 0.f, LookAbove);
 	FHitResult Hit;
-	if (World->LineTraceSingleByChannel(Hit, Lens, Start, ProbeChannel, Query))
+	auto FloorBelowLens = [&](const FVector& At)
 	{
-		Start.Z = Hit.ImpactPoint.Z - 2.0;
-	}
-	const float FloorUnderLens = FindFloor(Start, Query);
+		FVector Start = At + FVector(0.f, 0.f, LookAbove);
+		if (World->LineTraceSingleByChannel(Hit, At, Start, ProbeChannel, Query))
+		{
+			Start.Z = Hit.ImpactPoint.Z - 2.0;
+		}
+		return FindFloor(Start, Query);
+	};
+	const float FloorUnderLens = FloorBelowLens(Lens);
 
 	const float Need = HawkeyeCameraRules::RiseNeededForFloor(static_cast<float>(Lens.Z), FloorUnderLens, FloorUnderCharacter, FloorClearance);
 	FloorCorrection = bCut ? Need : HawkeyeCameraRules::EaseFloorCorrection(FloorCorrection, Need, Delta);
@@ -235,13 +263,24 @@ FVector UHawkeyeSpringArmComponent::ApplyFloorRule(const FVector& Lens, const FV
 		return Lens;
 	}
 	// Up, but not through a ceiling.
-	const FVector Raised = Lens + FVector(0.f, 0.f, FloorCorrection);
-	if (World->SweepSingleByChannel(Hit, Lens, Raised, FQuat::Identity, ProbeChannel, FCollisionShape::MakeSphere(ProbeSize * 0.5f), Query)
+	FVector Result = Lens + FVector(0.f, 0.f, FloorCorrection);
+	if (World->SweepSingleByChannel(Hit, Lens, Result, FQuat::Identity, ProbeChannel, FCollisionShape::MakeSphere(ProbeSize * 0.5f), Query)
 		&& !Hit.bStartPenetrating)
 	{
-		return Hit.Location;
+		Result = Hit.Location;
 	}
-	return Raised;
+	// The raise may have put it over something higher than the floor it started over (a ledge, a step): look again from there.
+	const float Again = HawkeyeCameraRules::RiseNeededForFloor(static_cast<float>(Result.Z), FloorBelowLens(Result), FloorUnderCharacter, FloorClearance);
+	if (Again > 0.5f)
+	{
+		const FVector Higher = Result + FVector(0.f, 0.f, Again);
+		FloorCorrection += Again;
+		Result = World->SweepSingleByChannel(Hit, Result, Higher, FQuat::Identity, ProbeChannel, FCollisionShape::MakeSphere(ProbeSize * 0.5f), Query)
+				&& !Hit.bStartPenetrating
+			? FVector(Hit.Location)
+			: Higher;
+	}
+	return Result;
 }
 
 void UHawkeyeSpringArmComponent::DrawDebug(const FVector& Pivot, const FVector& Shoulder, const FVector& Lens, const FVector& Direction) const
@@ -310,6 +349,16 @@ void UHawkeyeSpringArmComponent::UpdateDesiredArmLocation(bool bDoTrace, bool bD
 	FCollisionQueryParams Query(SCENE_QUERY_STAT(HawkeyeSpringArm), false, GetOwner());
 	if (bSweep)
 	{
+		// Whatever her own centre is inside (a prop the pawn walks through that blocks the camera, a zip through a fixture) is
+		// not a wall: sweeps that start in it would collapse the lens onto her.
+		TArray<FOverlapResult> Inside;
+		if (World->OverlapMultiByChannel(Inside, Base, FQuat::Identity, ProbeChannel, FCollisionShape::MakeSphere(ProbeSize), Query))
+		{
+			for (const FOverlapResult& Overlap : Inside)
+			{
+				Query.AddIgnoredComponent(Overlap.GetComponent());
+			}
+		}
 		ResolveShoulder(Base, Right, Query, Delta, bCut, PivotOffset, Shoulder01);
 	}
 	else

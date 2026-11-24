@@ -138,6 +138,10 @@ namespace HawkeyeCameraRules
 	 */
 	HAWKEYE_API float BackOffFraction(float Fraction, float Length, float Margin = 1.5f);
 
-	/** The body is hidden when the lens comes inside HideBelow and shown again only when it is beyond ShowAbove. */
-	HAWKEYE_API bool ShouldHideBody(bool bHiddenNow, float LensDistance, float HideBelow, float ShowAbove);
+	/**
+	 * The body is hidden when the lens comes inside HideBelow and shown again only when it is beyond ShowAbove, and either
+	 * change waits until the last one is MinDwell seconds old, so a lens working along a wall cannot flicker her.
+	 */
+	HAWKEYE_API bool ShouldHideBody(bool bHiddenNow, float LensDistance, float HideBelow, float ShowAbove, float SecondsSinceChange = 1.0e6f,
+		float MinDwell = 0.f);
 }
