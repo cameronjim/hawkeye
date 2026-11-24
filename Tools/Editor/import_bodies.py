@@ -868,6 +868,13 @@ def ensure_built(skeletons, textures):
 RIG = BODIES + "/IK_Body_Male"
 THUG_LOOK = "/Game/Characters/Thug/Look"
 CLINT_LOOK = "/Game/Characters/Clint/Look"
+# How far the thugs' hand goals are put on the mannequin driver's hands (create_kate_look._hands_to_driver): 0 leaves the
+# hands to the arms' forward kinematics, so they hang by the body's own thighs.
+THUG_HAND_TRANSLATION = 0.0
+# The thugs' arms are swung this far toward the body's midline in the retarget pose (_handpose.adduct): the superhero body's
+# shoulders are much wider than its hips and the mannequin's hanging hands came out beside its thighs, not on them.
+THUG_ARM_ADDUCT_DEGREES = 14.0
+
 # Who wears the body: (Blueprint, the manifest target its driver is, look folder, short name, MI for the body slot).
 WEARERS = [
     ("/Game/Blueprints/AI/BP_Thug", "thug", THUG_LOOK, "Thug", "MI_Body_Thug"),
@@ -949,8 +956,14 @@ def ensure_looks(mesh, materials, built=None):
                 c.log("skipped", bp_path + ".BodyLook", "no driver rig for " + target_name)
                 continue
             c.ensure_directory(folder)
+            # The thugs' driver is the UE4 mannequin: its rest hand hooks the index and thumb, and its hands hang
+            # where a narrower body's thighs are. Fingers from the relaxed table, hands where the arms put them.
+            ue4 = target_name == "thug"
             rtg = kl.ensure_retargeter(source["rig"], source["mesh"], rig, mesh,
-                                       path="{0}/RTG_{1}_To_Body".format(folder, who))
+                                       path="{0}/RTG_{1}_To_Body".format(folder, who),
+                                       relaxed=kl.handpose.RELAXED_HAND if ue4 else None,
+                                       hand_translation=THUG_HAND_TRANSLATION if ue4 else 1.0,
+                                       adduct_degrees=THUG_ARM_ADDUCT_DEGREES if ue4 else 0.0)
             if rtg is not None:
                 abps[who] = kl.ensure_anim_bp(mesh, rtg, path="{0}/ABP_{1}_Body".format(folder, who))
         abp = abps[who]

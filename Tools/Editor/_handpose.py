@@ -206,6 +206,31 @@ def directions(skel, side):
     return d
 
 
+# A relaxed hand: per finger the bend at each of its three joints in degrees (the thumb too, a little). The
+# UE4 mannequin's own rest hand holds its index and thumb hooked ("OK sign"); the bodies it drives look better with
+# the fingers curling together, a little more each toward the little finger.
+RELAXED_HAND = {"index": (28.0, 42.0, 26.0), "middle": (32.0, 44.0, 28.0), "ring": (36.0, 44.0, 28.0),
+                "pinky": (40.0, 42.0, 26.0), "thumb": (10.0, 14.0, 10.0)}
+
+
+def relaxed_directions(src, side, table):
+    """Bone -> direction for the four fingers' bones with the bend the table gives (cumulative per joint, toward the palm),
+    keeping each finger's own spread across the palm from the source."""
+    _h, _n, p, _s = palm_frame(src, side)
+    sd = directions(src, side)
+    out = {}
+    for finger, angles in table.items():
+        total = 0.0
+        for joint in (1, 2, 3):
+            bone = "{0}_{1:02d}_{2}".format(finger, joint, side)
+            total += angles[joint - 1]
+            flat = vsub(sd[bone], vscale(p, dot(sd[bone], p)))
+            flat = unit(flat) if length(flat) > 1e-6 else unit(sd["hand_" + side])
+            a = math.radians(total)
+            out[bone] = unit(vadd(vscale(flat, math.cos(a)), vscale(p, math.sin(a))))
+    return out
+
+
 def frame(direction, up, fallback):
     u = vsub(up, vscale(direction, dot(up, direction)))
     if length(u) < 0.25:
@@ -214,11 +239,14 @@ def frame(direction, up, fallback):
     return q_from_columns(direction, cross(u, direction), u)
 
 
-def desired_rotations(src, tgt, side):
-    """Bone -> the global rotation the target bone should have in its retarget pose to match the source's frames."""
+def desired_rotations(src, tgt, side, relaxed=None):
+    """Bone -> the global rotation the target bone should have in its retarget pose to match the source's frames
+    (``relaxed``: a table like RELAXED_HAND, the fingers' bend taken from it rather than from the source)."""
     sh, sn, _sp, ss = palm_frame(src, side)
     th, tn, _tp, ts = palm_frame(tgt, side)
     sd, td = directions(src, side), directions(tgt, side)
+    if relaxed:
+        sd.update(relaxed_directions(src, side, relaxed))
     out = {}
     for bone in arm_bones(side) + finger_bones(side):
         s_up, t_up, s_fb, t_fb = sn, tn, ss, ts
@@ -268,6 +296,29 @@ def apply_curl(desired, tgt, side, extra):
     return out
 
 
+def adduct(want, tgt, side, degrees):
+    """The arm chain (upper arm, forearm, hand, fingers) swung ``degrees`` toward the body's midline about the shoulder, in
+    place: a body with much wider shoulders than hips (the Quaternius superhero) hangs the mannequin's arms outside its
+    thighs. Only the global rotations in ``want`` change; the bones' places follow from them."""
+    if not degrees:
+        return want
+    other = "r" if side == "l" else "l"
+    lateral = vsub(tgt.pos["upperarm_" + side], tgt.pos["upperarm_" + other])
+    lateral = unit((lateral[0], lateral[1], 0.0))
+    inward = vscale(lateral, -1.0)
+    ua = "upperarm_" + side
+    turn = qmul(want[ua], qinv(tgt.rot[ua]))
+    arm = qrot(turn, directions(tgt, side)[ua])
+    axis = cross(arm, inward)
+    if length(axis) < 1e-6:
+        return want
+    swing = q_axis_angle(axis, degrees)
+    out = dict(want)
+    for bone in arm_bones(side) + finger_bones(side):
+        out[bone] = qnorm(qmul(swing, want[bone]))
+    return out
+
+
 def local_offsets(tgt, desired, base_offsets):
     """The local rotation offsets (bone -> quat) that give each bone in ``desired`` its global rotation, walking
     from the root down. ``base_offsets`` are the retarget pose's offsets for the bones this does not set (the
@@ -295,23 +346,25 @@ def local_offsets(tgt, desired, base_offsets):
     return out
 
 
-def solve(src, tgt, base_offsets=None, curl_degrees=0.0, sides=SIDES):
+def solve(src, tgt, base_offsets=None, curl_degrees=0.0, sides=SIDES, relaxed=None, adduct_degrees=0.0):
     """Offsets for both arms and all fingers, plus a report: {side: {bone: angle between the target's and the source's
     bone direction after the offsets, in degrees}}."""
     base_offsets = base_offsets or {}
     offsets = {}
     report = {}
     for side in sides:
-        want = desired_rotations(src, tgt, side)
+        want = adduct(desired_rotations(src, tgt, side, relaxed), tgt, side, adduct_degrees)
         if curl_degrees > 0.0:
             want = apply_curl(want, tgt, side, curl_extra(src, side, curl_degrees))
         offsets.update(local_offsets(tgt, want, base_offsets))
         sd, td = directions(src, side), directions(tgt, side)
+        if relaxed:
+            sd.update(relaxed_directions(src, side, relaxed))
         report[side] = {}
         for bone in want:
             # the target's direction after: its own direction carried by the global turn
             turn = qmul(want[bone], qinv(tgt.rot[bone]))
-            report[side][bone] = angle_between(qrot(turn, td[bone]), sd[bone])
+            report[side][bone] = angle_between(qrot(turn, td[bone]), sd[bone]) if not adduct_degrees else 0.0
     return offsets, report
 
 
@@ -337,7 +390,7 @@ def read_skeleton(mesh):
     return Skel(pos, rot, local)
 
 
-def apply_hand_pose(ctl, source_mesh, target_mesh, curl_degrees=0.0):
+def apply_hand_pose(ctl, source_mesh, target_mesh, curl_degrees=0.0, relaxed=None, adduct_degrees=0.0):
     """Write the arms' and fingers' offsets into the target's current retarget pose. Returns a one-line note."""
     import unreal  # noqa: PLC0415
 
@@ -351,10 +404,10 @@ def apply_hand_pose(ctl, source_mesh, target_mesh, curl_degrees=0.0):
     for bone in ("pelvis", "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r"):
         q = ctl.get_rotation_offset_for_retarget_pose_bone(bone, side)
         base[bone] = (q.x, q.y, q.z, q.w)
-    offsets, report = solve(src, tgt, base, curl_degrees)
+    offsets, report = solve(src, tgt, base, curl_degrees, relaxed=relaxed, adduct_degrees=adduct_degrees)
     for bone, q in offsets.items():
         ctl.set_rotation_offset_for_retarget_pose_bone(bone, unreal.Quat(q[0], q[1], q[2], q[3]), side)
     worst = max(max(v.values()) for v in report.values())
     hand_up = [palm_frame(tgt, s)[2] for s in SIDES]
-    return "hands: {0} bones offset, worst direction error {1:.1f} deg, target palms face (z) {2:.2f}, {3:.2f}".format(
+    return "hands: {0} bones offset, worst direction miss {1:.1f} deg, target palms face (z) {2:.2f}, {3:.2f}".format(
         len(offsets), worst, hand_up[0][2], hand_up[1][2])

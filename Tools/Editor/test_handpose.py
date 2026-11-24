@@ -163,6 +163,40 @@ class HandPoseTest(unittest.TestCase):
             b = hp.unit(hp.vsub(p["middle_03_" + side], p["middle_02_" + side]))
             self.assertGreater(hp.angle_between(a, b), 10.0)
 
+    def test_relaxed_table_sets_the_fingers_bend(self):
+        for side in hp.SIDES:
+            src, tgt, parent = self.pair(side)
+            offsets, _ = hp.solve(src, tgt, sides=(side,), relaxed=hp.RELAXED_HAND)
+            g, p = fk_after(tgt, parent, offsets)
+            for finger, angles in hp.RELAXED_HAND.items():
+                a = hp.unit(hp.vsub(p["{0}_02_{1}".format(finger, side)], p["{0}_01_{1}".format(finger, side)]))
+                b = hp.unit(hp.vsub(p["{0}_03_{1}".format(finger, side)], p["{0}_02_{1}".format(finger, side)]))
+                self.assertAlmostEqual(hp.angle_between(a, b), angles[1], delta=1.5, msg="{0} {1}".format(side, finger))
+            # the thumb follows the table too
+            _o, report = hp.solve(src, tgt, sides=(side,), relaxed=hp.RELAXED_HAND)
+            self.assertLess(report[side]["thumb_02_" + side], 0.5)
+
+    def test_adduct_brings_the_hand_toward_the_midline(self):
+        side_pairs = {}
+        for side in hp.SIDES:
+            src, tgt, parent = self.pair(side)
+            side_pairs[side] = (src, tgt, parent)
+        # both arms in one skeleton: the other shoulder is what says which way is inward
+        src_l, tgt_l, parent_l = side_pairs["l"]
+        _src_r, tgt_r, _parent_r = side_pairs["r"]
+        tgt_l.pos["upperarm_r"] = tgt_r.pos["upperarm_r"]
+        want = hp.desired_rotations(src_l, tgt_l, "l")
+        swung = hp.adduct(want, tgt_l, "l", 14.0)
+        for bone in ("lowerarm_l", "hand_l"):
+            before = hp.qrot(hp.qmul(want[bone], hp.qinv(tgt_l.rot[bone])), hp.directions(tgt_l, "l")[bone])
+            after = hp.qrot(hp.qmul(swung[bone], hp.qinv(tgt_l.rot[bone])), hp.directions(tgt_l, "l")[bone])
+            self.assertAlmostEqual(hp.angle_between(before, after), 14.0, delta=0.5, msg=bone)
+        # toward the midline: the left arm is on +x here, so inward is -x
+        before = hp.qrot(hp.qmul(want["upperarm_l"], hp.qinv(tgt_l.rot["upperarm_l"])), hp.directions(tgt_l, "l")["upperarm_l"])
+        after = hp.qrot(hp.qmul(swung["upperarm_l"], hp.qinv(tgt_l.rot["upperarm_l"])), hp.directions(tgt_l, "l")["upperarm_l"])
+        self.assertLess(after[0], before[0])
+        self.assertEqual(hp.adduct(want, tgt_l, "l", 0.0), want)
+
     def test_local_offsets_round_trip(self):
         src, tgt, parent = self.pair("l")
         want = hp.desired_rotations(src, tgt, "l")

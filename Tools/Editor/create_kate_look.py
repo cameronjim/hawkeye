@@ -141,8 +141,10 @@ def ensure_rig(mesh, chain_map, path=RIG):
     return rig
 
 
-def _hands_to_driver(ctl):
-    """Every IK chains op: the hand chains' goals fully on the source's hands, place and turn. Returns a note."""
+def _hands_to_driver(ctl, translation=1.0):
+    """Every IK chains op: the hand chains' goals on the source's hands, placed by ``translation`` (1: exactly where the
+    driver's are; 0: the arm's own forward kinematics decides, which keeps a wider body's hands on its own thighs) and
+    turned by their change only. Returns a note."""
     op_class = getattr(unreal, "IKRetargetIKChainsController", None)
     if op_class is None:
         return "FAILED: no IK chains op controller"
@@ -158,7 +160,7 @@ def _hands_to_driver(ctl):
                 # Place on the driver's hand but turn by its change only: blend-to-source rotation copies the source
                 # hand bone's absolute orientation, which is a different roll on a body with other bone axes (cocked
                 # wrists, palms the wrong way). The hand's rest roll comes from the retarget pose (_handpose).
-                c.set_props(chain, [("blend_to_source", 1.0), ("blend_to_source_translation", 1.0),
+                c.set_props(chain, [("blend_to_source", 1.0), ("blend_to_source_translation", float(translation)),
                                     ("blend_to_source_rotation", 0.0)], "IK chain")
                 done.append(str(chain.get_editor_property("target_chain_name")))
         settings.set_editor_property("chains_to_retarget", chains)
@@ -166,8 +168,13 @@ def _hands_to_driver(ctl):
     return "hands on the driver's: " + (", ".join(done) if done else "FAILED, no hand chains in the IK op")
 
 
-def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG):
-    stamp = _stamp("rtg", source_rig.get_path_name(), ica.tag_of(source_rig), ica.tag_of(target_rig))
+def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG, relaxed=None, hand_translation=1.0, adduct_degrees=0.0):
+    """The retargeter from a driver to a body. ``relaxed``: a _handpose table (RELAXED_HAND) that sets the fingers' bend
+    instead of copying the driver's; ``hand_translation``: how far the hand goals are put on the driver's hands (see
+    _hands_to_driver). Both left out, the stamp is what it always was."""
+    extra = ([repr(sorted(relaxed.items())), str(hand_translation), str(adduct_degrees)]
+             if relaxed or hand_translation != 1.0 or adduct_degrees else [])
+    stamp = _stamp("rtg", source_rig.get_path_name(), ica.tag_of(source_rig), ica.tag_of(target_rig), *extra)
     existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
         c.log("exists", path)
@@ -201,8 +208,9 @@ def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG
     ctl.auto_align_all_bones(side.TARGET, unreal.RetargetAutoAlignMethod.CHAIN_TO_CHAIN)
     # The engine's alignment leaves the hand, the clavicle and each finger's last bone alone and never matches roll:
     # lay the arms, wrists and fingers over the driver's by their own frames (_handpose).
-    pose_note = handpose.apply_hand_pose(ctl, source_mesh, target_mesh, HAND_CURL_DEGREES)
-    hands = _hands_to_driver(ctl) + "; " + pose_note
+    pose_note = handpose.apply_hand_pose(ctl, source_mesh, target_mesh, HAND_CURL_DEGREES, relaxed=relaxed,
+                                         adduct_degrees=adduct_degrees)
+    hands = _hands_to_driver(ctl, hand_translation) + "; " + pose_note
     ica.set_tag(rtg, stamp)
     c.save(rtg)
     c.log("FAILED" if "FAILED" in hands else "created", path, "{0} ops, {1}".format(ctl.get_num_retarget_ops(), hands))
