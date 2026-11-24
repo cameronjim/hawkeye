@@ -142,7 +142,7 @@ void FAnimNode_HawkeyeBodyPose::InitializeBoneReferences(const FBoneContainer& R
 		{
 			continue;
 		}
-		Side.Outward = SideIndex == Left ? Lateral : -Lateral;
+		Side.Outward = SideIndex == HandLeft ? Lateral : -Lateral;
 		Side.Forward = Forward;
 
 		const FQuat HandBind = Bind[Hand].GetRotation();

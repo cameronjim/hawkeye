@@ -385,7 +385,7 @@ void AThugCharacter::UpdateHeldWeaponPose()
 	FVector Hand = SkeletalMesh->GetSocketLocation(HeldWeaponSocketName);
 	FVector Along, Across, Palm;
 	// The visible hand's fist when there is one: the bat goes through it.
-	GetBodyHandGrip(HawkeyeBodyPose::Right, Hand, Along, Across, Palm);
+	GetBodyHandGrip(HawkeyeBodyPose::HandRight, Hand, Along, Across, Palm);
 	HeldWeaponComponent->SetWorldLocationAndRotation(Hand + Direction * (Length * 0.5f - BatGripFromEnd),
 		FRotationMatrix::MakeFromZ(Direction).Rotator());
 }
@@ -490,12 +490,12 @@ bool AThugCharacter::GetBodyHandGrip(int32 Side, FVector& OutCenter, FVector& Ou
 	if (!bBodyHandFramesBuilt)
 	{
 		const FReferenceSkeleton& Reference = LookMesh->GetSkeletalMeshAsset()->GetRefSkeleton();
-		BodyHandFrames[HawkeyeBodyPose::Left] = HawkeyeBodyPose::ComputeHandFrame(Reference, HawkeyeBodyPose::Left);
-		BodyHandFrames[HawkeyeBodyPose::Right] = HawkeyeBodyPose::ComputeHandFrame(Reference, HawkeyeBodyPose::Right);
+		BodyHandFrames[HawkeyeBodyPose::HandLeft] = HawkeyeBodyPose::ComputeHandFrame(Reference, HawkeyeBodyPose::HandLeft);
+		BodyHandFrames[HawkeyeBodyPose::HandRight] = HawkeyeBodyPose::ComputeHandFrame(Reference, HawkeyeBodyPose::HandRight);
 		bBodyHandFramesBuilt = true;
 	}
-	const HawkeyeBodyPose::FHandFrame& Frame = BodyHandFrames[Side == HawkeyeBodyPose::Left ? 0 : 1];
-	const FName Hand(Side == HawkeyeBodyPose::Left ? TEXT("hand_l") : TEXT("hand_r"));
+	const HawkeyeBodyPose::FHandFrame& Frame = BodyHandFrames[Side == HawkeyeBodyPose::HandLeft ? 0 : 1];
+	const FName Hand(Side == HawkeyeBodyPose::HandLeft ? TEXT("hand_l") : TEXT("hand_r"));
 	if (!Frame.bValid || LookMesh->GetBoneIndex(Hand) == INDEX_NONE)
 	{
 		return false;
@@ -521,17 +521,17 @@ HawkeyeBodyPose::FWish AThugCharacter::GetBodyPoseWish() const
 	const bool bSwinging = MeleeComponent && MeleeComponent->IsAttacking();
 	const bool bPistol = IsGunner() && PistolComponent && PistolComponent->IsVisible();
 	const bool bBat = HeldWeaponComponent && HeldWeaponComponent->IsVisible();
-	Wish.bGrip[HawkeyeBodyPose::Right] = bPistol || bBat;
-	Wish.bFist[HawkeyeBodyPose::Right] = bSwinging && !Wish.bGrip[HawkeyeBodyPose::Right];
-	Wish.bFist[HawkeyeBodyPose::Left] = bSwinging;
+	Wish.bGrip[HawkeyeBodyPose::HandRight] = bPistol || bBat;
+	Wish.bFist[HawkeyeBodyPose::HandRight] = bSwinging && !Wish.bGrip[HawkeyeBodyPose::HandRight];
+	Wish.bFist[HawkeyeBodyPose::HandLeft] = bSwinging;
 	Wish.ArmRest = HawkeyeBodyPose::RestArmWeight(bSwinging || bWeaponRaised, GetVelocity().Size2D());
 	if (bBat)
 	{
-		Wish.PropAxis[HawkeyeBodyPose::Right] = ComputeBatDirection();
+		Wish.PropAxis[HawkeyeBodyPose::HandRight] = ComputeBatDirection();
 	}
 	else if (bPistol && bWeaponRaised)
 	{
-		Wish.PropAxis[HawkeyeBodyPose::Right] = PistolComponent->GetUpVector();
+		Wish.PropAxis[HawkeyeBodyPose::HandRight] = PistolComponent->GetUpVector();
 	}
 	return Wish;
 }
@@ -668,7 +668,7 @@ void AThugCharacter::UpdatePistolPose()
 	// At his side: through the visible hand's fist when there is one. The handle runs across the knuckles (up toward the
 	// index finger), the muzzle along the fingers and a little away from the thigh.
 	FVector Center, Along, Across, Palm;
-	if (GetBodyHandGrip(HawkeyeBodyPose::Right, Center, Along, Across, Palm))
+	if (GetBodyHandGrip(HawkeyeBodyPose::HandRight, Center, Along, Across, Palm))
 	{
 		const float Out = FMath::DegreesToRadians(PistolMuzzleOutDegrees);
 		const FVector Muzzle = (Along * FMath::Cos(Out) - Palm * FMath::Sin(Out)).GetSafeNormal();

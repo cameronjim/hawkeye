@@ -503,6 +503,42 @@ heavy's bat is drawn in front of the hand, not through the fist (its grip is `Ba
 at his side): the cube's own material is the editor grid. `AThugCharacter::TintProps` gives the pistol, its grip and the held bat
 the engine's shape material in a colour (`PistolColor` gunmetal, `BatColor` dark wood). The riot shield already did this.
 
+**Thugs and the heavy, third pass: our own hands (2026-11-24).** Two passes of retarget offsets did not fix the hands, so the
+visible thug and heavy no longer take their fingers (or their rest arms) from the retarget at all. `ABP_Thug_Body` is now
+Retarget Pose From Mesh, to component space, one **Hawkeye Body Pose** node (`FAnimNode_HawkeyeBodyPose`,
+`Player/BodyPoseNode.cpp`; editor node `UAnimGraphNode_HawkeyeBodyPose`; built by
+`UHawkeyeRetargetGraphBuilder::BuildRetargetWithBodyPose`, stamp `body-pose-1`), back to local. Its parent class is
+`UHawkeyeBodyAnimInstance`, which each frame asks the owner (`AThugCharacter::GetBodyPoseWish`) what the hands are doing and
+eases it into alphas over 0.12 s. Kate and Clint have no such node.
+- **Fingers.** Every finger joint is written outright: local rotation = swing about the palm normal (thumb only) * curl about the
+  finger's own flexion axis * the joint's reference rotation, all axes taken from the body's bind pose (the palm frame is the
+  same formula as `_handpose.palm_frame`, `HawkeyeBodyPose::ComputeHandFrame`). The table is `HawkeyeBodyPose::Angles`:
+  Relaxed (staggered 14-32 degrees at the knuckle), Fist (78-88) and Grip (58-70, looser), blended Relaxed to Fist to Grip. The
+  body's thumb already points 32 degrees off the fingers and 27 out of the palm plane at its reference pose, so the relaxed thumb
+  is that (curled a few degrees: alongside, clear of the index). A closed thumb is not curled (rotating it about the palm normal
+  stuck it out whichever way it turned, two attempts): each of its joints is aimed at a direction in the hand's axes
+  (`ClosedThumbDirection`), lying across the curled fingers.
+- **State.** Fist: both hands during a swing, except one holding a prop. Grip: the right hand while the pistol or the bat is
+  held. Nothing held and not swinging: Relaxed. An unarmed thug (`Weapon` Fists) holds nothing.
+- **Rest arms.** `ArmRest` weight (1 standing at ease, falling to 0 by 150 cm/s, 0 while swinging or the pistol is raised, in a
+  knockdown or collapse) turns the upper arm to hang straight down, 5 degrees out from the body, and the forearm on it bent 8
+  degrees forward (`ArmRestDirections`), about the shoulder and elbow, in component space.
+- **Props.** The pistol and the bat follow the visible hand (`GetBodyHandGrip`), placed again from
+  `OnBoneTransformsFinalized` so they do not lag a frame. The pistol's grip block centre sits in the fist (handle across the
+  knuckles, muzzle along the fingers 18 degrees away from the thigh); a gripping wrist turns toward the bat's axis, up to 50
+  degrees (the bat is held on a diagonal), and the bat passes through the fist centre. The pistol is now 18 x 3 x 3.2 cm with a
+  3.2 x 3 x 10 cm grip (the old block's child offset was written in the wrong units and left a 10 cm slab on the wrist).
+- **The grey block of the second pass** was the gunner's pistol grip; the tint code was in, but `hands_thug_rest.png` of that pass was
+  shot before the build that had it (the image is older than the commit).
+
+**Gut reactions, 2026-11-24.** `HitGut_Light` folded the chest 32 degrees, so on a light punch the head went 34 cm toward Kate (head
+overlapping hers, `contact_light_after2.png`) with the capsule only 1.9 cm back. It is now a flinch (`build_clips.hit_zone`, Gut: fold
+factor 0.4, about 10 degrees, the hips 8 cm back): in `contact_light_after3.png` his head is within 5 cm of where it began, his capsule
+ends 6.2 cm back, no overlap. The distance between the two roots still reads 72 to 66 cm because Kate steps in for the blow (she was
+already at 68 before it landed). The heavy fold is 1.3 (was 1.8): head up to 54 cm off over her shin at the deepest frame
+(`contact_heavy_after3.png`), no overlap with her torso; his capsule ends 3.2 cm back (the game's heavy knock-back of 28 cm is not
+what this strip measures).
+
 ## The weld clips (written 2026-11-23; not yet built or seen)
 
 `build_clips.py` also makes, per rig, six hit reactions by where the blow landed and how hard (`HitHead_`, `HitGut_`, `HitLegs_` x

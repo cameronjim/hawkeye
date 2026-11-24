@@ -17,8 +17,8 @@ struct FReferenceSkeleton;
 namespace HawkeyeBodyPose
 {
 	/** Side indices: 0 the left hand, 1 the right (the `_l` and `_r` bones). */
-	constexpr int32 Left = 0;
-	constexpr int32 Right = 1;
+	constexpr int32 HandLeft = 0;
+	constexpr int32 HandRight = 1;
 
 	enum class EFinger : uint8
 	{

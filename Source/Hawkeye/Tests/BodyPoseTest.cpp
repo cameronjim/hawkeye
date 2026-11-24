@@ -81,16 +81,16 @@ bool FHawkeyeBodyPoseEase::RunTest(const FString& Parameters)
 
 	UHawkeyeBodyAnimInstance* Instance = NewObject<UHawkeyeBodyAnimInstance>();
 	FWish Wish;
-	Wish.bGrip[Right] = true;
-	Wish.bFist[Left] = true;
+	Wish.bGrip[HandRight] = true;
+	Wish.bFist[HandLeft] = true;
 	Wish.ArmRest = 1.f;
 	for (int32 Frame = 0; Frame < 30; ++Frame)
 	{
 		Instance->StepToward(Wish, 0.016f);
 	}
-	TestEqual(TEXT("The right hand holds"), Instance->GetState().Grip[Right], 1.f, 0.001f);
-	TestEqual(TEXT("The left is a fist"), Instance->GetState().Fist[Left], 1.f, 0.001f);
-	TestEqual(TEXT("and the other hand is relaxed"), Instance->GetState().Fist[Right], 0.f);
+	TestEqual(TEXT("The right hand holds"), Instance->GetState().Grip[HandRight], 1.f, 0.001f);
+	TestEqual(TEXT("The left is a fist"), Instance->GetState().Fist[HandLeft], 1.f, 0.001f);
+	TestEqual(TEXT("and the other hand is relaxed"), Instance->GetState().Fist[HandRight], 0.f);
 	TestEqual(TEXT("The arms are at rest"), Instance->GetState().ArmRest, 1.f, 0.001f);
 	return true;
 }

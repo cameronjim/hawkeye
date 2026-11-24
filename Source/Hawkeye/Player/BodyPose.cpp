@@ -85,7 +85,7 @@ namespace HawkeyeBodyPose
 
 	const TCHAR* SideSuffix(int32 Side)
 	{
-		return Side == Left ? TEXT("l") : TEXT("r");
+		return Side == HandLeft ? TEXT("l") : TEXT("r");
 	}
 
 	FHandFrame ComputeHandFrame(const FReferenceSkeleton& Reference, int32 Side)
