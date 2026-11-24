@@ -147,7 +147,7 @@
   "clips": [
     {"source": "AuthoredThug", "file": "GetUp_Back.fbx", "role": "GetUp", "variant": "Authored", "characters": ["thug", "archer"]},
     {"source": "AuthoredThug", "file": "GetUp_Front.fbx", "role": "GetUpFront", "variant": "Authored", "characters": ["thug", "archer"]},
-    {"source": "AuthoredThug", "file": "HitFront_Light.fbx", "role": "HitFront", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
+    {"source": "AuthoredThug", "file": "HitFront_Light.fbx", "role": "HitFront", "variant": "Authored", "characters": ["thug", "archer"], "in_set": false, "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredThug", "file": "HitLeft_Light.fbx", "role": "HitLeft", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredThug", "file": "HitRight_Light.fbx", "role": "HitRight", "variant": "Authored", "characters": ["thug", "archer"], "blend_in": 0.05, "blend_out": 0.12},
     {"source": "AuthoredThug", "file": "HitHeavy_Stagger.fbx", "role": "HitHeavy", "variant": "Authored", "characters": ["thug", "archer"]},
