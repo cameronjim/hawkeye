@@ -214,6 +214,7 @@ bool UBossFightSubsystem::BeginChapter(const UMissionDefinition* Mission)
 		const FVector To = Arena.ApproachAnchor - Kate->GetActorLocation();
 		Controller->SetControlRotation(FRotator(FMath::Clamp(To.Rotation().Pitch, -10.f, 40.f), Arena.PlayerStartYaw, 0.f));
 	}
+	AHawkeyeCharacter::CutCameraFor(Kate);
 	UE_LOG(LogHawkeye, Log, TEXT("%s: Kate put on the arena's street stand %s, yaw %.0f."), *GetName(), *Arena.PlayerStart.ToCompactString(),
 		Arena.PlayerStartYaw);
 	return true;

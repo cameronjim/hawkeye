@@ -24,6 +24,7 @@
 #include "Mission/ObjectiveTriggerVolume.h"
 #include "Mission/ThugGroupObjective.h"
 #include "NavigationSystem.h"
+#include "Player/HawkeyeCharacter.h"
 #include "Player/InventoryComponent.h"
 #include "Save/HawkeyeSaveSubsystem.h"
 #include "TimerManager.h"
@@ -483,6 +484,7 @@ bool UChapterSiteSubsystem::BeginChapter(const UMissionDefinition* Mission)
 	{
 		Controller->SetControlRotation(FRotator(-8.f, Wanted->PlayerStartYaw, 0.f));
 	}
+	AHawkeyeCharacter::CutCameraFor(Kate);
 	UE_LOG(LogHawkeye, Log, TEXT("%s: Kate put at the site's start %s, yaw %.0f."), *GetName(), *Wanted->PlayerStart.ToCompactString(),
 		Wanted->PlayerStartYaw);
 	return true;

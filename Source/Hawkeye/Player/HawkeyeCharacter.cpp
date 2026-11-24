@@ -1668,18 +1668,22 @@ FHawkeyeCameraTargets AHawkeyeCharacter::ComputeCameraTargets(bool bAiming, floa
 	return Targets;
 }
 
-void AHawkeyeCharacter::NotifyTeleported(bool bSnapCamera)
+void AHawkeyeCharacter::NotifyTeleported()
 {
 	++CameraCutCount;
-	if (!bSnapCamera)
-	{
-		return;
-	}
 	bCameraStateValid = false;
 	CameraHeldHalfHeight = 0.f;
 	if (CameraBoom)
 	{
 		CameraBoom->ResetLag();
+	}
+}
+
+void AHawkeyeCharacter::CutCameraFor(AActor* Actor)
+{
+	if (AHawkeyeCharacter* Character = Cast<AHawkeyeCharacter>(Actor))
+	{
+		Character->NotifyTeleported();
 	}
 }
 

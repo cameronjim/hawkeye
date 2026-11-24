@@ -17,6 +17,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "Mission/ChapterEventSubsystem.h"
+#include "Player/HawkeyeCharacter.h"
 #include "TimerManager.h"
 
 UTakedownComponent::UTakedownComponent()
@@ -155,6 +156,7 @@ bool UTakedownComponent::TryPairedTakedown(AActor* Target, float& OutSeconds)
 		Movement->StopMovementImmediately();
 	}
 	Owner->SetActorLocationAndRotation(Spot.GetLocation(), Spot.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+	AHawkeyeCharacter::CutCameraFor(Owner);
 	Mesh->SetWorldTransform(MeshWorld);
 	EaseFrom = Mesh->GetRelativeTransform();
 	EaseTo = MeshRelative;

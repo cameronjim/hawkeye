@@ -251,6 +251,7 @@ bool UChallengeSubsystem::RetryLastChallenge()
 	{
 		Controller->SetControlRotation(FRotator(-10.f, Facing.Yaw, 0.f));
 	}
+	AHawkeyeCharacter::CutCameraFor(Pawn);
 	UE_LOG(LogHawkeye, Log, TEXT("%s: retrying %s."), *GetName(), *GetNameSafe(Start->Definition));
 	return StartChallenge(Start, Pawn);
 }

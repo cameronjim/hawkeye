@@ -339,6 +339,7 @@ void UChaseSubsystem::PlaceKate(APawn* Kate) const
 	{
 		Controller->SetControlRotation(FRotator(-8.f, Route->PlayerStartYaw, 0.f));
 	}
+	AHawkeyeCharacter::CutCameraFor(Kate);
 	if (ACharacter* Character = Cast<ACharacter>(Kate))
 	{
 		UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
@@ -857,6 +858,7 @@ void UChaseSubsystem::EndBeat(AHawkeyeCharacter* Kate, bool bForced)
 		Kate->TeleportTo(Route->BeatExit + FVector(0.f, 0.f, HawkeyeChase::HalfHeightOf(Kate) + 2.f), Kate->GetActorRotation(), false, true);
 		Kate->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 		Kate->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+		Kate->NotifyTeleported();
 	}
 	if (APlayerController* PC = Kate ? Cast<APlayerController>(Kate->GetController()) : nullptr; PC && bBeatInputIgnored)
 	{

@@ -246,6 +246,7 @@ bool USafehouseSubsystem::PlaceAtArrival(ASafehouse* Destination, APawn* Player,
 		{
 			Character->GetCharacterMovement()->StopMovementImmediately();
 		}
+		AHawkeyeCharacter::CutCameraFor(Pawn);
 	}
 	return true;
 }

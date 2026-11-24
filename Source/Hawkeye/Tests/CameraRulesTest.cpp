@@ -320,8 +320,8 @@ bool FHawkeyeCameraTeleportCuts::RunTest(const FString& Parameters)
 	const int32 Before = Kate->GetCameraCutCount();
 	Kate->NotifyTeleported();
 	TestEqual(TEXT("NotifyTeleported counts a cut"), Kate->GetCameraCutCount(), Before + 1);
-	Kate->NotifyTeleported(/*bSnapCamera=*/false);
-	TestEqual(TEXT("A cut that rides the lag still counts as one for the audit"), Kate->GetCameraCutCount(), Before + 2);
+	Kate->NotifyTeleported();
+	TestEqual(TEXT("and every one after it"), Kate->GetCameraCutCount(), Before + 2);
 	return true;
 }
 

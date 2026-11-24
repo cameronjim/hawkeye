@@ -366,10 +366,13 @@ public:
 	 * Call after moving her by anything but walking: a teleport, a respawn, a save load, a fast travel, a snap into a
 	 * takedown spot. The camera cuts (the arm's lag history snaps to the new pose, the blended targets restart, the
 	 * pitch easing forgets its last frame) instead of swooping there through the level, and the camera audit knows the
-	 * frame is a cut. bSnapCamera false marks the cut but lets a short hop (a takedown's few centimetres) ride the lag.
+	 * frame is a cut. A cut, not a lagged slide: even a takedown's hop is better cut than popped by the lag clamp.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Camera")
-	void NotifyTeleported(bool bSnapCamera = true);
+	void NotifyTeleported();
+
+	/** NotifyTeleported on Actor when it is one of ours; anything else is left alone. For the subsystems that place pawns. */
+	static void CutCameraFor(AActor* Actor);
 
 	/** How many camera cuts there have been (NotifyTeleported, and the arm's own teleport and pivot-jump detection). */
 	int32 GetCameraCutCount() const { return CameraCutCount + (CameraBoom ? CameraBoom->GetCutCount() : 0); }

@@ -679,6 +679,7 @@ void UHawkeyeSaveSubsystem::ApplyPendingSceneReturn(UWorld* World)
 		const FRotator Facing(0.f, Point.Rotator().Yaw, 0.f);
 		Pawn->TeleportTo(Point.GetLocation(), Facing);
 		PC->SetControlRotation(FRotator(-10.f, Facing.Yaw, 0.f));
+		AHawkeyeCharacter::CutCameraFor(Pawn);
 		UE_LOG(LogHawkeye, Log, TEXT("%s: back from the scene at %s."), *GetName(), *SceneReturn.ReturnPointLabel.ToString());
 	}
 	else if (!SceneReturn.ReturnPointLabel.IsNone())
