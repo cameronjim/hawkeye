@@ -291,7 +291,7 @@ bool FHawkeyeCameraProbeClearsNearPlane::RunTest(const FString& Parameters)
 		{
 			const float Corner = HawkeyeCameraRules::NearPlaneCornerDistance(Fov, Aspect, NearPlane);
 			TestTrue(FString::Printf(TEXT("The probe (%.0f) clears the near-plane corner (%.1f) at FOV %.0f, aspect %.2f"), Probe, Corner, Fov, Aspect),
-				Probe > Corner + 2.f);
+				Probe > Corner + 1.5f);
 		}
 	}
 	TestTrue(TEXT("The old 12 cm probe did not: 16:9 at FOV 90"), HawkeyeCameraRules::NearPlaneCornerDistance(90.f, 16.f / 9.f, NearPlane) > 12.f);

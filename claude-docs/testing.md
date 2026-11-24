@@ -27,6 +27,8 @@ standalone game (`-game`). In the editor run they pass without running and say s
 `Skipped (no RHI)` or `Skipped (editor)`; a test missing content a fresh clone may lack says `Skipped (no content)`.
 `run-tests.ps1` lists every one after its totals:
 
+- Every `Hawkeye.Lap.*` also runs under the camera audit (`Tests/CameraAudit.h`, "Camera rules" in gameplay-semantics.md):
+  a violation fails the lap and the worst are in `Saved/Automation/CameraAudit/<lap>.json`.
 - With a real RHI (no `-nullrhi`, window not minimised): every `Hawkeye.Lap.*` (sections 2c to 2f and
   `Hawkeye.Lap.FastTravel`, `InteriorWalk`), every `Hawkeye.Screenshot.*`, `Hawkeye.Perf.Tour`,
   `Hawkeye.Audit.MeleeFeel`.

@@ -14,14 +14,83 @@ gone from the code, and so from this file. Every section below describes code th
   70 cm lateral offset puts the character around 40% of screen width so the right side
   of the frame is open. Position lag 10, rotation lag 12. Sensitivity from the settings
   subsystem. `ComputeCameraTargets(bAiming)` is pure and tested.
-- The arm probes on the Camera channel with a 12 cm radius and pulls in against walls,
-  never inside geometry. Closer than 100 cm the character is hidden from the camera so
-  the view isn't inside her shoulder.
+- The arm probes on the Camera channel with a 20 cm radius and pulls in against walls,
+  never inside geometry. Closer than 90 cm (until beyond 120) the character is hidden from the
+  camera so the view isn't inside her shoulder. The rest of the camera's rules, the lens-height
+  guarantee, the sweeps, cuts and the audit, are in "Camera rules" below.
 - Fight camera (2026-09-29): with two or more alerted thugs near her (one within 9 m, the rest within 15 m; flat, 3 m up or
   down), the hip boom lengthens 70 cm and the lens tips down 4 degrees, over 0.5 s; back over 1 s
   when the fight thins out. See "Combat readability".
 - Movement input rotates the character toward the input direction; while aiming she
   faces the camera yaw. Look input never rotates her while idle.
+
+## Camera rules (rewritten 2026-11-23, after "the camera often glitches into the ground ... it is not stable like Insomniac games")
+The rig is `UHawkeyeSpringArmComponent` (`Player/HawkeyeSpringArmComponent.h`, `CameraBoom` on the capsule), the maths is
+`HawkeyeCameraRules` (`Player/CameraRules.h`, pure, `Tests/CameraRulesTest.cpp`). The Gameplay Cameras plugin is not used
+(experimental); the engine's arm is kept and subclassed.
+- **The lens never reaches the floor.** On flat ground the lens is at least 80 cm above her feet in every hip mode and 60 cm
+  in every aim mode, at every pitch in [-70, +75] (`Hawkeye.Camera.LensHeightGuarantee`: hip, aim, indoors, fight, finisher
+  push, landing dip, the aim blend halfway, standing and in the roll's half-height capsule). The design heights are 105 (hip)
+  and 75 (aim); the margin is for the lag. It is by construction: the pivot lift is not a tuned curve, it is the lift the
+  geometry needs (`RequiredPivotLift`: lens Z = half height + lift - arm * sin(pitch) + socket Z * cos(pitch)) smoothly
+  maximised against what the layers asked for, and it is worked out last, after every layer has changed the arm and the socket.
+  The lift rises at once and falls at 500 cm/s.
+- **Pitch curves** (`FHawkeyeCameraPitchCurve`, `HipPitchCurve` / `AimPitchCurve` on the character): from 5 degrees up to 60
+  the hip arm goes 350 to 230, the socket Z 60 to 100 and the FOV 90 to 97; looking down to -70 the arm goes out to 400. The
+  aim goes 180 to 120, socket 65 to 85, FOV held at 70 (the reticle's feel does not change with pitch), out to 210 looking
+  down. Level (pitch 0) is the hip and aim cameras above, unchanged. Near the pitch limits look input is slowed to 35% over the
+  last 12 degrees (`PitchLimitScale`, `ScaleLookPitch`; moving away from a limit is never slowed). The widest FOV asked for is 100.
+- **Probe 20 cm.** The sphere the arm sweeps must be bigger than the distance from the lens to a corner of the near clip plane
+  (10 cm): 16.9 cm at FOV 100 on 16:9, 17.9 on 4:3 (`NearPlaneCornerDistance`, `Hawkeye.Camera.ProbeClearsNearPlane`). The
+  old 12 cm probe was under 15.4 cm at FOV 90, so a wall just outside it cut through the frame. The near plane is not changed.
+- **Three-stage sweep.** The arm sweeps from her centre up to the (lifted) pivot, then out to the shoulder (the 70 cm lateral
+  offset), then from the shoulder to the lens; a wall beside her shortens the shoulder instead of pulling the lens into her
+  body (`Hawkeye.Camera.Arm.ShoulderSweep`). A resolved point is backed off 1.5 cm so the next sweep never starts "inside" a
+  wall it is touching. Two side feelers (+/-16 degrees, 8 cm spheres) ease the arm in before the main sweep touches
+  anything, down to 55% of its reach. Every swept fraction snaps in at once and eases back out (speed 6 a second); none
+  is ever longer than its own sweep allows.
+- **Floor rule.** After the sweeps the lens is never lower than 35 cm above the highest floor found by a downward trace from
+  just above it (not from above a ceiling it is under) or from her capsule centre, on the Camera channel and on the world's
+  static geometry (so a bin the lens passes through is still a floor). The correction rises at 25 per second (never more than
+  12 cm short of the 35) and falls at 120 cm/s, and is stopped by a ceiling.
+- **Lag.** Position lag 10 and rotation lag 12 are unchanged, but the lagged pivot trails her by at most 75 cm sideways and
+  40 cm vertically (zip speed 1800 / lag 10 trailed 180 and arrived under the roof deck), the lift is added after the lag
+  (exact), and the lag runs on the clock the player watches: hit stop 0.1, the finisher 0.25 and the quiver wheel 0.2 do not
+  stretch it (`UnscaledDelta`). While she is in the air under her own power the pivot's height holds inside a 60 cm dead zone
+  (`DeadZoneOffset`), so a jump's arc does not bob the view; zip, hang and the sample's traversal follow normally.
+- **Cuts.** A teleport, respawn, save load, fast travel or snap is a camera cut, not a swoop through the level:
+  `AHawkeyeCharacter::NotifyTeleported` (called from the boss, challenge, chase, chapter-site, save, safehouse and takedown
+  call sites; `GetCameraCutCount`) snaps the lag history, restarts the blended targets and the pivot hold, and the arm also
+  cuts on its own for a teleport-typed move of more than 150 cm, a pivot jump of more than 400 cm, or a control rotation that
+  snaps more than 90 degrees yaw or 60 pitch in a frame (`Hawkeye.Camera.TeleportCuts`, `Hawkeye.Camera.Arm.CutsAndLagClamp`).
+- **Rate limits.** The blended arm length, socket offset and FOV can move no faster than 1400 cm/s, 600 / 500 cm/s (planar /
+  vertical) and 200 degrees/s (the aim blend is 1130 and 133); the pivot lift may fall no faster than 500 cm/s
+  (`LimitTargetStep`). The capsule shrinking (a roll, a slide, a crouch) no longer drops the pivot in one step: it is held and
+  eased down at 200 cm/s (`EasedHalfHeight`).
+- **Shake is after the sweep.** A hit's shake is no longer in the socket offset: it is a small camera-local offset the arm
+  adds after it has placed the lens, and sweeps itself (6 cm radius), so it cannot put the lens in a wall.
+- **Body hide has hysteresis.** Hidden when the lens is inside 90 cm of her centre, shown again only beyond 120 (`ShouldHideBody`).
+  There is no fade: the body materials are not known to carry an opacity parameter.
+- **Camera-blocking dressing.** The Camera channel is blocked by the clutter that is big and solid (footprint radius 60 cm or
+  more: parked cars, water towers, HVAC boxes, chimneys; `CityClutterGroup.bBlocksCamera`, `generate_city.py blocks_camera`)
+  and ignored by the rest (hydrants, bins, bags, the December dressing, the street look). Pawns, physics and every traversal
+  trace are unchanged. The lens's floor rule keeps it above the small solids instead.
+- **The camera audit** (`Tests/CameraAudit.h`) runs under every `Hawkeye.Lap.*`. After the arm ticks and the camera manager has
+  cached the view it checks, from `PlayerCameraManager::GetCameraLocation`: lens at least 20 cm above the floor under her and
+  under the lens; a 15 cm sphere at the lens overlaps nothing on the Camera channel; four rays from the lens to the near plane's
+  corners hit nothing; the lens moves under 3000 cm/s relative to her once the view's orbit round her is taken out; the view
+  turns under 720 degrees/s; the body hides or shows fewer than twice a second. A cut (the cut count changed, a view target
+  other than her, the first frame), a scripted beat (`NoteScriptedBeat`, a takedown) excuses what it is meant to. Every
+  violation is collected with time, place, mode and her speed; the first of each rule fails the lap at once; the worst five
+  of each go to `Saved/Automation/CameraAudit/<lap>.json`. The rules on plain frames are `Hawkeye.Camera.AuditRules`.
+  The thresholds are `FLimits`; raising one to pass is not a fix. `hawkeye.Camera.Debug 1` draws the shoulder, the probe
+  sphere and the feelers.
+- **Bots aim from the crosshair, not the lens, at a human rate.** One `HawkeyeLapBot::AimAt` (`Tests/LapBot.h`) for every
+  lap: it works out the view that puts the target on the line the lens looks along, from where the lens would be for that view
+  (the arm's own length, offset and lift, no sweep, no lag, so nothing it did last frame feeds back), turns at most 540
+  degrees/s the short way round, and holds its yaw when the target is within 30 cm of that point (`Hawkeye.Camera.LapBotAim`).
+  The old copies set the rotation from the real lens every frame without a limit, and a target near or behind the lens flipped
+  the yaw half a turn in a frame.
 
 ## Movement (built 2026-09-26; every number is a property on BP_Kate)
 - Locomotion animation is motion matching from the Game Animation Sample (see
@@ -365,10 +434,10 @@ gone from the code, and so from this file. Every section below describes code th
   speed. Both procedural; the sample has land clips but no roll. Grapple landings never
   trigger either. Fall damage is still zero below 900 cm. Fall damage begins at 900 cm and never kills from a
   rooftop you can reach by grapple.
-- Camera looking up: between +20 and +60 degrees of pitch the arm shortens 350 to 220,
-  the socket Z rises 60 to 110, and the pivot lifts 0 to 150 cm in world space (without
-  the lift the lens sat on the pavement). Pitch is clamped to [-70, +75]. Above about
-  53 degrees Kate drops out of the bottom of the frame rather than filling it.
+- Camera looking up: from +5 degrees the arm shortens, the socket rises and the view widens, and the
+  pivot lifts as far as it takes to keep the lens off the pavement (the numbers are in "Camera rules").
+  Pitch is clamped to [-70, +75]. Above about 53 degrees Kate drops out of the bottom of the frame rather
+  than filling it.
 - Grapple arrow (built 2026-09-26): valid anchors are within 2500 cm, farther than 300 cm
   (so the anchor just landed beside doesn't stay lit), within 30 degrees of the camera
   forward, on the screen 2 degrees inside every edge (`IsOnScreen`, the camera's field of view

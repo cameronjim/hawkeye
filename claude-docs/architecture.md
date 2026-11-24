@@ -442,8 +442,9 @@ in `WBP_*`; behaviour in the C++ parent.
   `UQuiverWheelMath`, the map's math (`HawkeyeMapMath.h`), `FHawkeyeTitleCardClock`, `UHawkeyeHintRules`.
 
 ### Player and framework
-- `AHawkeyeCharacter`: third person. A spring arm (`CameraBoom`) behind and above the body, probing with a
-  sphere and pulled in against walls, with `FollowCamera` on its end; aim blends the arm to the right
+- `AHawkeyeCharacter`: third person. A spring arm (`CameraBoom`, a `UHawkeyeSpringArmComponent`: resettable and clamped lag,
+  a shoulder-first sweep, a floor rule; the pure maths in `CameraRules.h`, "Camera rules" in gameplay-semantics.md) behind and
+  above the body, probing with a sphere and pulled in against walls, with `FollowCamera` on its end; aim blends the arm to the right
   shoulder, a fight lengthens it, an interior map caps it (`IndoorArmLength`). The body turns to face the
   way it moves, or the camera while aiming. Each frame it picks a gait (`EHawkeyeGait`: walk, run, sprint,
   crouch, slide) from the input and speeds are properties. Landings are measured from the top of the arc
