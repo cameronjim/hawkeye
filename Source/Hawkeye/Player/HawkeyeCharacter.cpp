@@ -615,7 +615,7 @@ void AHawkeyeCharacter::ReleaseHeldInputs()
 	StopSprintToggle(EHawkeyeSprintStop::Released);
 	bIsSprinting = false;
 	bAimInputHeld = false;
-	bMeleeHeld = false;
+	MeleePress.Cancel();
 	bLightBuffered = false;
 	bCrouchTapPending = false;
 	bInventoryKeyHeld = false;
@@ -2177,31 +2177,72 @@ bool AHawkeyeCharacter::IsMeleeAttacking() const
 
 void AHawkeyeCharacter::Input_MeleePressed(const FInputActionValue& /*Value*/)
 {
-	bMeleeHeld = true;
-	MeleeHeldSeconds = 0.f;
+	PressMelee();
 }
 
 void AHawkeyeCharacter::Input_MeleeReleased(const FInputActionValue& /*Value*/)
 {
-	if (!bMeleeHeld)
+	ReleaseMelee();
+}
+
+EHawkeyeSwingPhase AHawkeyeCharacter::GetSwingPhase() const
+{
+	if (!MeleeComponent || !MeleeComponent->IsAttacking())
 	{
+		return EHawkeyeSwingPhase::None;
+	}
+	return MeleeComponent->GetPhase() == EMeleePhase::Windup ? EHawkeyeSwingPhase::BeforeHit : EHawkeyeSwingPhase::AfterHit;
+}
+
+void AHawkeyeCharacter::PressMelee()
+{
+	MeleePress.HeavyHoldSeconds = HeavyHoldSeconds;
+	MeleePress.bLightOnPress = bLightAttackOnPress;
+	MeleePress.ArmedGraceSeconds = LightBufferSeconds;
+	if (!bLightAttackOnPress)
+	{
+		MeleePress.Press(false);
 		return;
 	}
-	bMeleeHeld = false;
-	StartLightAttack();
+	// The light starts on the press (or is buffered, or is the parry); the hold may turn it into the heavy.
+	const int32 Parries = ParryCount;
+	const bool bStarted = StartLightAttack();
+	if (ParryCount != Parries)
+	{
+		// A parry is the whole of that press: holding on does not follow it with a heavy.
+		MeleePress.Cancel();
+		return;
+	}
+	// Winding up right after the call: it is the light this press started (a refused or buffered one is not).
+	MeleePress.Press(bStarted && MeleeComponent && MeleeComponent->IsWindingUp());
+}
+
+void AHawkeyeCharacter::ReleaseMelee()
+{
+	if (MeleePress.Release())
+	{
+		StartLightAttack();
+	}
 }
 
 void AHawkeyeCharacter::UpdateMeleeHold(float DeltaSeconds)
 {
-	if (!bMeleeHeld)
+	switch (MeleePress.Tick(DeltaSeconds, GetSwingPhase()))
 	{
-		return;
-	}
-	MeleeHeldSeconds += DeltaSeconds;
-	if (MeleeHeldSeconds >= HeavyHoldSeconds)
-	{
-		bMeleeHeld = false;
+	case EHawkeyeHoldOutcome::StartHeavy:
 		StartHeavyAttack();
+		break;
+	case EHawkeyeHoldOutcome::ConvertLight:
+		// The light has not reached its hit window: the heavy takes its place (the light's clip is cut by the heavy's).
+		if (MeleeComponent)
+		{
+			MeleeComponent->CancelAttack();
+		}
+		bLightBuffered = false;
+		StartHeavyAttack();
+		break;
+	default:
+		break;
 	}
 }
 
@@ -2596,7 +2637,14 @@ void AHawkeyeCharacter::AdvanceMeleeFlow(float DeltaSeconds)
 {
 	Combo.Advance(DeltaSeconds);
 	UpdateParryBuffer(DeltaSeconds);
-	if (bLightBuffered && MeleeComponent && MeleeComponent->CanStartAttack())
+	if (MeleePress.IsArmed() && MeleeComponent && MeleeComponent->CanStartAttack())
+	{
+		// The hold armed the heavy as the next blow (the light already hit): it goes now, cutting the recovery at its combo window.
+		MeleePress.TakeArmed();
+		bLightBuffered = false;
+		StartHeavyAttack();
+	}
+	else if (bLightBuffered && MeleeComponent && MeleeComponent->CanStartAttack())
 	{
 		bLightBuffered = false;
 		// The chain's next light, or (pressed late in a recovery that ended the chain) a fresh one.
@@ -2878,7 +2926,7 @@ bool AHawkeyeCharacter::TryFinisher()
 		MeleeComponent->CancelAttack();
 	}
 	bLightBuffered = false;
-	bMeleeHeld = false;
+	MeleePress.Cancel();
 	if (IsDrawingBow())
 	{
 		BowComponent->CancelDraw();
@@ -3039,7 +3087,7 @@ void AHawkeyeCharacter::HandleStaggered(UHealthComponent* /*Health*/, AActor* Da
 		return;
 	}
 	StaggerRemaining = PlayerStaggerSeconds;
-	bMeleeHeld = false;
+	MeleePress.Cancel();
 	UHawkeyeAudioSubsystem::PlayAt(this, StaggerSound, GetActorLocation(), TEXT("stagger"));
 	if (MeleeComponent)
 	{

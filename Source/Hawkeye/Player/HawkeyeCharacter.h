@@ -11,6 +11,7 @@
 #include "GameFramework/Character.h"
 #include "ISpudObject.h"
 #include "Player/BodyLook.h"
+#include "Player/HawkeyeMeleePress.h"
 #include "Player/HawkeyeMovementTypes.h"
 #include "Player/HawkeyeSpringArmComponent.h"
 #include "Player/HawkeyeSprintToggle.h"
@@ -587,6 +588,37 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Melee")
 	bool StartHeavyAttack();
 
+	/**
+	 * The melee button goes down. With bLightAttackOnPress the light starts now (or is buffered, or is the parry), and a hold
+	 * to HeavyHoldSeconds turns it into the heavy (FHawkeyeMeleePress); without it the light waits for the release.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Melee")
+	void PressMelee();
+
+	/** The melee button goes up: with bLightAttackOnPress off, the light on a tap. */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Melee")
+	void ReleaseMelee();
+
+	/** Counts the hold (and an armed heavy's grace); past HeavyHoldSeconds it becomes the heavy. Every tick; public for the tests. */
+	void UpdateMeleeHold(float DeltaSeconds);
+
+	/** The melee button's state (tests). */
+	const FHawkeyeMeleePress& GetMeleePress() const { return MeleePress; }
+
+	/** Where her swing in progress is, for the hold's rule: none, before its hit window, after it. */
+	EHawkeyeSwingPhase GetSwingPhase() const;
+
+	/** Seconds the melee button must be held to be the heavy. */
+	float GetHeavyHoldSeconds() const { return HeavyHoldSeconds; }
+
+	/**
+	 * The light starts on the PRESS (70 to 120 ms sooner than on the release, which a tap's length added), and a hold to
+	 * HeavyHoldSeconds turns into the heavy: the light converts into it if it has not reached its hit window, else the heavy
+	 * is armed as the next blow. False: the old scheme, the light on the release (2026-11-23, melee feel).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee")
+	bool bLightAttackOnPress = true;
+
 	/** Chain step Step (0, 1, 2) of the light combo. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Melee")
 	FHawkeyeMeleeAttack GetComboAttack(int32 Step) const;
@@ -1071,9 +1103,6 @@ protected:
 
 	/** A dodge that starts inside a thug's telegraph: a moment of slow motion. */
 	void CheckPerfectDodge();
-
-	/** Counts the V hold; past HeavyHoldSeconds it becomes the heavy. */
-	void UpdateMeleeHold(float DeltaSeconds);
 
 	/** Counts a dodge, its invulnerability and its cooldown down. */
 	void UpdateDodge(float DeltaSeconds);
@@ -2168,9 +2197,8 @@ private:
 	int32 LastFootstepIndex = INDEX_NONE;
 	int32 FootstepCount = 0;
 
-	/** V is held and has not yet become a heavy. */
-	bool bMeleeHeld = false;
-	float MeleeHeldSeconds = 0.f;
+	/** The melee button: held, and whether its hold has become (or armed) the heavy. */
+	FHawkeyeMeleePress MeleePress;
 
 	/** A light pressed in the recovery of a light that landed, waiting for it to end. */
 	bool bLightBuffered = false;
