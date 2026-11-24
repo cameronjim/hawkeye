@@ -40,13 +40,18 @@ FTraversalPoseInput AHawkeyeCharacter::BuildTraversalPoseInput(float DeltaSecond
 	Input.ZipLineSpeed = Movement->GetZipLineSpeed();
 	Input.HopFraction = Movement->GetZipHopFraction();
 	Input.bFallClipPlays = ActiveFallLoop != nullptr;
-	if (Input.bZipping && GrappleComponent)
+	if (Input.bZipping)
 	{
 		// From the capsule and not from her hand: the hand is what the pose places, so reading it back would chase itself.
-		if (const AGrappleAnchor* Anchor = GrappleComponent->GetZipAnchor())
+		const FVector From = GetActorLocation() + FVector(0.f, 0.f, HawkeyeTraversalPoseDriver::RopeOriginHeight);
+		const AGrappleAnchor* Anchor = GrappleComponent ? GrappleComponent->GetZipAnchor() : nullptr;
+		if (Anchor)
 		{
-			const FVector From = GetActorLocation() + FVector(0.f, 0.f, HawkeyeTraversalPoseDriver::RopeOriginHeight);
 			Input.RopeDirection = (Anchor->GetMarkerLocation() - From).GetSafeNormal();
+		}
+		else if (TraversalRopeOverride.IsSet())
+		{
+			Input.RopeDirection = (TraversalRopeOverride.GetValue() - From).GetSafeNormal();
 		}
 	}
 	return Input;

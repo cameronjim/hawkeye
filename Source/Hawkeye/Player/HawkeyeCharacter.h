@@ -158,6 +158,15 @@ public:
 	/** What the pose reads this frame, from the movement and the grapple, in world space. Never writes anything. */
 	FTraversalPoseInput BuildTraversalPoseInput(float DeltaSeconds) const;
 
+	/**
+	 * The point the body pose takes the rope to while she zips with no grapple anchor (a screenshot pass or a test that moves
+	 * her along a line by hand). With a real anchor its marker is the rope's end and this is ignored.
+	 */
+	void SetTraversalRopeTarget(const FVector& World) { TraversalRopeOverride = World; }
+	void ClearTraversalRopeTarget() { TraversalRopeOverride.Reset(); }
+	bool HasTraversalRopeTarget() const { return TraversalRopeOverride.IsSet(); }
+	FVector GetTraversalRopeTarget() const { return TraversalRopeOverride.Get(FVector::ZeroVector); }
+
 	/** The most downward speed (cm/s) since this fall began: what a landing's impact is measured by. */
 	float GetFallPeakSpeed() const { return FallPeakSpeed; }
 
@@ -2122,6 +2131,9 @@ protected:
 
 	/** The pose's springs and phase; stepped by the bow-IK anim instance, never saved. */
 	FTraversalPoseState TraversalPoseState;
+
+	/** SetTraversalRopeTarget's point. */
+	TOptional<FVector> TraversalRopeOverride;
 
 	/** The most downward speed this fall, cm/s; reset when a fall starts and when it lands. */
 	float FallPeakSpeed = 0.f;
