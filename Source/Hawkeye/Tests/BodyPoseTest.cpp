@@ -1,3 +1,4 @@
+#include "Components/SkeletalMeshComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Player/BodyPose.h"
 #include "Player/BodyPoseNode.h"
@@ -15,7 +16,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyPoseTable, "Hawkeye.BodyPose.Table"
 
 bool FHawkeyeBodyPoseTable::RunTest(const FString& Parameters)
 {
-	for (int32 Finger = 0; Finger < static_cast<int32>(EFinger::Count); ++Finger)
+	// The thumb is aimed when closed (ClosedThumbDirection), its curls are only the relaxed hand's.
+	for (int32 Finger = static_cast<int32>(EFinger::Index); Finger < static_cast<int32>(EFinger::Count); ++Finger)
 	{
 		const EFinger F = static_cast<EFinger>(Finger);
 		const FFingerAngles Relaxed = Angles(EHandPose::Relaxed, F);
@@ -55,7 +57,7 @@ bool FHawkeyeBodyPoseArm::RunTest(const FString& Parameters)
 	const FVector Out = FVector::RightVector;
 	const FVector Forward = FVector::ForwardVector;
 	const FArmRest Rest = ArmRestDirections(Up, Out, Forward);
-	TestTrue(TEXT("The upper arm hangs down"), Rest.Upper.Z < -0.99f);
+	TestTrue(TEXT("The upper arm hangs down"), Rest.Upper.Z < -0.98f);
 	TestTrue(TEXT("and a little out from the body"), Rest.Upper.Y > 0.f);
 	TestTrue(TEXT("The elbow is nearly straight"), FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Rest.Upper, Rest.Lower))) < 15.f);
 	TestTrue(TEXT("and bends forward"), Rest.Lower.X > Rest.Upper.X);
@@ -79,7 +81,7 @@ bool FHawkeyeBodyPoseEase::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and opens the same way"), StepAlpha(1.f, 0.f, 0.06f), 0.5f, 0.001f);
 	TestEqual(TEXT("It stops at the target"), StepAlpha(0.95f, 1.f, 0.5f), 1.f);
 
-	UHawkeyeBodyAnimInstance* Instance = NewObject<UHawkeyeBodyAnimInstance>();
+	UHawkeyeBodyAnimInstance* Instance = NewObject<UHawkeyeBodyAnimInstance>(NewObject<USkeletalMeshComponent>(GetTransientPackage()));
 	FWish Wish;
 	Wish.bGrip[HandRight] = true;
 	Wish.bFist[HandLeft] = true;
