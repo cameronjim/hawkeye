@@ -12,7 +12,7 @@ the packs keeps the mannequins and loads as before.
     /Game/Characters/Bodies/T_Body_Male_*, T_Eye_*  its textures (base colour, normal, roughness, eyes, brows)
     /Game/Characters/Bodies/M_BodyLook              skin from the texture, clothes painted over it from the bind pose
                                                     (top, legs, shoes, stripes, an optional ski mask and vest), plus
-                                                    the HitFlash and Telegraph parameters AThugCharacter pulses
+                                                    the Telegraph parameter AThugCharacter pulses
     /Game/Characters/Bodies/MI_Body_<Who>           the thug's dark red tracksuit and trainers, the heavy's vest, ski
                                                     mask and boots, Clint's black sleeveless vest, forearm guard,
                                                     chevron, trousers and boots, the eyes and brows
@@ -637,7 +637,7 @@ def ensure_materials(textures):
 BUILT = BODIES + "/Built"
 M_BUILT = BUILT + "/M_BuiltLook"
 M_BUILT_MASKED = BUILT + "/M_BuiltLookMasked"
-BUILT_MATERIAL_BUILD = "built-material-1"   # bump when the graph below changes
+BUILT_MATERIAL_BUILD = "built-material-2"   # bump when the graph below changes
 BUILT_LODS = 4   # LOD0 as built, then the engine's reductions at 50, 25 and 12.5 per cent of the triangles
 # The look it replaces (the painted look's MI, or KATE_LOOK_KEY for Sparrow) -> (the built folder, <assets
 # root>\built\<who>, whose SK_<Who>.glb replaces it; the base body, BASE_BODIES, whose skeleton it was built on).
@@ -713,7 +713,7 @@ def import_built(who, skeleton):
 
 def _build_built(masked):
     """Colour x BaseTex, Roughness, Metallic, NormalTex (blended from flat by NormalStrength), and the thug's
-    HitFlash everywhere plus Telegraph where Glow is 1 (the head slots), like M_BodyLook. Masked: BaseTex's alpha
+    Telegraph where Glow is 1 (the head slots), like M_BodyLook (no hit flash since 2026-11-23). Masked: BaseTex's alpha
     clips (the hair cards)."""
     import create_world_blueprints as wb  # noqa: PLC0415 - the thug's pulse
 

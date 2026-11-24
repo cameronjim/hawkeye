@@ -50,7 +50,7 @@
  * thug's fists on her at 80 to 200 cm: at the frame the damage lands, the gap between the striking limb and the struck
  * body's surface (the drivers' bones against the physics asset, and the bodies people see), whether she faces him, the
  * time from the press, and what follows the damage frame and when (hit-stop, reaction clip and its side, physical
- * reaction, flash, sound).
+ * reaction, sound).
  *  - Five knockouts (light, heavy, finisher, arrow, off a ledge): the throw, the inherited velocity, the path, stretch,
  *    tunnelling, jitter, slide and settle, and the visible body against the driver; frames in
  * Saved/Screenshots/MeleeAudit.
@@ -152,7 +152,6 @@ namespace HawkeyeMeleeAudit
 		FString ClipSide;
 		FString ExpectedSide;
 		int32 PhysFrame = -1;
-		int32 FlashFrame = -1;
 		int32 SoundFrame = -1;
 		double DamageReal = 0.0;
 		double StopStartReal = 0.0;
@@ -629,7 +628,6 @@ namespace HawkeyeMeleeAudit
 		Row->SetStringField(TEXT("clip_side"), B.ClipSide);
 		Row->SetStringField(TEXT("expected_side"), B.ExpectedSide);
 		Row->SetNumberField(TEXT("physical_frame"), B.PhysFrame);
-		Row->SetNumberField(TEXT("flash_frame"), B.FlashFrame);
 		Row->SetNumberField(TEXT("sound_frame"), B.SoundFrame);
 		Row->SetNumberField(TEXT("victim_bodies_simulating_before"), B.VictimSimulatingBefore);
 		Row->SetNumberField(TEXT("attacker_seen_hand_off_driver_cm"), B.AttackerSeenHandOffset);
@@ -743,10 +741,6 @@ namespace HawkeyeMeleeAudit
 				if (B.PhysFrame < 0 && React && React->GetReactionBlend() > 0.f)
 				{
 					B.PhysFrame = Frame;
-				}
-				if (B.FlashFrame < 0 && !bThugSwings && Thug->GetHitFlashAlpha() > 0.f)
-				{
-					B.FlashFrame = Frame;
 				}
 				const int32 Audio = AudioCount(World);
 				if (B.SoundFrame < 0 && Audio > S.LastAudio)
@@ -1323,11 +1317,11 @@ void FHawkeyeMeleeAuditRun::FinishBlow()
 		TEXT("Melee audit: %s %s from %.0f cm at %.0f deg: %s at %.2f s (%d frames), capsules %.0f cm, "
 			 "driver %s %.0f cm off his body, seen %s %.0f cm, facing %.0f deg; after: stop f%d %.0f ms, clip f%d %s "
 			 "(expected %s), "
-			 "physics f%d, flash f%d, sound f%d."),
+			 "physics f%d, sound f%d."),
 		KindName(Trial.Kind), *B.Attack, Trial.Distance, Trial.Angle,
 		B.bLanded ? TEXT("landed") : (B.bWhiffCaps ? TEXT("WHIFF (caps)") : TEXT("WHIFF")), B.HitSeconds, B.HitFrames,
 		B.CapsuleGap, *B.DriverLimb, B.DriverLimbGap, *B.SeenLimb, B.SeenLimbGap, B.FacingDegrees, B.HitStopFrame,
-		B.HitStopRealMs, B.ClipFrame, *B.ClipSide, *B.ExpectedSide, B.PhysFrame, B.FlashFrame, B.SoundFrame));
+		B.HitStopRealMs, B.ClipFrame, *B.ClipSide, *B.ExpectedSide, B.PhysFrame, B.SoundFrame));
 }
 
 void FHawkeyeMeleeAuditRun::FinishKnockout()

@@ -215,7 +215,6 @@ bool FHawkeyeMeleeKateLight::RunTest(const FString& Parameters)
 	Melee->AdvanceAttack(0.11f);
 	TestEqual(TEXT("15 off the thug"), Thug->GetHealthComponent()->GetCurrentHealth(), 85.f);
 	TestTrue(TEXT("He staggers (above the threshold of 10)"), Thug->IsStaggered());
-	TestTrue(TEXT("He flashes"), Thug->GetHitFlashAlpha() > 0.99f);
 	TestTrue(TEXT("The swing is still recovering"), Kate->IsMeleeAttacking());
 
 	Melee->AdvanceAttack(0.17f);

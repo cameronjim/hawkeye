@@ -46,10 +46,11 @@ THUG_MATERIAL_PATH = "/Game/Characters/Thug"
 # The Tracksuit Mafia look (docs/DESIGN.md, Cast). SK_Mannequin has two material slots: the body
 # (head included) and the chest logo patch. So the ski mask and the side stripes are drawn by the
 # body material from the mesh's own bind-pose (pre-skinned) position and normal, and the second
-# slot is the light trim. Both carry the HitFlash and Telegraph parameters AThugCharacter pulses.
+# slot is the light trim. Both carry the Telegraph parameter AThugCharacter pulses (red, on the mask; there is no hit
+# flash: a blow shows as a puff at the contact point, not a colour change of the whole body).
 M_THUG_TRACKSUIT = THUG_MATERIAL_PATH + "/M_ThugTracksuit"
 M_THUG_TRIM = THUG_MATERIAL_PATH + "/M_ThugTrim"
-THUG_MATERIAL_VERSION = "tracksuit-4"     # bump to rebuild both graphs on the next run
+THUG_MATERIAL_VERSION = "tracksuit-5"     # bump to rebuild both graphs on the next run
 THUG_VERSION_TAG = "CastleVersion"  # pre-rename key, kept: saved materials carry it
 TRACKSUIT_RED = (0.6, 0.05, 0.05)
 TRACKSUIT_STRIPE = (0.85, 0.85, 0.85)
@@ -59,8 +60,6 @@ VEST_BOTTOM_CM = 92.0       # bind-pose heights of the heavy's vest: the belt an
 VEST_TOP_CM = 146.0
 STRIPE_FACING = 0.85        # how squarely a surface must face out sideways to be stripe
 STRIPE_MAX_SIDE_CM = 28.0   # further out than this is an arm (bind pose is a T), never stripe
-HIT_FLASH_COLOR = (1.0, 0.85, 0.7)
-HIT_FLASH_INTENSITY = 3.0
 TELEGRAPH_COLOR = (1.0, 0.04, 0.01)
 TELEGRAPH_INTENSITY = 3.0
 
@@ -83,19 +82,15 @@ def _scalar_param(material, name, x, y):
 
 
 def _pulse_emissive(material, head_mask, x=-700, y=500):
-    """HitFlash (a warm white over everything) plus Telegraph (red, only where head_mask is 1)."""
-    flash = _scalar_param(material, "HitFlash", x, y)
-    flash_color = m.constant3(material, HIT_FLASH_COLOR, x, y + 150)
-    flash_rgb = m.multiply(material, flash_color, flash, x + 250, y)
-    flash_rgb = m.multiply(material, flash_rgb, None, x + 450, y, const_b=HIT_FLASH_INTENSITY)
+    """Telegraph (red, only where head_mask is 1); black where there is no mask. No hit flash: it was a warm white over
+    the whole body for 0.1 s and read as unprofessional (2026-11-23)."""
     if head_mask is None:
-        return flash_rgb
+        return m.constant3(material, (0.0, 0.0, 0.0), x, y)
     tele = _scalar_param(material, "Telegraph", x, y + 300)
     tele_color = m.constant3(material, TELEGRAPH_COLOR, x, y + 450)
     tele_on = m.multiply(material, tele, head_mask, x + 250, y + 300)
     tele_rgb = m.multiply(material, tele_color, tele_on, x + 450, y + 300)
-    tele_rgb = m.multiply(material, tele_rgb, None, x + 650, y + 300, const_b=TELEGRAPH_INTENSITY)
-    return m.add(material, flash_rgb, tele_rgb, x + 850, y + 150)
+    return m.multiply(material, tele_rgb, None, x + 650, y + 300, const_b=TELEGRAPH_INTENSITY)
 
 
 def _to_pixel(material, vertex_node, x, y):

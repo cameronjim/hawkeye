@@ -38,8 +38,7 @@
  * The bodies (claude-docs/animation.md, "Bodies"): a street thug, the heavy, Clint and Lucky, each stood on the
  * street by the PlayerStart and shot front-on to Saved/Screenshots/Bodies/ (body_thug.png, body_heavy.png,
  * body_clint.png, body_lucky.png), then a thug thrown into a ragdoll (body_thug_ragdoll.png), a thug 0.4 s into his
- * punch's wind-up with the telegraph glow on (body_thug_punch.png), a thug the frame a hit flashes him
- * (body_thug_flash.png), Clint 0.7 s into a bow draw (body_clint_draw.png) and Lucky sitting by Kate
+ * punch's wind-up with the telegraph glow on (body_thug_punch.png), Clint 0.7 s into a bow draw (body_clint_draw.png) and Lucky sitting by Kate
  * (body_lucky_kate.png). Then Kate's built body in two rounds, by day and by night (hawkeye.TimeOfDay; put back to
  * the saved setting after): body_kate_<shot>_day.png and _night.png for front (idle, facing the camera), back (idle,
  * her back to it: the ponytail and quiver), run (1.6 s into a run, side on), crouch, punch (0.3 s into a light
@@ -297,7 +296,7 @@ public:
 			WalkKateIn();
 			return false;
 		}
-		// A moment shot (the punch, the flash, the draw) starts its action, waits its lead, then holds time on him.
+		// A moment shot (the punch, the draw) starts its action, waits its lead, then holds time on him.
 		if (ActionLead(Subject) >= 0.0)
 		{
 			if (ActionStart < 0.0)
@@ -322,7 +321,7 @@ public:
 	}
 
 private:
-	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, FlashShot, DrawShot, LuckyKateShot, FirstKateShot };
+	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, DrawShot, LuckyKateShot, FirstKateShot };
 	/** Kate's shots, taken once by day and once by night after the others. */
 	enum EKateShot : int32 { KFront, KBack, KRun, KCrouch, KPunch, KDraw, KTrio, NumKateShots };
 	static constexpr int32 NumSubjects = FirstKateShot + NumKateShots * 2;
@@ -350,7 +349,7 @@ private:
 	static FString ShotName(int32 Subject)
 	{
 		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
-			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_thug_flash"), TEXT("body_clint_draw"), TEXT("body_lucky_kate")};
+			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate")};
 		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
 			TEXT("draw"), TEXT("trio")};
 		if (!IsKate(Subject))
@@ -363,7 +362,7 @@ private:
 	static double SettleSeconds(int32 Subject)
 	{
 		// The ragdoll needs time to fall; the others only Lumen and the exposure (longer after the time of day changes).
-		// The punch, the flash and the draw are started at the end of their settle (Shoot), so the pose is the moment
+		// The punch and the draw are started at the end of their settle (Shoot), so the pose is the moment
 		// asked for. The run is the run's length.
 		if (IsKate(Subject))
 		{
@@ -383,8 +382,6 @@ private:
 		{
 		case PunchShot:
 			return 0.4;   // of the fists' 0.6 s wind-up: the arm back, the telegraph on
-		case FlashShot:
-			return 0.02;  // the frame after the hit
 		case DrawShot:
 			return 0.7;
 		default:
@@ -412,10 +409,6 @@ private:
 		{
 			const bool bStarted = Thug->GetMeleeComponent()->StartAttack(Thug->GetMeleeAttack(0));
 			Test->TestTrue(TEXT("body_thug_punch: the swing started"), bStarted);
-		}
-		else if (Subject == FlashShot && Thug)
-		{
-			Thug->FlashHit();
 		}
 		else if (AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Current.Get()); Subject == DrawShot && Clint && Clint->GetBowComponent())
 		{
@@ -732,7 +725,6 @@ private:
 		switch (Subject)
 		{
 		case ThugShot:
-		case FlashShot:
 			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
 			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			break;
@@ -986,7 +978,7 @@ private:
 		HawkeyeShots::Request(Test, ShotPath(ShotFile), /*bShowUI=*/false);
 	}
 
-	/** The punch, the flash and the draw: what state he was caught in, and that the look is what is drawn. */
+	/** The punch and the draw: what state he was caught in, and that the look is what is drawn. */
 	void ShootMoment(int32 Subject, const TCHAR* Name)
 	{
 		ACharacter* Character = Cast<ACharacter>(Current.Get());
@@ -999,15 +991,11 @@ private:
 		{
 			const UMeleeComponent* Melee = Thug->GetMeleeComponent();
 			const bool bWinding = Melee && Melee->IsWindingUp();
-			Test->AddInfo(FString::Printf(TEXT("%s.png: %s, winding up %d, hit flash %.2f, look %s."), Name, *GetNameSafe(Thug->GetBodyMesh()->GetSkeletalMeshAsset()),
-				bWinding ? 1 : 0, Thug->GetHitFlashAlpha(), Thug->GetBodyMesh() != Thug->GetMesh() ? TEXT("drawn") : TEXT("none (mannequin)")));
+			Test->AddInfo(FString::Printf(TEXT("%s.png: %s, winding up %d, look %s."), Name, *GetNameSafe(Thug->GetBodyMesh()->GetSkeletalMeshAsset()),
+				bWinding ? 1 : 0, Thug->GetBodyMesh() != Thug->GetMesh() ? TEXT("drawn") : TEXT("none (mannequin)")));
 			if (Subject == PunchShot)
 			{
 				Test->TestTrue(FString::Printf(TEXT("%s: caught in the wind-up (the telegraph glow is on)"), Name), bWinding);
-			}
-			else
-			{
-				Test->TestTrue(FString::Printf(TEXT("%s: caught in the flash (%.2f)"), Name, Thug->GetHitFlashAlpha()), Thug->GetHitFlashAlpha() > 0.5f);
 			}
 		}
 		else if (const AHawkeyeCharacter* Clint = Cast<AHawkeyeCharacter>(Character))

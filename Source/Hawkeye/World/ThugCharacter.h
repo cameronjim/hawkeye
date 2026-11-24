@@ -571,17 +571,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0"))
 	float KnockdownLaunchSpeed = 450.f;
 
-	/** Pulses the body's emissive for HitFlashSeconds. Every hit that costs him health calls it. */
-	UFUNCTION(BlueprintCallable, Category = "Thug|Hit")
-	void FlashHit();
-
-	/** 1 the instant he is hit, fading to 0 over HitFlashSeconds. */
-	UFUNCTION(BlueprintPure, Category = "Thug|Hit")
-	float GetHitFlashAlpha() const { return HitFlashSeconds > 0.f ? HitFlashRemaining / HitFlashSeconds : 0.f; }
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Hit", meta = (ClampMin = "0.0"))
-	float HitFlashSeconds = 0.1f;
-
 	// --- Patrol and loot ------------------------------------------------------------------------
 
 	/** Points this thug walks between while Calm. Place ATargetPoints and fill this in. */
@@ -982,10 +971,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Components")
 	FVector HeadwearOffset = FVector(2.f, 0.f, 10.f);
 
-	/** Scalar parameter on the body material pulsed by FlashHit. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Hit")
-	FName HitFlashParameter = FName(TEXT("HitFlash"));
-
 	/** Scalar parameter held at 1 through a swing's wind-up: the mask glows red. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Thug|Hit")
 	FName TelegraphParameter = FName(TEXT("Telegraph"));
@@ -1060,7 +1045,6 @@ private:
 	TObjectPtr<UAnimMontage> KnockdownMontage;
 
 	TWeakObjectPtr<UAnimInstance> KnockdownInstance;
-	float HitFlashRemaining = 0.f;
 
 	/** Seconds until the body meets the ground after a knockdown or a death; 0 when none is waiting. */
 	float GroundThudRemaining = 0.f;
@@ -1074,7 +1058,6 @@ private:
 	void UpdateGroundThud(float DeltaSeconds);
 
 	/** What the materials were last given, so the parameters are only written on a change. */
-	float LastFlashWritten = -1.f;
 	float LastTelegraphWritten = -1.f;
 
 	/** The mesh's mount on the capsule, restored when he stands back up. */

@@ -453,28 +453,21 @@ void AThugCharacter::CreateBodyMaterials()
 	}
 }
 
-void AThugCharacter::FlashHit()
-{
-	HitFlashRemaining = HitFlashSeconds;
-}
-
 void AThugCharacter::UpdateMaterialPulse(float DeltaSeconds)
 {
-	HitFlashRemaining = FMath::Max(0.f, HitFlashRemaining - DeltaSeconds);
-	const float Flash = GetHitFlashAlpha();
+	// Only the red telegraph is written: a hit changes nothing about the body's colour (the puff at the contact point
+	// is the feedback), so there is no whole-body flash.
 	const float Telegraph = MeleeComponent && MeleeComponent->IsWindingUp() && !bLimp ? 1.f : 0.f;
-	if (Flash == LastFlashWritten && Telegraph == LastTelegraphWritten)
+	if (Telegraph == LastTelegraphWritten)
 	{
 		return;
 	}
 
-	LastFlashWritten = Flash;
 	LastTelegraphWritten = Telegraph;
 	for (UMaterialInstanceDynamic* Instance : BodyMaterials)
 	{
 		if (Instance)
 		{
-			Instance->SetScalarParameterValue(HitFlashParameter, Flash);
 			Instance->SetScalarParameterValue(TelegraphParameter, Telegraph);
 		}
 	}
@@ -486,7 +479,6 @@ void AThugCharacter::HandleHealthChanged(UHealthComponent* Health, float /*NewHe
 	{
 		return;
 	}
-	FlashHit();
 	StartHitLean(DamageInstigator);
 	if (const UWorld* World = GetWorld())
 	{
