@@ -15,6 +15,16 @@
 			]
 		},
 		{
+			"Name": "HawkeyeAnimEditor",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject",
+				"AnimGraph"
+			]
+		},
+		{
 			"Name": "HawkeyeEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default",

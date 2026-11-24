@@ -205,10 +205,10 @@ namespace HawkeyeRetargetGraph
 		return Node;
 	}
 
-	/** The Hawkeye Body Pose graph node (a class of the HawkeyeEditor module, found by path), or null when it is not loaded. */
+	/** The Hawkeye Body Pose graph node (a class of the HawkeyeAnimEditor module, found by path), or null when it is not loaded. */
 	static UEdGraphNode* AddBodyPoseNode(UEdGraph& Graph, int32 X)
 	{
-		UClass* NodeClass = FindObject<UClass>(nullptr, TEXT("/Script/HawkeyeEditor.AnimGraphNode_HawkeyeBodyPose"));
+		UClass* NodeClass = FindObject<UClass>(nullptr, TEXT("/Script/HawkeyeAnimEditor.AnimGraphNode_HawkeyeBodyPose"));
 		if (!NodeClass)
 		{
 			return nullptr;
@@ -400,7 +400,7 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageN
 			}
 			else if (Failure.IsEmpty())
 			{
-				Failure = TEXT("the Hawkeye Body Pose graph node is not loaded (the HawkeyeEditor module)");
+				Failure = TEXT("the Hawkeye Body Pose graph node is not loaded (the HawkeyeAnimEditor module)");
 			}
 		}
 		FGraphNodeCreator<UAnimGraphNode_ComponentToLocalSpace> ToLocalCreator(*Graph);
