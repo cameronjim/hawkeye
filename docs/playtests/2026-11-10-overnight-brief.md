@@ -17,6 +17,21 @@ standalone laps, and screenshots read by eye.
 Open the editor before we talk so the Unreal MCP tools can connect.
 
 ## On main
+- **A real stealth takedown, our own get-ups and hit reactions, keyed in Blender by script. Merged 2026-11-24.** Sneak
+  up behind a calm thug and take him down: Kate now steps in, wraps her arm across his chest, pulls him back off his feet
+  and drags him down onto his back, lets go and stands (1.7 s; before, she stood still and he was thrown away as a
+  ragdoll). Next to a wall or a ledge it falls back to the old takedown. Knock a thug down with a heavy: after 3 s he
+  gets up properly instead of sliding off the floor in 0.4 s (sits up, draws his feet in, rocks into a crouch, stands).
+  Throw one with a blast: face down he pushes up, gets onto hands and knees, steps a foot through and rises. Hit him while
+  he gets up: he takes the damage but finishes getting up. Hit Kate with fists: her reaction is her own (head and chest
+  snap away, a step to catch herself), not Sparrow's bow stance flashing in; a bat or the heavy's bash throws her two
+  steps back. Hook a thug from the side: same. Not changed: the thugs' front hit (Mixamo's punch to the face reads better
+  than ours) and the bow (ours was the same motion as Sparrow's, faster, not better). Also fixed: after every blast the
+  thug's body was left a metre under the street at the world's origin once he stood up. Clips: `Tools/Blender/build_clips.py`;
+  strips in `Saved/Screenshots/Clips/` (`Hawkeye.Screenshot.Clips`). Gate: both builds, 605 headless tests, 234 Python
+  tests and ruff, create-content twice clean, city and content verify, traversal audit (2457 anchors, 24459 pairs), 13 of
+  13 laps (SocialClub 107.4 s of fighting, Santa 48.5 and 58.3 s; the paired takedown ran in the Grotto, InteriorStealth
+  and Campaign laps).
 - **The block, third look pass: real lettering, facades, parked cars, trees, night. Merged 2026-11-13.** Walk out of
   the start by day and by night. The signs are now smooth Roboto lettering (baked by script from the engine's own font
   into a signed-distance atlas), in four real treatments: painted fascias, raised letters with a shadow, lit box signs
