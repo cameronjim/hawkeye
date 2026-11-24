@@ -1038,7 +1038,7 @@ private:
 		}
 		const FVector Mid = (Left + Right) * 0.5f;
 		const float Spread = FVector::Dist(Left, Right);
-		const float Distance = FMath::Max(70.f, Spread * 1.3f + 40.f);
+		const float Distance = FMath::Max(70.f, Spread * 2.0f + 40.f);
 		FVector Dir = (Camera->GetActorLocation() - Mid).GetSafeNormal();
 		// Seen from a little above, so the palms and the finger curl read.
 		Dir = (Dir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
