@@ -220,6 +220,7 @@ bool FHawkeyeHitContactHitStop::RunTest(const FString& Parameters)
 		Reaction->BeginFreeze(0.05f, FVector::ForwardVector, 1.f, false);
 		TestEqual(TEXT("A second blow while frozen counts twice"), Reaction->GetFreezeCount(), 2);
 	}
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeHitContactKnockout, "Hawkeye.HitContact.KnockoutImpulse",
