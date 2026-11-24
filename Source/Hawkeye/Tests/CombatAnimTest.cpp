@@ -1,3 +1,4 @@
+#include "Combat/HitReactionComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimNotifyQueue.h"
 #include "Combat/AnimNotifyState_ComboWindow.h"

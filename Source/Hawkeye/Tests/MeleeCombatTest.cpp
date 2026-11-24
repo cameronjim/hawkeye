@@ -1,3 +1,4 @@
+#include "Combat/HitReactionComponent.h"
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
 #include "Combat/WeaponComponent.h"

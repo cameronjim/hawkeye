@@ -1,3 +1,4 @@
+#include "Combat/HitReactionComponent.h"
 #include "Combat/ArrowDefinition.h"
 #include "Combat/ArrowProjectile.h"
 #include "Combat/BowComponent.h"

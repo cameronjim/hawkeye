@@ -1,3 +1,4 @@
+#include "Combat/HitReactionComponent.h"
 #include "Combat/BowComponent.h"
 #include "Combat/BowIKAnimInstance.h"
 #include "Combat/FinisherComponent.h"
