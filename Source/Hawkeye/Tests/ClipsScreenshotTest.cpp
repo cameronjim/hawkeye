@@ -872,8 +872,9 @@ bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 	FString Tag = TEXT("after");
 	FParse::Value(FCommandLine::Get(), TEXT("ContactStripTag="), Tag);
 	AddContact(this, State, TEXT("contact_light_") + Tag, false);
-	AddContact(this, State, TEXT("contact_heavy_") + Tag, true);
+	// The chain before the heavy: the heavy knocks him down, and the next strip needs him on his feet.
 	AddContact(this, State, TEXT("contact_chain_") + Tag, false, true);
+	AddContact(this, State, TEXT("contact_heavy_") + Tag, true);
 	if (!bContactOnly)
 	{
 		AddGetUp(this, State, TEXT("getup_from_clip"), false, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
