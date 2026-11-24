@@ -375,7 +375,7 @@ void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float Di
 	Shove->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
 	Shove->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
 	Movement->ApplyRootMotionSource(Shove);
-	UE_LOG(LogHawkeye, Verbose, TEXT("%s: knock-back %.0f cm over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()), DistanceCm,
+	UE_LOG(LogHawkeye, Log, TEXT("%s: knock-back %.0f cm over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()), DistanceCm,
 		Weld.KnockbackSeconds, Peak);
 }
 

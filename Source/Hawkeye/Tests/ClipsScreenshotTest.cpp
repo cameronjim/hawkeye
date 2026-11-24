@@ -296,7 +296,7 @@ namespace HawkeyeClipShots
 	 * A live blow (Kate's light or heavy at a thug ContactGap off) as eight frames round its hit: two before, the hit
 	 * frame, five after, 1 / 30 s apart. The world runs on to each time (from the press) and is stopped for the shot.
 	 */
-	static void AddContact(FAutomationTestBase* Test, TSharedRef<FState> State, const FString& Name, bool bHeavy)
+	static void AddContact(FAutomationTestBase* Test, TSharedRef<FState> State, const FString& Name, bool bHeavy, bool bChain = false)
 	{
 		struct FContact
 		{
@@ -305,9 +305,13 @@ namespace HawkeyeClipShots
 			/** His head and chest before the blow, to see that he is on the hit pose on the hit frame (not a statue). */
 			FVector HeadBefore = FVector::ZeroVector;
 			FVector ChestBefore = FVector::ZeroVector;
+			FVector ThugStart = FVector::ZeroVector;
+			/** A chain: lights pressed so far, and the seconds between its frames (0.1 s: three blows in 12 frames). */
+			int32 Presses = 1;
+			double Step = 1.0 / 30.0;
 		};
 		const TSharedRef<FContact> Run = MakeShared<FContact>();
-		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, bHeavy]()
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, bHeavy, bChain]()
 		{
 			AHawkeyeCharacter* Kate = State->Kate.Get();
 			AThugCharacter* Thug = State->Thug.Get();
@@ -332,6 +336,7 @@ namespace HawkeyeClipShots
 			Frame(*State, Kate, -ContactGap * 0.5f);
 			Run->HeadBefore = Thug->GetMesh()->GetBoneLocation(FName(TEXT("head")));
 			Run->ChestBefore = Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03")));
+			Run->ThugStart = Thug->GetActorLocation();
 			UMeleeComponent* Melee = Kate->GetMeleeComponent();
 			Melee->SetNextAttackTarget(Thug);
 			const bool bStarted = bHeavy ? Kate->StartHeavyAttack() : Kate->StartLightAttack();
@@ -349,6 +354,7 @@ namespace HawkeyeClipShots
 				Run->HitSeconds = Start;
 			}
 			Run->StartedAt = Kate->GetWorld()->GetTimeSeconds();
+			Run->Step = bChain ? 0.1 : 1.0 / 30.0;
 			return true;
 		}));
 		// Two frames before the hit, the hit frame, nine after (the release and the step): 30 fps apart.
@@ -357,7 +363,7 @@ namespace HawkeyeClipShots
 			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([State, Run, Offset]()
 			{
 				const AHawkeyeCharacter* Kate = State->Kate.Get();
-				return !Kate || Kate->GetWorld()->GetTimeSeconds() - Run->StartedAt >= Run->HitSeconds + Offset / 30.0;
+				return !Kate || Kate->GetWorld()->GetTimeSeconds() - Run->StartedAt >= Run->HitSeconds + Offset * Run->Step;
 			}, []() { return true; }, 4.f));
 			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
 			{
@@ -368,24 +374,33 @@ namespace HawkeyeClipShots
 				return true;
 			}));
 			ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.3f));
-			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, Name, Offset]()
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, Name, Offset, bChain]()
 			{
 				const AHawkeyeCharacter* Kate = State->Kate.Get();
 				const double Elapsed = Kate ? Kate->GetWorld()->GetTimeSeconds() - Run->StartedAt : 0.0;
+				if (bChain && Kate && Run->Presses < 3 && Elapsed > 0.3 * Run->Presses)
+				{
+					// The next light of the chain, pressed in the recovery (the buffer keeps it).
+					State->Kate->StartLightAttack();
+					++Run->Presses;
+				}
 				if (const AThugCharacter* Thug = State->Thug.Get())
 				{
 					const UHitReactionComponent* React = Thug->GetHitReactionComponent();
 					const float HeadMoved = FVector::Dist(Run->HeadBefore, Thug->GetMesh()->GetBoneLocation(FName(TEXT("head"))));
 					const float ChestMoved = FVector::Dist(Run->ChestBefore, Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03"))));
 					Test->AddInfo(FString::Printf(TEXT("%s frame %+d at %.3f s: frozen %d (%.3f s), his head %.1f cm and chest %.1f cm off where they were, "
-						"%d puffs asked for, he is %.0f cm from her."), *Name, Offset, Elapsed, React && React->IsFrozen() ? 1 : 0,
+						"%d puffs asked for, he is %.0f cm from her and his capsule %.1f cm from where he stood."), *Name, Offset, Elapsed, React && React->IsFrozen() ? 1 : 0,
 						React ? React->GetFreezeSeconds() : 0.f, HeadMoved, ChestMoved,
 						UHawkeyeVfxSubsystem::Find(Thug) ? UHawkeyeVfxSubsystem::Find(Thug)->GetRequestCount(UHawkeyeVfxSubsystem::MeleePuffEvent) : -1,
-						Kate ? FVector::Dist2D(Kate->GetActorLocation(), Thug->GetActorLocation()) : 0.f));
-					// On the hit frame he must already be on his hit pose: the head or the chest moved off the idle's place.
-					if (Offset == 0 && HeadMoved < 1.5f && ChestMoved < 1.5f)
+						Kate ? FVector::Dist2D(Kate->GetActorLocation(), Thug->GetActorLocation()) : 0.f,
+						FVector::Dist2D(Run->ThugStart, Thug->GetActorLocation())));
+					// By the first frame after the hit he must be on his hit pose (the pose is evaluated on the next rendered frame; a
+					// capture that stops the world in the very tick of the blow catches the frame before it): the head or the chest
+					// off the idle's place.
+					if (Offset == 1 && HeadMoved < 1.5f && ChestMoved < 1.5f)
 					{
-						Test->AddError(FString::Printf(TEXT("%s: on the hit frame he is still in his idle pose (head %.1f, chest %.1f cm): a statue."),
+						Test->AddError(FString::Printf(TEXT("%s: one frame after the hit he is still in his idle pose (head %.1f, chest %.1f cm): a statue."),
 							*Name, HeadMoved, ChestMoved));
 					}
 					if (Offset == 0 && React && React->IsFrozen())
@@ -858,6 +873,7 @@ bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 	FParse::Value(FCommandLine::Get(), TEXT("ContactStripTag="), Tag);
 	AddContact(this, State, TEXT("contact_light_") + Tag, false);
 	AddContact(this, State, TEXT("contact_heavy_") + Tag, true);
+	AddContact(this, State, TEXT("contact_chain_") + Tag, false, true);
 	if (!bContactOnly)
 	{
 		AddGetUp(this, State, TEXT("getup_from_clip"), false, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
