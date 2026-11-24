@@ -341,6 +341,14 @@ public:
 	float TestAimFOV() const { return AimCamera.FieldOfView; }
 	float TestHipFOV() const { return HipCamera.FieldOfView; }
 	float TestAimBlendSeconds() const { return AimBlendSeconds; }
+	const FHawkeyeCameraTargets& TestHipCamera() const { return HipCamera; }
+	const FHawkeyeCameraTargets& TestAimCamera() const { return AimCamera; }
+	const FHawkeyeCameraPitchCurve& TestHipPitchCurve() const { return HipPitchCurve; }
+	const FHawkeyeCameraPitchCurve& TestAimPitchCurve() const { return AimPitchCurve; }
+	float TestProbeSize() const { return CameraProbeSize; }
+	float TestIndoorArmLength() const { return IndoorArmLength; }
+	float TestHideBodyDistance() const { return CameraHideBodyDistance; }
+	float TestShowBodyDistance() const { return CameraShowBodyDistance; }
 
 	float MaxWalkSpeed() const;
 

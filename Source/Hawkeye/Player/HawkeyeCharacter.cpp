@@ -36,6 +36,8 @@
 #include "Settings/HawkeyeAccessibility.h"
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
+#include "GameFramework/WorldSettings.h"
+#include "Player/CameraRules.h"
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
@@ -116,9 +118,10 @@ AHawkeyeCharacter::AHawkeyeCharacter(const FObjectInitializer& ObjectInitializer
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationRoll = false;
 
-	// The arm sweeps a small sphere on the Camera channel and pulls in when it hits, so backing
-	// into a tenement puts the camera at the wall rather than inside it.
-	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
+	// The arm sweeps a sphere on the Camera channel and pulls in when it hits, so backing
+	// into a tenement puts the camera at the wall rather than inside it. It is the Hawkeye arm: lag that can be
+	// reset and is clamped, a floor rule, a shoulder-first sweep (Player/HawkeyeSpringArmComponent.h).
+	CameraBoom = CreateDefaultSubobject<UHawkeyeSpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(GetCapsuleComponent());
 	CameraBoom->TargetArmLength = HipCamera.ArmLength;
 	CameraBoom->SocketOffset = HipCamera.SocketOffset;
@@ -1263,7 +1266,7 @@ void AHawkeyeCharacter::Input_Look(const FInputActionValue& Value)
 	bLookFromStick = false;
 
 	AddControllerYawInput(LookInput.X);
-	AddControllerPitchInput(LookInput.Y);
+	AddControllerPitchInput(ScaleLookPitch(LookInput.Y));
 }
 
 FVector2D AHawkeyeCharacter::ComputeStickLookDelta(FVector2D RawInput, float DeltaSeconds, bool bAiming) const
@@ -1315,7 +1318,7 @@ void AHawkeyeCharacter::Input_LookStick(const FInputActionValue& Value)
 	bLookFromStick = true;
 
 	AddControllerYawInput(LookDelta.X);
-	AddControllerPitchInput(LookDelta.Y);
+	AddControllerPitchInput(ScaleLookPitch(LookDelta.Y));
 }
 
 void AHawkeyeCharacter::Input_SprintStarted(const FInputActionValue& /*Value*/)
@@ -1649,23 +1652,42 @@ void AHawkeyeCharacter::UpdateMaxWalkSpeed()
 
 FHawkeyeCameraTargets AHawkeyeCharacter::ComputeCameraTargets(bool bAiming, float Pitch) const
 {
+	const UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const float HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 90.f;
 	if (bAiming)
 	{
-		return AimCamera;
+		return HawkeyeCameraRules::ComputePitchTargets(AimCamera, AimPitchCurve, Pitch, HalfHeight);
 	}
-	FHawkeyeCameraTargets Targets = HipCamera;
-	const float Span = LookUpPitchFull - LookUpPitchStart;
-	const float Alpha = Span > 0.f
-		? FMath::Clamp((Pitch - LookUpPitchStart) / Span, 0.f, 1.f)
-		: (Pitch >= LookUpPitchFull ? 1.f : 0.f);
-	Targets.ArmLength = FMath::Lerp(HipCamera.ArmLength, LookUpArmLength, Alpha);
-	Targets.SocketOffset.Z = FMath::Lerp(HipCamera.SocketOffset.Z, LookUpSocketZ, Alpha);
-	Targets.PivotLift = FMath::Lerp(HipCamera.PivotLift, LookUpPivotLift, Alpha);
-	if (bIndoorCamera)
+	FHawkeyeCameraTargets Targets = HawkeyeCameraRules::ComputePitchTargets(HipCamera, HipPitchCurve, Pitch, HalfHeight);
+	if (bIndoorCamera && Targets.ArmLength > IndoorArmLength)
 	{
-		Targets.ArmLength = FMath::Min(Targets.ArmLength, IndoorArmLength);
+		// A shorter arm drops the lens at a look up, so the lift is worked out again for it.
+		Targets.ArmLength = IndoorArmLength;
+		Targets = HawkeyeCameraRules::EnsureLensHeight(Targets, Pitch, HalfHeight, HipPitchCurve.MinLensHeight);
 	}
 	return Targets;
+}
+
+void AHawkeyeCharacter::NotifyTeleported(bool bSnapCamera)
+{
+	++CameraCutCount;
+	if (!bSnapCamera)
+	{
+		return;
+	}
+	bCameraStateValid = false;
+	CameraHeldHalfHeight = 0.f;
+	if (CameraBoom)
+	{
+		CameraBoom->ResetLag();
+	}
+}
+
+float AHawkeyeCharacter::ScaleLookPitch(float PitchDelta) const
+{
+	const float Pitch = Controller ? FRotator::NormalizeAxis(Controller->GetControlRotation().Pitch) : 0.f;
+	return PitchDelta * HawkeyeCameraRules::PitchLimitScale(Pitch, PitchDelta, CameraPitchMin, CameraPitchMax, CameraPitchEaseBand,
+		CameraPitchEaseMinScale);
 }
 
 float AHawkeyeCharacter::GetCurrentFOV() const
@@ -1673,18 +1695,8 @@ float AHawkeyeCharacter::GetCurrentFOV() const
 	return FollowCamera ? FollowCamera->FieldOfView : HipCamera.FieldOfView;
 }
 
-void AHawkeyeCharacter::UpdateCamera(float DeltaSeconds)
+void AHawkeyeCharacter::ApplyCameraLayers(FHawkeyeCameraTargets& Blend, float DeltaSeconds, FVector2D& OutShake, float& OutFightPitch)
 {
-	// Constant rate, so the blend really takes AimBlendSeconds; the smoothstep only shapes it.
-	const float Target = bIsAiming ? 1.f : 0.f;
-	AimAlpha = AimBlendSeconds > 0.f
-		? FMath::FInterpConstantTo(AimAlpha, Target, DeltaSeconds, 1.f / AimBlendSeconds)
-		: Target;
-
-	const float Pitch = Controller ? FRotator::NormalizeAxis(Controller->GetControlRotation().Pitch) : 0.f;
-	FHawkeyeCameraTargets Blend = FHawkeyeCameraTargets::Lerp(
-		ComputeCameraTargets(false, Pitch), ComputeCameraTargets(true, Pitch), FMath::SmoothStep(0.f, 1.f, AimAlpha));
-
 	// A controlled drop's dip: the camera sinks and comes back up over the recovery.
 	if (LandingState == EHawkeyeLanding::Dip && LandingRecoverSeconds > 0.f)
 	{
@@ -1692,13 +1704,15 @@ void AHawkeyeCharacter::UpdateCamera(float DeltaSeconds)
 		Blend.SocketOffset.Z -= LandingCameraDip * FMath::Sin(PI * Phase);
 	}
 
-	// A hit on her throws the lens about for a moment; decaying, two unrelated frequencies.
+	// A hit on her throws the lens about for a moment; decaying, two unrelated frequencies. It goes to the arm as a
+	// shake to add after the sweep (swept itself), not into the socket where it would drag the sweep around.
+	OutShake = FVector2D::ZeroVector;
 	const float Shake = GetHitShakeAlpha();
 	if (Shake > 0.f)
 	{
 		const float Time = (ActiveShakeSeconds - HitShakeRemaining) * 60.f;
-		Blend.SocketOffset.Y += ActiveShakeAmplitude * Shake * FMath::Sin(Time * 1.7f);
-		Blend.SocketOffset.Z += ActiveShakeAmplitude * Shake * FMath::Cos(Time * 2.3f);
+		OutShake.X = ActiveShakeAmplitude * Shake * FMath::Sin(Time * 1.7f);
+		OutShake.Y = ActiveShakeAmplitude * Shake * FMath::Cos(Time * 2.3f);
 	}
 
 	// A finisher pushes the lens in on the blow.
@@ -1712,9 +1726,8 @@ void AHawkeyeCharacter::UpdateCamera(float DeltaSeconds)
 	// frame; it gives way to the aim and to the finisher's push, and indoors never passes the room's cap.
 	UpdateFightCamera(DeltaSeconds);
 	float FightArm = 0.f;
-	float FightPitch = 0.f;
 	HawkeyeCombatReadability::ComputeFightOffsets(FightCameraAlpha, FMath::SmoothStep(0.f, 1.f, AimAlpha), PushAlpha, FightCamera,
-		FightArm, FightPitch);
+		FightArm, OutFightPitch);
 	if (bIndoorCamera)
 	{
 		FightArm = FMath::Min(FightArm, FMath::Max(IndoorArmLength - Blend.ArmLength, 0.f));
@@ -1737,16 +1750,74 @@ void AHawkeyeCharacter::UpdateCamera(float DeltaSeconds)
 	{
 		ParkourComponent->ApplyHangCamera(Blend, DeltaSeconds);
 	}
+}
+
+FHawkeyeCameraTargets AHawkeyeCharacter::LimitCameraTargets(const FHawkeyeCameraTargets& Wanted, float Pitch, float HalfHeight,
+	float MinLensHeight, float CameraDelta)
+{
+	// However the layers stack, the lens moves at the rates' cap; the first frame and the frame after a cut start at the target.
+	if (!bCameraStateValid)
+	{
+		CameraState = Wanted;
+		bCameraStateValid = true;
+		CameraHeldHalfHeight = HalfHeight;
+	}
+	else
+	{
+		CameraState = HawkeyeCameraRules::LimitTargetStep(CameraState, Wanted, CameraDelta, HawkeyeCameraRules::FRates());
+	}
+	// The lift that keeps the lens off the floor is not limited: it is worked out again from the limited arm and socket,
+	// and rises at once. Only its fall is eased.
+	CameraState = HawkeyeCameraRules::EnsureLensHeight(CameraState, Pitch, HalfHeight, MinLensHeight);
+
+	// A capsule that shrinks (a roll, a slide) drops the pivot in one step; the pivot is held and eases down.
+	constexpr float PivotDropPerSecond = 200.f;
+	CameraHeldHalfHeight = HawkeyeCameraRules::EasedHalfHeight(CameraHeldHalfHeight, HalfHeight, CameraDelta, PivotDropPerSecond);
+	FHawkeyeCameraTargets Out = CameraState;
+	Out.PivotLift += CameraHeldHalfHeight - HalfHeight;
+	return Out;
+}
+
+void AHawkeyeCharacter::UpdateCamera(float DeltaSeconds)
+{
+	// Constant rate, so the blend really takes AimBlendSeconds; the smoothstep only shapes it.
+	const float Target = bIsAiming ? 1.f : 0.f;
+	AimAlpha = AimBlendSeconds > 0.f
+		? FMath::FInterpConstantTo(AimAlpha, Target, DeltaSeconds, 1.f / AimBlendSeconds)
+		: Target;
+
+	const UWorld* World = GetWorld();
+	const AWorldSettings* Settings = World ? World->GetWorldSettings() : nullptr;
+	const float CameraDelta = HawkeyeCameraRules::UnscaledDelta(DeltaSeconds, Settings ? Settings->GetEffectiveTimeDilation() : 1.f);
+
+	const float Pitch = Controller ? FRotator::NormalizeAxis(Controller->GetControlRotation().Pitch) : 0.f;
+	const float HalfHeight = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.f;
+	const float AimBlend = FMath::SmoothStep(0.f, 1.f, AimAlpha);
+	FHawkeyeCameraTargets Blend = FHawkeyeCameraTargets::Lerp(ComputeCameraTargets(false, Pitch), ComputeCameraTargets(true, Pitch), AimBlend);
+
+	FVector2D Shake;
+	float FightPitch = 0.f;
+	ApplyCameraLayers(Blend, DeltaSeconds, Shake, FightPitch);
+
+	// Every layer has changed the arm and the socket by now: the lens must still clear its height, whatever they did.
+	const float MinLens = FMath::Lerp(HipPitchCurve.MinLensHeight, AimPitchCurve.MinLensHeight, AimBlend);
+	Blend = HawkeyeCameraRules::EnsureLensHeight(Blend, Pitch, HalfHeight, MinLens);
+	const FHawkeyeCameraTargets Eased = LimitCameraTargets(Blend, Pitch, HalfHeight, MinLens, CameraDelta);
 
 	if (CameraBoom)
 	{
-		CameraBoom->TargetArmLength = Blend.ArmLength;
-		CameraBoom->SocketOffset = Blend.SocketOffset;
-		CameraBoom->TargetOffset = FVector(0.f, 0.f, Blend.PivotLift);
+		CameraBoom->TargetArmLength = Eased.ArmLength;
+		CameraBoom->SocketOffset = Eased.SocketOffset;
+		CameraBoom->TargetOffset = FVector(0.f, 0.f, Eased.PivotLift);
+		CameraBoom->SetPostSweepShake(Shake);
+		// In the air under her own power the pivot's height holds inside the arc (zip, hang and the sample's traversal are
+		// not the air: the pivot follows those).
+		const UCharacterMovementComponent* Movement = GetCharacterMovement();
+		CameraBoom->SetVerticalHold(Movement && Movement->IsFalling());
 	}
 	if (FollowCamera)
 	{
-		FollowCamera->SetFieldOfView(Blend.FieldOfView);
+		FollowCamera->SetFieldOfView(Eased.FieldOfView);
 		// A roll tips the lens down and back up with her; the fight camera tips it down a little more.
 		const float RollPitch = GetLandingCameraPitch() - FightPitch;
 		if (!FMath::IsNearlyEqual(FollowCamera->GetRelativeRotation().Pitch, RollPitch))
@@ -1916,12 +1987,14 @@ void AHawkeyeCharacter::UpdateBodyVisibilityForCamera()
 		return;
 	}
 
-	// The arm places the lens after this tick, so this reads last frame's; a frame late is fine.
+	// The arm places the lens after this tick, so this reads last frame's; a frame late is fine. Hidden inside the hide
+	// distance, shown again only beyond the show distance: a lens riding the edge of one number made her flicker.
 	const float LensDistance = FVector::Dist(FollowCamera->GetComponentLocation(), CameraBoom->GetComponentLocation());
-	const bool bTooClose = LensDistance < CameraHideBodyDistance;
-	if (Body->bOwnerNoSee != bTooClose)
+	bBodyHiddenForCamera = HawkeyeCameraRules::ShouldHideBody(bBodyHiddenForCamera, LensDistance, CameraHideBodyDistance,
+		CameraShowBodyDistance);
+	if (Body->bOwnerNoSee != bBodyHiddenForCamera)
 	{
-		Body->SetOwnerNoSee(bTooClose);
+		Body->SetOwnerNoSee(bBodyHiddenForCamera);
 	}
 }
 

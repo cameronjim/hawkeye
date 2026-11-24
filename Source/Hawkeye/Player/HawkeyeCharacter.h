@@ -12,6 +12,7 @@
 #include "ISpudObject.h"
 #include "Player/BodyLook.h"
 #include "Player/HawkeyeMovementTypes.h"
+#include "Player/HawkeyeSpringArmComponent.h"
 #include "Player/HawkeyeSprintToggle.h"
 #include "Settings/HawkeyeSettings.h"
 #include "HawkeyeCharacter.generated.h"
@@ -21,7 +22,6 @@ class AThugCharacter;
 class UBowComponent;
 class UCameraComponent;
 class UInputAction;
-class USpringArmComponent;
 class UInputMappingContext;
 class UHealthComponent;
 class UHitReactionComponent;
@@ -72,7 +72,7 @@ public:
 
 	/** The boom the camera hangs off. Rotates with the control rotation. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")
-	USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+	UHawkeyeSpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 
 	/** The player's view, on the end of the boom. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Character")
@@ -352,14 +352,33 @@ public:
 	// --- Camera ---------------------------------------------------------------------------------
 
 	/**
-	 * Arm length, shoulder offset and FOV the camera settles at for this aim state and camera
-	 * pitch (degrees, up positive). No blending over time. At the hip, looking up past
-	 * LookUpPitchStart shortens the arm towards LookUpArmLength, lifts the socket towards
-	 * LookUpSocketZ and the pivot by up to LookUpPivotLift, all reached at LookUpPitchFull, so a
-	 * steep look up from the street does not drive the lens into the pavement.
+	 * Arm length, shoulder offset, FOV and pivot lift the camera settles at for this aim state and camera
+	 * pitch (degrees, up positive). No blending over time. Both the hip and the aim follow their pitch
+	 * curve (HipPitchCurve, AimPitchCurve): looking up from 5 degrees pulls the arm in, raises the socket
+	 * and widens the view; looking down moves the arm out; and the pivot lift is whatever keeps the lens
+	 * at least the curve's MinLensHeight above her feet on flat ground, so no pitch puts it in the
+	 * pavement (HawkeyeCameraRules::ComputePitchTargets, unit-tested for every pitch).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Camera")
 	FHawkeyeCameraTargets ComputeCameraTargets(bool bAiming, float Pitch = 0.f) const;
+
+	/**
+	 * Call after moving her by anything but walking: a teleport, a respawn, a save load, a fast travel, a snap into a
+	 * takedown spot. The camera cuts (the arm's lag history snaps to the new pose, the blended targets restart, the
+	 * pitch easing forgets its last frame) instead of swooping there through the level, and the camera audit knows the
+	 * frame is a cut. bSnapCamera false marks the cut but lets a short hop (a takedown's few centimetres) ride the lag.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Camera")
+	void NotifyTeleported(bool bSnapCamera = true);
+
+	/** How many camera cuts there have been (NotifyTeleported, and the arm's own teleport and pivot-jump detection). */
+	int32 GetCameraCutCount() const { return CameraCutCount + (CameraBoom ? CameraBoom->GetCutCount() : 0); }
+
+	/**
+	 * A look input of PitchDelta degrees (up positive), scaled down near the pitch limits so the view settles onto its
+	 * stop instead of hitting it (CameraPitchEaseBand, CameraPitchEaseMinScale).
+	 */
+	float ScaleLookPitch(float PitchDelta) const;
 
 	/** Pitch clamped to [CameraPitchMin, CameraPitchMax]. The player camera manager uses the same limits. */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Camera")
@@ -1091,6 +1110,13 @@ protected:
 	/** Moves the aim blend one frame and writes arm length, socket offset and FOV. */
 	void UpdateCamera(float DeltaSeconds);
 
+	/** Every layer on the camera but the pitch curve: a landing's dip, the hit shake (out, for the arm to add after its sweep), the finisher's push, the fight camera, the heavy punch, the hang's shoulder. */
+	void ApplyCameraLayers(FHawkeyeCameraTargets& Blend, float DeltaSeconds, FVector2D& OutShake, float& OutFightPitch);
+
+	/** The blended targets after the rate limits and the held pivot (CameraState); the lift keeps the lens off the floor throughout. */
+	FHawkeyeCameraTargets LimitCameraTargets(const FHawkeyeCameraTargets& Wanted, float Pitch, float HalfHeight, float MinLensHeight,
+		float CameraDelta);
+
 	/** Counts the alerted thugs round her (every FightRecountSeconds) and moves the fight camera's blend. */
 	void UpdateFightCamera(float DeltaSeconds);
 
@@ -1173,7 +1199,7 @@ protected:
 	 * the Camera channel and pulls in against walls. Length and offset are driven every frame.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hawkeye|Components")
-	TObjectPtr<USpringArmComponent> CameraBoom;
+	TObjectPtr<UHawkeyeSpringArmComponent> CameraBoom;
 
 	/** On the end of CameraBoom. The boom does the rotating, so this does not follow the pawn. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hawkeye|Components")
@@ -1730,29 +1756,29 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
 	float CameraRotationLagSpeed = 12.f;
 
-	/** Camera pitch (up positive) above which the hip arm starts to shorten and lift, degrees. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0", ClampMax = "89.0"))
-	float LookUpPitchStart = 20.f;
-
-	/** Camera pitch at which the hip arm is fully LookUpArmLength and LookUpSocketZ, degrees. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0", ClampMax = "89.0"))
-	float LookUpPitchFull = 60.f;
-
-	/** Hip arm length when looking steeply up, cm. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
-	float LookUpArmLength = 220.f;
-
-	/** Hip socket height when looking steeply up, cm. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera")
-	float LookUpSocketZ = 110.f;
-
 	/**
-	 * World-up lift of the arm's pivot when looking steeply up, cm, blended in with the other two.
-	 * The socket offset turns with the arm, so at 50 degrees and more it hardly raises the lens;
-	 * this keeps the lens off the pavement all the way to CameraPitchMax.
+	 * The hip camera along the look pitch: from 5 degrees up the arm shortens to 230 and the socket rises to 100, the
+	 * FOV widens by 7; looking down the arm goes out by 50; the pivot lifts as far as it takes to keep the lens 105 cm
+	 * above her feet (the guarantee is 80, the margin is for the lag). Level is HipCamera itself.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera")
-	float LookUpPivotLift = 150.f;
+	FHawkeyeCameraPitchCurve HipPitchCurve = FHawkeyeCameraPitchCurve(230.f, 100.f, 7.f, 50.f, 105.f);
+
+	/**
+	 * The aim camera along the look pitch: in closer and higher when looking up (arm 120, socket 85), out a little looking
+	 * down, the lens at least 75 cm above her feet (the guarantee is 60), the FOV held at the aim FOV so the reticle's
+	 * feel does not change with pitch.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera")
+	FHawkeyeCameraPitchCurve AimPitchCurve = FHawkeyeCameraPitchCurve(120.f, 85.f, 0.f, 30.f, 75.f);
+
+	/** Within this many degrees of the pitch limits a look input is slowed toward CameraPitchEaseMinScale. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
+	float CameraPitchEaseBand = 12.f;
+
+	/** The scale a look input has at the pitch limit itself. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float CameraPitchEaseMinScale = 0.35f;
 
 	/** Lowest the camera can look, degrees (down is negative). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Camera", meta = (ClampMin = "-89.0", ClampMax = "0.0"))
@@ -1765,17 +1791,25 @@ protected:
 	/** Hands CameraPitchMin/Max to the player camera manager, which clamps the look input with them. */
 	void ApplyCameraPitchLimits();
 
-	/** Radius of the sphere the arm sweeps to find walls. */
+	/**
+	 * Radius of the sphere the arm sweeps to find walls. It must be larger than the distance from the lens to a corner of
+	 * the near clip plane (16.9 cm at FOV 100 on 16:9 with the default 10 cm near plane), or a wall just outside the probe
+	 * still cuts through the frame; 20 clears it with a margin and the near plane is left alone.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
-	float CameraProbeSize = 12.f;
+	float CameraProbeSize = 20.f;
 
 	/**
 	 * When a wall pulls the lens closer than this to the arm's pivot, the body is hidden from the
 	 * player's view (it still casts its shadow). Otherwise backing into a tenement fills the
-	 * screen with the inside of Kate's shoulder.
+	 * screen with the inside of Kate's shoulder. It comes back only past CameraShowBodyDistance.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
-	float CameraHideBodyDistance = 100.f;
+	float CameraHideBodyDistance = 90.f;
+
+	/** The lens distance beyond which a hidden body is shown again; the gap to the hide distance is the hysteresis. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
+	float CameraShowBodyDistance = 120.f;
 
 	/** The look's mesh while BodyLook is on; null otherwise. */
 	UPROPERTY(Transient)
@@ -2211,6 +2245,19 @@ private:
 
 	/** Real seconds into the heavy's camera punch; below 0 when none is running. */
 	float CameraPunchElapsed = -1.f;
+
+	/** The camera targets after the rate limits (HawkeyeCameraRules::LimitTargetStep); restarted on a cut. */
+	FHawkeyeCameraTargets CameraState;
+	bool bCameraStateValid = false;
+
+	/** The capsule's half height the pivot is held at while the capsule shrinks (a roll, a slide). */
+	float CameraHeldHalfHeight = 0.f;
+
+	/** Cuts called through NotifyTeleported. */
+	int32 CameraCutCount = 0;
+
+	/** Whether the body is hidden from the camera now (the hysteresis's memory). */
+	bool bBodyHiddenForCamera = false;
 
 	/** How far the current kick pushes the lens, cm, by the blow's weight. */
 	float CameraKickDistance = 0.f;

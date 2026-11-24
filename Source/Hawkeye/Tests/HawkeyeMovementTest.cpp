@@ -6,6 +6,7 @@
 #include "GameFramework/RootMotionSource.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Misc/AutomationTest.h"
+#include "Player/CameraRules.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/ParkourComponent.h"
 #include "Tests/HawkeyeTestUtils.h"
@@ -62,29 +63,24 @@ bool FHawkeyeCameraLookUp::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	struct FCase
+	// The shape of the curves is in Hawkeye.Camera.PitchCurveShape and the lens-height guarantee in
+	// Hawkeye.Camera.LensHeightGuarantee (CameraRulesTest.cpp); this keeps the old endpoints and the clamps.
+	const FHawkeyeCameraTargets Level = Kate->ComputeCameraTargets(false, 0.f);
+	TestEqual(TEXT("Level arm"), Level.ArmLength, 350.f, 0.01f);
+	TestEqual(TEXT("Level lift"), Level.PivotLift, 0.f, 0.01f);
+	TestEqual(TEXT("Level FOV"), Level.FieldOfView, 90.f, 0.01f);
+	for (const float Pitch : { 10.f, 20.f, 30.f, 40.f, 60.f, 75.f })
 	{
-		float Pitch;
-		float Arm;
-		float SocketZ;
-		float Lift;
-	};
-	// 350 / 60 / 0 up to +20 degrees, a straight blend to 220 / 110 / 150 at +60, held beyond.
-	const FCase Cases[] = {
-		{ -40.f, 350.f, 60.f, 0.f }, { 0.f, 350.f, 60.f, 0.f }, { 20.f, 350.f, 60.f, 0.f },
-		{ 30.f, 317.5f, 72.5f, 37.5f }, { 40.f, 285.f, 85.f, 75.f }, { 60.f, 220.f, 110.f, 150.f },
-		{ 75.f, 220.f, 110.f, 150.f },
-	};
-	for (const FCase& Case : Cases)
-	{
-		const FHawkeyeCameraTargets Hip = Kate->ComputeCameraTargets(false, Case.Pitch);
-		TestEqual(FString::Printf(TEXT("Arm at %.0f degrees"), Case.Pitch), Hip.ArmLength, Case.Arm, 0.01f);
-		TestEqual(FString::Printf(TEXT("Socket Z at %.0f degrees"), Case.Pitch), static_cast<float>(Hip.SocketOffset.Z), Case.SocketZ, 0.01f);
-		TestEqual(FString::Printf(TEXT("Pivot lift at %.0f degrees"), Case.Pitch), Hip.PivotLift, Case.Lift, 0.01f);
-		TestEqual(FString::Printf(TEXT("Shoulder offset unchanged at %.0f degrees"), Case.Pitch), static_cast<float>(Hip.SocketOffset.Y), 70.f);
-		TestEqual(FString::Printf(TEXT("FOV unchanged at %.0f degrees"), Case.Pitch), Hip.FieldOfView, 90.f);
+		const FHawkeyeCameraTargets Hip = Kate->ComputeCameraTargets(false, Pitch);
+		TestTrue(FString::Printf(TEXT("The arm is shorter at %.0f degrees"), Pitch), Hip.ArmLength < 350.f);
+		TestTrue(FString::Printf(TEXT("The pivot is lifted at %.0f degrees"), Pitch), Hip.PivotLift > 0.f);
+		TestTrue(FString::Printf(TEXT("The view is wider at %.0f degrees"), Pitch), Hip.FieldOfView > 90.f);
+		TestEqual(FString::Printf(TEXT("Shoulder offset unchanged at %.0f degrees"), Pitch), static_cast<float>(Hip.SocketOffset.Y), 70.f);
+		const FHawkeyeCameraTargets Aim = Kate->ComputeCameraTargets(true, Pitch);
+		TestTrue(FString::Printf(TEXT("Aiming keeps the lens off the floor too at %.0f degrees"), Pitch),
+			HawkeyeCameraRules::LensHeightAboveFeet(Pitch, Aim.ArmLength, Aim.SocketOffset, Aim.PivotLift,
+				Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()) >= 60.f);
 	}
-	TestEqual(TEXT("Aiming ignores the pitch"), Kate->ComputeCameraTargets(true, 60.f).ArmLength, 180.f);
 	TestEqual(TEXT("The one-argument form is the level camera"), Kate->ComputeCameraTargets(false).ArmLength, 350.f);
 
 	TestEqual(TEXT("Pitch clamps at +75"), Kate->ClampCameraPitch(89.f), 75.f);
