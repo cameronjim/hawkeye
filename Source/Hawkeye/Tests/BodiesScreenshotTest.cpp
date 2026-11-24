@@ -1042,13 +1042,25 @@ private:
 		FVector Dir = (Camera->GetActorLocation() - Mid).GetSafeNormal();
 		// Seen from a little above, so the palms and the finger curl read.
 		Dir = (Dir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
-		const FVector Eye = Mid + Dir * Distance;
+		FVector Eye = Mid + Dir * Distance;
+		// A prop between the lens and the hands (a pole, a wall): look from the other side.
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(BodyShotHands), false, Current.Get());
+		FHitResult Blocked;
+		if (Camera->GetWorld()->LineTraceSingleByChannel(Blocked, Mid + Dir * 25.f, Eye, ECC_Visibility, Query))
+		{
+			Eye = Mid + FVector(-Dir.X, -Dir.Y, Dir.Z) * Distance;
+		}
 		Camera->SetActorLocationAndRotation(Eye, (Mid - Eye).Rotation());
 		Camera->GetCameraComponent()->SetFieldOfView(40.f);
 		PC->SetViewTarget(Camera);
 		if (Light)
 		{
 			Light->SetActorLocation(Eye + FVector(0.f, 0.f, 40.f));
+			// Close to the hands the full shot's lamp blows the skin out.
+			if (UPointLightComponent* Lamp = Light->PointLightComponent.Get())
+			{
+				Lamp->SetIntensity(120.f);
+			}
 		}
 	}
 
