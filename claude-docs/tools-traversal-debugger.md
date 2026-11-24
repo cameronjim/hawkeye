@@ -134,6 +134,14 @@ pairs 3536, 514 not reachable, 690 out of range; anchors from nowhere 45; street
 in range, 7 with no wall on a street); the chain unchanged. The game's picker: 24415 of 24459 picked dead on, 0
 disagreements dead on, 0 of 97836 aimed off.
 
+On 2026-11-24, after the camera rewrite ("Camera rules" in gameplay-semantics.md: a 20 cm probe, the pitch curves' lens
+heights, cars blocking the Camera channel), the commandlet: 2457 anchors, 4438 spots; pairs 76045 in range (same) / 34613 seen
+(was 35553) / 39181 zip-clear (same) / 24272 reachable (was 24459, 0.8% fewer); roofs with no anchor from a 10 m spot 78 and
+from 2.5 m 28 (same), none from another roof 6, neighbour pairs 536 not reachable (was 514), anchors from nowhere 46 (was 45);
+street-facing unreached 0; PASSED. Only the lens's stages moved: in range and zip-clear, which are collision and movement,
+are identical. The reach oracle's lens model does not know the arm's shoulder sweep or floor rule, so it is now the
+conservative one.
+
 Every roof row and every anchor row (`in_range`, `seen`, `clear`, `reach`, roof) is identical; the only differences
 in the JSON are the anchor names (`BP_GrappleAnchor_C_266` in the game, `City_Anchor_266` from the data, same
 number) and the picker fields. Two things had to be right for that:
