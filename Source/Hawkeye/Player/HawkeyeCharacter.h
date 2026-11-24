@@ -1895,9 +1895,11 @@ protected:
 	 * When a wall pulls the lens closer than this to the arm's pivot, the body is hidden from the
 	 * player's view (it still casts its shadow). Otherwise backing into a tenement fills the
 	 * screen with the inside of Kate's shoulder. It comes back only past CameraShowBodyDistance.
+	 * 145 cm: at the hip camera's 90 degrees her shoulders (about 45 cm) are a fifth of the frame there; at the old 90 they
+	 * were a third, filling its left side.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
-	float CameraHideBodyDistance = 90.f;
+	float CameraHideBodyDistance = 145.f;
 
 	/** Seconds the body keeps its hidden or shown state before it may change again: the audit holds a camera to under two toggles a second. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
@@ -1905,7 +1907,7 @@ protected:
 
 	/** The lens distance beyond which a hidden body is shown again; the gap to the hide distance is the hysteresis. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hawkeye|Camera", meta = (ClampMin = "0.0"))
-	float CameraShowBodyDistance = 120.f;
+	float CameraShowBodyDistance = 175.f;
 
 	/** The look's mesh while BodyLook is on; null otherwise. */
 	UPROPERTY(Transient)
