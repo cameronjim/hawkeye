@@ -89,6 +89,14 @@ ROLE_DEFAULTS = {
     "GetUp": {"slot": "DefaultSlot", "blend_in": 0.25, "blend_out": 0.2},
     "GetUpFront": {"slot": "DefaultSlot", "blend_in": 0.25, "blend_out": 0.2},
     "HitHeavy": {"slot": "DefaultSlot", "blend_in": 0.05, "blend_out": 0.15},
+    # The zone reactions (head snap, gut fold, leg buckle; light and heavy) start on their damaged pose with no blend (the
+    # weld: the game plays them from their HitPeakTime, blend 0), and settle out slowly.
+    "HitHeadLight": {"slot": "DefaultSlot", "blend_in": 0.0, "blend_out": 0.12},
+    "HitHeadHeavy": {"slot": "DefaultSlot", "blend_in": 0.0, "blend_out": 0.15},
+    "HitGutLight": {"slot": "DefaultSlot", "blend_in": 0.0, "blend_out": 0.12},
+    "HitGutHeavy": {"slot": "DefaultSlot", "blend_in": 0.0, "blend_out": 0.15},
+    "HitLegsLight": {"slot": "DefaultSlot", "blend_in": 0.0, "blend_out": 0.12},
+    "HitLegsHeavy": {"slot": "DefaultSlot", "blend_in": 0.0, "blend_out": 0.15},
     # The stealth takedown's pair: the victim holds his last frame (on the floor) until the ragdoll takes him.
     # Her half carries root motion: she drags him back about a metre and the capsule goes with her.
     "TakedownAttacker": {"slot": "DefaultSlot", "blend_in": 0.15, "blend_out": 0.2, "root_motion": True},

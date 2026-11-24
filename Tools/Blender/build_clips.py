@@ -12,6 +12,11 @@ A_Kate_Idle.fbx: the thugs' UE4 mannequin and Kate's UEFN mannequin, each in its
     <out>/<rig>/clips.json            per clip: length, the checks' measures
     <renders>/<rig>_<Clip>.png        side-on strip of the clip at fixed times (red bars along the top: tenths of s)
 
+The weld clips (2026-11-23): six hit reactions per rig by zone and weight (HitHead, HitGut, HitLegs; Light, Heavy) that
+start on their damaged pose, and Kate's jab, cross, hook and front kick (uefn), each built around the frame its hit window
+opens (a hold at full extension) at rate 1.0 with an early step-in. Their extras carry hit_peak_s, knockback_cm, contact_cm,
+contact_height_cm and wide into clips.json, and create_combat_anims.py bakes them into the anim sets.
+
 Every clip is keyed poses solved per frame (clipkit.py): the idle is the base, the hips carry the weight, limbs are IK
 to keyed targets with poles, hands and feet take keyed turns, and both ends meet the game's poses. The run fails on a
 foot sliding while planted, a joint turning faster than a body can, a hand inside the torso or a joint under the floor.
@@ -20,6 +25,7 @@ claude-docs/animation.md, "Authored clips", says what plays where.
 
 import argparse
 import json
+import math
 import os
 import sys
 
@@ -620,11 +626,398 @@ def takedown_attacker(rig):
                           "pop_degrees": 36.0})
 
 
+# --------------------------------------------------------------------------------------------------
+# the weld (2026-11-23): reactions that start on their damaged pose, and Kate's strikes built around the hit frame
+# --------------------------------------------------------------------------------------------------
+
+# claude-docs/gameplay-semantics.md, "The weld": a landed blow freezes both fighters on the hit pose, so a reaction clip's
+# FIRST frame is already the damaged pose (the game starts it there, HitPeakTime 0, with no blend), and a strike's clip has
+# a hold at full extension on the frame its hit window opens. Rates are 1.0 (nothing sped up).
+
+# How far a rig's centimetres are from the game's: Kate's driver is drawn at 0.93.
+RIG_SCALE = {"ue4": 1.0, "uefn": KATE_SCALE}
+# From a hand's or foot's bone to what meets him (knuckles past the wrist, toes past the ankle), and from his surface to the
+# bone the warp aims at (his ribs, his skull's centre): the clip's contact distance is the bone's flat reach plus both.
+REACH = {"hand": 9.0, "foot": 14.0}
+BODY_DEPTH = 16.0
+# The knock-back the game gives a reaction (UHitReactionComponent's weld tuning): a light 10 cm, a heavy 28, over 0.3 s
+# eased like (1 - t) ^ 2 in speed: a distance of 1 - (1 - t / 0.3) ^ 3 of it by t.
+KNOCK_SECONDS = 0.3
+# The share of the slide a planted foot holds in the world. All of it overstretches the leg (the slide is fastest at the
+# start: a heavy's 28 cm goes at 280 cm/s), so a planted foot skids with the capsule for the rest: 45% of the slide.
+PLANT_HOLD = 0.55
+
+
+def knock_share(t):
+    """The share of the knock-back done by t seconds: the integral of the eased speed."""
+    u = min(max(t / KNOCK_SECONDS, 0.0), 1.0)
+    return 1.0 - (1.0 - u) ** 3
+
+
+def dense(fn, t0, t1):
+    """Keys for fn(t) at every frame from t0 to t1 (the feet's drift against the knock-back is a curve of its own)."""
+    n0, n1 = int(round(t0 * ck.FPS)), int(round(t1 * ck.FPS))
+    return [(f / ck.FPS, fn(f / ck.FPS)) for f in range(n0, n1 + 1)]
+
+
+def foot_with_knock(base, shove, steps, seconds, lift=6.0):
+    """A foot's keys in the capsule's frame for a body the capsule slides back by `shove` cm (eased). Planted, it drifts
+    toward the blow as the capsule leaves it (its place in the world holds); a step [(t0, t1)] lifts it, swings it back and
+    sets it down on `base`, where it holds again against what is left of the slide. Ends on base at `seconds`."""
+    toward = V(0, -1, 0)
+
+    def planted(t, since):
+        k = (knock_share(t) - knock_share(since)) * PLANT_HOLD
+        return add(base, tuple(c * shove * k for c in toward))
+
+    keys = []
+    cursor = 0.0
+    since = 0.0
+    for t0, t1 in steps:
+        keys += dense(lambda t, s=since: planted(t, s), cursor, t0)
+        start = planted(t0, since)
+        for f in range(int(round(t0 * ck.FPS)) + 1, int(round(t1 * ck.FPS)) + 1):
+            t = f / ck.FPS
+            u = ck.smoothstep((t - t0) / (t1 - t0))
+            arc = lift * (1.0 - (2.0 * u - 1.0) ** 2)
+            keys.append((t, add(tuple(s + (b - s) * u for s, b in zip(start, base)), V(0, 0, arc))))
+        cursor = t1
+        since = t1
+    keys += dense(lambda t, s=since: planted(t, s), cursor, seconds)
+    # One key per frame (a step's last frame and the planted run's first are the same).
+    unique = {}
+    for t, v in keys:
+        unique[round(t, 4)] = v
+    return sorted(unique.items())
+
+
+def foot_turn(steps, seconds, pitch=-10.0):
+    """The foot's turn over the steps: toes up as it swings, flat as it lands."""
+    keys = [(0.0, V(0, 0, 0))]
+    for t0, t1 in steps:
+        keys += [(t0, V(0, 0, 0)), (t0 + (t1 - t0) * 0.45, V(pitch * 0.5, 0, 0)), (t0 + (t1 - t0) * 0.8, V(pitch, 0, 0)),
+                 (t1, V(0, 0, 0))]
+    keys.append((seconds, V(0, 0, 0)))
+    return keys
+
+
+def hit_zone(rig, zone, heavy):
+    """A reaction from a blow in front, by where it landed (the head snaps, the gut folds, the legs buckle), starting on its
+    damaged pose: frame 0 is the peak, the body then settles slowly past upright and back. The capsule slides back by the
+    knock-back (eased), so a planted foot holds its place in the world (PLANT_HOLD of the slide) and a stepping foot steps
+    back with it."""
+    P = tuple(rig.idle_pelvis)
+    fl = tuple(rig.idle_foot("l"))
+    fr = tuple(rig.idle_foot("r"))
+    hl = tuple(rig.idle_hand("l"))
+    hr = tuple(rig.idle_hand("r"))
+    k = 1.7 if heavy else 1.0
+    t = 0.8 if heavy else 0.55
+    shove = (HEAVY_SHOVE if heavy else LIGHT_SHOVE) / RIG_SCALE[rig.kind]
+    steps_r = [(0.04, 0.22)] if heavy else [(0.05, 0.2)]
+    steps_l = [(0.2, 0.42)] if heavy else [(0.32, 0.46)]
+    if zone == "Legs":
+        # The knees go: both feet stay put through the buckle, one shuffles back as he catches himself.
+        steps_r = [(0.34, 0.5)] if not heavy else [(0.3, 0.5)]
+        steps_l = []
+    body = {}
+    mid = t * 0.5
+    if zone == "Head":
+        body["chest"] = T([(0.0, V(-10 * k, 8 * k, 3 * k)), (0.08, V(-6 * k, 5 * k, 2 * k)), (0.2, V(1.5 * k, -1 * k, 0)),
+                           (0.32, V(-0.8 * k, 0, 0)), (mid + 0.1, V(0.3, 0, 0)), (t, V(0, 0, 0))])
+        body["neck"] = T([(0.0, V(-26 * k, 34 * k, 6 * k)), (0.06, V(-22 * k, 28 * k, 5 * k)), (0.16, V(-8 * k, 10 * k, 2 * k)),
+                          (0.28, V(3 * k, -3 * k, 0)), (0.4, V(-1 * k, 0, 0)), (t, V(0, 0, 0))])
+        body["pelvis_rot"] = T([(0.0, V(-3 * k, 3 * k, 0)), (0.2, V(0.5, 0, 0)), (t, V(0, 0, 0))])
+        body["pelvis_pos"] = T([(0.0, add(P, V(0, 2 * k, -1))), (0.2, add(P, V(0, 1, -0.5))), (t, P)])
+        hand_l = [(0.0, add(hl, V(2, -8, 12))), (0.15, add(hl, V(0, -4, 6))), (0.35, add(hl, V(0, -1, 1))), (t, hl)]
+        hand_r = [(0.0, add(hr, V(-2, -8, 10))), (0.15, add(hr, V(0, -4, 5))), (0.35, add(hr, V(0, -1, 1))), (t, hr)]
+    elif zone == "Gut":
+        body["chest"] = T([(0.0, V(26 * k, 0, 0)), (0.1, V(32 * k, 0, 0)), (0.25, V(22 * k, 0, 0)), (mid + 0.05, V(8 * k, 0, 0)),
+                           (t * 0.85, V(-1.5, 0, 0)), (t, V(0, 0, 0))])
+        body["neck"] = T([(0.0, V(14 * k, 0, 0)), (0.12, V(18 * k, 0, 0)), (0.3, V(8 * k, 0, 0)), (t * 0.85, V(-2, 0, 0)), (t, V(0, 0, 0))])
+        body["pelvis_rot"] = T([(0.0, V(8 * k, 0, 0)), (0.12, V(10 * k, 0, 0)), (0.3, V(4 * k, 0, 0)), (t, V(0, 0, 0))])
+        # Hips driven back and down: the weight goes behind the feet.
+        body["pelvis_pos"] = T([(0.0, add(P, V(0, 5 * k, -4 * k))), (0.12, add(P, V(0, 7 * k, -5 * k))), (0.3, add(P, V(0, 3 * k, -2 * k))),
+                                (t, P)])
+        # Both hands to the belly, then out and down.
+        belly_l = add(P, V(8, -18, 20))
+        belly_r = add(P, V(-8, -18, 20))
+        hand_l = [(0.0, belly_l), (0.2, add(belly_l, V(2, -2, 2))), (0.4, add(hl, V(0, -4, 4))), (t, hl)]
+        hand_r = [(0.0, belly_r), (0.2, add(belly_r, V(-2, -2, 2))), (0.4, add(hr, V(0, -4, 4))), (t, hr)]
+    else:
+        drop = 12.0 * k
+        body["pelvis_pos"] = T([(0.0, add(P, V(0, 3 * k, -drop * 0.8))), (0.1, add(P, V(0, 4 * k, -drop))),
+                                (0.25, add(P, V(0, 2 * k, -drop * 0.45))), (0.4, add(P, V(0, 0.5, -1.5))), (t, P)])
+        body["pelvis_rot"] = T([(0.0, V(6 * k, 0, 0)), (0.12, V(8 * k, 0, 0)), (0.3, V(2 * k, 0, 0)), (t, V(0, 0, 0))])
+        body["chest"] = T([(0.0, V(12 * k, 0, 0)), (0.12, V(16 * k, 0, 0)), (0.3, V(6 * k, 0, 0)), (t * 0.85, V(-1, 0, 0)), (t, V(0, 0, 0))])
+        body["neck"] = T([(0.0, V(6 * k, 0, 0)), (0.15, V(10 * k, 0, 0)), (0.35, V(2 * k, 0, 0)), (t, V(0, 0, 0))])
+        # Arms out for balance.
+        hand_l = [(0.0, add(hl, V(10, -10, 6))), (0.2, add(hl, V(8, -6, 8))), (0.4, add(hl, V(2, -2, 2))), (t, hl)]
+        hand_r = [(0.0, add(hr, V(-10, -10, 6))), (0.2, add(hr, V(-8, -6, 8))), (0.4, add(hr, V(-2, -2, 2))), (t, hr)]
+    body["hand_l"] = T(hand_l)
+    body["hand_r"] = T(hand_r)
+    body["foot_r"] = T(foot_with_knock(fr, shove, steps_r, t, lift=7.0 if heavy else 5.0))
+    body["foot_l"] = T(foot_with_knock(fl, shove, steps_l, t, lift=6.0 if heavy else 4.0))
+    body["foot_r_rot"] = T(foot_turn(steps_r, t))
+    body["foot_l_rot"] = T(foot_turn(steps_l, t))
+    name = "Hit{0}_{1}".format(zone, "Heavy" if heavy else "Light")
+    return ck.Clip(name, t, body, fade_in=0.0, fade_out=0.12, torso_clear=False,
+                   strip_times=[0.0, 0.04, 0.1, 0.17, 0.25, 0.34, 0.45, t],
+                   extra={"span": (-110.0, 110.0), "hit_peak_s": 0.0,
+                          "knockback_cm": HEAVY_SHOVE if heavy else LIGHT_SHOVE, "pop_degrees": 34.0 if heavy else 30.0})
+
+
+def hit_head_light(rig):
+    return hit_zone(rig, "Head", False)
+
+
+def hit_head_heavy(rig):
+    return hit_zone(rig, "Head", True)
+
+
+def hit_gut_light(rig):
+    return hit_zone(rig, "Gut", False)
+
+
+def hit_gut_heavy(rig):
+    return hit_zone(rig, "Gut", True)
+
+
+def hit_legs_light(rig):
+    return hit_zone(rig, "Legs", False)
+
+
+def hit_legs_heavy(rig):
+    return hit_zone(rig, "Legs", True)
+
+
+ZONE_HITS = [hit_head_light, hit_head_heavy, hit_gut_light, hit_gut_heavy, hit_legs_light, hit_legs_heavy]
+
+
+# ---- Kate's strikes ----
+
+# The anatomy these are keyed against, from the rig itself: where the shoulder is when the body has turned and leaned is not
+# a number to guess, so each hand is keyed as an offset from the solved shoulder (the body's tracks solved on their own).
+
+
+def shoulder_keys(rig, body, side, keys):
+    """Keys for a hand in the world the clip starts in: the solved shoulder at each key's time plus the key's offset (armature
+    axes: forward -Y, his left +X, up +Z). `body` is the body's own tracks, already in that world (the root's travel in
+    its pelvis), solved on their own."""
+    probe = ck.Clip("probe", max(t for t, _ in keys) + 0.1, dict(body))
+    out = []
+    for t, offset in keys:
+        pose = rig.solve(probe.params(t))
+        out.append((t, add(tuple(pose["upperarm_" + side].translation), V(*offset))))
+    return out
+
+
+def hand_track(rig, body, root, side, keys, seconds):
+    """A hand's track: the idle's place at both ends (the first and last key are placeholders), the inner keys on the
+    shoulder."""
+    idle = tuple(rig.idle_hand(side))
+    return T([(0.0, idle)] + shoulder_keys(rig, body, side, keys[1:-1]) + [(seconds, add(idle, tuple(root(seconds))))])
+
+
+def world(keys, root):
+    """Body-frame place keys [(t, place)] into the world the clip starts in: plus the root's travel at each time."""
+    return [(t, add(place, tuple(root(t)))) for t, place in keys]
+
+
+def root_step(distance, t0, t1):
+    """The capsule's travel, an early step-in (so the warp that scales it has the wind-up to do it in, not the hit's last
+    frames): nothing until t0, eased to `distance` forward (-Y) at t1."""
+    mid = (t0 + t1) * 0.5
+    keys = [(0.0, V(0, 0, 0))]
+    if t0 > 0.0:
+        keys.append((t0, V(0, 0, 0)))
+    keys += [(mid, V(0, -distance * 0.55, 0)), (t1, V(0, -distance, 0)), (t1 + 2.0, V(0, -distance, 0))]
+    return T(keys)
+
+
+def strike_feet(rig, step, lead_steps, rear_steps, seconds):
+    """Both feet keyed in the world the clip starts in: the capsule travels `step` cm forward, so each foot is planted in the
+    world, stepping forward by `step` to follow it (lead_steps, rear_steps are (t0, t1) windows)."""
+    fl = tuple(rig.idle_foot("l"))
+    fr = tuple(rig.idle_foot("r"))
+    fwd = V(0, -step, 0)
+
+    def one(base, steps):
+        keys = [(0.0, base)]
+        cur = base
+        for t0, t1 in steps:
+            if t0 > keys[-1][0] + 1e-6:
+                keys.append((t0, cur))
+            target = add(base, fwd)
+            keys += [(t0 + (t1 - t0) * 0.45, add(tuple((c + g) * 0.5 for c, g in zip(cur, target)), V(0, 0, 7))), (t1, target)]
+            cur = target
+        keys.append((seconds, cur))
+        return keys
+
+    return one(fl, lead_steps), one(fr, rear_steps)
+
+
+def _strike_clip(rig, name, seconds, body, root, hands, feet, hit, combo, limb, strip, extra=None):
+    tracks = dict(body)
+    tracks["root_pos"] = root
+    for side, keys in hands.items():
+        tracks["hand_" + side] = hand_track(rig, body, root, side, keys, seconds)
+    tracks["foot_l"] = T(feet[0])
+    tracks["foot_r"] = T(feet[1])
+    info = {"span": (-110.0, 150.0), "pop_degrees": 44.0, "hit_s": list(hit), "combo_s": list(combo),
+            "contact": [limb, hit[0]], "rate": 1.0}
+    info.update(extra or {})
+    return ck.Clip(name, seconds, tracks, fade_in=0.0, fade_out=0.15, torso_clear=False, strip_times=strip, extra=info)
+
+
+GUARD_L = (6, -16, -14)       # the left hand's guard, from the left shoulder: in front of the chin
+GUARD_R = (-6, -16, -14)
+
+
+def strike_jab(rig):
+    """A left jab, 0.77 s: a dip and a quick step in on the lead foot (4 frames), the hand snaps out in 4 frames and holds
+    at full extension for 3 on the hit, snaps back along the same line to the guard. The hips turn only a little; the
+    weight goes onto the front foot."""
+    P = tuple(rig.idle_pelvis)
+    t = 0.77
+    root = root_step(30.0, 0.0, 0.2)
+    body = {
+        "pelvis_pos": T(world([(0.0, P), (0.13, add(P, V(0, 3, -4))), (0.27, add(P, V(0, -8, -3))), (0.37, add(P, V(0, -9, -3))),
+                         (0.5, add(P, V(0, -4, -1.5))), (t, P)], root)),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.13, V(2, -5, 0)), (0.27, V(5, 10, 0)), (0.37, V(5, 11, 0)), (0.5, V(1, 3, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(0, 0, 0)), (0.13, V(3, -4, 0)), (0.27, V(6, 12, 0)), (0.37, V(6, 13, 0)), (0.5, V(2, 3, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.13, V(2, 0, 0)), (0.27, V(-2, -8, 0)), (0.37, V(-2, -9, 0)), (0.5, V(0, -2, 0)), (t, V(0, 0, 0))]),
+    }
+    hands = {
+        "l": [(0.0, (0, -8, -30)), (0.13, GUARD_L), (0.27, (4, -64, -2)), (0.37, (4, -66, -2)), (0.45, (4, -52, -4)),
+              (0.55, GUARD_L), (t, (0, -8, -30))],
+        "r": [(0.0, (0, -8, -30)), (0.13, GUARD_R), (0.27, (-8, -16, -12)), (0.37, (-8, -16, -12)), (0.55, GUARD_R), (t, (0, -8, -30))],
+    }
+    feet = strike_feet(rig, 30.0, [(0.0, 0.18)], [(0.4, 0.58)], t)
+    return _strike_clip(rig, "Strike_Jab", t, body, root, hands, feet, (0.27, 0.37), (0.43, 0.72), "hand_l",
+                        [0.0, 0.07, 0.13, 0.2, 0.27, 0.33, 0.45, t])
+
+
+def strike_cross(rig):
+    """A right cross, 0.9 s: the weight goes back and the right shoulder loads (5 frames), the hips drive round and the hand
+    comes straight out in 4, holds at full extension for 3 on the hit with the whole body behind it, follows through a
+    little past and comes back to the guard while the rear foot squares up."""
+    P = tuple(rig.idle_pelvis)
+    t = 0.9
+    root = root_step(32.0, 0.0, 0.22)
+    body = {
+        "pelvis_pos": T(world([(0.0, P), (0.17, add(P, V(0, 5, -5))), (0.3, add(P, V(0, -9, -4))), (0.4, add(P, V(0, -10, -4))),
+                         (0.55, add(P, V(0, -5, -2))), (t, P)], root)),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.17, V(3, -18, 0)), (0.3, V(6, 24, 0)), (0.4, V(6, 26, 0)), (0.55, V(2, 8, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(0, 0, 0)), (0.17, V(4, -14, 0)), (0.3, V(7, 20, 0)), (0.4, V(7, 22, 0)), (0.55, V(2, 6, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.17, V(3, 6, 0)), (0.3, V(-3, -16, 0)), (0.4, V(-3, -18, 0)), (0.55, V(0, -4, 0)), (t, V(0, 0, 0))]),
+    }
+    hands = {
+        "r": [(0.0, (0, -8, -30)), (0.17, (-5, -10, -12)), (0.3, (-4, -68, -4)), (0.4, (-4, -71, -4)), (0.48, (-4, -76, -5)),
+              (0.6, GUARD_R), (t, (0, -8, -30))],
+        "l": [(0.0, (0, -8, -30)), (0.17, GUARD_L), (0.3, (6, -14, -16)), (0.4, (6, -14, -16)), (0.6, GUARD_L), (t, (0, -8, -30))],
+    }
+    feet = strike_feet(rig, 32.0, [(0.0, 0.2)], [(0.42, 0.62)], t)
+    return _strike_clip(rig, "Strike_Cross", t, body, root, hands, feet, (0.3, 0.4), (0.48, 0.88), "hand_r",
+                        [0.0, 0.08, 0.17, 0.24, 0.3, 0.36, 0.5, t])
+
+
+def strike_hook(rig):
+    """A right hook, 0.95 s: a half crouch and the right elbow loads out and back (6 frames), the hips and shoulders whip
+    round and the fist swings in a flat arc across the line to him in 4, holds at the end of the arc for 3 on the hit with
+    the elbow high, and swings on a little before coming back."""
+    P = tuple(rig.idle_pelvis)
+    t = 0.95
+    root = root_step(30.0, 0.0, 0.24)
+    body = {
+        "pelvis_pos": T(world([(0.0, P), (0.2, add(P, V(0, 4, -7))), (0.33, add(P, V(0, -8, -4))), (0.43, add(P, V(0, -9, -4))),
+                         (0.6, add(P, V(0, -4, -2))), (t, P)], root)),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.2, V(2, -22, 0)), (0.33, V(5, 30, 0)), (0.43, V(5, 33, 0)), (0.6, V(2, 10, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(0, 0, 0)), (0.2, V(4, -18, -4)), (0.33, V(6, 26, 4)), (0.43, V(6, 29, 4)), (0.6, V(2, 8, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.2, V(3, 8, 0)), (0.33, V(-3, -22, 0)), (0.43, V(-3, -24, 0)), (0.6, V(0, -6, 0)), (t, V(0, 0, 0))]),
+    }
+    hands = {
+        "r": [(0.0, (0, -8, -30)), (0.2, (-22, -2, -4)), (0.26, (-30, -26, 0)), (0.33, (2, -50, 0)), (0.43, (6, -52, 0)),
+              (0.52, (10, -46, 0)), (0.66, GUARD_R), (t, (0, -8, -30))],
+        "l": [(0.0, (0, -8, -30)), (0.2, GUARD_L), (0.33, (4, -14, -16)), (0.43, (4, -14, -16)), (0.66, GUARD_L), (t, (0, -8, -30))],
+    }
+    feet = strike_feet(rig, 30.0, [(0.0, 0.2)], [(0.46, 0.66)], t)
+    clip = _strike_clip(rig, "Strike_Hook", t, body, root, hands, feet, (0.33, 0.43), (0.52, 0.92), "hand_r",
+                        [0.0, 0.1, 0.2, 0.27, 0.33, 0.4, 0.55, t], extra={"wide": True})
+    # The elbow rides out and high through the arc.
+    clip.tracks["pole_hand_r"] = T([(0.0, V(-0.6, 0.5, -0.8)), (0.2, V(-1.0, 0.3, 0.2)), (0.33, V(-0.8, 0.1, 0.9)),
+                                    (0.43, V(-0.8, 0.1, 0.9)), (0.66, V(-0.6, 0.5, -0.8)), (t, V(-0.6, 0.5, -0.8))])
+    return clip
+
+
+def strike_front_kick(rig):
+    """A right front kick, 1.1 s: a step in, the right knee comes up and the hips sit back to load it (6 frames), the shin
+    snaps out in 4 and the foot holds at full extension for 3 on the hit with the chest leaning back to balance it, then the
+    leg folds and comes back down to plant."""
+    P = tuple(rig.idle_pelvis)
+    fl = tuple(rig.idle_foot("l"))
+    fr = tuple(rig.idle_foot("r"))
+    t = 1.1
+    step = 28.0
+    root = root_step(step, 0.0, 0.2)
+    body = {
+        "pelvis_pos": T(world([(0.0, P), (0.2, add(P, V(0, 6, -3))), (0.33, add(P, V(0, 2, -1))), (0.43, add(P, V(0, 1, -1))),
+                               (0.65, add(P, V(0, -1, -2))), (t, P)], root)),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.2, V(-6, -4, 0)), (0.33, V(-12, 6, 0)), (0.43, V(-13, 6, 0)), (0.65, V(-3, 1, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(0, 0, 0)), (0.2, V(-4, -4, 0)), (0.33, V(-10, 4, 0)), (0.43, V(-11, 4, 0)), (0.65, V(-2, 0, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.2, V(2, 0, 0)), (0.33, V(8, 0, 0)), (0.43, V(8, 0, 0)), (0.65, V(1, 0, 0)), (t, V(0, 0, 0))]),
+    }
+    fwd = add(fr, V(0, -step, 0))
+    left_new = add(fl, V(0, -step, 0))
+    # The right foot: planted, knee up (chamber), snapped out to his gut, folded back, set down on the new place.
+    foot_r = [(0.0, fr), (0.07, add(fr, V(0, -4, 6))), (0.2, add(fwd, V(0, 14, 36))), (0.27, add(fwd, V(0, -22, 62))),
+              (0.33, add(fwd, V(0, -64, 80))), (0.43, add(fwd, V(0, -66, 82))), (0.52, add(fwd, V(0, -40, 60))),
+              (0.65, add(fwd, V(0, -10, 24))), (0.8, add(fwd, V(0, 0, 4))), (0.9, fwd), (t, fwd)]
+    # The left foot steps in with the capsule (0.02 to 0.12), then bears the whole kick, planted.
+    foot_l = [(0.0, fl), (0.02, fl), (0.07, add(tuple((x + y) * 0.5 for x, y in zip(fl, left_new)), V(0, 0, 6))), (0.12, left_new),
+              (t, left_new)]
+    hands = {
+        "r": [(0.0, V(0, 0, 0)), (0.2, (-4, -14, -14)), (0.33, (-10, -22, -4)), (0.43, (-10, -22, -4)), (0.65, GUARD_R), (t, V(0, 0, 0))],
+        "l": [(0.0, V(0, 0, 0)), (0.2, GUARD_L), (0.33, (14, -12, 8)), (0.43, (14, -12, 8)), (0.65, GUARD_L), (t, V(0, 0, 0))],
+    }
+    tracks = dict(body)
+    tracks["root_pos"] = root
+    for side, keys in hands.items():
+        tracks["hand_" + side] = hand_track(rig, body, root, side, keys, t)
+    tracks["foot_l"] = T(foot_l)
+    tracks["foot_r"] = T(foot_r)
+    tracks["foot_r_rot"] = T([(0.0, V(0, 0, 0)), (0.2, V(30, 0, 0)), (0.33, V(-30, 0, 0)), (0.43, V(-30, 0, 0)), (0.65, V(10, 0, 0)),
+                              (0.85, V(0, 0, 0)), (t, V(0, 0, 0))])
+    return ck.Clip("Strike_FrontKick", t, tracks, fade_in=0.0, fade_out=0.15, torso_clear=False,
+                   strip_times=[0.0, 0.1, 0.2, 0.27, 0.33, 0.42, 0.6, t],
+                   extra={"span": (-110.0, 150.0), "pop_degrees": 44.0, "hit_s": [0.33, 0.43], "combo_s": [0.6, 1.05],
+                          "contact": ["foot_r", 0.33], "rate": 1.0})
+
+
+STRIKES = [strike_jab, strike_cross, strike_hook, strike_front_kick]
+
+
+def measure_contact(kind, clip, frames):
+    """The clip's contact distance and height at its hit frame, in the game's units, into its extra (and so clips.json, which
+    create_combat_anims.py reads): the striking bone's flat reach from the capsule, past the bone to what meets him, and past
+    his surface to the bone the warp aims at; and its height over the floor."""
+    spec = clip.extra.get("contact")
+    if not spec:
+        return
+    bone, t = spec
+    f = min(int(round(t * ck.FPS)), len(frames) - 1)
+    p = frames[f][bone].translation
+    reach = REACH["foot" if bone.startswith("foot") else "hand"]
+    scale = RIG_SCALE[kind]
+    clip.extra["contact_cm"] = round((math.hypot(p.x, p.y) + reach + BODY_DEPTH) * scale, 1)
+    clip.extra["contact_height_cm"] = round(p.z * scale, 1)
+
+
 TAKEDOWN_BONES = ("clavicle_l", "clavicle_r", "neck_01", "spine_02", "spine_03", "pelvis", "head")
 
 CLIPS = {
-    "ue4": [getup_back, getup_front] + HITS + [takedown_victim],
-    "uefn": list(HITS) + BOW + [takedown_attacker],
+    "ue4": [getup_back, getup_front] + HITS + ZONE_HITS + [takedown_victim],
+    "uefn": list(HITS) + ZONE_HITS + STRIKES + BOW + [takedown_attacker],
 }
 
 
@@ -664,6 +1057,7 @@ def main():
         for make in makers:
             clip = make(rig)
             frames = ck.solve_clip(rig, clip)
+            measure_contact(kind, clip, frames)
             problems, notes = ck.check_clip(rig, clip, frames)
             if clip.extra.get("pair") == "victim":
                 SOLVED[clip.name] = [dict((b, tuple(pose[b].translation)) for b in TAKEDOWN_BONES) for pose in frames]
