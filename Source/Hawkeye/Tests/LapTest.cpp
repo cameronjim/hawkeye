@@ -2313,10 +2313,10 @@ bool FHawkeyeRoofFightRunner::Update()
 	const bool bBusy = Kate->IsMeleeAttacking() || Kate->IsDodging() || Kate->IsStaggered() || Kate->IsLockedOutByTakedown();
 	const UMeleeComponent* ThugMelee = Target->GetMeleeComponent();
 
-	// A melee hold in progress: release after 0.45 s for the heavy.
+	// A melee hold in progress: release after 0.25 s (the hold converts at 0.2) for the heavy.
 	if (bMeleeHeld)
 	{
-		if (Now - MeleeHeldSince >= 0.45)
+		if (Now - MeleeHeldSince >= 0.25)
 		{
 			Hold(PC, MeleePath, false);
 			bMeleeHeld = false;
@@ -3489,7 +3489,7 @@ bool FHawkeyeStreetFightRunner::Update()
 
 	if (bMeleeHeld)
 	{
-		if (Now - MeleeHeldSince >= 0.45)
+		if (Now - MeleeHeldSince >= 0.25)
 		{
 			Hold(PC, MeleePath, false);
 			bMeleeHeld = false;

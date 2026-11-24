@@ -1464,9 +1464,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
 	float LightBufferSeconds = 0.3f;
 
-	/** V held this long becomes the heavy; let go sooner and it was a tap. */
+	/** V held this long becomes the heavy; let go sooner and it was a tap. 0.2 since the light went on the press: the hold converts the light before its 0.25 s hit window. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))
-	float HeavyHoldSeconds = 0.4f;
+	float HeavyHoldSeconds = 0.2f;
 
 	/** A thug this close and this far off the camera's forward is who a swing turns to face. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Hawkeye|Melee", meta = (ClampMin = "0.0"))

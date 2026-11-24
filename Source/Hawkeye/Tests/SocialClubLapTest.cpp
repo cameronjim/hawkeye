@@ -703,7 +703,7 @@ void FHawkeyeSocialClubLap::FightStep(UWorld* World, APlayerController* PC, AHaw
 	}
 	if (bMeleeHeld)
 	{
-		if (Now - MeleeHeldSince >= 0.45)
+		if (Now - MeleeHeldSince >= 0.25)
 		{
 			Hold(PC, MeleePath, false);
 			bMeleeHeld = false;
