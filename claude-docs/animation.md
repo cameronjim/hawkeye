@@ -506,7 +506,9 @@ the engine's shape material in a colour (`PistolColor` gunmetal, `BatColor` dark
 **Thugs and the heavy, third pass: our own hands (2026-11-24).** Two passes of retarget offsets did not fix the hands, so the
 visible thug and heavy no longer take their fingers (or their rest arms) from the retarget at all. `ABP_Thug_Body` is now
 Retarget Pose From Mesh, to component space, one **Hawkeye Body Pose** node (`FAnimNode_HawkeyeBodyPose`,
-`Player/BodyPoseNode.cpp`; editor node `UAnimGraphNode_HawkeyeBodyPose`; built by
+`Player/BodyPoseNode.cpp`; editor graph node `UAnimGraphNode_HawkeyeBodyPose` in `Source/HawkeyeAnimEditor`, an
+`UncookedOnly` module (an `Editor` one is not loaded in the standalone `-game` runs and left the AnimBP's graph broken there; the
+game module finds the class by path); built by
 `UHawkeyeRetargetGraphBuilder::BuildRetargetWithBodyPose`, stamp `body-pose-1`), back to local. Its parent class is
 `UHawkeyeBodyAnimInstance`, which each frame asks the owner (`AThugCharacter::GetBodyPoseWish`) what the hands are doing and
 eases it into alphas over 0.12 s. Kate and Clint have no such node.
@@ -530,6 +532,11 @@ eases it into alphas over 0.12 s. Kate and Clint have no such node.
   3.2 x 3 x 10 cm grip (the old block's child offset was written in the wrong units and left a 10 cm slab on the wrist).
 - **The grey block of the second pass** was the gunner's pistol grip; the tint code was in, but `hands_thug_rest.png` of that pass was
   shot before the build that had it (the image is older than the commit).
+- **Tools:** `Tools\shoot-bodies.ps1` builds and takes the `Hawkeye.Screenshot.Bodies` shots (the hand close-ups are re-aimed every frame
+  after the pose settles: they used to be aimed at the spawn frame's hands, a raised arm). `hands_thug_empty.png` is an unarmed thug;
+  `hands_thug_rest.png` the gunner with the pistol, `hands_heavy_rest.png` the heavy's bat hand (seen from his right, the shield hides
+  the front); `*_before2.png` are the second pass's shots. Still off: the pistol shows only its grip block and a stub of slide beside
+  the fist; the bat is held in front of the fingers, not woven through them; the thumbs and fingers have no finger-to-finger contact.
 
 **Gut reactions, 2026-11-24.** `HitGut_Light` folded the chest 32 degrees, so on a light punch the head went 34 cm toward Kate (head
 overlapping hers, `contact_light_after2.png`) with the capsule only 1.9 cm back. It is now a flinch (`build_clips.hit_zone`, Gut: fold
