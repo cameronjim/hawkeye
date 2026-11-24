@@ -206,6 +206,10 @@ AThugCharacter::AThugCharacter()
 	if (ShapeMaterial.Succeeded())
 	{
 		ShieldComponent->SetMaterial(0, ShapeMaterial.Object);
+		PropMaterial = ShapeMaterial.Object;
+		PistolComponent->SetMaterial(0, ShapeMaterial.Object);
+		PistolGrip->SetMaterial(0, ShapeMaterial.Object);
+		HeldWeaponComponent->SetMaterial(0, ShapeMaterial.Object);
 	}
 
 	GlintMesh = MakeProp(TEXT("Glint"), Sphere.Succeeded() ? Sphere.Object : nullptr, GetCapsuleComponent());
@@ -244,6 +248,7 @@ void AThugCharacter::PostInitializeComponents()
 	Super::PostInitializeComponents();
 	// Before BeginPlay, so the body materials are made on the mesh people see.
 	ApplyBodyLook();
+	TintProps();
 
 	// Bound here rather than in BeginPlay: a thug killed the same frame he spawns still has to
 	// drop and go limp, and a world that never begins play (tests) still wires the death path.
@@ -417,6 +422,27 @@ void AThugCharacter::RefreshHeldWeapon()
 		}
 	}
 	HeldWeaponComponent->SetVisibility(bShowBat);
+	TintProps();
+}
+
+void AThugCharacter::TintProps()
+{
+	// The engine shapes' own material is the editor grid. The shape material takes a colour; an instance per prop,
+	// made once (the bat's mesh can arrive after the first call, so it is checked again).
+	auto Tint = [this](UStaticMeshComponent* Part, const FLinearColor& Color)
+	{
+		if (!Part || !PropMaterial || !Part->GetStaticMesh() || Cast<UMaterialInstanceDynamic>(Part->GetMaterial(0)))
+		{
+			return;
+		}
+		if (UMaterialInstanceDynamic* Instance = Part->CreateDynamicMaterialInstance(0, PropMaterial))
+		{
+			Instance->SetVectorParameterValue(TEXT("Color"), Color);
+		}
+	};
+	Tint(PistolComponent, PistolColor);
+	Tint(PistolGrip, PistolColor);
+	Tint(HeldWeaponComponent, BatColor);
 }
 
 USkeletalMeshComponent* AThugCharacter::ApplyBodyLook()

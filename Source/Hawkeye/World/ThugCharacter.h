@@ -23,6 +23,7 @@ class UNiagaraSystem;
 class USoundBase;
 class UStateTree;
 class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UWeaponComponent;
@@ -253,6 +254,14 @@ public:
 	/** Smoked grey polycarbonate. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Shield")
 	FLinearColor ShieldColor = FLinearColor(0.06f, 0.07f, 0.08f);
+
+	/** The gunner's pistol and its grip: gunmetal, where the engine cube would show its editor grid (the grey checker on a thug's wrist). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	FLinearColor PistolColor = FLinearColor(0.025f, 0.026f, 0.03f);
+
+	/** The bat in his hand: dark wood, for the same reason. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	FLinearColor BatColor = FLinearColor(0.1f, 0.055f, 0.028f);
 
 	/** True when ToAttacker (from him toward the hit's source) lies inside the front ArcDegrees of Facing. Pure. */
 	static bool IsInShieldArc(const FVector& Facing, const FVector& ToAttacker, float ArcDegrees);
@@ -853,6 +862,9 @@ protected:
 	/** Places the pistol (raised or lowered) and hides it for anyone but the gunner. Called from Tick. */
 	void UpdatePistolPose();
 
+	/** Gives the pistol, its grip and the held bat the shape material in their colours, once, before anyone sees them. */
+	void TintProps();
+
 	/** Moves the glint to the muzzle or the arrow tip. Called from Tick. */
 	void UpdateTelegraphGlint();
 
@@ -1012,6 +1024,10 @@ private:
 	/** Hits the shield took. */
 	int32 BlockCount = 0;
 	bool bShieldTinted = false;
+
+	/** The engine's shape material (a Color parameter) for the props that are engine shapes. */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> PropMaterial;
 
 	/** The glyph over his head, and world seconds of the last hit that cost him health. */
 	FHawkeyeAlertGlyph AlertGlyph;
