@@ -306,6 +306,15 @@ bool FHawkeyeCameraProbeClearsNearPlane::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Aim FOV within the limit"), Kate->ComputeCameraTargets(true, Pitch).FieldOfView <= HawkeyeCameraRules::MaxFieldOfView + 0.01f);
 	}
 	TestTrue(TEXT("Hide below, show above"), Kate->TestHideBodyDistance() < Kate->TestShowBodyDistance());
+	// Hidden before she fills more than about a fifth of the frame: her shoulders (45 cm) at the hide distance, at the hip FOV.
+	const float HipFov = Kate->ComputeCameraTargets(false, 0.f).FieldOfView;
+	const float ShoulderFraction = 2.f * FMath::RadiansToDegrees(FMath::Atan(22.5f / Kate->TestHideBodyDistance())) / HipFov;
+	TestTrue(*FString::Printf(TEXT("Her shoulders are %.0f%% of the hip frame at the hide distance"), ShoulderFraction * 100.f),
+		ShoulderFraction <= 0.22f);
+	// ...and aiming, whose lens sits out over the shoulder, is never inside the show distance (it would hide her).
+	const FHawkeyeCameraTargets Aim = Kate->ComputeCameraTargets(true, 0.f);
+	const float AimLens = FVector(Aim.ArmLength, Aim.SocketOffset.Y, Aim.SocketOffset.Z).Size();
+	TestTrue(*FString::Printf(TEXT("The aim lens (%.0f cm) is past the show distance"), AimLens), AimLens > Kate->TestShowBodyDistance());
 	return true;
 }
 

@@ -154,7 +154,7 @@ void AHawkeyeCharacter::BeginLandingPose(float FallHeight)
 		bRollClipPlaying = bClipPlays;
 	}
 	TraversalPoseState.BeginLanding(Clip, Impact, bClipPlays, Settings);
-	UE_LOG(LogHawkeye, Verbose, TEXT("%s: landing pose %s at %.0f cm/s impact, %.0f cm/s along the ground, %s"),
+	UE_LOG(LogHawkeye, Log, TEXT("%s: landing pose %s at %.0f cm/s impact, %.0f cm/s along the ground, %s (rate %.2f)"),
 		*GetNameSafe(this), *UEnum::GetValueAsString(Clip), Impact, Ground,
-		bClipPlays ? TEXT("a clip") : TEXT("the legs' absorb"));
+		bClipPlays ? TEXT("a clip") : TEXT("the legs' absorb"), FTraversalPoseRules::LandingClipRate(Clip, Settings));
 }
