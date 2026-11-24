@@ -19,6 +19,14 @@ namespace
 
 	/** How fast the dead zone's reference height settles onto her while she is on the ground, per second. */
 	constexpr float HoldSettleSpeed = 14.f;
+
+	/**
+	 * A target rotation that turns further than this in one update is a snap of the control rotation (a scripted turn, a
+	 * respawn), not a hand on the mouse (a flick is 9 degrees a frame at 60 fps): the arm cuts to it instead of swinging
+	 * round at the rotation lag's opening rate (12 times the angle a second), which is a thousand degrees a second.
+	 */
+	constexpr float RotationCutYaw = 90.f;
+	constexpr float RotationCutPitch = 60.f;
 }
 
 UHawkeyeSpringArmComponent::UHawkeyeSpringArmComponent()
@@ -266,17 +274,22 @@ void UHawkeyeSpringArmComponent::UpdateDesiredArmLocation(bool bDoTrace, bool bD
 
 	const FVector Base = GetComponentLocation();
 	const float Jump = bHasHistory ? static_cast<float>(FVector::Dist(Base, LastBase)) : 0.f;
-	const bool bCut = bPendingReset || !bHasHistory || Jump > SnapDistance || (bTeleportSeen && Jump > TeleportCutDistance);
+	const FRotator TargetRotation = GetTargetRotation();
+	const bool bRotationSnap = bHasHistory
+		&& (FMath::Abs(FRotator::NormalizeAxis(TargetRotation.Yaw - LastTargetRotation.Yaw)) > RotationCutYaw
+			|| FMath::Abs(FRotator::NormalizeAxis(TargetRotation.Pitch - LastTargetRotation.Pitch)) > RotationCutPitch);
+	const bool bCut = bPendingReset || !bHasHistory || Jump > SnapDistance || (bTeleportSeen && Jump > TeleportCutDistance) || bRotationSnap;
 	if (bCut && bHasHistory)
 	{
 		++CutCount;
 	}
+	LastTargetRotation = TargetRotation;
 	bPendingReset = false;
 	bTeleportSeen = false;
 	bHasHistory = true;
 	LastBase = Base;
 
-	const FRotator DesiredRot = LagRotation(GetTargetRotation(), bDoRotationLag, bCut, Delta);
+	const FRotator DesiredRot = LagRotation(TargetRotation, bDoRotationLag, bCut, Delta);
 
 	// The pivot's target: her centre, its height held inside the dead zone while she is in the air.
 	FVector PivotTarget = Base;

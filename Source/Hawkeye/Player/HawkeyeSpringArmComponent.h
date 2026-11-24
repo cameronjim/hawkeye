@@ -9,7 +9,7 @@
  * action camera needs and the engine's does not have:
  *
  * - The lag history can be reset (ResetLag), and is reset on its own when the arm is teleported or the pivot jumps
- *   further than SnapDistance in a frame, so a teleport is a cut and not a long swoop through the level.
+ *   further than SnapDistance in a frame, or the control rotation snaps round, so each is a cut and not a long swoop.
  * - The lagged pivot trails her by at most LagMaxHorizontal / LagMaxVertical, and the lag runs on the clock the player
  *   sees (hit stop and slow motion do not stretch it). The lift (TargetOffset) is added after the lag, so it is exact.
  * - A vertical dead zone while she is in the air, so a jump's arc does not bob the view.
@@ -38,7 +38,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Camera")
 	void ResetLag();
 
-	/** How many times the arm has cut (ResetLag, a teleport or a pivot jump past SnapDistance). The camera audit watches it. */
+	/** How many times the arm has cut (ResetLag, a teleport, a pivot jump past SnapDistance, a control rotation that snapped). The camera audit watches it. */
 	int32 GetCutCount() const { return CutCount; }
 
 	/** Places the lens now, with the arm's current settings, as its own tick would. For tests, and for a cut that must show this frame. */
@@ -132,6 +132,7 @@ private:
 
 	/** The pivot's un-lagged position at the last update (for the pivot-jump cut), and whether there was one. */
 	FVector LastBase = FVector::ZeroVector;
+	FRotator LastTargetRotation = FRotator::ZeroRotator;
 	bool bHasHistory = false;
 	bool bPendingReset = false;
 	bool bVerticalHold = false;

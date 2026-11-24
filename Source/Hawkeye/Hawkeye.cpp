@@ -4,6 +4,9 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Tests/CameraAudit.h"
+#endif
 
 DEFINE_LOG_CATEGORY(LogHawkeye);
 
@@ -60,6 +63,10 @@ class FHawkeyeGameModule : public FDefaultGameModuleImpl
 public:
 	virtual void StartupModule() override
 	{
+#if WITH_DEV_AUTOMATION_TESTS
+		// Every Hawkeye.Lap.* test runs under the camera audit (Tests/CameraAudit.h).
+		HawkeyeCameraAudit::Install();
+#endif
 		if (!IsRunningGame() || FParse::Param(FCommandLine::Get(), TEXT("EnablePython")))
 		{
 			return;
