@@ -24,7 +24,10 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Partner/HawkeyePartnerController.h"
+#include "Player/BodyPose.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Engine/StaticMesh.h"
+#include "Components/StaticMeshComponent.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
@@ -291,6 +294,11 @@ public:
 			return false;
 		}
 		KeepKateSeen();
+		if (bHandPass && Now - StepStart > 0.5)
+		{
+			// The hands are where the pose has put them, not where the spawn frame left them: aim at them every frame.
+			FrameHands(PC);
+		}
 		if (Now - StepStart < SettleSeconds(Subject))
 		{
 			WalkKateIn();
@@ -321,24 +329,24 @@ public:
 	}
 
 private:
-	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, DrawShot, LuckyKateShot, FirstKateShot };
+	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, DrawShot, LuckyKateShot, FistsShot, FirstKateShot };
 	/** Kate's shots, taken once by day and once by night after the others. */
 	enum EKateShot : int32 { KFront, KBack, KRun, KCrouch, KPunch, KDraw, KTrio, NumKateShots };
 	static constexpr int32 NumSubjects = FirstKateShot + NumKateShots * 2;
-	static constexpr int32 NumHandShots = 8;
+	static constexpr int32 NumHandShots = 9;
 	static constexpr int32 TotalSubjects = NumSubjects + NumHandShots;
 
 	/** The hand close-ups, in order: each is a full shot's subject seen from the hands. */
 	static int32 HandBase(int32 Round)
 	{
 		static const int32 Bases[NumHandShots] = {ThugShot, PunchShot, HeavyShot, ClintShot, DrawShot,
-			FirstKateShot + KFront, FirstKateShot + KPunch, FirstKateShot + KDraw};
+			FirstKateShot + KFront, FirstKateShot + KPunch, FirstKateShot + KDraw, FistsShot};
 		return Bases[Round - NumSubjects];
 	}
 	static const TCHAR* HandName(int32 Round)
 	{
 		static const TCHAR* Names[NumHandShots] = {TEXT("hands_thug_rest"), TEXT("hands_thug_fist"), TEXT("hands_heavy_rest"),
-			TEXT("hands_clint_rest"), TEXT("hands_clint_bow"), TEXT("hands_kate_rest"), TEXT("hands_kate_fist"), TEXT("hands_kate_bow")};
+			TEXT("hands_clint_rest"), TEXT("hands_clint_bow"), TEXT("hands_kate_rest"), TEXT("hands_kate_fist"), TEXT("hands_kate_bow"), TEXT("hands_thug_empty")};
 		return Names[Round - NumSubjects];
 	}
 
@@ -349,7 +357,7 @@ private:
 	static FString ShotName(int32 Subject)
 	{
 		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
-			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate")};
+			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate"), TEXT("body_thug_empty")};
 		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
 			TEXT("draw"), TEXT("trio")};
 		if (!IsKate(Subject))
@@ -729,14 +737,29 @@ private:
 			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			break;
 		case PunchShot:
-			// From his left, so the swing's arm reads against the street.
+			// From his left, so the swing's arm reads against the street. Unarmed: both hands are fists.
 			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
+			if (AThugCharacter* Puncher = Cast<AThugCharacter>(Current.Get()))
+			{
+				Puncher->Weapon = EThugWeapon::Fists;
+				Puncher->RefreshHeldWeapon();
+			}
 			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			if (Camera)
 			{
 				const FVector Eye = Chest - FVector(0.f, 0.f, 20.f) + Along * 180.f - Side * 250.f + FVector(0.f, 0.f, 20.f);
 				Camera->SetActorLocationAndRotation(Eye, (Chest - FVector(0.f, 0.f, 20.f) - Eye).Rotation());
 			}
+			break;
+		case FistsShot:
+			// An unarmed thug: his hands are empty (no pistol, no bat).
+			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
+			if (AThugCharacter* Unarmed = Cast<AThugCharacter>(Current.Get()))
+			{
+				Unarmed->Weapon = EThugWeapon::Fists;
+				Unarmed->RefreshHeldWeapon();
+			}
+			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			break;
 		case HeavyShot:
 			Current = SpawnThug(World, HawkeyeBodyShots::HeavyClassPath);
@@ -1024,10 +1047,20 @@ private:
 		{
 			return;
 		}
-		const FVector Mid = (Left + Right) * 0.5f;
-		const float Spread = FVector::Dist(Left, Right);
+		FVector Mid = (Left + Right) * 0.5f;
+		float Spread = FVector::Dist(Left, Right);
+		FVector Toward = Camera->GetActorLocation() - Mid;
+		// Level, or the lift added below would compound every frame the camera is re-aimed.
+		Toward.Z = 0.0;
+		if (const AThugCharacter* Heavy = Cast<AThugCharacter>(Character); Heavy && Heavy->IsHeavy())
+		{
+			// The riot shield stands in front of him: his bat hand, from his right.
+			Mid = Right;
+			Spread = 20.f;
+			Toward = Heavy->GetActorRightVector() * 100.f + Heavy->GetActorForwardVector() * 30.f;
+		}
 		const float Distance = FMath::Max(70.f, Spread * 2.0f + 40.f);
-		FVector Dir = (Camera->GetActorLocation() - Mid).GetSafeNormal();
+		FVector Dir = Toward.GetSafeNormal();
 		// Seen from a little above, so the palms and the finger curl read.
 		Dir = (Dir + FVector(0.f, 0.f, 0.25f)).GetSafeNormal();
 		FVector Eye = Mid + Dir * Distance;
