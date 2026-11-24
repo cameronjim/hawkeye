@@ -163,6 +163,7 @@ bool FHawkeyeMeleeComboWindowAndDamage::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Is the heavy"), Melee->GetCurrentAttack().Name, FName(TEXT("heavy")));
 	LandSwing(Melee);
 	TestEqual(TEXT("35"), Before - Health->GetCurrentHealth(), 35.f, 0.01f);
+	Thug->GetHitReactionComponent()->ReleaseFreezeNow();
 	TestTrue(TEXT("He is on the floor"), Thug->IsKnockedDown());
 	TestEqual(TEXT("And the chain is over"), Kate->GetCombo().GetNextStep(), 0);
 	return true;
@@ -503,6 +504,7 @@ bool FHawkeyeMeleeFinisherGate::RunTest(const FString& Parameters)
 	TestTrue(TEXT("A heavy"), Kate->StartHeavyAttack());
 	LandSwing(Melee);
 	TestTrue(TEXT("The heavy opens the window"), Thug->GetFinisherWindowRemaining() > 0.99f);
+	Thug->GetHitReactionComponent()->ReleaseFreezeNow();
 	TestTrue(TEXT("And he is down"), Thug->IsKnockedDown());
 	Thug->UpdateFinisherOpening(2.f);
 	TestTrue(TEXT("Down past the window: still a target"), IsTarget());

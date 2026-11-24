@@ -303,6 +303,16 @@ void UHitReactionComponent::EndFreeze()
 	RunPostFreezeAction();
 }
 
+void UHitReactionComponent::ReleaseFreezeNow()
+{
+	if (bFrozen || HitStopRemaining > 0.f)
+	{
+		EndHitStop();
+	}
+	FlushKnockback();
+	RunPostFreezeAction();
+}
+
 void UHitReactionComponent::RunPostFreezeAction()
 {
 	if (PostFreezeAction)

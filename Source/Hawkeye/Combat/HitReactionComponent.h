@@ -72,6 +72,9 @@ public:
 	/** The length of the freeze under way (or the last), real seconds. */
 	float GetFreezeSeconds() const { return FreezeDuration; }
 
+	/** Ends the freeze now, running what waited for it (a knockdown): for tests that do not tick the world, and anything that must not wait. */
+	void ReleaseFreezeNow();
+
 	/** How many freezes this body has had (tests and the audit). */
 	int32 GetFreezeCount() const { return FreezeCount; }
 

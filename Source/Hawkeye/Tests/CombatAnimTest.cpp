@@ -425,6 +425,7 @@ bool FHawkeyeCombatAnimAbsentKeepsProcedural::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("A heavy starts"), Kate->StartHeavyAttack());
 	Melee->AdvanceAttack(0.61f);
+	Thug->GetHitReactionComponent()->ReleaseFreezeNow();
 	TestTrue(TEXT("It knocks him down"), Thug->IsKnockedDown());
 	TestFalse(TEXT("Not through a clip"), Thug->IsKnockdownFromClip());
 	Thug->UpdateKnockdown(Thug->KnockdownSeconds + 0.1f);

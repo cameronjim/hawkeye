@@ -246,6 +246,7 @@ bool FHawkeyeMeleeKateHeavy::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Nothing before the 0.6 s wind-up ends"), Thug->GetHealthComponent()->GetCurrentHealth(), 100.f);
 	Melee->AdvanceAttack(0.1f);
 	TestEqual(TEXT("35 off the thug"), Thug->GetHealthComponent()->GetCurrentHealth(), 65.f);
+	Thug->GetHitReactionComponent()->ReleaseFreezeNow();
 	TestTrue(TEXT("He is on the floor"), Thug->IsKnockedDown());
 	TestFalse(TEXT("A knockdown, not a stagger"), Thug->IsStaggered());
 	TestTrue(TEXT("Knocked down counts as out of the fight"), Thug->IsIncapacitated());

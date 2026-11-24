@@ -325,6 +325,7 @@ bool FHawkeyeHeavyStrikes::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The heavy starts"), Kate->StartHeavyAttack());
 	Melee->AdvanceAttack(0.61f);
 	TestEqual(TEXT("35 through the shield"), Heavy->GetHealthComponent()->GetCurrentHealth(), 165.f);
+	Heavy->GetHitReactionComponent()->ReleaseFreezeNow();
 	TestTrue(TEXT("Guard broken: staggered"), Heavy->IsStaggered());
 	TestFalse(TEXT("Not on the floor"), Heavy->IsKnockedDown());
 	Melee->AdvanceAttack(1.f);
