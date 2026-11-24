@@ -88,7 +88,12 @@ void AHawkeyeCharacter::UpdateTraversalClips(float /*DeltaSeconds*/)
 void AHawkeyeCharacter::BeginLandingPose(float FallHeight)
 {
 	const FHawkeyeTraversalPoseSettings& Settings = TraversalPoseSettings;
-	const float Impact = FMath::Max(FallPeakSpeed, FMath::Max(0.f, -static_cast<float>(GetVelocity().Z)));
+	float Impact = FMath::Max(FallPeakSpeed, FMath::Max(0.f, -static_cast<float>(GetVelocity().Z)));
+	if (Impact <= 0.f && FallHeight > 0.f)
+	{
+		// No speed was tracked (a landing told of a height only): the speed a free fall of that height reaches.
+		Impact = FTraversalPoseRules::ImpactSpeedFromHeight(FallHeight, Settings.Gravity);
+	}
 	FallPeakSpeed = 0.f;
 	StopFallLoop(0.1f);
 
