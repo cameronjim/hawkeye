@@ -19,3 +19,4 @@ sources is git-ignored and rebuilt from files outside the repo (`claude-docs/inf
 | What | Source | Licence |
 |------|--------|---------|
 | Save system (`Plugins/SPUD`) | sinbad/SPUD | MIT |
+| Secondary motion for Kate's ponytail and quiver (`Plugins/KawaiiPhysics`, source only, tag v1.21.0 = commit `0035f5291bc3fcf71c12724a290dba132c4ccb01`, 2026-06-23, its `LICENSE` kept beside it) | pafuhana1213/KawaiiPhysics | MIT (Copyright (c) 2019-2026 pafuhana1213). Left out of the copy: the plugin's icon, which is a PNG. |

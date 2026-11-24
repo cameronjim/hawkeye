@@ -116,6 +116,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "KawaiiPhysics",
+			"Enabled": true
+		},
+		{
 			"Name": "ModelContextProtocol",
 			"Enabled": true
 		},

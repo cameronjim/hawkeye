@@ -250,6 +250,12 @@ fresh clone runs the script again. Details and the fallback rule: `claude-docs/a
   not a submodule). Saves the world state; see the Save section of gameplay-semantics.md.
   Builds on 5.8 unchanged. Update by copying a newer checkout over it and re-running the
   save round-trip test.
+- `Plugins/KawaiiPhysics` (pafuhana1213/KawaiiPhysics, MIT, v1.21.0, commit 0035f52, source checked in, not a
+  submodule; its `LICENSE` is beside it, its icon PNG and the sample project are left out). The secondary motion of Kate's
+  ponytail and quiver; see "Secondary motion" in animation.md. Its README states UE 5.3-5.7; 5.8 is untested until the
+  first build. Update by copying `Plugins/KawaiiPhysics/{Source,KawaiiPhysics.uplugin}` and `LICENSE` from a newer
+  tag over it (not master: it carries MCP and sequencer changes past the last release), rebuilding the editor target, and
+  running `Hawkeye.SecondaryMotion`. Its own `KawaiiPhysics.*` automation tests come with it and run in the same session.
 
 ## City generation from OpenStreetMap
 
