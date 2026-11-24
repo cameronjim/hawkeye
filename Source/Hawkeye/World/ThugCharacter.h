@@ -654,6 +654,9 @@ public:
 
 	void SetCombatAnimSet(UCombatAnimSet* InSet) { CombatAnimSet = InSet; }
 
+	/** Puts him on the hit pose of Blow (the zone clip, from its peak, no blend) without staggering him: a knockdown's freeze holds it. */
+	void PlayHitPose(const FHawkeyeStrikeImpact& Blow);
+
 	/** Plays ClipRole's clip on him, at rate 1 or fitted to FitToSeconds; false when there is none that plays. */
 	bool PlayCombatClip(ECombatAnimRole ClipRole, float FitToSeconds = 0.f);
 

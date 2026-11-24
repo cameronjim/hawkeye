@@ -6,6 +6,7 @@
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Combat/CombatAnimSet.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Hawkeye.h"
 
 namespace HawkeyeCombatAnim
 {
@@ -103,6 +104,16 @@ namespace HawkeyeCombatAnim
 			Role = UCombatAnimSet::HitRoleFor(Side);
 			Played = PlayReactionRole(Mesh, Set, Role, Tuning, &KnockbackCm);
 		}
+		if (Played && Mesh && !Mesh->IsSimulatingPhysics())
+		{
+			// The victim is frozen the same frame (his clock stops): one evaluation now, so the pose the freeze holds is the
+			// montage's hit pose and not the idle he was in a frame ago. A millisecond of play, then the bones.
+			Mesh->TickAnimation(0.001f, /*bNeedsValidRootMotion=*/false);
+			Mesh->RefreshBoneTransforms();
+		}
+		UE_LOG(LogHawkeye, Log, TEXT("%s: hit reaction %s (%s) from %s: %s."), *GetNameSafe(Mesh ? Mesh->GetOwner() : nullptr),
+			*UEnum::GetValueAsString(Role), Blow ? *Blow->Bone.ToString() : TEXT("no blow"), *GetNameSafe(Played),
+			Played ? TEXT("played") : TEXT("did not play"));
 		Result.bPlayed = Played != nullptr;
 		Result.Role = Role;
 		Result.bHeavy = UCombatAnimSet::IsHeavyHitRole(Role);

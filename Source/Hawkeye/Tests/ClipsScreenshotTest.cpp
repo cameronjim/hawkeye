@@ -7,6 +7,9 @@
 #include "Combat/MeleeComponent.h"
 #include "Combat/TakedownComponent.h"
 #include "Combat/HealthComponent.h"
+#include "Combat/HitContactRules.h"
+#include "Combat/HitReactionComponent.h"
+#include "Vfx/HawkeyeVfxSubsystem.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -49,8 +52,8 @@
  *
  * Then two live blows as contact strips (contact_light_<tag>.png, contact_heavy_<tag>.png; <tag> is -ContactStripTag=,
  * "after" by default, so the same test on the old build with -ContactStripTag=before gives the comparison): Kate's light
- * and her heavy on a thug 110 cm off, side on, eight frames at 30 fps round the hit: two before the frame the damage
- * lands, that frame, and five after. The world is run to each time and stopped for the shot, so the strip shows what the
+ * and her heavy on a thug 110 cm off, side on, twelve frames at 30 fps round the hit: two before the frame the damage
+ * lands, that frame, and nine after. The world is run to each time and stopped for the shot, so the strip shows what the
  * weld does on the frames after contact (both held on the hit pose, vibrating, then the knock-back eased away).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotClips, "Hawkeye.Screenshot.Clips",
@@ -299,6 +302,9 @@ namespace HawkeyeClipShots
 		{
 			double StartedAt = 0.0;
 			float HitSeconds = 0.25f;
+			/** His head and chest before the blow, to see that he is on the hit pose on the hit frame (not a statue). */
+			FVector HeadBefore = FVector::ZeroVector;
+			FVector ChestBefore = FVector::ZeroVector;
 		};
 		const TSharedRef<FContact> Run = MakeShared<FContact>();
 		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, bHeavy]()
@@ -324,6 +330,8 @@ namespace HawkeyeClipShots
 			Thug->TeleportTo(State->Feet + State->Along * ContactGap + FVector(0.f, 0.f, ThugHalf + 2.f), (-State->Along).Rotation(), false, true);
 			Thug->GetHealthComponent()->SetMaxHealth(500.f, true);
 			Frame(*State, Kate, -ContactGap * 0.5f);
+			Run->HeadBefore = Thug->GetMesh()->GetBoneLocation(FName(TEXT("head")));
+			Run->ChestBefore = Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03")));
 			UMeleeComponent* Melee = Kate->GetMeleeComponent();
 			Melee->SetNextAttackTarget(Thug);
 			const bool bStarted = bHeavy ? Kate->StartHeavyAttack() : Kate->StartLightAttack();
@@ -343,8 +351,8 @@ namespace HawkeyeClipShots
 			Run->StartedAt = Kate->GetWorld()->GetTimeSeconds();
 			return true;
 		}));
-		// Two frames before the hit, the hit frame, five after: 30 fps apart.
-		for (int32 Offset = -2; Offset <= 5; ++Offset)
+		// Two frames before the hit, the hit frame, nine after (the release and the step): 30 fps apart.
+		for (int32 Offset = -2; Offset <= 9; ++Offset)
 		{
 			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([State, Run, Offset]()
 			{
@@ -364,7 +372,34 @@ namespace HawkeyeClipShots
 			{
 				const AHawkeyeCharacter* Kate = State->Kate.Get();
 				const double Elapsed = Kate ? Kate->GetWorld()->GetTimeSeconds() - Run->StartedAt : 0.0;
-				AddShot(Test, State, Name, FString::Printf(TEXT("%s_%d_%+d_%.3fs"), *Name, Offset + 2, Offset, Elapsed));
+				if (const AThugCharacter* Thug = State->Thug.Get())
+				{
+					const UHitReactionComponent* React = Thug->GetHitReactionComponent();
+					const float HeadMoved = FVector::Dist(Run->HeadBefore, Thug->GetMesh()->GetBoneLocation(FName(TEXT("head"))));
+					const float ChestMoved = FVector::Dist(Run->ChestBefore, Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03"))));
+					Test->AddInfo(FString::Printf(TEXT("%s frame %+d at %.3f s: frozen %d (%.3f s), his head %.1f cm and chest %.1f cm off where they were, "
+						"%d puffs asked for, he is %.0f cm from her."), *Name, Offset, Elapsed, React && React->IsFrozen() ? 1 : 0,
+						React ? React->GetFreezeSeconds() : 0.f, HeadMoved, ChestMoved,
+						UHawkeyeVfxSubsystem::Find(Thug) ? UHawkeyeVfxSubsystem::Find(Thug)->GetRequestCount(UHawkeyeVfxSubsystem::MeleePuffEvent) : -1,
+						Kate ? FVector::Dist2D(Kate->GetActorLocation(), Thug->GetActorLocation()) : 0.f));
+					// On the hit frame he must already be on his hit pose: the head or the chest moved off the idle's place.
+					if (Offset == 0 && HeadMoved < 1.5f && ChestMoved < 1.5f)
+					{
+						Test->AddError(FString::Printf(TEXT("%s: on the hit frame he is still in his idle pose (head %.1f, chest %.1f cm): a statue."),
+							*Name, HeadMoved, ChestMoved));
+					}
+					if (Offset == 0 && React && React->IsFrozen())
+					{
+						const float Expected = UHawkeyeHitContactRules::ComputeHitStopSeconds(
+							Kate->GetMeleeComponent()->GetLastImpact().Weight, React->HitStop);
+						if (FMath::Abs(React->GetFreezeSeconds() - Expected) > 0.01f)
+						{
+							Test->AddError(FString::Printf(TEXT("%s: the freeze is %.3f s, the hit-stop rule says %.3f."), *Name,
+								React->GetFreezeSeconds(), Expected));
+						}
+					}
+				}
+				AddShot(Test, State, Name, FString::Printf(TEXT("%s_%02d_%+d_%.3fs"), *Name, Offset + 2, Offset, Elapsed));
 				return true;
 			}));
 			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([Test]() { return ShotsDone(Test); }, []() { return true; }, 12.f));
@@ -811,9 +846,10 @@ bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 		{TEXT("kate_bow_fire_before"), true, K + TEXT("AM_BowFire_Sparrow"), Spread(0.43f, 7), 0.f},
 	};
 	const FString Only = FParse::Param(FCommandLine::Get(), TEXT("ClipShotsGetUpOnly")) ? TEXT("none") : FString();
+	const bool bContactOnly = FParse::Param(FCommandLine::Get(), TEXT("ContactStripsOnly"));
 	for (const FClip& Clip : Clips)
 	{
-		if (Only.IsEmpty())
+		if (Only.IsEmpty() && !bContactOnly)
 		{
 			AddClip(this, State, Clip);
 		}
@@ -822,10 +858,13 @@ bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 	FParse::Value(FCommandLine::Get(), TEXT("ContactStripTag="), Tag);
 	AddContact(this, State, TEXT("contact_light_") + Tag, false);
 	AddContact(this, State, TEXT("contact_heavy_") + Tag, true);
-	AddGetUp(this, State, TEXT("getup_from_clip"), false, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
-	AddGetUp(this, State, TEXT("getup_from_ragdoll"), true, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
-	AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, false, TEXT("takedown_before"));
-	AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, true, TEXT("takedown_paired"));
+	if (!bContactOnly)
+	{
+		AddGetUp(this, State, TEXT("getup_from_clip"), false, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
+		AddGetUp(this, State, TEXT("getup_from_ragdoll"), true, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
+		AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, false, TEXT("takedown_before"));
+		AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, true, TEXT("takedown_paired"));
+	}
 
 	ADD_LATENT_AUTOMATION_COMMAND(FHawkeyeWaitForShots(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()

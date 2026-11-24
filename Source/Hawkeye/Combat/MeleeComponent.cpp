@@ -732,6 +732,11 @@ void UMeleeComponent::DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& 
 	{
 		Theirs->PlayHitReaction(Impact);
 	}
+	// No freeze came (inside the gap with no weight, or neither party is hers): whatever waited for it goes now.
+	if (Theirs && Theirs->HasPostFreezeAction() && !Theirs->IsFrozen())
+	{
+		Theirs->RunPostFreezeAction();
+	}
 	SpawnImpactPuff(Impact);
 }
 
@@ -1168,7 +1173,26 @@ bool UMeleeComponent::ResolveSweep()
 
 	if (bKnockdown && Health->IsAlive())
 	{
-		Thug->Knockdown(Owner);
+		if (TargetReaction && Cast<AHawkeyeCharacter>(Owner))
+		{
+			// A freeze is coming (DeliverImpact): he holds the blow's hit pose through it and goes over at the release, not
+			// a statue for 90 ms and then down.
+			const TWeakObjectPtr<AThugCharacter> WeakThug(Thug);
+			const TWeakObjectPtr<AActor> WeakOwner(Owner);
+			TargetReaction->SetPostFreezeAction([WeakThug, WeakOwner]()
+			{
+				AThugCharacter* Down = WeakThug.Get();
+				if (Down && Down->GetHealthComponent() && Down->GetHealthComponent()->IsAlive())
+				{
+					Down->Knockdown(WeakOwner.Get());
+				}
+			});
+			Thug->PlayHitPose(Impact);
+		}
+		else
+		{
+			Thug->Knockdown(Owner);
+		}
 	}
 	if (CurrentAttack.KnockbackDistance > 0.f && Health->IsAlive())
 	{

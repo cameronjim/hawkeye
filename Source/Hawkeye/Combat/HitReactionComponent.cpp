@@ -246,6 +246,17 @@ void UHitReactionComponent::EndFreeze()
 	{
 		Owner->CustomTimeDilation = SavedCustomDilation;
 	}
+	RunPostFreezeAction();
+}
+
+void UHitReactionComponent::RunPostFreezeAction()
+{
+	if (PostFreezeAction)
+	{
+		TFunction<void()> Action = MoveTemp(PostFreezeAction);
+		PostFreezeAction = nullptr;
+		Action();
+	}
 }
 
 void UHitReactionComponent::BeginAlignment(float TurnDegrees, const FVector& Nudge)

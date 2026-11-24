@@ -485,7 +485,7 @@ def smoke_stream(name, rate, life, color, size, radius, speed, cone_angle, drift
 
 
 WHITE_SNOW = (0.85, 0.88, 0.95)
-DUST = (0.62, 0.58, 0.52, 0.5)
+DUST = (0.95, 0.92, 0.86, 0.8)
 
 
 def dust_puff(name, count, life, color, size, speed, cone_angle, radius):
@@ -586,16 +586,16 @@ EFFECTS = {
     # weight (HawkeyeVfxMath::PickPuffVariant, ComputePuffScale). Soft smoke sprites only: no glow, no colour, nothing
     # that could be taken for the old whole-body flash.
     "NS_MeleePuff_A": [
-        dust_puff("Puff", 7, (0.30, 0.50), DUST, (7, 11), (90, 200), 38, 3),
+        dust_puff("Puff", 12, (0.30, 0.50), DUST, (20, 30), (110, 240), 38, 4),
     ],
     "NS_MeleePuff_B": [
-        dust_puff("Puff", 11, (0.35, 0.60), DUST, (8, 13), (60, 170), 62, 5),
+        dust_puff("Puff", 16, (0.35, 0.60), DUST, (22, 34), (80, 200), 62, 6),
     ],
     "NS_MeleePuff_C": [
-        dust_puff("Puff", 5, (0.40, 0.70), DUST, (11, 16), (50, 130), 30, 3),
+        dust_puff("Puff", 8, (0.40, 0.70), DUST, (28, 40), (60, 150), 30, 4),
     ],
     "NS_MeleePuff_D": [
-        dust_puff("Puff", 9, (0.25, 0.45), DUST, (6, 10), (110, 240), 50, 4),
+        dust_puff("Puff", 14, (0.25, 0.45), DUST, (18, 26), (130, 280), 50, 5),
     ],
     # The bow string's release: a tiny puff of breath-like haze.
     "NS_BowRelease": [

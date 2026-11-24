@@ -1189,6 +1189,17 @@ void AThugCharacter::ApplyCombatAnimSet()
 	}
 }
 
+void AThugCharacter::PlayHitPose(const FHawkeyeStrikeImpact& Blow)
+{
+	if (bLimp || bKnockedDown)
+	{
+		return;
+	}
+	const EHawkeyeHitDirection Side = UHawkeyeHitContactRules::ClassifyReaction(GetActorForwardVector(), Blow.Direction);
+	const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
+	HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, &Blow, Side, HeavyReactionWeight, Weld);
+}
+
 bool AThugCharacter::PlayCombatClip(ECombatAnimRole ClipRole, float FitToSeconds)
 {
 	return !bLimp && HawkeyeCombatAnim::PlayRole(GetMesh(), CombatAnimSet, ClipRole, FitToSeconds) != nullptr;

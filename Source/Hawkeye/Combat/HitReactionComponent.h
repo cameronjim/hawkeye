@@ -53,6 +53,14 @@ public:
 	 */
 	void BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration);
 
+	/**
+	 * Something to do when the freeze lets go (a knockdown: the victim holds the blow's hit pose through the freeze, then goes
+	 * over). One at a time. Run at once by RunPostFreezeAction when no freeze came.
+	 */
+	void SetPostFreezeAction(TFunction<void()> Action) { PostFreezeAction = MoveTemp(Action); }
+	bool HasPostFreezeAction() const { return static_cast<bool>(PostFreezeAction); }
+	void RunPostFreezeAction();
+
 	/** True from BeginFreeze until the freeze ends: the owner's own clock is stopped. */
 	UFUNCTION(BlueprintPure, Category = "Hit Reaction")
 	bool IsFrozen() const { return bFrozen; }
@@ -228,6 +236,8 @@ protected:
 	FVector FreezeAxis = FVector::ForwardVector;
 	/** The world offset the vibration has put on the mesh now. */
 	FVector AppliedVibration = FVector::ZeroVector;
+
+	TFunction<void()> PostFreezeAction;
 
 	/** The alignment over the freeze: totals, and the share of them applied so far (0 to 1). */
 	bool bAligning = false;
