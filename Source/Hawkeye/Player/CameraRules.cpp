@@ -42,7 +42,8 @@ namespace HawkeyeCameraRules
 		float HalfHeight)
 	{
 		const float Up = FMath::SmoothStep(Curve.UpStartPitch, FMath::Max(Curve.UpFullPitch, Curve.UpStartPitch + 1.f), Pitch);
-		const float Down = FMath::SmoothStep(0.f, Curve.DownFullPitch, Pitch);
+		// SmoothStep wants its edges in increasing order: work in "degrees down".
+		const float Down = FMath::SmoothStep(0.f, FMath::Max(-Curve.DownFullPitch, 1.f), -Pitch);
 
 		FHawkeyeCameraTargets Out = Base;
 		Out.ArmLength = FMath::Lerp(Base.ArmLength, Curve.ArmUp, Up) + Curve.ArmDown * Down;

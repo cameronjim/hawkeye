@@ -16,13 +16,13 @@ bool FHawkeyeLapBotAim::RunTest(const FString& Parameters)
 	// A frame is at most AimTurnRate / 60 degrees, however far the target is.
 	const float Frame = HawkeyeLapBot::AimTurnRate / 60.f;
 	const FRotator Step = HawkeyeLapBot::StepAim(FRotator(0.f, 0.f, 0.f), FRotator(0.f, 180.f, 0.f), Frame);
-	TestEqual(TEXT("A half turn is one 9-degree frame, not a flip"), FMath::Abs(Step.Yaw), Frame, 0.001f);
-	TestEqual(TEXT("Pitch is limited the same way"), HawkeyeLapBot::StepAim(FRotator::ZeroRotator, FRotator(60.f, 0.f, 0.f), Frame).Pitch, Frame, 0.001f);
+	TestEqual(TEXT("A half turn is one 9-degree frame, not a flip"), static_cast<float>(FMath::Abs(Step.Yaw)), Frame, 0.001f);
+	TestEqual(TEXT("Pitch is limited the same way"), static_cast<float>(HawkeyeLapBot::StepAim(FRotator::ZeroRotator, FRotator(60.f, 0.f, 0.f), Frame).Pitch), Frame, 0.001f);
 
 	// It takes the short way round the circle.
-	TestEqual(TEXT("350 to 10 degrees is 20 degrees the short way"), HawkeyeLapBot::StepAim(FRotator(0.f, 350.f, 0.f), FRotator(0.f, 10.f, 0.f), 100.f).Yaw,
+	TestEqual(TEXT("350 to 10 degrees is 20 degrees the short way"), static_cast<float>(HawkeyeLapBot::StepAim(FRotator(0.f, 350.f, 0.f), FRotator(0.f, 10.f, 0.f), 100.f).Yaw),
 		10.f, 0.001f);
-	TestEqual(TEXT("and a step inside the limit lands on the target"), HawkeyeLapBot::StepAim(FRotator(0.f, 5.f, 0.f), FRotator(0.f, 8.f, 0.f), Frame).Yaw,
+	TestEqual(TEXT("and a step inside the limit lands on the target"), static_cast<float>(HawkeyeLapBot::StepAim(FRotator(0.f, 5.f, 0.f), FRotator(0.f, 8.f, 0.f), Frame).Yaw),
 		8.f, 0.001f);
 
 	// A half turn takes a third of a second, in 60 frames of 9 degrees: 20 of them.
