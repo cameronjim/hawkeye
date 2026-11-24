@@ -235,6 +235,57 @@ struct HAWKEYE_API FHawkeyeCameraTargets
 	}
 };
 
+/**
+ * How one aim state's camera changes with the look pitch (gameplay-semantics.md, "Camera rules"; the maths is
+ * HawkeyeCameraRules::ComputePitchTargets). Looking up pulls the arm in, raises the socket and widens the view;
+ * looking down moves the arm out. The pivot lift is not a number here: it is whatever keeps the lens
+ * MinLensHeight above her feet on flat ground at that pitch, so the lens can never reach the pavement.
+ */
+USTRUCT(BlueprintType)
+struct HAWKEYE_API FHawkeyeCameraPitchCurve
+{
+	GENERATED_BODY()
+
+	FHawkeyeCameraPitchCurve() = default;
+
+	FHawkeyeCameraPitchCurve(float InArmUp, float InSocketZUp, float InFovUp, float InArmDown, float InMinLensHeight)
+		: ArmUp(InArmUp), SocketZUp(InSocketZUp), FovUp(InFovUp), ArmDown(InArmDown), MinLensHeight(InMinLensHeight)
+	{
+	}
+
+	/** Pitch (up positive) at which the look-up change starts, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.0", ClampMax = "89.0"))
+	float UpStartPitch = 5.f;
+
+	/** Pitch at which the look-up change is complete, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "1.0", ClampMax = "89.0"))
+	float UpFullPitch = 60.f;
+
+	/** Arm length when looking steeply up, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.0"))
+	float ArmUp = 230.f;
+
+	/** Socket height when looking steeply up, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float SocketZUp = 100.f;
+
+	/** Degrees added to the field of view when looking steeply up. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float FovUp = 7.f;
+
+	/** Pitch (down negative) at which the look-down change is complete, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMax = "-1.0", ClampMin = "-89.0"))
+	float DownFullPitch = -70.f;
+
+	/** Centimetres added to the arm when looking straight down. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera")
+	float ArmDown = 50.f;
+
+	/** The lens never sits lower than this above her feet on flat ground, at any pitch, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera", meta = (ClampMin = "0.0"))
+	float MinLensHeight = 105.f;
+};
+
 /** UHawkeyeMovementComponent's custom movement modes (MOVE_Custom's sub-mode). */
 UENUM(BlueprintType)
 enum class EHawkeyeCustomMovement : uint8
