@@ -21,6 +21,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeCharacter.h"
@@ -48,7 +50,7 @@
  * the single frames in Saved/Screenshots/Traversal/Frames/. A yellow line is drawn from her rope hand to the anchor.
  *
  * Scenarios: launch (the crouch-load while the arrow is in the air, then the hop and the jerk), pull (the line),
- * redirect (a chain's turn), release (let go into the fall and the landing after), brace (the last 0.3 s of a long
+ * redirect (a chain's turn), tail_run (a sprint, then stopped dead: the ponytail's swing) and cut (a teleport mid-run), release (let go into the fall and the landing after), brace (the last 0.3 s of a long
  * climb), arrive_brake, arrive_slide and arrive_step (the three arrival classes), land_light, land_heavy and land_roll.
  * With the pose on it also checks, in the log and as errors: the phase the pose is in at each key moment, the body
  * tipped mid-pull, and that her drawn hand is on the rope hand's target (within 45 cm; a warning past 25).
@@ -71,6 +73,8 @@ namespace HawkeyeTraversalShots
 		FVector Feet = FVector::ZeroVector;
 		FVector Along = FVector::ForwardVector;
 		float DefaultZipSpeed = 1800.f;
+		/** The flat direction a run scenario goes along (clear of walls for the run's length). */
+		FVector RunHeading = FVector::ForwardVector;
 		/** Per strip name, its frames in order. */
 		TMap<FString, TArray<FString>> Frames;
 	};
@@ -98,6 +102,8 @@ namespace HawkeyeTraversalShots
 		TFunction<void(FStage&, UWorld&)> Start;
 		/** Fires once when the world has run this long since Start. */
 		TArray<TPair<double, TFunction<void(FStage&, UWorld&)>>> Events;
+		/** Called every frame while the scenario runs, with the seconds since Start (a run's stick input). */
+		TFunction<void(FStage&, UWorld&, double)> PerTick;
 		/** The reference moment is this long after Start (>= 0), or, when negative, the moment the zip ends / she
 		 * touches down. */
 		double Reference = 0.0;
@@ -450,6 +456,68 @@ namespace HawkeyeTraversalShots
 		Landing(TEXT("land_light"), 170.f, 0.f);
 		Landing(TEXT("land_heavy"), 330.f, 320.f);
 		Landing(TEXT("land_roll"), 650.f, 450.f);
+		// Running on level ground for RunSeconds (sprinting, stick held along RunHeading), then the stick is let go and
+		// she is stopped dead (tail_run), or she is cut to the start of the run with the stick still held (cut).
+		const auto RunStart = [](FStage& Stage, UWorld& World)
+		{
+			AHawkeyeCharacter* Kate = Stage.Kate.Get();
+			StandKate(Stage, World);
+			const FVector Centre = Kate->GetActorLocation();
+			const FVector End = FindClearEnd(World, *Kate, Centre, Stage.Along, 1500.f, 0.f);
+			Stage.RunHeading = (End - Centre).GetSafeNormal2D();
+			Kate->SetActorRotation(Stage.RunHeading.Rotation());
+			Kate->PressSprint(false);
+		};
+		{
+			FScenario S;
+			S.Name = TEXT("tail_run");
+			S.Times = {0.9f, 1.3f, 1.62f, 1.7f, 1.8f, 1.95f, 2.2f, 2.7f};
+			S.Start = RunStart;
+			S.PerTick = [](FStage& Stage, UWorld& World, double Elapsed)
+			{
+				AHawkeyeCharacter* Kate = Stage.Kate.Get();
+				if (!Kate)
+				{
+					return;
+				}
+				if (Elapsed < 1.6)
+				{
+					Kate->AddMovementInput(Stage.RunHeading, 1.f);
+				}
+				else
+				{
+					Kate->ReleaseSprint();
+					Kate->GetHawkeyeMovement()->StopMovementImmediately();
+				}
+			};
+			Out.Add(S);
+		}
+		{
+			FScenario S;
+			S.Name = TEXT("cut");
+			S.Times = {0.8f, 0.98f, 1.03f, 1.08f, 1.15f, 1.3f, 1.6f, 2.1f};
+			S.Start = RunStart;
+			S.PerTick = [](FStage& Stage, UWorld& World, double Elapsed)
+			{
+				AHawkeyeCharacter* Kate = Stage.Kate.Get();
+				if (!Kate)
+				{
+					return;
+				}
+				Kate->AddMovementInput(Stage.RunHeading, 1.f);
+			};
+			S.Events.Add({1.0, [](FStage& Stage, UWorld& World)
+				{
+					if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+					{
+						// Twelve metres back along the run, a cut like a fast-travel or a checkpoint.
+						Kate->TeleportTo(Kate->GetActorLocation() - Stage.RunHeading * 1200.f + FVector(0.f, 0.f, 3.f),
+							Kate->GetActorRotation(), false, true);
+						Kate->NotifyTeleported();
+					}
+				}});
+			Out.Add(S);
+		}
 		return Out;
 	}
 
@@ -612,6 +680,10 @@ namespace HawkeyeTraversalShots
 		{
 			const double Elapsed = World.GetTimeSeconds() - StartedAt;
 			const UHawkeyeMovementComponent* Movement = Kate.GetHawkeyeMovement();
+			if (Scenario.PerTick)
+			{
+				Scenario.PerTick(*Stage, World, Elapsed);
+			}
 			for (int32 Index = 0; Index < Scenario.Events.Num(); ++Index)
 			{
 				if (!FiredEvents.Contains(Index) && Elapsed >= Scenario.Events[Index].Key)
@@ -700,7 +772,14 @@ namespace HawkeyeTraversalShots
 			const FVector Left = -FVector::CrossProduct(FVector::UpVector, Forward);
 			const FVector Centre = Kate.GetActorLocation() + FVector(0.f, 0.f, 10.f);
 			const FVector Direction = bQuarter ? (Forward * 0.75f + Left * 0.66f).GetSafeNormal() : Left;
-			const FVector Eye = Centre + Direction * 480.f + FVector(0.f, 0.f, bQuarter ? 50.f : 15.f);
+			FVector Eye = Centre + Direction * 480.f + FVector(0.f, 0.f, bQuarter ? 50.f : 15.f);
+			// A pole or a post between her and the lens: bring the lens in front of it.
+			FCollisionQueryParams Block(SCENE_QUERY_STAT(TraversalShotLens), false, &Kate);
+			FHitResult Hit;
+			if (Kate.GetWorld()->LineTraceSingleByChannel(Hit, Centre, Eye, ECC_Visibility, Block))
+			{
+				Eye = Centre + (Eye - Centre) * FMath::Max(0.35f, Hit.Time - 0.05f);
+			}
 			Camera->SetActorLocationAndRotation(Eye, (Centre - Eye).Rotation());
 			Camera->GetCameraComponent()->SetFieldOfView(50.f);
 			Camera->GetCameraComponent()->bConstrainAspectRatio = false;
@@ -891,10 +970,24 @@ bool FHawkeyeScreenshotTraversal::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));
 
 	const TArray<FScenario> Scenarios = MakeScenarios();
+	// -HawkeyeTraversalOnly=pull+tail_run runs just those scenarios (joined with +); -HawkeyeTraversalPoseOnly runs only the pose-on mode.
+	FString Only;
+	FParse::Value(FCommandLine::Get(), TEXT("HawkeyeTraversalOnly="), Only);
+	TArray<FString> OnlyNames;
+	Only.ParseIntoArray(OnlyNames, TEXT("+"));
+	const bool bPoseOnlyOn = FParse::Param(FCommandLine::Get(), TEXT("HawkeyeTraversalPoseOnly"));
 	for (const FScenario& Scenario : Scenarios)
 	{
+		if (OnlyNames.Num() > 0 && !OnlyNames.Contains(Scenario.Name))
+		{
+			continue;
+		}
 		for (const bool bPoseOn : {false, true})
 		{
+			if (bPoseOnlyOn && !bPoseOn)
+			{
+				continue;
+			}
 			TSharedRef<FDirector> Director = MakeShared<FDirector>(this, Stage, Scenario, bPoseOn);
 			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([Director]() { return Director->Tick(); },
 				[Director]()
