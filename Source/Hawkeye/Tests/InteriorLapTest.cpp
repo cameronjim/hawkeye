@@ -488,9 +488,7 @@ namespace HawkeyeInteriorLap
 		}
 		AThugCharacter* Target = bDrawing && DrawTarget.IsValid() && !IsDown(DrawTarget.Get()) ? DrawTarget.Get() : Nearest;
 		const FVector Chest = Target->GetActorLocation() + FVector(0.f, 0.f, 30.f);
-		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-		const FRotator Look = (Chest - Lens).Rotation();
-		PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
+		HawkeyeLapBot::AimAt(PC, Kate, Chest);
 
 		if (bMeleeHeld)
 		{
@@ -1075,9 +1073,7 @@ namespace HawkeyeInteriorLap
 			{
 				return EStep::Failed;
 			}
-			const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-			const FRotator Look = (Nearest->GetMarkerLocation() - Lens).Rotation();
-			PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
+			HawkeyeLapBot::AimAt(PC, Kate, Nearest->GetMarkerLocation());
 			Grapple->RefreshTarget();
 			if (Grapple->GetTargetAnchor() == Nearest)
 			{

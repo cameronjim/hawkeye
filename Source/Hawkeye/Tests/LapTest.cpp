@@ -270,13 +270,7 @@ namespace HawkeyeLap
 		return Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 	}
 
-	/** Points the camera from where the lens is now at Target (the arm follows; call every frame). */
-	static void AimAt(APlayerController* PC, const AHawkeyeCharacter* Kate, const FVector& Target)
-	{
-		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-		const FRotator Look = (Target - Lens).Rotation();
-		PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
-	}
+	using HawkeyeLapBot::AimAt;
 
 	/**
 	 * A thug in front of her view within 240 cm whose telegraph a tap of V parries, seen for at least

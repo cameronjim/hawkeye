@@ -168,12 +168,7 @@ namespace HawkeyeCrimeLap
 		return FVector2D(FMath::Sin(Angle), FMath::Cos(Angle));
 	}
 
-	static void AimAt(APlayerController* PC, const AHawkeyeCharacter* Kate, const FVector& Target)
-	{
-		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-		const FRotator Look = (Target - Lens).Rotation();
-		PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
-	}
+	using HawkeyeLapBot::AimAt;
 
 	/** A crime thug in front of her within 240 cm whose telegraph she has seen for 0.2 s. */
 	static AThugCharacter* ParryChance(const TArray<TWeakObjectPtr<AThugCharacter>>& Thugs, const AHawkeyeCharacter* Kate,

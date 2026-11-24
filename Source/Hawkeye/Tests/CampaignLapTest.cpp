@@ -53,6 +53,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/LapFightPressure.h"
+#include "Tests/LapBot.h"
 #include "UI/ChapterTitleWidget.h"
 #include "UI/HawkeyeDifficultyPromptWidget.h"
 #include "UI/HawkeyeHintSubsystem.h"
@@ -223,12 +224,7 @@ namespace HawkeyeCampaignLap
 		return Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 	}
 
-	static void AimAt(APlayerController* PC, const AHawkeyeCharacter* Kate, const FVector& Target)
-	{
-		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-		const FRotator Look = (Target - Lens).Rotation();
-		PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
-	}
+	using HawkeyeLapBot::AimAt;
 
 	static bool IsDown(const AThugCharacter* Thug)
 	{

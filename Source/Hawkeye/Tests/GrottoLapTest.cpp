@@ -156,12 +156,7 @@ namespace HawkeyeGrottoLap
 		return Out;
 	}
 
-	static void AimCamera(AHawkeyePlayerController* PC, const AHawkeyeCharacter* Kate, const FVector& Target)
-	{
-		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-		const FRotator Look = (Target - Lens).Rotation();
-		PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
-	}
+	using HawkeyeLapBot::AimAt;
 
 	class FRunner : public IAutomationLatentCommand
 	{
@@ -506,7 +501,7 @@ namespace HawkeyeGrottoLap
 			return EStep::Failed;
 		}
 		AThugCharacter* Target = bDrawing && DrawTarget.IsValid() && !IsDown(DrawTarget.Get()) ? DrawTarget.Get() : Nearest;
-		AimCamera(PC, Kate, Target->GetActorLocation() + FVector(0.f, 0.f, 30.f));
+		AimAt(PC, Kate, Target->GetActorLocation() + FVector(0.f, 0.f, 30.f));
 
 		// Telegraphs first, whatever she is doing, the way a player answers them (2026-11-12, the Santa flake: the bot
 		// checked them only when idle, so a heavy it had started ate the second sack swing, a jab it threw into the
@@ -993,7 +988,7 @@ namespace HawkeyeGrottoLap
 			if (IsDone(World, TEXT("find_sleigh")) && Run.SteerTo(World, PC, Kate, Front, 80.f, Now))
 			{
 				Run.Sprint(PC, false);
-				AimCamera(PC, Kate, Doors[0]->GetActorLocation() + FVector(0.f, 0.f, 220.f));
+				AimAt(PC, Kate, Doors[0]->GetActorLocation() + FVector(0.f, 0.f, 220.f));
 				if (Run.Phase < 2)
 				{
 					Run.Phase = 2;
@@ -1099,7 +1094,7 @@ namespace HawkeyeGrottoLap
 			{
 				return EStep::Failed;
 			}
-			AimCamera(PC, Kate, Elf->GetActorLocation() + FVector(0.f, 0.f, 20.f));
+			AimAt(PC, Kate, Elf->GetActorLocation() + FVector(0.f, 0.f, 20.f));
 			if (!Run.Shots.Contains(TEXT("grotto_inside.png")) && Now - Run.StepStart > 1.5)
 			{
 				Run.Shot(TEXT("grotto_inside.png"));
@@ -1156,7 +1151,7 @@ namespace HawkeyeGrottoLap
 				Run.Note(TEXT("no bow or no alarm box"));
 				return EStep::Failed;
 			}
-			AimCamera(PC, Kate, AlarmBox);
+			AimAt(PC, Kate, AlarmBox);
 			if (Run.Phase == 0)
 			{
 				Run.StopMoving(PC);
@@ -1300,7 +1295,7 @@ namespace HawkeyeGrottoLap
 			}
 			if (Run.SteerTo(World, PC, Kate, Keypad + FVector(0.f, -110.f, 0.f), 45.f, Now))
 			{
-				AimCamera(PC, Kate, Keypad + FVector(0.f, 0.f, 120.f));
+				AimAt(PC, Kate, Keypad + FVector(0.f, 0.f, 120.f));
 				if (Now - Run.PhaseAt > 0.7)
 				{
 					Run.PhaseAt = Now;
@@ -1458,7 +1453,7 @@ namespace HawkeyeGrottoLap
 				const bool bStill = Kate->GetVelocity().Size2D() < 20.f;
 				if (!Run.Shots.Contains(TEXT("grotto_vault.png")))
 				{
-					AimCamera(PC, Kate, FVector(1630.f, 1640.f, 60.f));
+					AimAt(PC, Kate, FVector(1630.f, 1640.f, 60.f));
 					if (bStill && Now - Run.PhaseAt > 0.3)
 					{
 						Run.Shot(TEXT("grotto_vault.png"));
@@ -1487,7 +1482,7 @@ namespace HawkeyeGrottoLap
 					&& FVector::Dist2D(Santa->GetActorLocation(), Kate->GetActorLocation()) < 400.f)
 				{
 					Run.StopMoving(PC);
-					AimCamera(PC, Kate, Santa->GetActorLocation() + FVector(0.f, 0.f, 40.f));
+					AimAt(PC, Kate, Santa->GetActorLocation() + FVector(0.f, 0.f, 40.f));
 					Run.Shot(TEXT("grotto_santa.png"));
 					return EStep::Running;
 				}
@@ -1698,7 +1693,7 @@ namespace HawkeyeGrottoLap
 				return EStep::Running;
 			}
 			Run.Crouch(false);
-			AimCamera(PC, Kate, Ornament->GetActorLocation() + FVector(0.f, 0.f, 100.f));
+			AimAt(PC, Kate, Ornament->GetActorLocation() + FVector(0.f, 0.f, 100.f));
 			if (!Run.Shots.Contains(TEXT("grotto_ornament.png")))
 			{
 				if (Now - Run.PhaseAt > 1.2)
@@ -1802,7 +1797,7 @@ namespace HawkeyeGrottoLap
 					return EStep::Running;
 				}
 				Run.StopMoving(PC);
-				AimCamera(PC, Kate, West);
+				AimAt(PC, Kate, West);
 				Inventory->SelectArrowSlot(SlotBoomerang);
 				Run.CaughtAtStart = AReturningArrowProjectile::CaughtCount;
 				Run.SelfHitsAtStart = AReturningArrowProjectile::SelfHitCount;
@@ -1817,7 +1812,7 @@ namespace HawkeyeGrottoLap
 			if (Run.Phase == 1)
 			{
 				Bow->SetAimOverride(West);
-				AimCamera(PC, Kate, West);
+				AimAt(PC, Kate, West);
 				if (Kate->IsStaggered() || (Now - Run.PhaseAt > 0.25 && !Kate->IsDrawingBow()))
 				{
 					Bow->CancelDraw();
@@ -1856,7 +1851,7 @@ namespace HawkeyeGrottoLap
 					{
 						// Still aimed until it is away.
 						Bow->SetAimOverride(West);
-						AimCamera(PC, Kate, West);
+						AimAt(PC, Kate, West);
 					}
 					return EStep::Running;
 				}

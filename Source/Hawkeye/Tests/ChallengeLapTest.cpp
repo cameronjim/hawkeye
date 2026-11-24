@@ -31,6 +31,7 @@
 #include "Player/InventoryComponent.h"
 #include "Player/ParkourComponent.h"
 #include "Tests/AutomationCommon.h"
+#include "Tests/LapBot.h"
 #include "World/CityLedgeSpawner.h"
 #include "World/FireEscapeLanding.h"
 #include "World/GrappleAnchor.h"
@@ -145,12 +146,7 @@ namespace HawkeyeChallengeLap
 		return Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
 	}
 
-	static void AimAt(APlayerController* PC, const AHawkeyeCharacter* Kate, const FVector& Target)
-	{
-		const FVector Lens = Kate->GetFollowCamera()->GetComponentLocation();
-		const FRotator Look = (Target - Lens).Rotation();
-		PC->SetControlRotation(FRotator(Kate->ClampCameraPitch(Look.Pitch), Look.Yaw, 0.f));
-	}
+	using HawkeyeLapBot::AimAt;
 
 	static AChallengeStart* FindStart(UWorld* World, FName Id)
 	{
