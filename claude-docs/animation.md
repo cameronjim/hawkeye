@@ -523,8 +523,9 @@ eases it into alphas over 0.12 s. Kate and Clint have no such node.
 - **State.** Fist: both hands during a swing, except one holding a prop. Grip: the right hand while the pistol or the bat is
   held. Nothing held and not swinging: Relaxed. An unarmed thug (`Weapon` Fists) holds nothing.
 - **Rest arms.** `ArmRest` weight (1 standing at ease, falling to 0 by 150 cm/s, 0 while swinging or the pistol is raised, in a
-  knockdown or collapse) turns the upper arm to hang straight down, 5 degrees out from the body, and the forearm on it bent 8
-  degrees forward (`ArmRestDirections`), about the shoulder and elbow, in component space.
+  knockdown or collapse) turns the upper arm to hang down 20 degrees out from the body (10 until 2026-11-24, when the fingertips sank into the
+  tracksuit trousers; `hands_thug_empty.png` against `hands_thug_empty_before_arm.png`: the hand now hangs clear of the hip by a
+  hand's width), and the forearm on it bent 6 degrees forward (`ArmRestDirections`), about the shoulder and elbow, in component space.
 - **Props.** The pistol and the bat follow the visible hand (`GetBodyHandGrip`), placed again from
   `OnBoneTransformsFinalized` so they do not lag a frame. The pistol's grip block centre sits in the fist (handle across the
   knuckles, muzzle along the fingers 18 degrees away from the thigh); a gripping wrist turns toward the bat's axis, up to 50
@@ -625,14 +626,28 @@ authored clip would have had to beat that.
 `Hawkeye.Screenshot.Traversal` (standalone `-game`): per scenario and mode, `Saved/Screenshots/Traversal/<scenario>_<side |
 three_quarter>_<off|on>.png`, the frames in `Frames/`. A yellow line is drawn from the drawn hand to the rope's end.
 
-## Secondary motion (Kawaii Physics; written 2026-11-24, code only: not yet built or seen)
+## Secondary motion (Kawaii Physics; built, run and looked at 2026-11-24)
 
 Kate's ponytail and quiver swing, simulated by the Kawaii Physics plugin (pafuhana1213/KawaiiPhysics, MIT, vendored at
 `Plugins/KawaiiPhysics`, pinned to v1.21.0, commit 0035f52; `docs/CREDITS.md`). It replaced the engine's AnimDynamics, which
 put NaNs in `ponytail_01` on the first frame (a hard assert in `BonePose.h`) as a chain, as single bodies and as one body, with
-and without every constraint, while the same graph with no node was clean; the cause was never found. **None of this has been
-compiled or run yet** (written while another job owned the engine): the checklist at the end of this section is what the
-first build and look must settle before any number here is trusted.
+and without every constraint, while the same graph with no node was clean; the cause was never found. **Status: on.** The plugin
+built on 5.8 unchanged (editor target, 70 s, including its own Private/Tests), `Hawkeye.SecondaryMotion.*` (4) pass, the AnimBP
+rebuilds with 2 Kawaii Physics nodes and no rejected chain, and standalone `-game` runs (the traversal strips, `t.MaxFPS` 10 and
+144, a teleport mid-run, time held at 0.0001) never hit the `BonePose.h` assert. The module-type trap that broke the body pose
+node does not apply: the plugin's `KawaiiPhysics` module is Runtime (the node struct) and `KawaiiPhysicsEd` is `UncookedOnly`
+(`PreDefault`), which loads in the standalone editor-binary runs; `Hawkeye.Build.cs` links `KawaiiPhysics` only in editor
+targets because only the builder (WITH_EDITOR) names its struct, and the game target builds the plugin by being enabled in the
+`.uproject`. Strips: `tail_run` (sprint 1.6 s, stick released, stopped dead), `cut` (teleport 12 m back mid-run) and the
+existing `pull` and `land_heavy`; `-HawkeyeTraversalOnly=a+b` and `-HawkeyeTraversalPoseOnly` limit a run.
+
+What the strips show (the starting numbers were kept; nothing needed tuning): running, the ponytail streams back and up,
+a few degrees off the pose's line; on a dead stop it swings forward over the shoulder and up and then hangs, settling inside
+the 0.3 s between strip frames (the stop is instant, the harshest case); along a zip pull it trails back along the body; on a
+heavy landing it is flung up past the head at the touchdown and drops by 0.55 s. A teleport shows no whip in the frames after
+(the engine's reset). It never passes through the head, neck or back in any frame; the rest ponytail hangs straight down the
+back, not displaced. The quiver stays within a few degrees. Not seen: a slow oscillation count (the strip frames are 0.1 s
+apart at best) and the ponytail's behaviour in a long turn; the hem and the bow on her back are still rigid.
 
 Where it lives:
 
@@ -690,9 +705,8 @@ Collision shapes are written once, in the skeleton's reference-pose axes with Z 
 pose, so the way the Blender export pointed a bone's axes does not matter. A shape that overlaps the ponytail's own rest pose
 pushes it off its animation every frame: if the rest ponytail is displaced, shrink or move the Head sphere first.
 
-Not done / not known (read before changing): none of the starting numbers has been seen; the plugin's v1.21.0 README states 5.3
-to 5.7 and no 5.8 build was possible while this was written (the engine virtuals it overrides, the headers it includes and the
-physics asset members it reads were compared with the 5.8 headers by reading, not by compiling); the jacket's hem, the
+Not done / not known (read before changing): the plugin's v1.21.0 README states 5.3 to 5.7; it compiled and ran on 5.8
+without a patch; the jacket's hem, the
 bow on her back (a static mesh on the driver's holster socket: it rides the driver rigidly, simulating it means a spring on
 the holster socket, not a node here) and the plugin's `BoneForwardAxis` (only the dummy-bone tip reads it; `DummyBoneLength` is
 0 because both chains end in real leaf bones) are left alone.
@@ -706,11 +720,8 @@ last real bone has a direction; `quiver_01` under spine_03 from the quiver's mou
 <staging>\built\kate` (the engine import reads `<assets root>\built\kate`; point `HAWKEYE_ASSETS_ROOT` at a staging copy for
 the import until it has been looked at).
 
-First build and look, in order: build the editor target (a failure in `Plugins/KawaiiPhysics/Source/KawaiiPhysics/Private/Tests`
-means delete that folder, the tests are the plugin's own); run `Hawkeye.SecondaryMotion` and `KawaiiPhysics`; rebuild Kate
-(`create-content.ps1`, the AnimBP stamp changed so it rebuilds) and check `LogHawkeye` says two Kawaii Physics nodes; run a
-standalone game and confirm no assert in `BonePose.h`; then look at the ponytail in the `Hawkeye.Screenshot.Traversal` strips
-(run, stop, a zip pull, a landing) with `a.AnimNode.KawaiiPhysics.Debug 1` drawing the shapes, and tune from there.
+Checking it again: `Hawkeye.SecondaryMotion`, `create-content.ps1` (LogHawkeye: "2 Kawaii Physics node(s)"), then the strips with
+`a.AnimNode.KawaiiPhysics.Debug 1` to draw the shapes.
 
 ## Known limits
 
