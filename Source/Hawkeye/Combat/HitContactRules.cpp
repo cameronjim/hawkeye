@@ -268,6 +268,22 @@ EHawkeyeContactRegion UHawkeyeHitContactRules::SelectRegionForHeight(float Conta
 	return ToTorso <= ToLegs ? EHawkeyeContactRegion::Torso : EHawkeyeContactRegion::Legs;
 }
 
+float UHawkeyeHitContactRules::PickStrikeHeight(float ClipHeightCm, float LimbHeightCm)
+{
+	if (ClipHeightCm >= 0.f)
+	{
+		return ClipHeightCm;
+	}
+	return LimbHeightCm >= 0.f ? LimbHeightCm : -1.f;
+}
+
+float UHawkeyeHitContactRules::ComputeNetKnockbackCm(float TunedCm, const FVector& Nudge, const FVector& Direction)
+{
+	const FVector Along = Direction.GetSafeNormal2D();
+	const float Moved = FVector(Nudge.X, Nudge.Y, 0.f) | Along;
+	return FMath::Max(TunedCm - Moved, 0.f);
+}
+
 bool UHawkeyeHitContactRules::ShouldHitStop(bool bAlive, bool bWindingUp)
 {
 	return bAlive && !bWindingUp;

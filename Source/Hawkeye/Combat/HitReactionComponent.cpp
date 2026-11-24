@@ -285,6 +285,8 @@ void UHitReactionComponent::EndFreeze()
 		Owner->AddActorWorldRotation(FRotator(0.f, AlignTurnDegrees * Rest, 0.f));
 		Owner->AddActorWorldOffset(AlignNudge * Rest, /*bSweep=*/true);
 	}
+	// What the freeze moved him: the knock-back that follows takes it into account (ApplyKnockbackNow).
+	LastAlignNudge = bAligning ? AlignNudge : FVector::ZeroVector;
 	bAligning = false;
 	AlignApplied = 0.f;
 	if (USkeletalMeshComponent* Mesh = GetVibratedMesh(); Mesh && !AppliedVibration.IsNearlyZero(0.001f))
@@ -349,6 +351,11 @@ void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float Di
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
 	const FVector Flat = Direction.GetSafeNormal2D();
+	// The victim-align nudge moved him over the freeze (toward the attacker, mostly, to the clip's contact distance), which
+	// ate the shove: the displacement he ends with, from where the blow found him, is the tuned distance.
+	const float TunedCm = DistanceCm;
+	DistanceCm = UHawkeyeHitContactRules::ComputeNetKnockbackCm(TunedCm, LastAlignNudge, Flat);
+	LastAlignNudge = FVector::ZeroVector;
 	if (!Movement || Flat.IsNearlyZero() || DistanceCm <= 0.f)
 	{
 		return;
@@ -385,8 +392,8 @@ void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float Di
 	Shove->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
 	Shove->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
 	Movement->ApplyRootMotionSource(Shove);
-	UE_LOG(LogHawkeye, Log, TEXT("%s: knock-back %.0f cm over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()), DistanceCm,
-		Weld.KnockbackSeconds, Peak);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: knock-back %.0f cm (tuned %.0f) over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()), DistanceCm,
+		TunedCm, Weld.KnockbackSeconds, Peak);
 }
 
 void UHitReactionComponent::PlayHitReaction(const FHawkeyeStrikeImpact& Impact)

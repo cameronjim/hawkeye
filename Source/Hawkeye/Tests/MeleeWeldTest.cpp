@@ -179,6 +179,20 @@ bool FHawkeyeWeldReactionChoice::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A foot at 90 cm: his gut"), UHawkeyeHitContactRules::SelectRegionForHeight(100.f, 165.f, 125.f, 60.f, EHawkeyeContactRegion::Head), EHawkeyeContactRegion::Torso);
 	TestEqual(TEXT("A kick at 50: his legs"), UHawkeyeHitContactRules::SelectRegionForHeight(50.f, 165.f, 125.f, 60.f, EHawkeyeContactRegion::Head), EHawkeyeContactRegion::Legs);
 	TestEqual(TEXT("Unknown height: the attack's own region"), UHawkeyeHitContactRules::SelectRegionForHeight(-1.f, 165.f, 125.f, 60.f, EHawkeyeContactRegion::Legs), EHawkeyeContactRegion::Legs);
+	// The zone follows where the limb really met him when the clip has no baked height, and the clip's height wins when it has.
+	TestEqual(TEXT("Clip height wins"), UHawkeyeHitContactRules::PickStrikeHeight(100.f, 160.f), 100.f);
+	TestEqual(TEXT("No clip height: the limb's"), UHawkeyeHitContactRules::PickStrikeHeight(-1.f, 128.f), 128.f);
+	TestEqual(TEXT("Neither: unknown"), UHawkeyeHitContactRules::PickStrikeHeight(-1.f, -1.f), -1.f);
+	TestEqual(TEXT("A chest-height jab with no clip height: his gut, not his head"),
+		UHawkeyeHitContactRules::SelectRegionForHeight(UHawkeyeHitContactRules::PickStrikeHeight(-1.f, 128.f), 165.f, 130.f, 90.f,
+			EHawkeyeContactRegion::Head), EHawkeyeContactRegion::Torso);
+
+	// The knock-back nets out to the tuning over the nudge before it.
+	TestEqual(TEXT("No nudge: the tuned distance"), UHawkeyeHitContactRules::ComputeNetKnockbackCm(10.f, FVector::ZeroVector, FVector::ForwardVector), 10.f, 0.001f);
+	TestEqual(TEXT("Pulled 8 toward the attacker: 8 more"), UHawkeyeHitContactRules::ComputeNetKnockbackCm(10.f, FVector(-8.f, 0.f, 0.f), FVector::ForwardVector), 18.f, 0.001f);
+	TestEqual(TEXT("Pushed 4 along it: 4 less"), UHawkeyeHitContactRules::ComputeNetKnockbackCm(10.f, FVector(4.f, 0.f, 0.f), FVector::ForwardVector), 6.f, 0.001f);
+	TestEqual(TEXT("Pushed past the tuning: none"), UHawkeyeHitContactRules::ComputeNetKnockbackCm(10.f, FVector(15.f, 0.f, 0.f), FVector::ForwardVector), 0.f, 0.001f);
+	TestEqual(TEXT("A sideways nudge changes nothing"), UHawkeyeHitContactRules::ComputeNetKnockbackCm(10.f, FVector(0.f, 9.f, 0.f), FVector::ForwardVector), 10.f, 0.001f);
 
 	// Which clip: by direction, zone and weight.
 	UCombatAnimSet* Set = NewObject<UCombatAnimSet>(GetTransientPackage());

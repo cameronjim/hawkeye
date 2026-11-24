@@ -325,14 +325,17 @@ float UMeleeComponent::GetRegionHeight(const AActor& Target, EHawkeyeContactRegi
 	return Mesh->GetBoneLocation(Bone).Z - (Target.GetActorLocation().Z - HalfHeight);
 }
 
-EHawkeyeContactRegion UMeleeComponent::ResolveContactRegion(const AActor& Target, EHawkeyeContactRegion Preferred, bool bDown) const
+EHawkeyeContactRegion UMeleeComponent::ResolveContactRegion(const AActor& Target, EHawkeyeContactRegion Preferred, bool bDown,
+	float LimbHeightCm) const
 {
 	EHawkeyeContactRegion Wanted = Preferred;
 	const FCombatClipData* Data = GetActiveClipData();
-	if (Data && Data->ContactHeight >= 0.f && !bDown)
+	const float Height = UHawkeyeHitContactRules::PickStrikeHeight(Data ? Data->ContactHeight : -1.f, LimbHeightCm);
+	if (Height >= 0.f && !bDown)
 	{
-		// The clip's fist or foot was at this height at its hit: the region of his body nearest it.
-		Wanted = UHawkeyeHitContactRules::SelectRegionForHeight(Data->ContactHeight, GetRegionHeight(Target, EHawkeyeContactRegion::Head),
+		// The clip's fist or foot was at this height at its hit (or the limb really met him there): the region of his body
+		// nearest it.
+		Wanted = UHawkeyeHitContactRules::SelectRegionForHeight(Height, GetRegionHeight(Target, EHawkeyeContactRegion::Head),
 			GetRegionHeight(Target, EHawkeyeContactRegion::Torso), GetRegionHeight(Target, EHawkeyeContactRegion::Legs), Preferred);
 	}
 	return UHawkeyeHitContactRules::SelectContactRegion(Wanted, bDown);
@@ -657,6 +660,28 @@ FHawkeyeStrikeImpact UMeleeComponent::BuildImpact(const AActor& Target, const FV
 	const AActor* Owner = GetOwner();
 	const FVector From = Owner ? Owner->GetActorLocation() : Target.GetActorLocation() - GetSwingDirection() * 100.f;
 	Impact.Direction = UHawkeyeHitContactRules::ComputeStrikeDirection(LimbVelocity, Target.GetActorLocation() - From, 150.f);
+	// Where the striking limb really met him: the sweep's contact, else the limb nearest him, over his floor. A clip with no
+	// baked contact height picks its reaction zone by this, not by the zone its attack data names (a chest-height jab that
+	// snapped his head back).
+	TArray<FVector> LimbPoints;
+	const bool bHaveLimbs = GatherStrikePoints(LimbPoints);
+	float LimbHeight = -1.f;
+	{
+		float Radius = 0.f;
+		float HalfHeight = 0.f;
+		Target.GetSimpleCollisionCylinder(Radius, HalfHeight);
+		const float Floor = Target.GetActorLocation().Z - HalfHeight;
+		if (LimbPoint)
+		{
+			LimbHeight = LimbPoint->Z - Floor;
+		}
+		else if (bHaveLimbs)
+		{
+			const int32 Nearest = UHawkeyeHitContactRules::PickStrikeLimb(LimbPoints, Target.GetActorLocation());
+			LimbHeight = LimbPoints.IsValidIndex(Nearest) ? LimbPoints[Nearest].Z - Floor : -1.f;
+		}
+		LimbHeight = LimbHeight >= 0.f ? LimbHeight : -1.f;
+	}
 	// The body the blow moves is the region it was aimed at (his head for a jab, his ribs for the roundhouse), not whichever
 	// body lay nearest the fist: that was his own guarding hand, so a punch to the face flapped his arm (the audit).
 	if (const ACharacter* Struck = Cast<ACharacter>(&Target); Struck && Struck->GetMesh() && Struck->GetMesh()->GetSkeletalMeshAsset())
@@ -664,7 +689,7 @@ FHawkeyeStrikeImpact UMeleeComponent::BuildImpact(const AActor& Target, const FV
 		const AThugCharacter* Thug = Cast<AThugCharacter>(&Target);
 		const bool bDown = Thug && (Thug->IsKnockedDown() || Thug->IsLimp());
 		const USkeletalMeshComponent* Body = Struck->GetMesh();
-		Impact.Bone = UHawkeyeHitContactRules::SelectRegionBone(ResolveContactRegion(Target, CurrentAttack.Contact.Region, bDown),
+		Impact.Bone = UHawkeyeHitContactRules::SelectRegionBone(ResolveContactRegion(Target, CurrentAttack.Contact.Region, bDown, LimbHeight),
 			[Body](FName Name) { return Body->GetBoneIndex(Name) != INDEX_NONE; });
 	}
 	if (LimbPoint)
@@ -674,12 +699,12 @@ FHawkeyeStrikeImpact UMeleeComponent::BuildImpact(const AActor& Target, const FV
 	}
 	// The capsule's sweep found him: the blow lands on the front of his body toward the striker, at the height of the
 	// striking limb nearest him (a jab at his face, a kick at his ribs), else at the region the attack aims at.
-	TArray<FVector> Points;
+	const TArray<FVector>& Points = LimbPoints;
 	float Radius = 0.f;
 	float HalfHeight = 0.f;
 	Target.GetSimpleCollisionCylinder(Radius, HalfHeight);
 	FVector Aim = ComputeContactPoint(Target, CurrentAttack.Contact);
-	if (GatherStrikePoints(Points))
+	if (bHaveLimbs)
 	{
 		const int32 Nearest = UHawkeyeHitContactRules::PickStrikeLimb(Points, Target.GetActorLocation());
 		if (Points.IsValidIndex(Nearest))

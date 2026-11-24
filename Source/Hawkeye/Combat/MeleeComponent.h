@@ -544,8 +544,12 @@ protected:
 	/** The impact puff where the blow met him, along the blow, a variant by hash and a size by weight. */
 	void SpawnImpactPuff(const FHawkeyeStrikeImpact& Impact);
 
-	/** The region the blow is aimed at on Target: Preferred, or what the clip's baked contact height says, or the torso for a body on the floor. */
-	EHawkeyeContactRegion ResolveContactRegion(const AActor& Target, EHawkeyeContactRegion Preferred, bool bDown) const;
+	/**
+	 * The region the blow is aimed at on Target: Preferred, or what the clip's baked contact height says, else (LimbHeightCm, the
+	 * striking limb's height over his floor) where the limb really met him, or the torso for a body on the floor.
+	 */
+	EHawkeyeContactRegion ResolveContactRegion(const AActor& Target, EHawkeyeContactRegion Preferred, bool bDown,
+		float LimbHeightCm = -1.f) const;
 
 	/** A bone's height over Target's feet, cm; -1 when he has no such bone. */
 	float GetRegionHeight(const AActor& Target, EHawkeyeContactRegion Region) const;

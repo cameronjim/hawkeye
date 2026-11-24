@@ -508,6 +508,20 @@ public:
 		EHawkeyeContactRegion Preferred);
 
 	/**
+	 * The height (over his floor, cm) a blow's zone is chosen by: the clip's baked contact height when it has one (not
+	 * negative), else where the striking limb really met him (LimbHeightCm), else -1 (the attack's own region applies).
+	 * A chest-height punch plays the gut reaction, not the head snap its attack data names.
+	 */
+	static float PickStrikeHeight(float ClipHeightCm, float LimbHeightCm);
+
+	/**
+	 * The knock-back distance to apply so the victim's net displacement from where he stood when hit is TunedCm: the
+	 * victim-align nudge (done over the freeze, before the knock-back) already moved him Nudge; the part of it along the
+	 * knock-back (Direction) is taken off, the part against it (a nudge toward the attacker) is added back. Never negative.
+	 */
+	static float ComputeNetKnockbackCm(float TunedCm, const FVector& Nudge, const FVector& Direction);
+
+	/**
 	 * Whether a party of a landed blow plays its reaction after the hit-stop (alive, not winding up a swing: a boss
 	 * swinging through a light keeps his swing's pose).
 	 */

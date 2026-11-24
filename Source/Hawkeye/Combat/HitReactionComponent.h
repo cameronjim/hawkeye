@@ -258,6 +258,8 @@ protected:
 	/** A knock-back waiting for the freeze to end. */
 	bool bKnockbackPending = false;
 	FVector PendingKnockbackDirection = FVector::ZeroVector;
+	/** What the last freeze's alignment moved him (flat), taken off the next knock-back so the net is the tuned distance. */
+	FVector LastAlignNudge = FVector::ZeroVector;
 	float PendingKnockbackCm = 0.f;
 
 	void HoldMontages();
