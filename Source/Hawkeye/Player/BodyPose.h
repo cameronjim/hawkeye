@@ -70,7 +70,7 @@ namespace HawkeyeBodyPose
 	 * midline, on this arm's side) and Forward must be unit and mutually perpendicular.
 	 */
 	HAWKEYE_API FArmRest ArmRestDirections(const FVector& Up, const FVector& Outward, const FVector& Forward,
-		float OutwardDegrees = 10.f, float ElbowDegrees = 6.f);
+		float OutwardDegrees = 20.f, float ElbowDegrees = 6.f);
 
 	/** The hand's axes in its own bone's frame, from the reference pose. */
 	struct FHandFrame
