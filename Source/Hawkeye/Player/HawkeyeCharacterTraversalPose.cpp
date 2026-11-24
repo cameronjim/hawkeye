@@ -140,10 +140,12 @@ void AHawkeyeCharacter::BeginLandingPose(float FallHeight)
 		const int32 Index = UCombatAnimSet::PickNextVariant(LandingVariantCursor, Set->GetVariantCount(LandRole));
 		if (UAnimMontage* Montage = Set->ResolveVariant(LandRole, Index))
 		{
-			// The roll and the stumble take the time the landing rules give them; the others play as they were made.
+			// The roll and the stumble take the time the landing rules give them; a heavy landing plays quicker (its crouch
+			// held too long); the others play as they were made.
 			const float Fit =
 				Clip == ELandingClip::Roll ? RollSeconds : (Clip == ELandingClip::Stumble ? StumbleSeconds : 0.f);
-			const float Rate = Fit > 0.f ? HawkeyeCombatAnim::FitRate(Montage->GetPlayLength(), Fit) : 1.f;
+			const float Rate = Fit > 0.f ? HawkeyeCombatAnim::FitRate(Montage->GetPlayLength(), Fit)
+				: FTraversalPoseRules::LandingClipRate(Clip, Settings);
 			bClipPlays = HawkeyeCombatAnim::Play(GetMesh(), Montage, Rate) != nullptr;
 		}
 	}

@@ -191,6 +191,13 @@ ELandingClip FTraversalPoseRules::ClassifyLanding(
 	return bHeavy ? ELandingClip::SprintHeavy : ELandingClip::SprintLight;
 }
 
+float FTraversalPoseRules::LandingClipRate(ELandingClip Clip, const FHawkeyeTraversalPoseSettings& Settings)
+{
+	const bool bHeavy = Clip == ELandingClip::StandHeavy || Clip == ELandingClip::WalkHeavy || Clip == ELandingClip::RunHeavy
+		|| Clip == ELandingClip::SprintHeavy;
+	return bHeavy ? FMath::Max(Settings.HeavyLandingRate, 0.1f) : 1.f;
+}
+
 float FTraversalPoseRules::ImpactSpeedFromHeight(float Height, float Gravity)
 {
 	return FMath::Sqrt(FMath::Max(2.f * Gravity * Height, 0.f));

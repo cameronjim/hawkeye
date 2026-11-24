@@ -314,6 +314,13 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Landing", meta = (ClampMin = "0.0"))
 	float SprintLandingSpeed = 600.f;
+
+	/**
+	 * Play rate of a heavy landing's clip (the sample's own held the crouch at the bottom for about 0.6 s; at 1.6 the
+	 * hold is about 0.3 s and the rise stays smooth, the clip's own blend). Light landings play as they were made.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Landing", meta = (ClampMin = "0.5", ClampMax = "3.0"))
+	float HeavyLandingRate = 1.6f;
 };
 
 /** What the pose needs to know this frame. World space unless said; the character fills it from its movement. */
@@ -456,6 +463,9 @@ struct HAWKEYE_API FTraversalPoseRules
 	 */
 	static ELandingClip ClassifyLanding(
 		float ImpactSpeed, float GroundSpeed, bool bRoll, bool bStumble, const FHawkeyeTraversalPoseSettings& Settings);
+
+	/** The play rate of a landing's clip: HeavyLandingRate for the heavy stand, walk, run and sprint, else 1. */
+	static float LandingClipRate(ELandingClip Clip, const FHawkeyeTraversalPoseSettings& Settings);
 
 	/** Impact speed of a free fall of Height cm under Gravity, cm/s: what a fall height means as speed. */
 	static float ImpactSpeedFromHeight(float Height, float Gravity);

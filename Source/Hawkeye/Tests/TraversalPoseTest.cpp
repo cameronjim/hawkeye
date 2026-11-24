@@ -370,6 +370,12 @@ bool FHawkeyeTraversalPoseClasses::RunTest(const FString& Parameters)
 	Land(TEXT("a roll is a roll"), 900.f, 450.f, ELandingClip::Roll, /*bRoll=*/true);
 	Land(TEXT("a roll that came in slowly is still a roll"), 100.f, 450.f, ELandingClip::Roll, true);
 	Land(TEXT("a stumble is a stumble"), 900.f, 0.f, ELandingClip::Stumble, false, /*bStumble=*/true);
+	// A heavy landing's clip plays quicker (its crouch held ~0.6 s); a light one, a roll and a stumble play as made.
+	TestEqual(TEXT("heavy stand rate"), FTraversalPoseRules::LandingClipRate(ELandingClip::StandHeavy, S), S.HeavyLandingRate);
+	TestEqual(TEXT("heavy sprint rate"), FTraversalPoseRules::LandingClipRate(ELandingClip::SprintHeavy, S), S.HeavyLandingRate);
+	TestEqual(TEXT("light run rate"), FTraversalPoseRules::LandingClipRate(ELandingClip::RunLight, S), 1.f);
+	TestEqual(TEXT("roll rate"), FTraversalPoseRules::LandingClipRate(ELandingClip::Roll, S), 1.f);
+	TestTrue(TEXT("a heavy landing is quicker than its clip"), S.HeavyLandingRate > 1.f);
 
 	// Today's thresholds in speed: the roll height (400 cm) is a fall of 885 cm/s, so every roll is above the heavy
 	// band.
