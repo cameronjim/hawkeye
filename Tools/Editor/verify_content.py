@@ -436,6 +436,7 @@ def check_bodies():
             if base is not None and not bool(prop(base, "used_with_skeletal_mesh")):
                 fail("{0}'s body material {1} has no SkeletalMesh usage flag".format(name, material_path))
     check_built_kate()
+    check_hand_chains()
     for path, name in BODY_KEEP_MANNEQUIN:
         cdo = _default_object(path, name)
         look = prop(cdo, "body_look") if cdo is not None else None
@@ -443,6 +444,36 @@ def check_bodies():
         say("  {0}: {1}".format(name, "body look " + mesh if mesh else "its own mannequin"))
         if mesh:
             fail("{0} wears {1}; it should keep its own mannequin colours".format(name, mesh))
+
+
+BODY_RETARGETERS = [("/Game/Characters/Thug/Look/RTG_Thug_To_Body", "Thug"),
+                    ("/Game/Characters/Clint/Look/RTG_Clint_To_Body", "Clint"),
+                    ("/Game/Characters/Kate/Look/RTG_Kate_To_Body", "Kate")]
+HAND_FINGERS = ("Thumb", "Index", "Middle", "Ring", "Pinky")
+
+
+def check_hand_chains():
+    """Every body retargeter maps all ten finger chains to the driver's, carries the aligned retarget pose with the
+    hands' offsets in it (_handpose), and leaves the hand goals' rotation to the retarget pose (no absolute copy)."""
+    side = unreal.RetargetSourceOrTarget
+    for path, who in BODY_RETARGETERS:
+        rtg = c.load_or_none(path)
+        if rtg is None:
+            say("  {0}: no body retargeter on disk; hands not checked".format(who))
+            continue
+        ctl = unreal.IKRetargeterController.get_controller(rtg)
+        rig = ctl.get_ik_rig(side.TARGET)
+        chains = [str(x.get_editor_property("chain_name")) for x in unreal.IKRigController.get_controller(rig).get_retarget_chains()]
+        wanted = [s + f for s in ("Left", "Right") for f in HAND_FINGERS]
+        unmapped = [n for n in wanted if n not in chains or str(ctl.get_source_chain(n)) in ("", "None")]
+        if unmapped:
+            fail("{0}: finger chains not mapped to the driver: {1}".format(who, ", ".join(unmapped)))
+        for bone in ("hand_l", "hand_r", "index_02_l", "thumb_01_r"):
+            q = ctl.get_rotation_offset_for_retarget_pose_bone(bone, side.TARGET)
+            if abs(q.w) > 0.99999 and abs(q.x) + abs(q.y) + abs(q.z) < 1e-5:
+                fail("{0}: {1} has no offset in the retarget pose (the hand pose was not written)".format(who, bone))
+        say("  {0}: {1} finger chains mapped, retarget pose {2}".format(
+            who, len(wanted) - len(unmapped), ctl.get_current_retarget_pose_name(side.TARGET)))
 
 
 def check_built_kate():
