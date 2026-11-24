@@ -96,7 +96,23 @@ public:
 	static UAnimBlueprint* BuildRetargetWithDynamics(const FString& PackageName, USkeleton* Skeleton,
 		UIKRetargeter* Retargeter, const TArray<FHawkeyeDynamicsChain>& Chains);
 
+	/**
+	 * BuildRetargetFromParent with the Hawkeye Body Pose node (Player/BodyPoseNode.h) after the retarget, and
+	 * UHawkeyeBodyAnimInstance as the AnimBP's parent class: the thugs' and the heavy's own hands and rest arms.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
+	static UAnimBlueprint* BuildRetargetWithBodyPose(
+		const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter);
+
+	/** How many Hawkeye Body Pose nodes Blueprint's anim graph holds, for verify scripts. -1 without a graph. */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
+	static int32 CountBodyPoseNodes(UAnimBlueprint* Blueprint);
+
 	/** How many AnimDynamics nodes Blueprint's anim graph holds, for verify scripts. -1 without a graph. */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
 	static int32 CountDynamicsNodes(UAnimBlueprint* Blueprint);
+
+private:
+	static UAnimBlueprint* BuildGraph(const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter,
+		const TArray<FHawkeyeDynamicsChain>& Chains, bool bBodyPose);
 };

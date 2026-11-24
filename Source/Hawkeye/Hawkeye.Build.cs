@@ -45,6 +45,9 @@ public class Hawkeye : ModuleRules
 		// component the Game Animation Sample's traversal uses.
 		PrivateDependencyModuleNames.Add("MotionWarping");
 
+		// FAnimNode_HawkeyeBodyPose (the thug bodies' hands) is a skeletal control node, in every target.
+		PrivateDependencyModuleNames.Add("AnimGraphRuntime");
+
 		// Screenshots (the test passes and the playtest kit) write their PNGs off the game thread (World/HawkeyeCapture).
 		PrivateDependencyModuleNames.Add("ImageCore");
 
@@ -69,7 +72,7 @@ public class Hawkeye : ModuleRules
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.AddRange(new string[] { "StateTreeEditorModule", "PropertyBindingUtils", "UnrealEd",
-				"AnimGraph", "AnimGraphRuntime", "BlueprintGraph", "NiagaraEditor", "NiagaraCore", "AnimationBlueprintLibrary" });
+				"AnimGraph", "BlueprintGraph", "NiagaraEditor", "NiagaraCore", "AnimationBlueprintLibrary" });
 			// UHawkeyeRetargetGraphBuilder authors a body look's AnimBlueprint: Retarget Pose From Mesh, the IK Rig plugin's node.
 			PrivateDependencyModuleNames.Add("IKRigDeveloper");
 		}

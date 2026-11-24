@@ -965,7 +965,8 @@ def ensure_looks(mesh, materials, built=None):
                                        hand_translation=THUG_HAND_TRANSLATION if ue4 else 1.0,
                                        adduct_degrees=THUG_ARM_ADDUCT_DEGREES if ue4 else 0.0)
             if rtg is not None:
-                abps[who] = kl.ensure_anim_bp(mesh, rtg, path="{0}/ABP_{1}_Body".format(folder, who))
+                # The thugs' hands and rest arms are our own (Hawkeye Body Pose node), not the retarget's; Clint's are the retarget's.
+                abps[who] = kl.ensure_anim_bp(mesh, rtg, path="{0}/ABP_{1}_Body".format(folder, who), body_pose=ue4)
         abp = abps[who]
         if abp is not None:
             look_mesh, look_materials = built.get(body_mi, (mesh, _slot_materials(mesh, materials, body_mi)))
