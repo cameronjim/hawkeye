@@ -732,13 +732,17 @@ def hit_zone(rig, zone, heavy):
         hand_l = [(0.0, add(hl, V(2, -8, 12))), (0.15, add(hl, V(0, -4, 6))), (0.35, add(hl, V(0, -1, 1))), (t, hl)]
         hand_r = [(0.0, add(hr, V(-2, -8, 10))), (0.15, add(hr, V(0, -4, 5))), (0.35, add(hr, V(0, -1, 1))), (t, hr)]
     elif zone == "Gut":
-        k = 1.25 if not heavy else 1.8      # the fold is deep already; more flips the arms' elbows round the belly
+        # A light blow is a flinch (a small hunch, the hips driven back) and must leave his head no nearer the attacker
+        # than it began: 0.4 folds the chest about 10 degrees, the hips go back 8 cm. A heavy folds more but ends well
+        # behind Kate's fist (1.3: about 34 degrees with the hips back and the 28 cm knock-back).
+        k = 0.4 if not heavy else 1.3
+        kb = 1.6 if not heavy else 1.3
         body["chest"] = T([(0.0, V(26 * k, 0, 0)), (0.1, V(32 * k, 0, 0)), (0.25, V(22 * k, 0, 0)), (mid + 0.05, V(8 * k, 0, 0)),
                            (t * 0.85, V(-1.5, 0, 0)), (t, V(0, 0, 0))])
         body["neck"] = T([(0.0, V(14 * k, 0, 0)), (0.12, V(18 * k, 0, 0)), (0.3, V(8 * k, 0, 0)), (t * 0.85, V(-2, 0, 0)), (t, V(0, 0, 0))])
         body["pelvis_rot"] = T([(0.0, V(8 * k, 0, 0)), (0.12, V(10 * k, 0, 0)), (0.3, V(4 * k, 0, 0)), (t, V(0, 0, 0))])
         # Hips driven back and down: the weight goes behind the feet.
-        body["pelvis_pos"] = T([(0.0, add(P, V(0, 5 * k, -4 * k))), (0.12, add(P, V(0, 7 * k, -5 * k))), (0.3, add(P, V(0, 3 * k, -2 * k))),
+        body["pelvis_pos"] = T([(0.0, add(P, V(0, 5 * kb, -4 * k))), (0.12, add(P, V(0, 7 * kb, -5 * k))), (0.3, add(P, V(0, 3 * kb, -2 * k))),
                                 (t, P)])
         # Both hands to the belly, then out and down.
         belly_l = add(P, V(8, -18, 20))
