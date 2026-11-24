@@ -1131,6 +1131,12 @@ void AHawkeyeCharacter::Input_Move(const FInputActionValue& Value)
 	const FVector2D MoveInput = Value.Get<FVector2D>();
 	// The sprint toggle only cares whether the thumb is on the stick, locked out or not (a zip, a vault).
 	bStickPushedThisFrame |= !MoveInput.IsNearlyZero();
+	// The body pose's brace and arrival read the stick while a zip has the move locked out (visual only).
+	if (!MoveInput.IsNearlyZero() && GetWorld())
+	{
+		TraversalStick = MoveInput;
+		TraversalStickSeconds = GetWorld()->GetTimeSeconds();
+	}
 	const bool bParkourLock = ParkourComponent && ParkourComponent->IsLockingInput();
 	const bool bDead = HealthComponent && !HealthComponent->IsAlive();
 	// Hanging, the stick is the hang's: along the ledge shimmies, up climbs when held, and it picks a hang jump.

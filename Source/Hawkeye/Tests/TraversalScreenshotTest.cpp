@@ -47,10 +47,11 @@
  * view; the frames are laid side by side into Saved/Screenshots/Traversal/<scenario>_<side|three_quarter>_<off|on>.png,
  * the single frames in Saved/Screenshots/Traversal/Frames/. A yellow line is drawn from her rope hand to the anchor.
  *
- * Scenarios: launch (the hop), pull (the line), redirect (a chain's turn), release (let go into the fall and the
- * landing after), arrive_fast, arrive_medium and arrive_slow (the three arrival classes), land_light, land_heavy and
- * land_roll. With the pose on it also checks, in the log and as errors: the phase the pose is in at each key moment,
- * the body tipped mid-pull, and that her drawn hand is on the rope hand's target (within 45 cm; a warning past 25).
+ * Scenarios: launch (the crouch-load while the arrow is in the air, then the hop and the jerk), pull (the line),
+ * redirect (a chain's turn), release (let go into the fall and the landing after), brace (the last 0.3 s of a long
+ * climb), arrive_brake, arrive_slide and arrive_step (the three arrival classes), land_light, land_heavy and land_roll.
+ * With the pose on it also checks, in the log and as errors: the phase the pose is in at each key moment, the body
+ * tipped mid-pull, and that her drawn hand is on the rope hand's target (within 45 cm; a warning past 25).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotTraversal, "Hawkeye.Screenshot.Traversal",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
@@ -102,6 +103,8 @@ namespace HawkeyeTraversalShots
 		double Reference = 0.0;
 		bool bReferenceIsZipEnd = false;
 		bool bReferenceIsTouchdown = false;
+		/** The reference moment is when the pose enters the brace. */
+		bool bReferenceIsBrace = false;
 	};
 
 	static UWorld* FindWorld()
@@ -235,6 +238,7 @@ namespace HawkeyeTraversalShots
 		}
 		Movement->ZipSpeed = Stage.DefaultZipSpeed;
 		Kate->ClearTraversalRopeTarget();
+		Kate->ClearTraversalOverrides();
 		Kate->TeleportTo(
 			Stage.Feet + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f),
 			Stage.Along.Rotation(), false, true);
@@ -283,17 +287,29 @@ namespace HawkeyeTraversalShots
 			return End;
 		};
 		{
+			// The arrow is in the air for 0.35 s (the crouch-load), then the hop starts, the line takes tension and the
+			// jerk follows. Times are from the hop's start.
 			FScenario S;
 			S.Name = TEXT("launch");
-			S.Times = {0.f, 0.03f, 0.06f, 0.09f, 0.12f, 0.15f, 0.21f, 0.3f};
-			S.Start = [GroundLaunch](FStage& Stage, UWorld& World) { GroundLaunch(Stage, World, 1500.f, 700.f, 0.f); };
+			S.Times = {-0.3f, -0.18f, -0.06f, 0.f, 0.06f, 0.12f, 0.2f, 0.32f};
+			S.Reference = 0.35;
+			S.Start = [](FStage& Stage, UWorld& World)
+			{
+				StandKate(Stage, World);
+				Stage.Kate->SetTraversalArrowInFlight(true);
+			};
+			S.Events.Add({0.35, [GroundLaunch](FStage& Stage, UWorld& World)
+				{
+					GroundLaunch(Stage, World, 1500.f, 700.f, 0.f);
+					Stage.Kate->SetTraversalArrowInFlight(false);
+				}});
 			Out.Add(S);
 		}
 		{
 			FScenario S;
 			S.Name = TEXT("pull");
-			S.Times = {0.3f, 0.38f, 0.46f, 0.54f, 0.62f, 0.7f, 0.78f, 0.86f};
-			S.Start = [GroundLaunch](FStage& Stage, UWorld& World) { GroundLaunch(Stage, World, 1700.f, 800.f, 0.f); };
+			S.Times = {0.25f, 0.33f, 0.41f, 0.49f, 0.57f, 0.65f, 0.73f, 0.81f};
+			S.Start = [GroundLaunch](FStage& Stage, UWorld& World) { GroundLaunch(Stage, World, 2400.f, 900.f, 0.f); };
 			Out.Add(S);
 		}
 		{
@@ -334,13 +350,23 @@ namespace HawkeyeTraversalShots
 				}});
 			Out.Add(S);
 		}
-		const auto Arrival = [&Out](const TCHAR* Name, float ZipSpeed)
+		// A zip ends on the stage's floor from a start Length away, Rise above it (the line's climb), with or without
+		// forward held. Zip speed is the movement's own: it reaches the top speed by the end whichever the line.
+		const auto Arrival = [&Out](const TCHAR* Name, float Length, float Rise, bool bForward, bool bFromBrace)
 		{
 			FScenario S;
 			S.Name = Name;
-			S.Times = {0.f, 0.06f, 0.12f, 0.2f, 0.3f, 0.42f, 0.6f, 0.8f};
-			S.bReferenceIsZipEnd = true;
-			S.Start = [ZipSpeed](FStage& Stage, UWorld& World)
+			if (bFromBrace)
+			{
+				S.Times = {0.f, 0.05f, 0.1f, 0.15f, 0.2f, 0.25f, 0.3f, 0.36f};
+				S.bReferenceIsBrace = true;
+			}
+			else
+			{
+				S.Times = {0.f, 0.06f, 0.12f, 0.2f, 0.3f, 0.42f, 0.6f, 0.8f};
+				S.bReferenceIsZipEnd = true;
+			}
+			S.Start = [Length, Rise, bForward](FStage& Stage, UWorld& World)
 			{
 				AHawkeyeCharacter* Kate = Stage.Kate.Get();
 				UHawkeyeMovementComponent* Movement = Kate ? Kate->GetHawkeyeMovement() : nullptr;
@@ -350,19 +376,20 @@ namespace HawkeyeTraversalShots
 				}
 				StandKate(Stage, World);
 				const FVector End = Stage.Feet + FVector(0.f, 0.f, HalfHeight(*Kate) + 2.f);
-				const FVector From = FindClearEnd(World, *Kate, End, -Stage.Along, 1600.f, 550.f);
+				const FVector From = FindClearEnd(World, *Kate, End, -Stage.Along, Length, Rise);
 				Kate->TeleportTo(From, Stage.Along.Rotation(), false, true);
 				Movement->StopMovementImmediately();
 				Movement->SetMovementMode(MOVE_Falling);
-				Movement->ZipSpeed = ZipSpeed;
-				// The momentum she comes in with is the line's own, so the arrival speed is the zip speed set above.
+				Kate->SetTraversalForwardHeld(bForward);
+				// The momentum she comes in with is the line's own.
 				ZipAlong(Stage, From, End, /*bHop=*/false);
 			};
 			Out.Add(S);
 		};
-		Arrival(TEXT("arrive_fast"), 1800.f);
-		Arrival(TEXT("arrive_medium"), 1000.f);
-		Arrival(TEXT("arrive_slow"), 650.f);
+		Arrival(TEXT("brace"), 1600.f, 550.f, false, /*bFromBrace=*/true);
+		Arrival(TEXT("arrive_brake"), 1600.f, 550.f, false, false);
+		Arrival(TEXT("arrive_slide"), 1600.f, 0.f, true, false);
+		Arrival(TEXT("arrive_step"), 200.f, 40.f, false, false);
 		const auto Landing = [&Out](const TCHAR* Name, float Drop, float ForwardSpeed)
 		{
 			FScenario S;
@@ -553,10 +580,21 @@ namespace HawkeyeTraversalShots
 			{
 				ZipEndedAt = Elapsed;
 			}
-			double Reference = Scenario.Reference;
-			if (Scenario.bReferenceIsZipEnd || Scenario.bReferenceIsTouchdown)
+			if (Scenario.bReferenceIsBrace && BraceAt < 0.0)
 			{
-				const double At = Scenario.bReferenceIsZipEnd ? ZipEndedAt : (bTouchedDown ? TouchedAt : -1.0);
+				const UBowComponent* Bow = Kate.GetBowComponent();
+				const UHawkeyeBowIKAnimInstance* Hands = Bow ? Bow->GetHandsIKInstance() : nullptr;
+				if (Hands && Hands->GetTraversalPose().Phase == ETraversalPhase::Brace)
+				{
+					BraceAt = Elapsed;
+				}
+			}
+			double Reference = Scenario.Reference;
+			if (Scenario.bReferenceIsZipEnd || Scenario.bReferenceIsTouchdown || Scenario.bReferenceIsBrace)
+			{
+				const double At = Scenario.bReferenceIsBrace
+					? BraceAt
+					: (Scenario.bReferenceIsZipEnd ? ZipEndedAt : (bTouchedDown ? TouchedAt : -1.0));
 				if (At < 0.0)
 				{
 					return TimedOut(Elapsed);
@@ -659,7 +697,7 @@ namespace HawkeyeTraversalShots
 					Pose.IsActive());
 				return;
 			}
-			if (Scenario.Name == TEXT("pull") && Hold >= 3)
+			if (Scenario.Name == TEXT("pull") && Hold >= 3 && Hold <= 6)
 			{
 				Test->TestTrue(*FString::Printf(TEXT("pull frame %d: in the pull phase (is %s)"), Hold,
 								   *UEnum::GetValueAsString(Pose.Phase)),
@@ -684,14 +722,29 @@ namespace HawkeyeTraversalShots
 						Off < 45.f);
 				}
 			}
-			if (Scenario.Name == TEXT("arrive_fast") && Hold == 1)
+			if (Scenario.Name == TEXT("launch") && Hold == 2)
 			{
-				Test->TestEqual(TEXT("arrive_fast: the line speed makes a slide out"), static_cast<int32>(Pose.Arrival),
-					static_cast<int32>(EArrivalKind::SlideOut));
+				Test->TestEqual(TEXT("launch: the load phase while the arrow is in the air"),
+					static_cast<int32>(Pose.Phase), static_cast<int32>(ETraversalPhase::Load));
 			}
-			if (Scenario.Name == TEXT("arrive_slow") && Hold == 1)
+			if (Scenario.Name == TEXT("brace") && Hold == 3)
 			{
-				Test->TestEqual(TEXT("arrive_slow: the line speed makes a step-down"), static_cast<int32>(Pose.Arrival),
+				Test->TestEqual(TEXT("brace: the brace phase"), static_cast<int32>(Pose.Phase),
+					static_cast<int32>(ETraversalPhase::Brace));
+			}
+			if (Scenario.Name == TEXT("arrive_brake") && Hold == 1)
+			{
+				Test->TestEqual(TEXT("arrive_brake: a long climb, forward not held, is the two-step"),
+					static_cast<int32>(Pose.Arrival), static_cast<int32>(EArrivalKind::Brake));
+			}
+			if (Scenario.Name == TEXT("arrive_slide") && Hold == 1)
+			{
+				Test->TestEqual(TEXT("arrive_slide: a level line with forward held is a slide out"),
+					static_cast<int32>(Pose.Arrival), static_cast<int32>(EArrivalKind::SlideOut));
+			}
+			if (Scenario.Name == TEXT("arrive_step") && Hold == 1)
+			{
+				Test->TestEqual(TEXT("arrive_step: a 2 m zip is a step-down"), static_cast<int32>(Pose.Arrival),
 					static_cast<int32>(EArrivalKind::StepDown));
 			}
 		}
@@ -707,6 +760,7 @@ namespace HawkeyeTraversalShots
 		double HeldAt = 0.0;
 		double TouchedAt = -1.0;
 		double ZipEndedAt = -1.0;
+		double BraceAt = -1.0;
 		bool bTouchedDown = false;
 		bool bWasZipping = false;
 		TSet<int32> FiredEvents;

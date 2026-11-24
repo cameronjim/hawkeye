@@ -40,6 +40,21 @@ FTraversalPoseInput AHawkeyeCharacter::BuildTraversalPoseInput(float DeltaSecond
 	Input.ZipLineSpeed = Movement->GetZipLineSpeed();
 	Input.HopFraction = Movement->GetZipHopFraction();
 	Input.bFallClipPlays = ActiveFallLoop != nullptr;
+	Input.ZipProgress = Movement->GetZipProgress();
+	Input.ZipLength = Movement->GetZipLength();
+	Input.bArrowInFlight = TraversalArrowOverride.Get(GrappleComponent && GrappleComponent->IsArrowInFlight());
+	if (TraversalForwardOverride.IsSet())
+	{
+		Input.bForwardHeld = TraversalForwardOverride.GetValue();
+	}
+	else if (Controller && GetWorld() && GetWorld()->GetTimeSeconds() - TraversalStickSeconds < 0.15)
+	{
+		// The stick's world direction (the camera's yaw) against the way she faces: forward is held when they agree.
+		const FRotator InputYaw(0.f, Controller->GetControlRotation().Yaw, 0.f);
+		const FVector Wanted = (FRotationMatrix(InputYaw).GetUnitAxis(EAxis::X) * TraversalStick.Y +
+			FRotationMatrix(InputYaw).GetUnitAxis(EAxis::Y) * TraversalStick.X).GetSafeNormal2D();
+		Input.bForwardHeld = FVector::DotProduct(Wanted, GetActorForwardVector().GetSafeNormal2D()) > 0.5;
+	}
 	if (Input.bZipping)
 	{
 		// From the capsule and not from her hand: the hand is what the pose places, so reading it back would chase

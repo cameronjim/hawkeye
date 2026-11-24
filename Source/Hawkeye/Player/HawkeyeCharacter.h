@@ -177,6 +177,20 @@ public:
 	{
 		TraversalRopeOverride.Reset();
 	}
+	/** A screenshot pass or a test sets these in place of the real grapple arrow and the stick. */
+	void SetTraversalArrowInFlight(bool bInFlight)
+	{
+		TraversalArrowOverride = bInFlight;
+	}
+	void SetTraversalForwardHeld(bool bHeld)
+	{
+		TraversalForwardOverride = bHeld;
+	}
+	void ClearTraversalOverrides()
+	{
+		TraversalArrowOverride.Reset();
+		TraversalForwardOverride.Reset();
+	}
 	bool HasTraversalRopeTarget() const
 	{
 		return TraversalRopeOverride.IsSet();
@@ -2160,6 +2174,14 @@ protected:
 
 	/** SetTraversalRopeTarget's point. */
 	TOptional<FVector> TraversalRopeOverride;
+
+	/** The stick as Input_Move last saw it pushed, and when (the move is locked out in a zip; the pose still reads it). */
+	FVector2D TraversalStick = FVector2D::ZeroVector;
+	double TraversalStickSeconds = -1000.0;
+
+	/** SetTraversalArrowInFlight's and SetTraversalForwardHeld's values. */
+	TOptional<bool> TraversalArrowOverride;
+	TOptional<bool> TraversalForwardOverride;
 
 	/** The most downward speed this fall, cm/s; reset when a fall starts and when it lands. */
 	float FallPeakSpeed = 0.f;

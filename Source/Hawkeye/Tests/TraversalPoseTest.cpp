@@ -11,9 +11,11 @@ namespace HawkeyeTraversalPoseTest
 {
 	static constexpr float Frame = 1.f / 60.f;
 
-	/** A pull along +X and up at ElevationDegrees, at Speed, Frames frames long, from state State. */
+	/** A pull along +X and up at ElevationDegrees, at Speed, Frames frames long, from state State. The zip is Length long
+	 * and Progress of the way along it (it only matters for the brace and the arrival class); bForward is the stick. */
 	static FTraversalPoseOutput RunPull(FTraversalPoseState& State, const FHawkeyeTraversalPoseSettings& S, float Speed,
-		float ElevationDegrees, int32 Frames, float YawDegrees = 0.f)
+		float ElevationDegrees, int32 Frames, float YawDegrees = 0.f, float Length = 2000.f, float Progress = 0.1f,
+		bool bForward = false)
 	{
 		FTraversalPoseOutput Out;
 		const float El = FMath::DegreesToRadians(ElevationDegrees);
@@ -25,6 +27,9 @@ namespace HawkeyeTraversalPoseTest
 			In.DeltaSeconds = Frame;
 			In.bZipping = true;
 			In.ZipLineSpeed = Speed;
+			In.ZipLength = Length;
+			In.ZipProgress = Progress;
+			In.bForwardHeld = bForward;
 			In.Velocity = Rope * Speed;
 			In.RopeDirection = Rope;
 			In.ActorRotation = Facing;
@@ -237,12 +242,23 @@ bool FHawkeyeTraversalPosePhases::RunTest(const FString& Parameters)
 	Is(TEXT("zipping and hopping: launch"), State.Step(In, S).Phase, ETraversalPhase::Launch);
 	In.bHopping = false;
 	In.ZipLineSpeed = 600.f;
+	In.ZipLength = 2000.f;
+	In.ZipProgress = 0.2f;
 	In.Velocity = FVector(600.f, 0.f, 0.f);
 	Is(TEXT("on the line: pull"), State.Step(In, S).Phase, ETraversalPhase::Pull);
 	In.bRedirecting = true;
 	Is(TEXT("a chain's turn: redirect"), State.Step(In, S).Phase, ETraversalPhase::Redirect);
 	In.bRedirecting = false;
 	Is(TEXT("the turn done: pull again"), State.Step(In, S).Phase, ETraversalPhase::Pull);
+	// The last 0.3 s: 400 cm left at 1800 cm/s is 0.22 s, so it is in the brace, and 1000 cm left (0.56 s) is not.
+	In.ZipLineSpeed = 1800.f;
+	In.Velocity = FVector(1800.f, 0.f, 0.f);
+	In.ZipProgress = 0.8f;
+	Is(TEXT("0.22 s from arrival: the brace"), State.Step(In, S).Phase, ETraversalPhase::Brace);
+	In.ZipProgress = 0.5f;
+	Is(TEXT("a pull that is not near the end"), State.Step(In, S).Phase, ETraversalPhase::Pull);
+	In.ZipProgress = 0.95f;
+	Is(TEXT("100 cm from the end: brace"), State.Step(In, S).Phase, ETraversalPhase::Brace);
 
 	// Arriving on the roof: grounded, not falling.
 	In.bZipping = false;
@@ -250,9 +266,9 @@ bool FHawkeyeTraversalPosePhases::RunTest(const FString& Parameters)
 	In.ZipLineSpeed = 0.f;
 	In.Velocity = FVector(600.f, 0.f, 0.f);
 	Is(TEXT("the zip ends on the floor: arrive"), State.Step(In, S).Phase, ETraversalPhase::Arrive);
-	TestEqual(TEXT("at 600 cm/s the line was a step-down"), static_cast<int32>(State.GetArrival()),
-		static_cast<int32>(EArrivalKind::StepDown));
-	for (int32 Index = 0; Index < 40; ++Index)
+	TestEqual(TEXT("a long line to a roof, forward not held: the braking two-step"),
+		static_cast<int32>(State.GetArrival()), static_cast<int32>(EArrivalKind::Brake));
+	for (int32 Index = 0; Index < 50; ++Index)
 	{
 		State.Step(In, S);
 	}
@@ -264,6 +280,8 @@ bool FHawkeyeTraversalPosePhases::RunTest(const FString& Parameters)
 	Line.DeltaSeconds = Frame;
 	Line.bZipping = true;
 	Line.ZipLineSpeed = 1800.f;
+	Line.ZipLength = 2000.f;
+	Line.ZipProgress = 0.4f;
 	Line.Velocity = FVector(1800.f, 0.f, 600.f);
 	Let.Step(Line, S);
 	Let.Step(Line, S);
@@ -311,14 +329,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeTraversalPoseClasses, "Hawkeye.Traversa
 bool FHawkeyeTraversalPoseClasses::RunTest(const FString& Parameters)
 {
 	const FHawkeyeTraversalPoseSettings S;
-	auto Arrival = [this, &S](const TCHAR* What, float Speed, EArrivalKind Want)
-	{ TestEqual(What, static_cast<int32>(FTraversalPoseRules::ClassifyArrival(Speed, S)), static_cast<int32>(Want)); };
-	Arrival(TEXT("600 cm/s: a step-down"), 600.f, EArrivalKind::StepDown);
-	Arrival(TEXT("699 cm/s: still a step-down"), 699.f, EArrivalKind::StepDown);
-	Arrival(TEXT("700 cm/s: the braking two-step"), 700.f, EArrivalKind::Brake);
-	Arrival(TEXT("1300 cm/s: still braking"), 1300.f, EArrivalKind::Brake);
-	Arrival(TEXT("1301 cm/s: a slide out"), 1301.f, EArrivalKind::SlideOut);
-	Arrival(TEXT("the top speed, 1800: a slide out"), 1800.f, EArrivalKind::SlideOut);
+	// By the zip's length, the slope of the line and the stick, never by line speed (it is the top speed by the end).
+	auto Arrival = [this, &S](const TCHAR* What, float Length, float Elevation, bool bForward, EArrivalKind Want)
+	{
+		TestEqual(What, static_cast<int32>(FTraversalPoseRules::ClassifyArrival(Length, Elevation, bForward, S)),
+			static_cast<int32>(Want));
+	};
+	Arrival(TEXT("a 2 m hop: a step-down"), 200.f, 5.f, true, EArrivalKind::StepDown);
+	Arrival(TEXT("249 cm: still a step-down, whatever the slope and the stick"), 249.f, 30.f, false,
+		EArrivalKind::StepDown);
+	Arrival(TEXT("250 cm and over: the two-step"), 250.f, 30.f, false, EArrivalKind::Brake);
+	Arrival(TEXT("a long level line without forward held: the two-step"), 1500.f, 3.f, false, EArrivalKind::Brake);
+	Arrival(TEXT("a long level line with forward held: a slide out"), 1500.f, 3.f, true, EArrivalKind::SlideOut);
+	Arrival(TEXT("a falling line, level enough: a slide out"), 1500.f, -10.f, true, EArrivalKind::SlideOut);
+	Arrival(TEXT("a climb up to a roof's edge with forward held: the two-step"), 1500.f, 35.f, true,
+		EArrivalKind::Brake);
+	TestEqual(TEXT("time to arrival: 400 cm left at 1800 cm/s"), FTraversalPoseRules::TimeToArrival(0.8f, 2000.f, 1800.f),
+		0.222f, 0.001f);
+	TestTrue(TEXT("no speed, no arrival"), FTraversalPoseRules::TimeToArrival(0.5f, 2000.f, 0.f) > 100.f);
 	TestTrue(TEXT("a slide takes longer than a step"),
 		FTraversalPoseRules::ArrivalSeconds(EArrivalKind::SlideOut, S) >
 			FTraversalPoseRules::ArrivalSeconds(EArrivalKind::StepDown, S));
@@ -521,11 +549,14 @@ bool FHawkeyeTraversalPoseArrive::RunTest(const FString& Parameters)
 {
 	using namespace HawkeyeTraversalPoseTest;
 	const FHawkeyeTraversalPoseSettings S;
-	// The deepest the pelvis goes in an arrival at each line speed, and the time it takes to be gone.
-	auto Arrive = [&S](float LineSpeed, float& OutSink, float& OutSeconds, EArrivalKind& OutKind)
+	// The deepest the pelvis goes in an arrival of each kind, and the time it takes to be gone. The pull runs up to the
+	// brace, and the last frames are in it.
+	auto Arrive = [&S](float Length, float Elevation, bool bForward, float& OutSink, float& OutSeconds,
+					  EArrivalKind& OutKind)
 	{
 		FTraversalPoseState State;
-		RunPull(State, S, LineSpeed, 10.f, 60);
+		RunPull(State, S, 1800.f, Elevation, 60, 0.f, Length, 0.1f, bForward);
+		RunPull(State, S, 1800.f, Elevation, 12, 0.f, Length, 0.97f, bForward);
 		OutSink = 0.f;
 		OutSeconds = 0.f;
 		for (int32 Index = 0; Index < 240; ++Index)
@@ -533,7 +564,7 @@ bool FHawkeyeTraversalPoseArrive::RunTest(const FString& Parameters)
 			FTraversalPoseInput In;
 			In.DeltaSeconds = Frame;
 			In.bGrounded = true;
-			In.Velocity = FVector(FMath::Min(LineSpeed, 600.f), 0.f, 0.f);
+			In.Velocity = FVector(600.f, 0.f, 0.f);
 			const FTraversalPoseOutput Out = State.Step(In, S);
 			if (Index == 0)
 			{
@@ -548,19 +579,18 @@ bool FHawkeyeTraversalPoseArrive::RunTest(const FString& Parameters)
 	};
 	float StepSink, StepSeconds, BrakeSink, BrakeSeconds, SlideSink, SlideSeconds;
 	EArrivalKind StepKind = EArrivalKind::None, BrakeKind = EArrivalKind::None, SlideKind = EArrivalKind::None;
-	Arrive(500.f, StepSink, StepSeconds, StepKind);
-	Arrive(1000.f, BrakeSink, BrakeSeconds, BrakeKind);
-	Arrive(1800.f, SlideSink, SlideSeconds, SlideKind);
-	TestEqual(TEXT("500 cm/s arrives as a step-down"), static_cast<int32>(StepKind),
+	Arrive(200.f, 10.f, false, StepSink, StepSeconds, StepKind);
+	Arrive(1500.f, 40.f, false, BrakeSink, BrakeSeconds, BrakeKind);
+	Arrive(1500.f, 4.f, true, SlideSink, SlideSeconds, SlideKind);
+	TestEqual(TEXT("a 2 m zip arrives as a step-down"), static_cast<int32>(StepKind),
 		static_cast<int32>(EArrivalKind::StepDown));
-	TestEqual(
-		TEXT("1000 cm/s arrives braking"), static_cast<int32>(BrakeKind), static_cast<int32>(EArrivalKind::Brake));
-	TestEqual(
-		TEXT("1800 cm/s arrives sliding"), static_cast<int32>(SlideKind), static_cast<int32>(EArrivalKind::SlideOut));
-	TestTrue(TEXT("the pelvis goes lower the faster she came in"), StepSink < BrakeSink && BrakeSink < SlideSink);
+	TestEqual(TEXT("a long climb arrives braking"), static_cast<int32>(BrakeKind), static_cast<int32>(EArrivalKind::Brake));
+	TestEqual(TEXT("a long level line with forward held arrives sliding"), static_cast<int32>(SlideKind),
+		static_cast<int32>(EArrivalKind::SlideOut));
+	TestTrue(TEXT("the pelvis goes lower the harder the arrival"), StepSink < BrakeSink && BrakeSink < SlideSink);
 	TestTrue(TEXT("a step-down is a few centimetres (3 to 9)"), StepSink > 3.f && StepSink < 9.f);
 	TestTrue(TEXT("a slide out is deep (over 15 cm)"), SlideSink > 15.f);
-	TestTrue(TEXT("and the poses last longer the faster she came"),
+	TestTrue(TEXT("and the poses last longer the harder the arrival"),
 		StepSeconds < BrakeSeconds && BrakeSeconds < SlideSeconds);
 	TestTrue(TEXT("every arrival is over inside two seconds"), SlideSeconds < 2.f);
 
@@ -582,6 +612,120 @@ bool FHawkeyeTraversalPoseArrive::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a heavy landing sinks further than a light one"), HeavySink > LightSink);
 	TestTrue(TEXT("a light landing still sinks"), LightSink > 2.f);
 	TestEqual(TEXT("with a clip playing the pose adds nothing"), ClipSink, 0.f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeTraversalPoseLoadBrace, "Hawkeye.Traversal.Pose.LoadAndBrace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeTraversalPoseLoadBrace::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeTraversalPoseTest;
+	const FHawkeyeTraversalPoseSettings S;
+
+	// The crouch-load: the arrow in the air with her on the ground. It builds over LoadSeconds, with no movement of hers.
+	FTraversalPoseState State;
+	FTraversalPoseInput Fly;
+	Fly.DeltaSeconds = Frame;
+	Fly.bGrounded = true;
+	Fly.bArrowInFlight = true;
+	FTraversalPoseOutput Out = State.Step(Fly, S);
+	TestEqual(TEXT("the arrow in the air on the ground: the load phase"), static_cast<int32>(Out.Phase),
+		static_cast<int32>(ETraversalPhase::Load));
+	for (int32 Index = 0; Index < 9; ++Index) // 0.15 s
+	{
+		Out = State.Step(Fly, S);
+	}
+	const float SinkEarly = -static_cast<float>(Out.PelvisOffset.Z);
+	for (int32 Index = 0; Index < 27; ++Index) // 0.6 s in
+	{
+		Out = State.Step(Fly, S);
+	}
+	const float SinkFull = -static_cast<float>(Out.PelvisOffset.Z);
+	TestTrue(TEXT("half way through the load the crouch is partly in"), SinkEarly > 1.f && SinkEarly < SinkFull);
+	TestEqual(TEXT("after LoadSeconds it is the whole crouch"), SinkFull, S.LaunchSinkCm, 1.5f);
+	TestTrue(TEXT("with the knees bent"), State.GetChannel(FTraversalPoseState::CalfL) > S.LaunchKnee * 0.8f);
+	TestEqual(TEXT("and the rope hand not yet reaching"), Out.LeftHandAlpha, 0.f, 0.01f);
+
+	// An arrow that never lands lets the crouch go.
+	Fly.bArrowInFlight = false;
+	for (int32 Index = 0; Index < 90; ++Index)
+	{
+		Out = State.Step(Fly, S);
+	}
+	TestFalse(TEXT("the arrow gone, the crouch is gone"), Out.IsActive());
+
+	// The load carries into the hop: it lets go over the hop where a cold hop would be making its own crouch.
+	FTraversalPoseState Loaded, Cold;
+	Fly.bArrowInFlight = true;
+	for (int32 Index = 0; Index < 24; ++Index)
+	{
+		Loaded.Step(Fly, S);
+	}
+	FTraversalPoseInput Hop;
+	Hop.DeltaSeconds = Frame;
+	Hop.bZipping = true;
+	Hop.bHopping = true;
+	Hop.RopeDirection = FVector(0.6f, 0.f, 0.8f);
+	float LoadedStart = 0.f, ColdStart = 0.f, LoadedEnd = 0.f;
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		Hop.HopFraction = static_cast<float>(Index + 1) / 9.f;
+		const FTraversalPoseOutput A = Loaded.Step(Hop, S);
+		const FTraversalPoseOutput B = Cold.Step(Hop, S);
+		if (Index == 0)
+		{
+			LoadedStart = -static_cast<float>(A.PelvisOffset.Z);
+			ColdStart = -static_cast<float>(B.PelvisOffset.Z);
+		}
+		LoadedEnd = -static_cast<float>(A.PelvisOffset.Z);
+	}
+	TestTrue(TEXT("a loaded hop starts down in the crouch"), LoadedStart > ColdStart + 4.f);
+	TestTrue(TEXT("and comes up out of it by the end of the hop"), LoadedEnd < LoadedStart * 0.75f);
+
+	// In the air a fired arrow is no load (a chain, a fall).
+	FTraversalPoseState Air;
+	FTraversalPoseInput Falling = Fly;
+	Falling.bGrounded = false;
+	Falling.bFalling = true;
+	TestEqual(TEXT("an arrow fired in the air is not a load"), static_cast<int32>(Air.Step(Falling, S).Phase),
+		static_cast<int32>(ETraversalPhase::None));
+
+	// The brace: the legs go forward and up, the chest upright, the free hand in front; short zips have none.
+	FTraversalPoseState Pull;
+	RunPull(Pull, S, 1800.f, 25.f, 90, 0.f, 2000.f, 0.3f);
+	const float TiltInPull = Pull.GetChannel(FTraversalPoseState::TiltForward);
+	TestTrue(TEXT("in the pull the legs trail (hip back)"), Pull.GetChannel(FTraversalPoseState::ThighR) > 5.f);
+	const FTraversalPoseOutput Braced = RunPull(Pull, S, 1800.f, 25.f, 24, 0.f, 2000.f, 0.97f); // 0.4 s of brace
+	TestEqual(TEXT("the brace phase"), static_cast<int32>(Braced.Phase), static_cast<int32>(ETraversalPhase::Brace));
+	TestTrue(TEXT("the legs have swung forward (hips flexed past the body)"),
+		Pull.GetChannel(FTraversalPoseState::ThighL) < -S.BraceHipFlexLead * 0.8f &&
+			Pull.GetChannel(FTraversalPoseState::ThighR) < -S.BraceHipFlexTrail * 0.8f);
+	TestTrue(TEXT("with the knees bent for it"), Pull.GetChannel(FTraversalPoseState::CalfL) > S.BraceKnee * 0.7f);
+	TestTrue(TEXT("the chest has come up (the tip under a third of the pull's)"),
+		Pull.GetChannel(FTraversalPoseState::TiltForward) < TiltInPull * 0.34f);
+	TestTrue(TEXT("the free hand reached forward of the pelvis"), Braced.RightHand.X > 30.f);
+	TestTrue(TEXT("the brace is fully in"), Braced.Braced > 0.9f);
+	FTraversalPoseState Short;
+	RunPull(Short, S, 1800.f, 25.f, 10, 0.f, 200.f, 0.8f);
+	TestEqual(TEXT("a zip shorter than 2.5 m has no brace"), static_cast<int32>(Short.GetPhase()),
+		static_cast<int32>(ETraversalPhase::Pull));
+
+	// Forward held in the brace makes the arrival a slide out when the line is level, and not when it climbs.
+	FTraversalPoseInput Down;
+	Down.DeltaSeconds = Frame;
+	Down.bGrounded = true;
+	Down.Velocity = FVector(600.f, 0.f, 0.f);
+	FTraversalPoseState Slide;
+	RunPull(Slide, S, 1800.f, 3.f, 20, 0.f, 1500.f, 0.97f, /*bForward=*/true);
+	Slide.Step(Down, S);
+	TestEqual(TEXT("forward held in the brace on a level line: a slide out"), static_cast<int32>(Slide.GetArrival()),
+		static_cast<int32>(EArrivalKind::SlideOut));
+	FTraversalPoseState Climb;
+	RunPull(Climb, S, 1800.f, 35.f, 20, 0.f, 1500.f, 0.97f, true);
+	Climb.Step(Down, S);
+	TestEqual(TEXT("a climb to a roof's edge with forward held: the two-step"), static_cast<int32>(Climb.GetArrival()),
+		static_cast<int32>(EArrivalKind::Brake));
 	return true;
 }
 

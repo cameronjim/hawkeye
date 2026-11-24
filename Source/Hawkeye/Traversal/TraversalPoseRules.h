@@ -21,20 +21,25 @@ enum class ETraversalPhase : uint8
 	Release,
 	/** In the air after a release (or an arrival with no floor), reacting to vertical speed. */
 	Fall,
-	/** On the landing point, in the step-down, brake or slide that matches the line speed. */
-	Arrive
+	/** On the landing point, in the step-down, two-step or slide-out the zip's length and surface ask for. */
+	Arrive,
+	/** The arrow is in flight and she is on the ground: the crouch-load, before the hop. Visual only. */
+	Load,
+	/** The last BraceSeconds of the pull: the legs swing forward and up to meet the surface and the chest comes upright. */
+	Brace
 };
 
-/** How a zip's arrival is taken, by the line speed it arrived at. */
+/** How a zip's arrival is taken: by the zip's length, the line's slope and whether she holds forward (never by line speed,
+ * which is always about the top speed by the end). */
 UENUM(BlueprintType)
 enum class EArrivalKind : uint8
 {
 	None,
-	/** Under ArrivalStepMaxSpeed: a light step down. */
+	/** A zip shorter than ShortZipCm: a soft step down. */
 	StepDown,
-	/** Up to ArrivalBrakeMaxSpeed: a braking two-step with the knees bent. */
+	/** The default: a braking two-step with the knees bent. */
 	Brake,
-	/** Above that: a slide out. */
+	/** The line is about level with the surface and forward is held: a slide out. */
 	SlideOut
 };
 
@@ -180,6 +185,10 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arms")
 	FVector FreeHandBack = FVector(-22.f, 52.f, 22.f);
 
+	/** The free hand held out in front for the brace, body frame, cm from the pelvis. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arms")
+	FVector FreeHandBrace = FVector(52.f, 30.f, 44.f);
+
 	/** The hands thrown out and up when falling, body frame, cm from the pelvis (Y mirrored for the left). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arms")
 	FVector HandsOut = FVector(8.f, 55.f, 58.f);
@@ -200,8 +209,12 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Head")
 	float MaxHeadYaw = 40.f;
 
-	/** The crouch-load before the jerk: pelvis down, hips and knees bent, the chest over, all peaking 60% through the
-	 * hop. */
+	/** The crouch-load, played while the grapple arrow is in flight (before the hop) and let go into the hop: pelvis down,
+	 * hips and knees bent, the chest over. It ramps in over LoadSeconds (the arrow's flight is longer than that for any
+	 * anchor past 6 m, so it is usually at full by the hop); a shorter flight shows the part of it that fits. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch", meta = (ClampMin = "0.01"))
+	float LoadSeconds = 0.3f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
 	float LaunchSinkCm = 16.f;
 
@@ -213,6 +226,10 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
 	float LaunchKnee = 45.f;
+
+	/** Half-life of the legs, sink and tilt while the crouch loads, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch", meta = (ClampMin = "0.01"))
+	float LoadHalfLife = 0.06f;
 
 	/** Seconds after a release the legs hold the tuck before they go to the fall pose. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Release", meta = (ClampMin = "0.0"))
@@ -238,12 +255,38 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Fall")
 	float FallArch = 8.f;
 
-	/** Line speeds (cm/s) up to which an arrival is a step-down, then a braking two-step; above is a slide out. */
+	/** The last this many seconds of the pull are the brace (time to arrival from the zip's progress, length and line
+	 * speed); a zip shorter than ShortZipCm has none. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.0"))
-	float ArrivalStepMaxSpeed = 700.f;
+	float BraceSeconds = 0.3f;
 
+	/** The brace: legs swung forward (hip flex, one leading) and the knees bent to meet the surface, degrees; the chest's
+	 * tip left over, as a share of what the pull had. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive")
+	float BraceHipFlexLead = 62.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive")
+	float BraceHipFlexTrail = 40.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive")
+	float BraceKnee = 38.f;
+
+	UPROPERTY(
+		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BraceTiltLeft = 0.15f;
+
+	/** Half-life of the legs in the brace, s (the swing is 0.3 s long). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.01"))
+	float BraceHalfLife = 0.07f;
+
+	/** Zips shorter than this (cm) arrive in a soft step down, with no brace. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.0"))
-	float ArrivalBrakeMaxSpeed = 1300.f;
+	float ShortZipCm = 250.f;
+
+	/** The line is level with the surface when it climbs or falls under this many degrees; with forward held that is a
+	 * slide out. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.0"))
+	float SlideLevelDegrees = 12.f;
 
 	/** How long each arrival's pose runs, s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.05"))
@@ -290,6 +333,13 @@ struct HAWKEYE_API FTraversalPoseInput
 	float HopFraction = 0.f;
 	/** The zip's speed along its line. */
 	float ZipLineSpeed = 0.f;
+	/** 0..1 along the line and its length, cm: the time to arrival is what is left of both over the line speed. */
+	float ZipProgress = 0.f;
+	float ZipLength = 0.f;
+	/** The grapple arrow is in the air (she is not yet zipping). */
+	bool bArrowInFlight = false;
+	/** The stick is held toward where she faces: a slide out rather than a two-step. */
+	bool bForwardHeld = false;
 	FVector Velocity = FVector::ZeroVector;
 	/** Unit direction from the rope hand toward the anchor; zero when there is none. */
 	FVector RopeDirection = FVector::ZeroVector;
@@ -326,6 +376,8 @@ struct HAWKEYE_API FTraversalPoseOutput
 	FVector RightElbow = FVector::ZeroVector;
 	/** The landing's clip when one plays, the pose is then only the legs' absorb. */
 	EArrivalKind Arrival = EArrivalKind::None;
+	/** 0..1 how far the brace's forward reach is in (the weight included). */
+	float Braced = 0.f;
 
 	bool IsActive() const
 	{
@@ -383,8 +435,16 @@ struct HAWKEYE_API FTraversalPoseRules
 	/** exp(-((t - c) / w)^2): a short pulse at Centre (the braking steps). */
 	static float Pulse(float Seconds, float Centre, float Width);
 
-	/** The arrival the line speed asks for. */
-	static EArrivalKind ClassifyArrival(float LineSpeed, const FHawkeyeTraversalPoseSettings& Settings);
+	/** Seconds to arrival: what is left of the line over its speed; a large number when the speed is nothing. */
+	static float TimeToArrival(float Progress, float Length, float LineSpeed);
+
+	/**
+	 * The arrival a zip asks for: shorter than ShortZipCm a step-down; a line within SlideLevelDegrees of level (the
+	 * climb or fall of the line, degrees, either way) with forward held a slide out; any other, from below a roof's edge
+	 * included, the braking two-step.
+	 */
+	static EArrivalKind ClassifyArrival(
+		float ZipLength, float LineElevationDegrees, bool bForwardHeld, const FHawkeyeTraversalPoseSettings& Settings);
 
 	/** The length of an arrival's pose, s. */
 	static float ArrivalSeconds(EArrivalKind Kind, const FHawkeyeTraversalPoseSettings& Settings);
@@ -450,6 +510,7 @@ struct HAWKEYE_API FTraversalPoseState
 		LeftArm,
 		RightArm,
 		ArmsOut,
+		Brace,
 		Count
 	};
 
@@ -485,6 +546,12 @@ private:
 	bool bWasZipping = false;
 	bool bWasHopping = false;
 	float LastLineSpeed = 0.f;
+	float LastZipLength = 0.f;
+	float LastLineElevation = 0.f;
+	/** Forward was held at any time in the brace. */
+	bool bHeldForward = false;
+	/** The crouch-load played before this hop (it carries into the hop instead of the hop making its own). */
+	bool bLoaded = false;
 	FVector LastVelocity = FVector::ZeroVector;
 	bool bHaveLast = false;
 
