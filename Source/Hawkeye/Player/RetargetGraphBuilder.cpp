@@ -7,7 +7,6 @@
 
 #if WITH_EDITOR
 #include "AnimGraphNode_AnimDynamics.h"
-#include "Player/AnimGraphNode_HawkeyeBodyPose.h"
 #include "AnimGraphNode_ComponentToLocalSpace.h"
 #include "AnimGraphNode_LocalToComponentSpace.h"
 #include "AnimGraphNode_RetargetPoseFromMesh.h"
@@ -206,6 +205,23 @@ namespace HawkeyeRetargetGraph
 		return Node;
 	}
 
+	/** The Hawkeye Body Pose graph node (a class of the HawkeyeEditor module, found by path), or null when it is not loaded. */
+	static UEdGraphNode* AddBodyPoseNode(UEdGraph& Graph, int32 X)
+	{
+		UClass* NodeClass = FindObject<UClass>(nullptr, TEXT("/Script/HawkeyeEditor.AnimGraphNode_HawkeyeBodyPose"));
+		if (!NodeClass)
+		{
+			return nullptr;
+		}
+		UEdGraphNode* Node = NewObject<UEdGraphNode>(&Graph, NodeClass, NAME_None, RF_Transactional);
+		Graph.AddNode(Node, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+		Node->CreateNewGuid();
+		Node->PostPlacedNewNode();
+		Node->AllocateDefaultPins();
+		Node->NodePosX = X;
+		return Node;
+	}
+
 	/** The retarget node, its settings written through reflection (the node's struct is private). */
 	static UAnimGraphNode_RetargetPoseFromMesh* AddRetargetNode(UEdGraph& Graph, UIKRetargeter* Retargeter)
 	{
@@ -265,7 +281,7 @@ int32 UHawkeyeRetargetGraphBuilder::CountBodyPoseNodes(UAnimBlueprint* Blueprint
 	int32 Count = 0;
 	for (const UEdGraphNode* Node : Graph->Nodes)
 	{
-		Count += Cast<UAnimGraphNode_HawkeyeBodyPose>(Node) ? 1 : 0;
+		Count += Node && Node->GetClass()->GetName() == TEXT("AnimGraphNode_HawkeyeBodyPose") ? 1 : 0;
 	}
 	return Count;
 #else
@@ -375,13 +391,17 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageN
 		if (bBodyPose)
 		{
 			// The visible body's hands and rest arms from our own table, after everything the retarget did.
-			FGraphNodeCreator<UAnimGraphNode_HawkeyeBodyPose> PoseCreator(*Graph);
-			UAnimGraphNode_HawkeyeBodyPose* PoseNode = PoseCreator.CreateNode(/*bSelectNewNode=*/false);
-			PoseNode->NodePosX = X;
-			PoseCreator.Finalize();
-			Link(Last, PoseNode, TEXT("the body pose"));
-			Last = PoseNode;
-			X += 60;
+			UEdGraphNode* PoseNode = AddBodyPoseNode(*Graph, X);
+			if (PoseNode)
+			{
+				Link(Last, PoseNode, TEXT("the body pose"));
+				Last = PoseNode;
+				X += 60;
+			}
+			else if (Failure.IsEmpty())
+			{
+				Failure = TEXT("the Hawkeye Body Pose graph node is not loaded (the HawkeyeEditor module)");
+			}
 		}
 		FGraphNodeCreator<UAnimGraphNode_ComponentToLocalSpace> ToLocalCreator(*Graph);
 		UAnimGraphNode_ComponentToLocalSpace* ToLocal = ToLocalCreator.CreateNode(/*bSelectNewNode=*/false);

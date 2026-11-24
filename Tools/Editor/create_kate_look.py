@@ -243,7 +243,7 @@ def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None, body_pose=False):
     chains, chain_text = _dynamics_chains(dynamics, skeleton)
     settings = repr(sorted((k, str(v)) for spec in dynamics or [] for k, v in spec.items()))
     # A look with no chains keeps the stamp it always had, so nobody else is rebuilt.
-    stamp = _stamp("abp", ica.tag_of(rtg), *([chain_text, settings] if dynamics else []), *(["body-pose-1"] if body_pose else []))
+    stamp = _stamp("abp", ica.tag_of(rtg), *([chain_text, settings] if dynamics else []), *(["body-pose-2"] if body_pose else []))
     existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
         c.log("exists", path)

@@ -32,6 +32,10 @@ public class HawkeyeEditor : ModuleRules
 			"EditorSubsystem",
 			// The Tools menu entry.
 			"ToolMenus",
+			// UAnimGraphNode_HawkeyeBodyPose: the graph node of the game module's skeletal control node.
+			"AnimGraph",
+			"AnimGraphRuntime",
+			"BlueprintGraph",
 			"Hawkeye"
 		});
 	}

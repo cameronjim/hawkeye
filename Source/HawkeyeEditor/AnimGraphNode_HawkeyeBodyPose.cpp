@@ -1,6 +1,5 @@
-#include "Player/AnimGraphNode_HawkeyeBodyPose.h"
+#include "AnimGraphNode_HawkeyeBodyPose.h"
 
-#if WITH_EDITOR
 #define LOCTEXT_NAMESPACE "HawkeyeBodyPose"
 
 FText UAnimGraphNode_HawkeyeBodyPose::GetNodeTitle(ENodeTitleType::Type TitleType) const
@@ -19,4 +18,3 @@ FText UAnimGraphNode_HawkeyeBodyPose::GetControllerDescription() const
 }
 
 #undef LOCTEXT_NAMESPACE
-#endif
