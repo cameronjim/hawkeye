@@ -180,13 +180,12 @@ def tip_axis_sign(skel, side):
 
 def directions(skel, side):
     """Bone name -> unit direction along it, for the arm and the fingers. A finger's last bone points at the tip bone
-    when there is one, else along its own X axis when that is the convention, else as the bone before it."""
+    when there is one, else carries on the bend of the joint before it."""
     pos = skel.pos
     d = {}
     d["upperarm_" + side] = unit(vsub(pos["lowerarm_" + side], pos["upperarm_" + side]))
     d["lowerarm_" + side] = unit(vsub(pos["hand_" + side], pos["lowerarm_" + side]))
     d["hand_" + side] = unit(vsub(pos["middle_01_" + side], pos["hand_" + side]))
-    sign = tip_axis_sign(skel, side)
     for f in FINGERS:
         for j in (1, 2, 3):
             b = "{0}_{1:02d}_{2}".format(f, j, side)
@@ -196,10 +195,14 @@ def directions(skel, side):
                 d[b] = unit(vsub(pos[child], pos[b]))
             elif leaf in pos:
                 d[b] = unit(vsub(pos[leaf], pos[b]))
-            elif sign is not None:
-                d[b] = vscale(unit(qrot(skel.rot[b], X_AXIS)), sign)
             else:
-                d[b] = d["{0}_02_{1}".format(f, side)]
+                # No tip bone: the last joint carries on the bend of the one before (the last bone's own axes are
+                # not reliable on every skeleton: UEFN's index_03 points back along the finger)
+                first = d["{0}_01_{1}".format(f, side)]
+                second = d["{0}_02_{1}".format(f, side)]
+                axis = cross(first, second)
+                bend = angle_between(first, second) * 0.7
+                d[b] = qrot(q_axis_angle(axis, bend), second) if length(axis) > 1e-6 and bend > 0.0 else second
     return d
 
 
