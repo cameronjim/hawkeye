@@ -15,7 +15,7 @@ gone from the code, and so from this file. Every section below describes code th
   of the frame is open. Position lag 10, rotation lag 12. Sensitivity from the settings
   subsystem. `ComputeCameraTargets(bAiming)` is pure and tested.
 - The arm probes on the Camera channel with a 20 cm radius and pulls in against walls,
-  never inside geometry. Closer than 90 cm (until beyond 120) the character is hidden from the
+  never inside geometry. Closer than 145 cm (until beyond 175) the character is hidden from the
   camera so the view isn't inside her shoulder. The rest of the camera's rules, the lens-height
   guarantee, the sweeps, cuts and the audit, are in "Camera rules" below.
 - Fight camera (2026-09-29): with two or more alerted thugs near her (one within 9 m, the rest within 15 m; flat, 3 m up or
@@ -69,8 +69,11 @@ The rig is `UHawkeyeSpringArmComponent` (`Player/HawkeyeSpringArmComponent.h`, `
   eased down at 200 cm/s (`EasedHalfHeight`).
 - **Shake is after the sweep.** A hit's shake is no longer in the socket offset: it is a small camera-local offset the arm
   adds after it has placed the lens, and sweeps itself (6 cm radius), so it cannot put the lens in a wall.
-- **Body hide has hysteresis.** Hidden when the lens is inside 90 cm of her centre, shown again only beyond 120 (`ShouldHideBody`).
-  There is no fade: the body materials are not known to carry an opacity parameter.
+- **Body hide has hysteresis.** Hidden when the lens is inside 145 cm of her centre, shown again only beyond 175 (`ShouldHideBody`).
+  Since 2026-11-24 (was 90 / 120): at the hip camera's 90 degrees her shoulders (about 45 cm) are a fifth of the frame at 145 cm
+  and were a third at 90, so backed against a wall her torso filled the left side. The aim camera's lens sits 200 cm out at 70
+  degrees, where she is also about a fifth, so aiming never hides her. There is no fade: the body materials are not known to
+  carry an opacity parameter.
 - **Camera-blocking dressing.** The Camera channel is blocked by the clutter that is big and solid (footprint radius 60 cm or
   more: parked cars, water towers, HVAC boxes, chimneys; `CityClutterGroup.bBlocksCamera`, `generate_city.py blocks_camera`)
   and ignored by the rest (hydrants, bins, bags, the December dressing, the street look). Pawns, physics and every traversal
@@ -568,7 +571,8 @@ point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off fo
   the landing rules chose from the fall height keeps its look** (`Roll`, `Stumble`), so today's outcomes at today's heights
   are what they were: 400 cm is 885 cm/s and every roll is heavy, a 100 cm drop is light, a 30 cm step is none. The clip is
   the sample's `M_Neutral_Jump_F_Land_*` for that band (anim set roles `LandStandLight` .. `LandSprintHeavy`, the foot she
-  lands on alternating), `LandRoll` in place of the scripted 360 degree spin (the capsule shrink, the 200 cm and the input lock
+  lands on alternating; a heavy one plays at `HeavyLandingRate` 1.6, because the sample's crouch at the bottom held about
+  0.6 s and now holds about 0.3 s, `LandingClipRate`), `LandRoll` in place of the scripted 360 degree spin (the capsule shrink, the 200 cm and the input lock
   stay the roll's, `StartRoll`), `LandStumble` fitted to `StumbleSeconds`; with no clip in the set the legs' absorb (sink 5 to
   26 cm, knees 14 to 70 degrees by how hard) draws it, and the scripted spin stays. Only landings the pose owns get a look: a
   release from a zip, one that rolls, stumbles or dips, and falls from `LandingPoseMinHeight` (150 cm) up; a hop or a step is
@@ -2416,11 +2420,13 @@ component, `bLightAttackOnPress` on Kate. On the hit frame, in this order:
    flipping side 2 to 4 times over the freeze and decaying, the other party starting the other way. Never the capsule.
 4. **Align** (thugs only, not Kate, not a boss mid-swing, not a body on the floor): over the freeze he turns up to 25 degrees
    toward the attacker and is nudged up to 15 cm along the line so the spacing is the clip's contact distance, with strike
-   magnetism's wall and ledge checks (`IsMovePathClear`).
+   magnetism's wall and ledge checks (`IsMovePathClear`). The nudge is remembered (`LastAlignNudge`) for the knock-back below.
 5. **Knock-back**: one eased displacement (a root motion source, speed (1 - t) ^ 2 over 0.3 s) of the clip's `KnockbackCm`, else
    10 cm for a light reaction and 28 for a heavy: what the old shove (250 and 500 cm/s) slid a thug. It waits out the freeze on
    his stopped clock, so it starts at the release. `LaunchCharacter` stays only for a stagger with no blow behind it (a parry, a
-   boss's).
+   boss's). **It nets out** (2026-11-24, `ComputeNetKnockbackCm`): the align nudge moved him toward the attacker (usually) before
+   the shove and ate it (about 10 cm seen of a 10 cm tuning), so the distance applied is the tuned one minus what the nudge moved
+   him along the knock-back (never below 0): his net displacement from where the blow found him is the tuning.
 6. **Flinch**: the physical reaction starts at the release (it already waited out the stop) and its blend is capped at 0.5
    (`PeakBlend`, was 0.8). Kate's and Clint's flinch stays off.
 - **No flash.** `AThugCharacter::FlashHit` and the material's `HitFlash` are gone; the red telegraph stays. A landed blow plays one
@@ -2435,6 +2441,9 @@ component, `bLightAttackOnPress` on Kate. On the hit frame, in this order:
 - **Variant by situation**: a role with more than one clip, and baked data on them, picks by `ScoreAttackVariant` (reach against the
   distance, hit height against the region aimed at, wide swings for a target off to the side, a cost for repeating) instead of
   manifest order. A clip's `ContactDistance` replaces the attack's 66 / 88 / 70 cm constant, `ContactHeight` picks the region.
+  A clip with no baked `ContactHeight` (all the live ones) picks it by where the striking limb really met him (`PickStrikeHeight`:
+  the sweep's contact point, else the limb nearest him, over his floor), not by the zone the attack's data names: a chest-height
+  light punch plays `HitGut`, not the head snap (2026-11-24).
 - Clips: `Tools/Blender/build_clips.py` makes the six zone reactions per rig and Kate's jab, cross, hook and front kick, built around
   the hit frame; they are in the manifest as `in_set: false` until their strips beat the clips they would replace
   (claude-docs/animation.md, "The weld clips").

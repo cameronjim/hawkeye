@@ -462,7 +462,6 @@ picks back or front, `gameplay-semantics.md`, "Authored clips"); out of the knoc
 lay onto the capsule over 0.3 s, out of the ragdoll the physics weight falls 1 to 0 over 0.3 s. Strips:
 `getup_from_clip.png`, `getup_from_ragdoll.png`.
 
-<<<<<<< HEAD
 ## Hands on the bodies (fixed 2026-11-24)
 
 Symptoms: fingers splayed straight like claws, wrists cocked, palms the wrong way, arms held out from the body.
@@ -486,6 +485,7 @@ clavicles are left alone. `HAND_CURL_DEGREES` (0) adds bend to fingers a driver 
 prints the frames each skeleton gives. `verify_content` (`check_hand_chains`) fails if a body retargeter has an unmapped
 finger chain or no offsets on the hands. `Hawkeye.Screenshot.Bodies` ends with `hands_<who>_<rest, fist, bow>.png`
 close-ups (thug, heavy, Clint, Kate).
+
 ## The weld clips (written 2026-11-23; not yet built or seen)
 
 `build_clips.py` also makes, per rig, six hit reactions by where the blow landed and how hard (`HitHead_`, `HitGut_`, `HitLegs_` x
@@ -505,7 +505,7 @@ close-ups (thug, heavy, Clint, Kate).
 - All sixteen manifest lines are `in_set: false`: imported, not worn. A clip goes in only when its strip beats the one it replaces
   (`Hawkeye.Screenshot.Clips`: `<clip>.png` against `<clip>_before.png`; `contact_light_<tag>.png` and `contact_heavy_<tag>.png`, eight
   frames round a live blow, `-ContactStripTag=before` on the old build). Say which did not beat theirs.
-=======
+
 ## Traversal body pose (written 2026-11-23, seen and tuned 2026-11-24 from the strips; the rules are `gameplay-semantics.md`, "Traversal body pose")
 
 Why: the sample's motion matching knows nothing about a zip. The movement component carried the capsule along a line, the
