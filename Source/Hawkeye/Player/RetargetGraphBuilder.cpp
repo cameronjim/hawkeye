@@ -5,7 +5,8 @@
 #include "Hawkeye.h"
 
 #if WITH_EDITOR
-#include "AnimGraphNode_AnimDynamics.h"
+#include "AnimGraphNode_Base.h"
+#include "AnimNode_KawaiiPhysics.h"
 #include "AnimGraphNode_ComponentToLocalSpace.h"
 #include "AnimGraphNode_LocalToComponentSpace.h"
 #include "AnimGraphNode_RetargetPoseFromMesh.h"
@@ -21,6 +22,7 @@
 #include "Logging/TokenizedMessage.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/PackageName.h"
+#include "Modules/ModuleManager.h"
 #include "Retargeter/IKRetargeter.h"
 #include "UObject/Package.h"
 
@@ -109,94 +111,108 @@ namespace HawkeyeRetargetGraph
 		return nullptr;
 	}
 
-	/** The way a bone points, in its own frame: the dominant axis (with its sign) of its first child's rest offset. */
-	static FVector AlongBoneAxis(
-		const FReferenceSkeleton& Reference, FName Bone, AnimPhysTwistAxis& OutAxis, const FVector& Fallback)
-	{
-		FVector Along = Fallback;
-		const int32 Index = Reference.FindBoneIndex(Bone);
-		for (int32 Child = Index + 1; Index != INDEX_NONE && Child < Reference.GetNum(); ++Child)
-		{
-			if (Reference.GetParentIndex(Child) == Index)
-			{
-				const FVector Offset = Reference.GetRefBonePose()[Child].GetTranslation();
-				const double Largest = FMath::Max3(FMath::Abs(Offset.X), FMath::Abs(Offset.Y), FMath::Abs(Offset.Z));
-				if (Largest > UE_KINDA_SMALL_NUMBER)
-				{
-					if (FMath::Abs(Offset.X) == Largest)
-					{
-						Along = FVector(FMath::Sign(Offset.X), 0., 0.);
-					}
-					else
-					{
-						Along = FMath::Abs(Offset.Y) == Largest ? FVector(0., FMath::Sign(Offset.Y), 0.)
-																: FVector(0., 0., FMath::Sign(Offset.Z));
-					}
-				}
-				break;
-			}
-		}
-		OutAxis = FMath::Abs(Along.X) > 0.5
-			? AnimPhysTwistAxis::AxisX
-			: (FMath::Abs(Along.Y) > 0.5 ? AnimPhysTwistAxis::AxisY : AnimPhysTwistAxis::AxisZ);
-		return Along;
-	}
-
 	/** True when Bone is on the skeleton (a none name counts: it is not asked for). */
 	static bool HasBone(const USkeleton& Skeleton, FName Bone)
 	{
 		return Bone.IsNone() || Skeleton.GetReferenceSkeleton().FindBoneIndex(Bone) != INDEX_NONE;
 	}
 
-	/** One AnimDynamics node for Chain, its bodies set up from the skeleton: a cone round each bone's own axis and a
-	 * spring back. */
-	static UAnimGraphNode_AnimDynamics* AddDynamicsNode(
-		UEdGraph& Graph, const FHawkeyeDynamicsChain& Chain, const USkeleton& Skeleton, int32 X)
+	/** The plugin's anim graph node class (the editor half of Plugins/KawaiiPhysics; its node class is not exported, so it
+	 * is found by name, not linked). Null when the plugin is not enabled. */
+	static UClass* FindKawaiiNodeClass()
 	{
-		FGraphNodeCreator<UAnimGraphNode_AnimDynamics> Creator(Graph);
-		UAnimGraphNode_AnimDynamics* Node = Creator.CreateNode(/*bSelectNewNode=*/false);
+		FModuleManager::Get().LoadModulePtr<IModuleInterface>(TEXT("KawaiiPhysicsEd"));
+		return FindObject<UClass>(nullptr, TEXT("/Script/KawaiiPhysicsEd.AnimGraphNode_KawaiiPhysics"));
+	}
+
+	static bool IsKawaiiNode(const UEdGraphNode* Node)
+	{
+		return Node && Node->GetClass()->GetName() == TEXT("AnimGraphNode_KawaiiPhysics");
+	}
+
+	/** One Kawaii Physics node for Chain: the chain's settings in the plugin's own fields, the shapes it stays outside of
+	 * laid in the bones' axes, and the first-frame guards (a warm-up that settles it, the thresholds that make a cut a
+	 * teleport and not a whip). Null, with the node left out of the graph, when the node class or its data is not what
+	 * this was written against. */
+	static UEdGraphNode* AddKawaiiNode(UEdGraph& Graph, UClass& NodeClass, const FHawkeyeDynamicsChain& Chain,
+		const USkeleton& Skeleton, int32 X)
+	{
+		FGraphNodeCreator<UAnimGraphNode_Base> Creator(Graph);
+		UAnimGraphNode_Base* Node =
+			Creator.CreateNode(/*bSelectNewNode=*/false, TSubclassOf<UAnimGraphNode_Base>(&NodeClass));
 		Node->NodePosX = X;
 		Node->NodePosY = 0;
-		FAnimNode_AnimDynamics& Dynamics = Node->Node;
-		Dynamics.BoundBone.BoneName = Chain.BoundBone;
-		Dynamics.bChain = !Chain.ChainEnd.IsNone();
-		Dynamics.ChainEnd.BoneName = Chain.ChainEnd;
-		Dynamics.SimulationSpace = AnimPhysSimSpaceType::Component;
-		Dynamics.GravityScale = Chain.GravityScale;
-		Dynamics.bOverrideLinearDamping = true;
-		Dynamics.LinearDampingOverride = Chain.Damping;
-		Dynamics.bAngularSpring = true;
-		Dynamics.AngularSpringConstant = Chain.AngularSpring;
-		Dynamics.ComponentLinearAccScale = FVector(Chain.AccelerationScale);
-		Dynamics.ComponentLinearVelScale = FVector(Chain.VelocityDrag);
-		Dynamics.ComponentAppliedLinearAccClamp = FVector(Chain.MaxAcceleration);
-		Dynamics.SimSpaceSettings.MaxAngularVelocity = Chain.MaxAngularVelocity;
-		Dynamics.SimSpaceSettings.MaxAngularAcceleration = Chain.MaxAngularAcceleration;
-
-		const FReferenceSkeleton& Reference = Skeleton.GetReferenceSkeleton();
-		if (Dynamics.bChain)
+		const FStructProperty* Inner = FindFProperty<FStructProperty>(Node->GetClass(), TEXT("Node"));
+		FAnimNode_KawaiiPhysics* Settings = (Inner && Inner->Struct == FAnimNode_KawaiiPhysics::StaticStruct())
+			? Inner->ContainerPtrToValuePtr<FAnimNode_KawaiiPhysics>(Node)
+			: nullptr;
+		if (Settings)
 		{
-			Dynamics.UpdateChainPhysicsBodyDefinitions(Reference);
+			const FReferenceSkeleton& Reference = Skeleton.GetReferenceSkeleton();
+			Settings->RootBone.BoneName = Chain.BoundBone;
+			for (const FName& Excluded : HawkeyeSecondary::ExcludedBones(Reference, Chain))
+			{
+				FBoneReference Bone;
+				Bone.BoneName = Excluded;
+				Settings->ExcludeBones.Add(Bone);
+			}
+			// The chain ends in a real leaf bone (ponytail_05, quiver_02), so no dummy bone is added past it.
+			Settings->DummyBoneLength = 0.f;
+			Settings->PhysicsSettings.Damping = Chain.Damping;
+			Settings->PhysicsSettings.Stiffness = Chain.Stiffness;
+			Settings->PhysicsSettings.WorldDampingLocation = Chain.WorldDampingLocation;
+			Settings->PhysicsSettings.WorldDampingRotation = Chain.WorldDampingRotation;
+			Settings->PhysicsSettings.Radius = Chain.Radius;
+			Settings->PhysicsSettings.LimitAngle = Chain.LimitAngleDegrees;
+			Settings->SimulationSpace = EKawaiiPhysicsSimulationSpace::ComponentSpace;
+			Settings->TargetFramerate = FMath::Max(1, Chain.TargetFramerate);
+			// Real gravity, world down, applied to velocity (the plugin's default), not the project setting's multiple.
+			Settings->Gravity = FVector(0., 0., -980. * Chain.GravityScale);
+			Settings->bUseWorldSpaceGravity = true;
+			Settings->bUseLegacyGravity = false;
+			Settings->bUseDefaultGravityZProjectSetting = false;
+			// First-frame and after-reset guard: the plugin skips a step with no time passed (DeltaTime <= 0), and settles
+			// the chain with these steps on its first frame and after every ResetDynamics (a teleport).
+			Settings->WarmUpFrames = FMath::Max(0, Chain.WarmUpFrames);
+			Settings->bNeedWarmUp = Chain.WarmUpFrames > 0;
+			Settings->bUseWarmUpWhenResetDynamics = true;
+			Settings->TeleportDistanceThreshold = Chain.TeleportDistance;
+			Settings->TeleportRotationThreshold = Chain.TeleportRotationDegrees;
+			for (const FHawkeyeDynamicsCollider& Collider : Chain.Colliders)
+			{
+				FVector Offset;
+				FRotator Rotation;
+				HawkeyeSecondary::ColliderInBoneSpace(Collider,
+					HawkeyeSecondary::RefBoneInComponent(Reference, Reference.FindBoneIndex(Collider.Bone)), Offset,
+					Rotation);
+				if (Collider.Length > 0.f)
+				{
+					FCapsuleLimit Limit;
+					Limit.DrivingBone.BoneName = Collider.Bone;
+					Limit.OffsetLocation = Offset;
+					Limit.OffsetRotation = Rotation;
+					Limit.Radius = Collider.Radius;
+					Limit.Length = Collider.Length;
+					Settings->CapsuleLimits.Add(Limit);
+				}
+				else
+				{
+					FSphericalLimit Limit;
+					Limit.DrivingBone.BoneName = Collider.Bone;
+					Limit.OffsetLocation = Offset;
+					Limit.Radius = Collider.Radius;
+					Limit.LimitType = ESphericalLimitType::Outer;
+					Settings->SphericalLimits.Add(Limit);
+				}
+			}
 		}
-		else
-		{
-			Dynamics.PhysicsBodyDefinitions.SetNum(1);
-			Dynamics.PhysicsBodyDefinitions[0].BoundBone.BoneName = Chain.BoundBone;
-		}
-		FVector Along = FVector(1., 0., 0.);
-		for (FAnimPhysBodyDefinition& Body : Dynamics.PhysicsBodyDefinitions)
-		{
-			Body.BoxExtents = Chain.BoxExtents;
-			FAnimPhysConstraintSetup& Constraint = Body.ConstraintSetup;
-			Constraint.AngularConstraintType = AnimPhysAngularConstraintType::Cone;
-			Constraint.ConeAngle = Chain.ConeDegrees;
-			AnimPhysTwistAxis Axis = AnimPhysTwistAxis::AxisX;
-			Along = AlongBoneAxis(Reference, Body.BoundBone.BoneName, Axis, Along);
-			Constraint.TwistAxis = Axis;
-			Constraint.AngularTargetAxis = Axis;
-			Constraint.AngularTarget = Along;
-		}
+		// Finalize either way: the creator asserts in its destructor on a node left unplaced.
 		Creator.Finalize();
+		if (!Settings)
+		{
+			Graph.RemoveNode(Node);
+			return nullptr;
+		}
 		return Node;
 	}
 
@@ -253,7 +269,7 @@ int32 UHawkeyeRetargetGraphBuilder::CountDynamicsNodes(UAnimBlueprint* Blueprint
 	int32 Count = 0;
 	for (const UEdGraphNode* Node : Graph->Nodes)
 	{
-		Count += Cast<UAnimGraphNode_AnimDynamics>(Node) ? 1 : 0;
+		Count += HawkeyeRetargetGraph::IsKawaiiNode(Node) ? 1 : 0;
 	}
 	return Count;
 #else
@@ -291,24 +307,42 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics(const FS
 				 : TEXT("the AnimGraph has no output pose node"));
 		return nullptr;
 	}
-	// The chains whose bones the look's skeleton has; the others are left out with a line, never an error.
+	// The chains the look's skeleton can run (HawkeyeSecondary::DescribeProblem); the others are left out with a line, never an
+	// error: a Kate built before the simulation bones existed is the plain graph.
 	TArray<const FHawkeyeDynamicsChain*> Usable;
-	for (const FHawkeyeDynamicsChain& Chain : Chains)
+	UClass* KawaiiNodeClass = Chains.Num() > 0 ? FindKawaiiNodeClass() : nullptr;
+	if (Chains.Num() > 0 && !KawaiiNodeClass)
 	{
-		if (!Chain.BoundBone.IsNone() && HasBone(*Skeleton, Chain.BoundBone) && HasBone(*Skeleton, Chain.ChainEnd))
+		UE_LOG(LogHawkeye, Warning,
+			TEXT("BuildRetargetFromParent(%s): the Kawaii Physics plugin's node is not loaded (enable Plugins/KawaiiPhysics); "
+				 "no dynamics."),
+			*PackageName);
+	}
+	const TArray<FHawkeyeDynamicsChain> NoChains;
+	for (const FHawkeyeDynamicsChain& Chain : KawaiiNodeClass ? Chains : NoChains)
+	{
+		const FString Problem = HawkeyeSecondary::DescribeProblem(Skeleton->GetReferenceSkeleton(), Chain);
+		if (Problem.IsEmpty())
 		{
 			Usable.Add(&Chain);
 		}
 		else
 		{
-			UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent(%s): no dynamics for %s..%s: %s is missing a bone."),
-				*PackageName, *Chain.BoundBone.ToString(), *Chain.ChainEnd.ToString(), *GetNameSafe(Skeleton));
+			// A bone the skeleton lacks is the expected case (Log); anything else is a chain written wrong (Warning).
+			const bool bMissingBone = !HasBone(*Skeleton, Chain.BoundBone) || !HasBone(*Skeleton, Chain.ChainEnd);
+			UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent(%s): no dynamics for %s..%s on %s: %s."), *PackageName,
+				*Chain.BoundBone.ToString(), *Chain.ChainEnd.ToString(), *GetNameSafe(Skeleton), *Problem);
+			if (!bMissingBone)
+			{
+				UE_LOG(LogHawkeye, Warning, TEXT("BuildRetargetFromParent(%s): the %s chain was rejected: %s."), *PackageName,
+					*Chain.BoundBone.ToString(), *Problem);
+			}
 		}
 	}
 	UEdGraphNode* Last = Retarget;
 	if (Usable.Num() > 0)
 	{
-		// Local pose to component space, one AnimDynamics node a chain, back to local.
+		// Local pose to component space, one Kawaii Physics node a chain, back to local.
 		FGraphNodeCreator<UAnimGraphNode_LocalToComponentSpace> ToComponentCreator(*Graph);
 		UAnimGraphNode_LocalToComponentSpace* ToComponent = ToComponentCreator.CreateNode(/*bSelectNewNode=*/false);
 		ToComponent->NodePosX = -300;
@@ -329,7 +363,14 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics(const FS
 		int32 X = -200;
 		for (const FHawkeyeDynamicsChain* Chain : Usable)
 		{
-			UAnimGraphNode_AnimDynamics* Node = AddDynamicsNode(*Graph, *Chain, *Skeleton, X);
+			UEdGraphNode* Node = AddKawaiiNode(*Graph, *KawaiiNodeClass, *Chain, *Skeleton, X);
+			if (!Node)
+			{
+				UE_LOG(LogHawkeye, Error,
+					TEXT("BuildRetargetFromParent(%s): the Kawaii Physics node's data is not the struct this was written against."),
+					*PackageName);
+				return nullptr;
+			}
 			Link(Last, Node, FString::Printf(TEXT("dynamics %s"), *Chain->BoundBone.ToString()));
 			Last = Node;
 			X += 60;

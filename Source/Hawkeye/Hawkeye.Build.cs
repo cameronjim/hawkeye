@@ -72,6 +72,10 @@ public class Hawkeye : ModuleRules
 				"AnimGraph", "AnimGraphRuntime", "BlueprintGraph", "NiagaraEditor", "NiagaraCore", "AnimationBlueprintLibrary" });
 			// UHawkeyeRetargetGraphBuilder authors a body look's AnimBlueprint: Retarget Pose From Mesh, the IK Rig plugin's node.
 			PrivateDependencyModuleNames.Add("IKRigDeveloper");
+			// ...and a Kawaii Physics node per secondary-motion chain (Plugins/KawaiiPhysics, MIT): the runtime module only, for
+			// FAnimNode_KawaiiPhysics's data. The plugin's editor node class is not exported, so the builder finds it by name
+			// and the game target does not link the plugin from here (the cooked AnimBP loads it as a plugin on its own).
+			PrivateDependencyModuleNames.Add("KawaiiPhysics");
 		}
 	}
 }
