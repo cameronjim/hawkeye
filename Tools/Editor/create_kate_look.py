@@ -40,8 +40,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 import _materials as m  # noqa: E402
 import import_combat_anims as ica  # noqa: E402
+import _handpose as handpose  # noqa: E402
 
-LOOK_BUILD = "kate-look-3"   # bump when the rig, the retargeter or the AnimBP below changes
+LOOK_BUILD = "kate-look-4"
+HAND_CURL_DEGREES = 0.0  # extra bend per finger joint where the driver holds its fingers straighter (_handpose.curl_extra)   # bump when the rig, the retargeter or the AnimBP below changes
 LOOK_PATH = "/Game/Characters/Kate/Look"
 SPARROW_ROOT = "/Game/ParagonSparrow/Characters/Heroes/Sparrow"
 SPARROW_MESH = SPARROW_ROOT + "/Meshes/Sparrow"
@@ -153,8 +155,11 @@ def _hands_to_driver(ctl):
         chains = list(settings.get_editor_property("chains_to_retarget"))
         for chain in chains:
             if str(chain.get_editor_property("target_chain_name")) in HANDS_TO_DRIVER:
+                # Place on the driver's hand but turn by its change only: blend-to-source rotation copies the source
+                # hand bone's absolute orientation, which is a different roll on a body with other bone axes (cocked
+                # wrists, palms the wrong way). The hand's rest roll comes from the retarget pose (_handpose).
                 c.set_props(chain, [("blend_to_source", 1.0), ("blend_to_source_translation", 1.0),
-                                    ("blend_to_source_rotation", 1.0)], "IK chain")
+                                    ("blend_to_source_rotation", 0.0)], "IK chain")
                 done.append(str(chain.get_editor_property("target_chain_name")))
         settings.set_editor_property("chains_to_retarget", chains)
         op.set_settings(settings)
@@ -194,7 +199,10 @@ def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG
     pose = ctl.create_retarget_pose("HawkeyeAligned", side.TARGET)
     ctl.set_current_retarget_pose(pose, side.TARGET)
     ctl.auto_align_all_bones(side.TARGET, unreal.RetargetAutoAlignMethod.CHAIN_TO_CHAIN)
-    hands = _hands_to_driver(ctl)
+    # The engine's alignment leaves the hand, the clavicle and each finger's last bone alone and never matches roll:
+    # lay the arms, wrists and fingers over the driver's by their own frames (_handpose).
+    pose_note = handpose.apply_hand_pose(ctl, source_mesh, target_mesh, HAND_CURL_DEGREES)
+    hands = _hands_to_driver(ctl) + "; " + pose_note
     ica.set_tag(rtg, stamp)
     c.save(rtg)
     c.log("FAILED" if "FAILED" in hands else "created", path, "{0} ops, {1}".format(ctl.get_num_retarget_ops(), hands))
