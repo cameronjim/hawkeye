@@ -506,7 +506,7 @@ close-ups (thug, heavy, Clint, Kate).
   (`Hawkeye.Screenshot.Clips`: `<clip>.png` against `<clip>_before.png`; `contact_light_<tag>.png` and `contact_heavy_<tag>.png`, eight
   frames round a live blow, `-ContactStripTag=before` on the old build). Say which did not beat theirs.
 =======
-## Traversal body pose (written 2026-11-23, not yet seen in the engine; the rules are `gameplay-semantics.md`, "Traversal body pose")
+## Traversal body pose (written 2026-11-23, seen and tuned 2026-11-24 from the strips; the rules are `gameplay-semantics.md`, "Traversal body pose")
 
 Why: the sample's motion matching knows nothing about a zip. The movement component carried the capsule along a line, the
 only rotation was the yaw to the landing, the sample showed a generic pose, and a roll was a scripted spin. The pose below
@@ -545,14 +545,32 @@ and hit clips use, `apply_root_motion` in the import script), makes an `AM_<Role
 over 40 cm off the capsule or under 40 cm high: the lock did not take). The anim set cycles the two feet. Without the sample
 in Content the script logs one line and the legs' absorb draws every landing.
 
-Not seen yet, to check with the strips: that the root lock keeps the landing clips on the capsule (the pelvis lines say), that
-the hand reaches (`hand_l` on the body look against the pose's target), and the pelvis and spine turns against the retarget
-(Sparrow's and the built Kate's proportions differ from the mannequin's).
+Checked on 2026-11-24 with the strips: the hand reaches the rope (the yellow line starts on the drawn hand, `Hawkeye.Screenshot.Traversal`
+tests it under 45 cm), the root lock keeps the landing clips on the capsule (the pelvis lines in the content log stay under 30 cm off
+and over 70 cm high), and the pelvis and spine turns read on the built Kate. Things found by running it: the sample's landing clips
+run 2 to 4 s (they carry on into the stand or the run), so `create_traversal_anims.py` keeps the first 0.55 s of a light one and
+0.8 s of a heavy one (`end_s`) and blends out into the locomotion underneath; **the sample has no roll and no stumble clip**
+(`M_Neutral_Jump_F_Land_Roll*` and `_Stumble*` do not exist), so the roll stays the scripted spin and the stumble the legs' absorb
+(`LandRoll` and `LandStumble` stay empty roles); and a skeleton the costume adds bones to must be saved (`import_bodies.import_built`
+does, and imports again when the skeleton lacks a bone the .glb has), or the AnimBPs compile without them.
+
+Design 2026-11-24: Load (the crouch before the hop, while the arrow flies), Brace (the last 0.3 s of a pull) and the arrival
+classes by zip length, slope and the stick, not line speed: `gameplay-semantics.md`, "Traversal body pose". A pull-up pose for a
+climb to a parapet was not made: the two-step reads as catching her weight there. No authored clip was made either (a launch, a
+release tuck, a parapet pull-up): the procedural pose does the launch, the brace and the arrival well enough in the strips, and an
+authored clip would have had to beat that.
 
 `Hawkeye.Screenshot.Traversal` (standalone `-game`): per scenario and mode, `Saved/Screenshots/Traversal/<scenario>_<side |
 three_quarter>_<off|on>.png`, the frames in `Frames/`. A yellow line is drawn from the drawn hand to the rope's end.
 
-## Secondary motion (written 2026-11-23, not yet seen in the engine)
+## Secondary motion (written 2026-11-23; OFF since 2026-11-24: AnimDynamics put NaNs in the pose)
+
+**Status: switched off.** Run in a standalone game, every AnimDynamics node in the body look's AnimBP (the ponytail as a chain, as four
+single bodies in series, the quiver as one body) put NaNs in `ponytail_01` on the first frame, a hard assert in `BonePose.h`; with
+the springs, the sim-space clamps or the constraints left out it did the same, and the same graph with no node is clean.
+`import_bodies.KATE_DYNAMICS` is empty (the chains are in its comment), the bones stay on Kate's skeleton, and
+`BuildRetargetWithDynamics` stays for the next try. Kawaii Physics (MIT) is the fallback the note below names; Cameron is to be told
+before it is added.
 
 AnimDynamics, the engine's own (no physics asset, no plugin; Kawaii Physics, MIT, stays the fallback if it proves inadequate and
 Cameron is told first). `UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics` takes `FHawkeyeDynamicsChain`s and puts the

@@ -539,10 +539,10 @@ void FTraversalPoseState::ArrivalTargets(const FHawkeyeTraversalPoseSettings& Se
 		{
 			// A slide out: sat back on the heels with the legs forward and the arms out.
 			const float Env = FTraversalPoseRules::DipEnvelope(T, 0.14f);
-			Out.Goal[Sink] = 30.f * Env;
-			Out.Goal[TiltForward] = -20.f * Env;
-			Out.Goal[ThighL] = -50.f * Env;
-			Out.Goal[ThighR] = -35.f * Env;
+			Out.Goal[Sink] = 22.f * Env;
+			Out.Goal[TiltForward] = -14.f * Env;
+			Out.Goal[ThighL] = -42.f * Env;
+			Out.Goal[ThighR] = -30.f * Env;
 			Out.Goal[CalfL] = 60.f * Env;
 			Out.Goal[CalfR] = 85.f * Env;
 			Out.Goal[LeftArm] = Out.Goal[RightArm] = 0.8f * Env;

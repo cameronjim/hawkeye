@@ -555,7 +555,7 @@ point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off fo
 - Arrive (design 2026-11-24): by the zip, not by line speed (it is about 1800 cm/s by the end of every long line, which
   made every arrival a slide): a zip shorter than `ShortZipCm` (250) is a soft step-down (0.35 s, 7 cm down, knees 22); a
   line within `SlideLevelDegrees` (12) of level with forward held in the brace (or at the arrival) is a slide out (0.9 s,
-  30 cm down, sat back with the legs forward and the arms out); everything else, a roof's edge from below included, is the
+  22 cm down, sat back with the legs forward and the arms out); everything else, a roof's edge from below included, is the
   braking two-step (0.7 s, 14 cm down, a left plant at 0.12 s and a right at 0.30 s, knees 40, arms half out). There is no pull-up look for a climb to a parapet
   (animation.md, "Traversal body pose"): a climb arrives in the two-step. The velocity she leaves
   with is the movement's own 600 cm/s carry, as before.
