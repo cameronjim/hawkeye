@@ -980,19 +980,29 @@ FEMALE_RIG = BODIES + "/IK_Body_Female"
 KATE_LOOK = "/Game/Characters/Kate/Look"
 KATE_BP = "/Game/Blueprints/Player/BP_Kate"
 
-# AnimDynamics on her visible body (claude-docs/animation.md, "Secondary motion"): the ponytail's chain and the quiver's single
-# body, on the bones Tools/Blender/build_kate.py adds (ponytail_01..04 under Head, quiver_01 under spine_03). A chain whose bones
-# the imported skeleton does not have is left out, so Kate built before those bones existed is unchanged. Keys are
-# FHawkeyeDynamicsChain's fields in Python's names.
-KATE_DYNAMICS = []
-# OFF (2026-11-24): the chains below went into the look's AnimBP and put NaNs in ponytail_01 on the first frame (a hard assert in
-# BonePose.h, a crash in a standalone run). The ponytail as a chain, as four single bodies in series, and the quiver as one
-# body all did it, with and without the angular spring, the sim-space clamps and the cone/target constraints, while the same
-# graph with no node is clean. Cause not found. The bones stay on the skeleton; put these back to try again:
-#   {"bound_bone": "ponytail_01", "chain_end": "ponytail_04", "cone_degrees": 38.0, "angular_spring": 45.0, "damping": 1.3,
-#    "acceleration_scale": 0.55, "velocity_drag": 0.2, "max_acceleration": 1200.0},
-#   {"bound_bone": "quiver_01", "cone_degrees": 12.0, "angular_spring": 160.0, "damping": 1.6, "acceleration_scale": 0.35,
-#    "velocity_drag": 0.1, "max_acceleration": 900.0},
+# Kawaii Physics (Plugins/KawaiiPhysics, MIT) on her visible body (claude-docs/animation.md, "Secondary motion"): the
+# ponytail's chain and the quiver's, on the bones Tools/Blender/build_kate.py adds (ponytail_01..05 under Head, quiver_01..02
+# under spine_03; the last of each is a leaf the plugin reads the bone before it from). A chain whose bones the imported
+# skeleton does not have is left out, so Kate built before those bones existed is unchanged. Keys are FHawkeyeDynamicsChain's
+# fields in Python's names (Source/Hawkeye/Player/SecondaryMotion.h has what each means and its range); a collider is a
+# FHawkeyeDynamicsCollider's, with offset and axis as (x, y, z) in the reference pose's axes, cm, Z up. This replaced the
+# engine's AnimDynamics, which put NaNs in ponytail_01 on the first frame (a hard assert in BonePose.h) however it was set up.
+KATE_DYNAMICS = [
+    # The ponytail: loose and light, trailing a sprint up to 60 degrees and settling under gravity. The shapes keep it out of
+    # her head, her neck and her upper back (sizes are her skeleton's cm at game scale; tune with a.AnimNode.KawaiiPhysics.Debug 1).
+    {"bound_bone": "ponytail_01", "chain_end": "ponytail_05", "damping": 0.15, "stiffness": 0.08,
+     "world_damping_location": 0.88, "world_damping_rotation": 0.85, "radius": 1.2, "limit_angle_degrees": 60.0,
+     "gravity_scale": 1.0, "teleport_distance": 150.0, "teleport_rotation_degrees": 45.0, "warm_up_frames": 6,
+     "colliders": [
+         {"bone": "Head", "radius": 6.5, "offset": (0.0, 0.0, 8.0)},
+         {"bone": "neck_01", "radius": 5.0, "length": 6.0, "offset": (0.0, 0.0, 2.0), "axis": (0.0, 0.0, 1.0)},
+         {"bone": "spine_03", "radius": 11.0, "length": 12.0, "offset": (0.0, 0.0, 4.0), "axis": (0.0, 0.0, 1.0)},
+     ]},
+    # The quiver: stiff, a few degrees of swing about its mouth.
+    {"bound_bone": "quiver_01", "chain_end": "quiver_02", "damping": 0.25, "stiffness": 0.6,
+     "world_damping_location": 0.9, "world_damping_rotation": 0.9, "radius": 1.0, "limit_angle_degrees": 12.0,
+     "gravity_scale": 0.5, "teleport_distance": 150.0, "teleport_rotation_degrees": 45.0, "warm_up_frames": 6},
+]
 
 
 def ensure_kate(female, built):
