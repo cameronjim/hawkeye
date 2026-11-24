@@ -520,9 +520,10 @@ only bone turns, two hand targets and montages; the movement, the capsule, root 
 `ReleaseVelocityScale`, the sweeps and `FindAnchorSupports` are untouched, so the traversal audit and the laps are the
 same runs (`Hawkeye.Traversal.Pose.NeverMovesHer` zips two characters, one with the pose stepped every tick, to the same
 point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off for before and after shots.
-- Phase, from the movement each frame: Launch (the zip's hop), Pull (on the line), Redirect (a chain's turn onto a new
-  line), Release (the 0.3 s, `ReleaseSeconds`, after the zip ends in the air), Fall (still in the air after it), Arrive (the
-  zip ended on the floor), else None. A fall that was never a zip is None: the sample lands and falls as before.
+- Phase, from the movement each frame: Load (the grapple arrow is in the air and she is on the floor), Launch (the zip's
+  hop), Pull (on the line), Redirect (a chain's turn onto a new line), Brace (the last `BraceSeconds`, 0.3 s, of a pull),
+  Release (the 0.3 s, `ReleaseSeconds`, after the zip ends in the air), Fall (still in the air after it), Arrive (the zip
+  ended on the floor), else None. A fall that was never a zip is None: the sample lands and falls as before.
 - Pull and Redirect: the whole body tips toward the rope by `RopeTiltWeight` (0.5) of the rope's angle from vertical,
   plus an acceleration lean, `atan2(horizontal acceleration, 980) x AccelLeanStrength (0.5)`, the acceleration being the
   change of `Velocity` per frame clamped to 8000 cm/s^2 (the hop's end hands over 600 cm/s in a frame), the two added as
@@ -539,13 +540,25 @@ point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off fo
 - The line leaves the hand people see: `UGrappleComponent::GetZipLineStart` reads `hand_l` on the body look (Kate's built
   suit or Sparrow) when she has one, and the driver's otherwise, so the line starts on the drawn hand even where a longer
   arm falls a few centimetres short of the driver's.
-- Launch: the hop (0.15 s, unchanged) is the anticipation: pelvis down up to 16 cm, hips 28 and knees 45 degrees
-  flexed and the chest 14 degrees over, peaking 60% through, on a 0.04 s spring, the rope hand reaching from the start of
-  the hop. A hop that short cannot carry a longer wind-up; lengthening it is a movement change (`ZipHopSeconds`).
-- Arrive, by the line speed she arrived at (not the 600 cm/s she walks on at): under 700 cm/s a step-down (0.35 s, 7 cm
-  down, knees 22), up to 1300 a braking two-step (0.7 s, 14 cm down, the chest back 8 degrees, a left plant at 0.12 s and a
-  right at 0.30 s, knees 40, arms half out), above that a slide out (0.9 s, 30 cm down, sat back 20 degrees with the legs
-  forward and the arms out). The velocity she leaves with is the movement's, as before.
+- Load and Launch (design 2026-11-24): the crouch-load is played in the arrow's flight, before the hop, on the ground only
+  (`IsArrowInFlight`, nothing in the air is a load): pelvis down up to 16 cm, hips 28 and knees 45 degrees flexed and the
+  chest 14 degrees over, ramping in over `LoadSeconds` (0.3) on a 0.06 s spring, so a shorter flight shows the part that
+  fits. The hop (0.15 s, the movement's own, unchanged: nothing about when the zip starts moved) lets the load go, the body
+  coming up out of the crouch with the rope hand reaching, and the jerk when the line takes tension is the tilt velocity
+  `LaunchKickDegPerSecond` at the hop's end. An arrow too quick to show a load leaves the hop to make its own crouch, as it
+  did before.
+- Brace (design 2026-11-24): time to arrival is what is left of the line over the line speed
+  (`FTraversalPoseRules::TimeToArrival`); the last 0.3 s of a zip of 250 cm or more are the brace: the legs swing forward and
+  up to meet the surface (hips 62 and 40 degrees flexed, one leading, knees 38 and 53 on a 0.07 s spring), the chest comes
+  upright (15% of the pull's tip stays), the hip sink and lag go, and the free hand comes out in front. The rope hand stays
+  on the line until it ends.
+- Arrive (design 2026-11-24): by the zip, not by line speed (it is about 1800 cm/s by the end of every long line, which
+  made every arrival a slide): a zip shorter than `ShortZipCm` (250) is a soft step-down (0.35 s, 7 cm down, knees 22); a
+  line within `SlideLevelDegrees` (12) of level with forward held in the brace (or at the arrival) is a slide out (0.9 s,
+  30 cm down, sat back with the legs forward and the arms out); everything else, a roof's edge from below included, is the
+  braking two-step (0.7 s, 14 cm down, a left plant at 0.12 s and a right at 0.30 s, knees 40, arms half out). There is no pull-up look for a climb to a parapet
+  (animation.md, "Traversal body pose"): a climb arrives in the two-step. The velocity she leaves
+  with is the movement's own 600 cm/s carry, as before.
 - Release: a tuck (hips 50, knees 75 degrees) for 0.3 s, the hand off the line and the arms out; then Fall: arms out and up
   and legs braced in proportion to how fast she drops (`FallFullSpeed` 1200 cm/s), the back arching up to 8 degrees. With
   the anim set's `FallLoop` clip playing, the fall pose shrinks to a 0.3 reaction on top of it.
@@ -561,7 +574,7 @@ point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off fo
   release from a zip, one that rolls, stumbles or dips, and falls from `LandingPoseMinHeight` (150 cm) up; a hop or a step is
   the sample's. Fall damage, the roll lock, the stumble's speed ramp and the dip are the old code, untouched.
 - Tests: the pure rules, `Hawkeye.Traversal.Pose.Spring`, `.Lean`, `.Quats`, `.Phases`, `.Classes`, `.Pull`, `.Motion`,
-  `.Arrive`; on the character, `.InputFollowsTheZip`, `.NeverMovesHer`, `.LandingOutcomesKept`, `.LandingRoles`,
+  `.Arrive`, `.LoadAndBrace`; on the character, `.InputFollowsTheZip`, `.NeverMovesHer`, `.LandingOutcomesKept`, `.LandingRoles`,
   `.AppliedToTheGraph`. The strips: `Hawkeye.Screenshot.Traversal` (`testing.md`).
 
 ## Bow and arrows (built 2026-09-26; the rules below hold, with these notes)

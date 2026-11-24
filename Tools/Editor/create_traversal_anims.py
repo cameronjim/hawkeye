@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _common as c  # noqa: E402
 import import_combat_anims as ica  # noqa: E402
 
-BUILD = "traversal-anims-2"   # bump when the clip list or the montage layout below changes
+BUILD = "traversal-anims-3"   # bump when the clip list or the montage layout below changes
 SOURCE_FOLDER = "/Game/Characters/UEFN_Mannequin/Animations/Jump"
 SEQUENCE_FOLDER = "/Game/Characters/UEFN_Mannequin/Animations/Traversal"
 MONTAGE_FOLDER = "/Game/Characters/UEFN_Mannequin/Animations/Combat"
@@ -36,8 +36,8 @@ CHARACTERS = ["kate"]
 # (role, the sample's clip without its foot, layout). The sample's landing clips run 2 to 4 s because they carry on into
 # the stand or the run; the montage keeps the landing itself (end_s) and blends out of it into the locomotion that is
 # already playing underneath.
-_LIGHT = {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.25, "end_s": 0.8}
-_HEAVY = {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.3, "end_s": 1.2}
+_LIGHT = {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.25, "end_s": 0.55}
+_HEAVY = {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.3, "end_s": 0.8}
 # The sample has no roll and no stumble clip (M_Neutral_Jump_F_Land_Roll / _Stumble do not exist): the roll stays the
 # scripted spin and the stumble the legs' absorb, ECombatAnimRole::LandRoll and LandStumble stay empty.
 ROLES = [

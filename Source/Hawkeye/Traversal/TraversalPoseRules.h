@@ -216,16 +216,16 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 	float LoadSeconds = 0.3f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
-	float LaunchSinkCm = 16.f;
+	float LaunchSinkCm = 22.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
-	float LaunchLeanDegrees = 14.f;
+	float LaunchLeanDegrees = 20.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
-	float LaunchHipFlex = 28.f;
+	float LaunchHipFlex = 40.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch")
-	float LaunchKnee = 45.f;
+	float LaunchKnee = 65.f;
 
 	/** Half-life of the legs, sink and tilt while the crouch loads, s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Launch", meta = (ClampMin = "0.01"))
@@ -273,11 +273,11 @@ struct HAWKEYE_API FHawkeyeTraversalPoseSettings
 
 	UPROPERTY(
 		EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float BraceTiltLeft = 0.15f;
+	float BraceTiltLeft = 0.08f;
 
 	/** Half-life of the legs in the brace, s (the swing is 0.3 s long). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.01"))
-	float BraceHalfLife = 0.07f;
+	float BraceHalfLife = 0.035f;
 
 	/** Zips shorter than this (cm) arrive in a soft step down, with no brace. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal Pose|Arrive", meta = (ClampMin = "0.0"))

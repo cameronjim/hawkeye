@@ -105,6 +105,8 @@ namespace HawkeyeTraversalShots
 		bool bReferenceIsTouchdown = false;
 		/** The reference moment is when the pose enters the brace. */
 		bool bReferenceIsBrace = false;
+		/** The shot is from the player's own camera behind her (no stage camera), one view. */
+		bool bPlayerCamera = false;
 	};
 
 	static UWorld* FindWorld()
@@ -390,6 +392,39 @@ namespace HawkeyeTraversalShots
 		Arrival(TEXT("arrive_brake"), 1600.f, 550.f, false, false);
 		Arrival(TEXT("arrive_slide"), 1600.f, 0.f, true, false);
 		Arrival(TEXT("arrive_step"), 200.f, 40.f, false, false);
+		// From the player's own camera: mid-pull and on the arrival, looking where she goes.
+		{
+			FScenario S;
+			S.Name = TEXT("player_pull");
+			S.Times = {0.45f, 0.65f};
+			S.bPlayerCamera = true;
+			S.Start = [GroundLaunch](FStage& Stage, UWorld& World) { GroundLaunch(Stage, World, 2400.f, 900.f, 0.f); };
+			Out.Add(S);
+		}
+		{
+			FScenario S;
+			S.Name = TEXT("player_arrive");
+			S.Times = {0.0f, 0.12f, 0.3f};
+			S.bReferenceIsZipEnd = true;
+			S.bPlayerCamera = true;
+			S.Start = [](FStage& Stage, UWorld& World)
+			{
+				AHawkeyeCharacter* Kate = Stage.Kate.Get();
+				UHawkeyeMovementComponent* Movement = Kate ? Kate->GetHawkeyeMovement() : nullptr;
+				if (!Movement)
+				{
+					return;
+				}
+				StandKate(Stage, World);
+				const FVector End = Stage.Feet + FVector(0.f, 0.f, HalfHeight(*Kate) + 2.f);
+				const FVector From = FindClearEnd(World, *Kate, End, -Stage.Along, 1600.f, 550.f);
+				Kate->TeleportTo(From, Stage.Along.Rotation(), false, true);
+				Movement->StopMovementImmediately();
+				Movement->SetMovementMode(MOVE_Falling);
+				ZipAlong(Stage, From, End, /*bHop=*/false);
+			};
+			Out.Add(S);
+		}
 		const auto Landing = [&Out](const TCHAR* Name, float Drop, float ForwardSpeed)
 		{
 			FScenario S;
@@ -490,6 +525,15 @@ namespace HawkeyeTraversalShots
 				case EPhase::Setup:
 					SetPoseEnabled(bPoseOn);
 					Scenario.Start(*Stage, *World);
+					if (Scenario.bPlayerCamera)
+					{
+						// Her own camera, behind her along the line.
+						if (APlayerController* PC = World->GetFirstPlayerController())
+						{
+							PC->SetViewTarget(Kate);
+							PC->SetControlRotation(FRotator(-12.f, Kate->GetActorRotation().Yaw, 0.f));
+						}
+					}
 					StartedAt = World->GetTimeSeconds();
 					bTouchedDown = false;
 					Phase = EPhase::Running;
@@ -498,7 +542,10 @@ namespace HawkeyeTraversalShots
 					return Running(*World, *Kate);
 				case EPhase::Freeze:
 					UGameplayStatics::SetGlobalTimeDilation(World, 0.0001f);
-					Frame(*Kate, /*bQuarter=*/false);
+					if (!Scenario.bPlayerCamera)
+					{
+						Frame(*Kate, /*bQuarter=*/false);
+					}
 					Since = FPlatformTime::Seconds();
 					Phase = EPhase::SettleSide;
 					break;
@@ -506,12 +553,18 @@ namespace HawkeyeTraversalShots
 					if (FPlatformTime::Seconds() - Since >= HoldSettle)
 					{
 						Check(*Kate);
-						Shoot(TEXT("side"));
+						Shoot(Scenario.bPlayerCamera ? TEXT("player") : TEXT("side"));
 						Phase = EPhase::WaitSide;
 					}
 					break;
 				case EPhase::WaitSide:
-					if (HawkeyeShots::GetOutstanding(Test) == 0)
+					if (HawkeyeShots::GetOutstanding(Test) == 0 && Scenario.bPlayerCamera)
+					{
+						UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+						++Hold;
+						Phase = Hold >= Scenario.Times.Num() ? EPhase::Cleanup : EPhase::Running;
+					}
+					else if (HawkeyeShots::GetOutstanding(Test) == 0)
 					{
 						Frame(*Kate, /*bQuarter=*/true);
 						Since = FPlatformTime::Seconds();
@@ -580,14 +633,11 @@ namespace HawkeyeTraversalShots
 			{
 				ZipEndedAt = Elapsed;
 			}
-			if (Scenario.bReferenceIsBrace && BraceAt < 0.0)
+			if (Scenario.bReferenceIsBrace && BraceAt < 0.0 && Movement && Movement->IsZipping() &&
+				FTraversalPoseRules::TimeToArrival(Movement->GetZipProgress(), Movement->GetZipLength(),
+					Movement->GetZipLineSpeed()) <= Kate.GetTraversalPoseSettings().BraceSeconds)
 			{
-				const UBowComponent* Bow = Kate.GetBowComponent();
-				const UHawkeyeBowIKAnimInstance* Hands = Bow ? Bow->GetHandsIKInstance() : nullptr;
-				if (Hands && Hands->GetTraversalPose().Phase == ETraversalPhase::Brace)
-				{
-					BraceAt = Elapsed;
-				}
+				BraceAt = Elapsed;
 			}
 			double Reference = Scenario.Reference;
 			if (Scenario.bReferenceIsZipEnd || Scenario.bReferenceIsTouchdown || Scenario.bReferenceIsBrace)

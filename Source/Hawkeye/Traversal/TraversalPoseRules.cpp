@@ -424,7 +424,7 @@ void FTraversalPoseState::AimTargets(const FTraversalPoseInput& Input, const FHa
 			const FVector2D Lean =
 				FTraversalPoseRules::AccelerationTilt(LocalAcceleration, Settings.Gravity, Settings.AccelLeanStrength);
 			// In the brace the chest comes upright: the pull's tip is mostly given up (BraceTiltLeft is what stays).
-			const float Upright = FMath::Clamp(Value[Brace], 0.f, 1.f);
+			const float Upright = Phase == ETraversalPhase::Brace ? 1.f : 0.f;
 			const float KeepTilt = FMath::Lerp(1.f, Settings.BraceTiltLeft, Upright);
 			const FVector2D Tilt =
 				FTraversalPoseRules::ClampTilt(Rope + Lean, Settings.MaxTiltDegrees) * static_cast<double>(KeepTilt);
@@ -458,7 +458,7 @@ void FTraversalPoseState::AimTargets(const FTraversalPoseInput& Input, const FHa
 				Out.Goal[CalfR] = Settings.BraceKnee * 1.4f;
 				Out.Goal[Sink] = 0.f;
 				Out.Goal[Lag] = 0.f;
-				for (const EChannel Channel : {ThighL, ThighR, CalfL, CalfR, Sink, Lag})
+				for (const EChannel Channel : {ThighL, ThighR, CalfL, CalfR, Sink, Lag, TiltForward, TiltRight})
 				{
 					Out.HalfLife[Channel] = Settings.BraceHalfLife;
 				}
