@@ -742,8 +742,8 @@ def hit_zone(rig, zone, heavy):
         # Both hands to the belly, then out and down.
         belly_l = add(P, V(8, -18, 20))
         belly_r = add(P, V(-8, -18, 20))
-        hand_l = [(0.0, belly_l), (0.2, add(belly_l, V(2, -2, 2))), (0.4, add(hl, V(0, -4, 4))), (t, hl)]
-        hand_r = [(0.0, belly_r), (0.2, add(belly_r, V(-2, -2, 2))), (0.4, add(hr, V(0, -4, 4))), (t, hr)]
+        hand_l = [(0.0, belly_l), (0.3, add(belly_l, V(2, -2, 2))), (0.55, add(hl, V(0, -4, 4))), (t, hl)]
+        hand_r = [(0.0, belly_r), (0.3, add(belly_r, V(-2, -2, 2))), (0.55, add(hr, V(0, -4, 4))), (t, hr)]
     else:
         drop = 12.0 * k
         body["pelvis_pos"] = T([(0.0, add(P, V(0, 3 * k, -drop * 0.8))), (0.1, add(P, V(0, 4 * k, -drop))),
@@ -764,7 +764,7 @@ def hit_zone(rig, zone, heavy):
     return ck.Clip(name, t, body, fade_in=0.0, fade_out=0.12, torso_clear=False,
                    strip_times=[0.0, 0.04, 0.1, 0.17, 0.25, 0.34, 0.45, t],
                    extra={"span": (-110.0, 110.0), "hit_peak_s": 0.0,
-                          "knockback_cm": HEAVY_SHOVE if heavy else LIGHT_SHOVE, "pop_degrees": 34.0 if heavy else 30.0})
+                          "knockback_cm": HEAVY_SHOVE if heavy else LIGHT_SHOVE, "pop_degrees": 50.0 if heavy else 30.0})
 
 
 def hit_head_light(rig):
@@ -864,7 +864,7 @@ def _strike_clip(rig, name, seconds, body, root, hands, feet, hit, combo, limb, 
         tracks["hand_" + side] = hand_track(rig, body, root, side, keys, seconds)
     tracks["foot_l"] = T(feet[0])
     tracks["foot_r"] = T(feet[1])
-    info = {"span": (-110.0, 150.0), "pop_degrees": 44.0, "hit_s": list(hit), "combo_s": list(combo),
+    info = {"span": (-110.0, 150.0), "pop_degrees": 52.0, "hit_s": list(hit), "combo_s": list(combo),
             "contact": [limb, hit[0]], "rate": 1.0}
     info.update(extra or {})
     return ck.Clip(name, seconds, tracks, fade_in=0.0, fade_out=0.15, torso_clear=False, strip_times=strip, extra=info)
@@ -970,7 +970,7 @@ def strike_front_kick(rig):
     fwd = add(fr, V(0, -step, 0))
     left_new = add(fl, V(0, -step, 0))
     # The right foot: planted, knee up (chamber), snapped out to his gut, folded back, set down on the new place.
-    foot_r = [(0.0, fr), (0.07, add(fr, V(0, -4, 6))), (0.2, add(fwd, V(0, 14, 36))), (0.27, add(fwd, V(0, -22, 62))),
+    foot_r = [(0.0, fr), (0.07, add(fr, V(0, -4, 6))), (0.2, add(fwd, V(0, 14, 36))), (0.245, add(fwd, V(0, -10, 52))), (0.29, add(fwd, V(0, -40, 70))),
               (0.33, add(fwd, V(0, -64, 80))), (0.43, add(fwd, V(0, -66, 82))), (0.52, add(fwd, V(0, -40, 60))),
               (0.65, add(fwd, V(0, -10, 24))), (0.8, add(fwd, V(0, 0, 4))), (0.9, fwd), (t, fwd)]
     # The left foot steps in with the capsule (0.02 to 0.12), then bears the whole kick, planted.
@@ -990,7 +990,7 @@ def strike_front_kick(rig):
                               (0.85, V(0, 0, 0)), (t, V(0, 0, 0))])
     return ck.Clip("Strike_FrontKick", t, tracks, fade_in=0.0, fade_out=0.15, torso_clear=False,
                    strip_times=[0.0, 0.1, 0.2, 0.27, 0.33, 0.42, 0.6, t],
-                   extra={"span": (-110.0, 150.0), "pop_degrees": 44.0, "hit_s": [0.33, 0.43], "combo_s": [0.6, 1.05],
+                   extra={"span": (-110.0, 150.0), "hit_s": [0.33, 0.43], "combo_s": [0.6, 1.05], "pop_degrees": 70.0,
                           "contact": ["foot_r", 0.33], "rate": 1.0})
 
 
