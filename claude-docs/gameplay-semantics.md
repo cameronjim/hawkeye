@@ -2361,8 +2361,8 @@ component, `bLightAttackOnPress` on Kate. On the hit frame, in this order:
   along the blow, a hash picks it (never the last), weight scales it 0.8 to 1.5. The same for a thug's blow on Kate.
   `NS_MeleeSpark` and Kate's `SpawnMeleeSpark` are gone with it.
 - **Light on the press** (`bLightAttackOnPress`, default true): the press starts the light (or buffers it, or is the parry).
-  Held to `HeavyHoldSeconds` (0.4 s): if the light has not reached its hit window it is cancelled and the heavy takes its place; if it
-  has (a light's hit window is 0.25 s in, so almost always) the heavy is armed as the next blow and goes the moment she can swing
+  Held to `HeavyHoldSeconds` (0.2 s, so before the light's 0.25 s hit window): if the light has not reached its hit window it is cancelled and the heavy takes its place; if it
+  has (a delayed light) the heavy is armed as the next blow and goes the moment she can swing
   (a combo window cuts the recovery), with the light buffer's 0.3 s of grace after the release. A parry on the press is the whole
   of that press. False: the light on the release, as before. A heavy therefore now costs a light first (15 damage, a hit-stop).
 - **Variant by situation**: a role with more than one clip, and baked data on them, picks by `ScoreAttackVariant` (reach against the
