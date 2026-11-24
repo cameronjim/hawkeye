@@ -591,6 +591,83 @@ def ponytail_path(tie, tie_n, clear):
     return path, s / s[-1]
 
 
+# The bones the engine simulates with AnimDynamics (claude-docs/animation.md, "Secondary motion"): a chain of four down
+# the ponytail (plus a leaf for the tip, so the engine finds the last bone's axis) and the quiver's swing bone (plus its
+# leaf). Off with --no-dynamics-bones; the weights are then the old ones and the skeleton the body's own.
+DYNAMICS_BONES = "--no-dynamics-bones" not in sys.argv
+PONYTAIL_BONES = ["ponytail_01", "ponytail_02", "ponytail_03", "ponytail_04"]
+# Where along the ponytail's axis (0 at the tie, 1 at the tip) each chain bone starts, and the head's root before them.
+PONYTAIL_JOINTS = [0.0, 0.12, 0.35, 0.60, 0.85]
+QUIVER_TOP = (-0.118, 0.0, 1.415)
+QUIVER_BOTTOM = (0.085, 0.0, 0.985)
+QUIVER_PARTS = ("Quiver", "QuiverArrows", "QuiverNocks", "QuiverVanes")
+# How much of a quiver vertex's weight the swing bone takes at the bottom (the mouth stays on the spine).
+QUIVER_SWING = 0.85
+
+
+def axis_point(path, t, s):
+    """The ponytail axis at arc position s (0..1)."""
+    return np.array([np.interp(s, t, path[:, i]) for i in range(3)])
+
+
+def add_ponytail_bones(body, path, t):
+    """ponytail_01..04 under Head (each bone's tail is the next one's head) and ponytail_05, a short leaf past the tip."""
+    starts = PONYTAIL_JOINTS[1:] + [1.0]
+    parent = "Head"
+    for name, s0, s1 in zip(PONYTAIL_BONES, starts[:-1], starts[1:]):
+        body.add_bone(name, parent, axis_point(path, t, s0), axis_point(path, t, s1))
+        parent = name
+    tip = axis_point(path, t, 1.0)
+    along = tip - axis_point(path, t, 0.95)
+    body.add_bone("ponytail_05", parent, tip, tip + along / max(np.linalg.norm(along), 1e-6) * 0.02)
+
+
+def ponytail_chain_weights(body, co, path, t):
+    """Weights for the ponytail's vertices: Head at the tie, then each chain bone in turn, blended linearly between the
+    joints, by where along the axis the vertex is (the nearest axis sample)."""
+    add_ponytail_bones(body, path, t)
+    near = np.linalg.norm(co[:, None, :] - path[None, :, :], axis=2).argmin(axis=1)
+    s = t[near]
+    bones = ["Head"] + PONYTAIL_BONES
+    W = np.zeros((len(co), len(body.bones)))
+    joints = np.array(PONYTAIL_JOINTS)
+    seg = np.clip(np.searchsorted(joints, s, side="right") - 1, 0, len(bones) - 1)
+    for i, k in enumerate(seg):
+        if k >= len(bones) - 1:
+            W[i, body.bone_index[bones[-1]]] = 1.0
+        else:
+            f = (s[i] - joints[k]) / (joints[k + 1] - joints[k])
+            W[i, body.bone_index[bones[k]]] += 1.0 - f
+            W[i, body.bone_index[bones[k + 1]]] += f
+    return W
+
+
+def add_quiver_swing(body):
+    """quiver_01 under spine_03 from the quiver's mouth to its bottom, and quiver_02, a leaf along the same axis."""
+    body.add_bone("quiver_01", "spine_03", QUIVER_TOP, QUIVER_BOTTOM)
+    top, bottom = np.array(QUIVER_TOP), np.array(QUIVER_BOTTOM)
+    along = (bottom - top) / np.linalg.norm(bottom - top)
+    body.add_bone("quiver_02", "quiver_01", QUIVER_BOTTOM, tuple(bottom + along * 0.03))
+
+
+def quiver_swing_weights(body, parts):
+    """The quiver's own pieces (not its strap, which crosses the chest) hand weight from the spine to quiver_01 toward the
+    bottom: the mouth stays at the shoulder, the bottom can swing. parts are (object, W) pairs as pieces.quiver returns."""
+    top, bottom = np.array(QUIVER_TOP), np.array(QUIVER_BOTTOM)
+    length = np.linalg.norm(bottom - top)
+    along = (bottom - top) / length
+    out = []
+    for obj, W in parts:
+        if obj.name in QUIVER_PARTS:
+            co = cs.get_co(obj)
+            s = np.clip(((co - top) @ along) / length, 0.0, 1.0) * QUIVER_SWING
+            W = np.array(W, np.float64)
+            W *= (1.0 - s)[:, None]
+            W[:, body.bone_index["quiver_01"]] += s
+        out.append((obj, W))
+    return out
+
+
 def build_ponytail(body, tie, tie_n, mats, clear):
     """A high ponytail of separate locks: a bundle that swells below the tie and tapers to a ragged tip, each lock a
     tapered tube with its own wave and length, a fuller core inside, a hair tie. UV v runs root to tip along each
@@ -628,12 +705,18 @@ def build_ponytail(body, tie, tie_n, mats, clear):
     tail = cs.join(locks, "Ponytail")
     cs.set_material(tail, mats["hair"])
     cs.mark_sharp(tail, 80)
-    # Weights: the head carries it; toward the tip the neck shares a little, so a nod does not swing it into the back.
+    # Weights: the chain of bones the engine simulates (ponytail_01..04, added under Head along the axis) carries it, the
+    # head holds the root: weight hands over from the head to each bone along the axis, so the tie stays on the head and
+    # the tip swings. A build with no_dynamics keeps the old weights: the head, with the neck sharing the tip a little so a
+    # nod does not swing it into the back.
     co = cs.get_co(tail)
-    s = np.clip((tie[2] - co[:, 2]) / 0.33, 0, 1)
-    W = cs.rigid(body, len(co), {"Head": 1.0})
-    W[:, body.bone_index["Head"]] = 1.0 - 0.3 * s
-    W[:, body.bone_index["neck_01"]] = 0.3 * s
+    if DYNAMICS_BONES:
+        W = ponytail_chain_weights(body, co, path, t)
+    else:
+        s = np.clip((tie[2] - co[:, 2]) / 0.33, 0, 1)
+        W = cs.rigid(body, len(co), {"Head": 1.0})
+        W[:, body.bone_index["Head"]] = 1.0 - 0.3 * s
+        W[:, body.bone_index["neck_01"]] = 0.3 * s
     # The hair tie: a band round the bundle just below the root.
     i = 2
     ring = [path[i] + 0.0155 * (math.cos(a) * Nf[i] + math.sin(a) * Bf[i]) for a in np.linspace(0, 2 * math.pi, 17)]
@@ -685,9 +768,12 @@ def build(args):
     strap = [(-p[0] * 0.9, p[1] * 0.9, p[2] * 0.972) for p in pieces.CLINT_STRAP]
     arrows = [(-0.5, -0.4), (0.0, -0.45), (0.5, -0.4), (-0.45, 0.1), (0.0, 0.05), (0.45, 0.1), (-0.2, 0.5),
               (0.25, 0.45)]
-    out += pieces.quiver(body, top_surf, mats, bottom=(0.085, 0.0, 0.985), top=(-0.118, 0.0, 1.415), r0=0.040,
-                         r1=0.053, arrows=arrows, strap=strap, strap_half=0.016, axis_top=1.36, rise=0.13,
-                         vane=(0.065, 0.009, 0.048), name="Quiver")
+    if DYNAMICS_BONES:
+        add_quiver_swing(body)
+    quiver = pieces.quiver(body, top_surf, mats, bottom=QUIVER_BOTTOM, top=QUIVER_TOP, r0=0.040,
+                           r1=0.053, arrows=arrows, strap=strap, strap_half=0.016, axis_top=1.36, rise=0.13,
+                           vane=(0.065, 0.009, 0.048), name="Quiver")
+    out += quiver_swing_weights(body, quiver) if DYNAMICS_BONES else quiver
 
     # Hair: the scalp, then the ponytail from the tie.
     guide = body.add_hair("Hair_BuzzedFemale.gltf", head["hair"])

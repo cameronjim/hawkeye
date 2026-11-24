@@ -209,8 +209,32 @@ def ensure_retargeter(source_rig, source_mesh, target_rig, target_mesh, path=RTG
     return rtg
 
 
-def ensure_anim_bp(mesh, rtg, path=ABP):
-    stamp = _stamp("abp", ica.tag_of(rtg))
+def _dynamics_chains(dynamics, skeleton):
+    """The chains of `dynamics` (dicts of FHawkeyeDynamicsChain's fields in Python's names: bound_bone, chain_end,
+    cone_degrees, ...) whose bones the skeleton has, as engine structs, and a text of them for the build stamp (the
+    graph is rebuilt once the simulation bones are imported, so a chain's presence is in it)."""
+    bones = set(ica.skeleton_bones(skeleton)) if dynamics else set()
+    chains, names = [], []
+    for spec in dynamics or []:
+        if any(w and w not in bones for w in (spec.get("bound_bone"), spec.get("chain_end"))):
+            continue
+        chain = unreal.HawkeyeDynamicsChain()
+        for key, value in spec.items():
+            chain.set_editor_property(key, value)
+        chains.append(chain)
+        names.append("{0}..{1}".format(spec.get("bound_bone"), spec.get("chain_end", "")))
+    return chains, ";".join(names)
+
+
+def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None):
+    """The body look's AnimBP: Retarget Pose From Mesh, then (dynamics: a list of FHawkeyeDynamicsChain field dicts,
+    e.g. a ponytail's bones) one AnimDynamics node per chain whose bones the mesh's skeleton has. The skeleton's
+    graph is rebuilt once the simulation bones are imported."""
+    skeleton = ica.mesh_skeleton(mesh)
+    chains, chain_text = _dynamics_chains(dynamics, skeleton)
+    settings = repr(sorted((k, str(v)) for spec in dynamics or [] for k, v in spec.items()))
+    # A look with no chains keeps the stamp it always had, so nobody else is rebuilt.
+    stamp = _stamp("abp", ica.tag_of(rtg), *([chain_text, settings] if dynamics else []))
     existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
         c.log("exists", path)
@@ -219,13 +243,15 @@ def ensure_anim_bp(mesh, rtg, path=ABP):
     if builder is None:
         c.log("FAILED", path, "UHawkeyeRetargetGraphBuilder not exposed; build the module")
         return None
-    abp = builder.build_retarget_from_parent(path, ica.mesh_skeleton(mesh), rtg)
+    abp = (builder.build_retarget_with_dynamics(path, skeleton, rtg, chains) if chains
+           else builder.build_retarget_from_parent(path, skeleton, rtg))
     if abp is None:
         c.log("FAILED", path, "did not build or compile; see LogHawkeye")
         return None
     ica.set_tag(abp, stamp)
     c.save(abp)
-    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with " + rtg.get_name())
+    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with {0}, {1} dynamics node(s)".format(
+        rtg.get_name(), builder.count_dynamics_nodes(abp)))
     return abp
 
 

@@ -5,8 +5,13 @@
 #include "Hawkeye.h"
 
 #if WITH_EDITOR
+#include "AnimGraphNode_AnimDynamics.h"
+#include "AnimGraphNode_ComponentToLocalSpace.h"
+#include "AnimGraphNode_LocalToComponentSpace.h"
 #include "AnimGraphNode_RetargetPoseFromMesh.h"
 #include "AnimGraphNode_Root.h"
+#include "Animation/Skeleton.h"
+#include "ReferenceSkeleton.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
@@ -89,6 +94,108 @@ namespace HawkeyeRetargetGraph
 		return nullptr;
 	}
 
+	/** The first local- or component-space pose pin of Node facing Direction. */
+	static UEdGraphPin* FindAnyPosePin(UEdGraphNode* Node, EEdGraphPinDirection Direction)
+	{
+		for (UEdGraphPin* Pin : Node ? Node->Pins : TArray<UEdGraphPin*>())
+		{
+			const UObject* Type = Pin ? Pin->PinType.PinSubCategoryObject.Get() : nullptr;
+			if (Pin && Pin->Direction == Direction && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct &&
+				(Type == FPoseLink::StaticStruct() || Type == FComponentSpacePoseLink::StaticStruct()))
+			{
+				return Pin;
+			}
+		}
+		return nullptr;
+	}
+
+	/** The way a bone points, in its own frame: the dominant axis (with its sign) of its first child's rest offset. */
+	static FVector AlongBoneAxis(const FReferenceSkeleton& Reference, FName Bone, AnimPhysTwistAxis& OutAxis, const FVector& Fallback)
+	{
+		FVector Along = Fallback;
+		const int32 Index = Reference.FindBoneIndex(Bone);
+		for (int32 Child = Index + 1; Index != INDEX_NONE && Child < Reference.GetNum(); ++Child)
+		{
+			if (Reference.GetParentIndex(Child) == Index)
+			{
+				const FVector Offset = Reference.GetRefBonePose()[Child].GetTranslation();
+				const double Largest = FMath::Max3(FMath::Abs(Offset.X), FMath::Abs(Offset.Y), FMath::Abs(Offset.Z));
+				if (Largest > UE_KINDA_SMALL_NUMBER)
+				{
+					if (FMath::Abs(Offset.X) == Largest)
+					{
+						Along = FVector(FMath::Sign(Offset.X), 0., 0.);
+					}
+					else
+					{
+						Along = FMath::Abs(Offset.Y) == Largest ? FVector(0., FMath::Sign(Offset.Y), 0.)
+																: FVector(0., 0., FMath::Sign(Offset.Z));
+					}
+				}
+				break;
+			}
+		}
+		OutAxis = FMath::Abs(Along.X) > 0.5 ? AnimPhysTwistAxis::AxisX
+			: (FMath::Abs(Along.Y) > 0.5 ? AnimPhysTwistAxis::AxisY : AnimPhysTwistAxis::AxisZ);
+		return Along;
+	}
+
+	/** True when Bone is on the skeleton (a none name counts: it is not asked for). */
+	static bool HasBone(const USkeleton& Skeleton, FName Bone)
+	{
+		return Bone.IsNone() || Skeleton.GetReferenceSkeleton().FindBoneIndex(Bone) != INDEX_NONE;
+	}
+
+	/** One AnimDynamics node for Chain, its bodies set up from the skeleton: a cone round each bone's own axis and a spring back. */
+	static UAnimGraphNode_AnimDynamics* AddDynamicsNode(UEdGraph& Graph, const FHawkeyeDynamicsChain& Chain, const USkeleton& Skeleton, int32 X)
+	{
+		FGraphNodeCreator<UAnimGraphNode_AnimDynamics> Creator(Graph);
+		UAnimGraphNode_AnimDynamics* Node = Creator.CreateNode(/*bSelectNewNode=*/false);
+		Node->NodePosX = X;
+		Node->NodePosY = 0;
+		FAnimNode_AnimDynamics& Dynamics = Node->Node;
+		Dynamics.BoundBone.BoneName = Chain.BoundBone;
+		Dynamics.bChain = !Chain.ChainEnd.IsNone();
+		Dynamics.ChainEnd.BoneName = Chain.ChainEnd;
+		Dynamics.SimulationSpace = AnimPhysSimSpaceType::Component;
+		Dynamics.GravityScale = Chain.GravityScale;
+		Dynamics.bOverrideLinearDamping = true;
+		Dynamics.LinearDampingOverride = Chain.Damping;
+		Dynamics.bAngularSpring = true;
+		Dynamics.AngularSpringConstant = Chain.AngularSpring;
+		Dynamics.ComponentLinearAccScale = FVector(Chain.AccelerationScale);
+		Dynamics.ComponentLinearVelScale = FVector(Chain.VelocityDrag);
+		Dynamics.ComponentAppliedLinearAccClamp = FVector(Chain.MaxAcceleration);
+		Dynamics.SimSpaceSettings.MaxAngularVelocity = Chain.MaxAngularVelocity;
+		Dynamics.SimSpaceSettings.MaxAngularAcceleration = Chain.MaxAngularAcceleration;
+
+		const FReferenceSkeleton& Reference = Skeleton.GetReferenceSkeleton();
+		if (Dynamics.bChain)
+		{
+			Dynamics.UpdateChainPhysicsBodyDefinitions(Reference);
+		}
+		else
+		{
+			Dynamics.PhysicsBodyDefinitions.SetNum(1);
+			Dynamics.PhysicsBodyDefinitions[0].BoundBone.BoneName = Chain.BoundBone;
+		}
+		FVector Along = FVector(1., 0., 0.);
+		for (FAnimPhysBodyDefinition& Body : Dynamics.PhysicsBodyDefinitions)
+		{
+			Body.BoxExtents = Chain.BoxExtents;
+			FAnimPhysConstraintSetup& Constraint = Body.ConstraintSetup;
+			Constraint.AngularConstraintType = AnimPhysAngularConstraintType::Cone;
+			Constraint.ConeAngle = Chain.ConeDegrees;
+			AnimPhysTwistAxis Axis = AnimPhysTwistAxis::AxisX;
+			Along = AlongBoneAxis(Reference, Body.BoundBone.BoneName, Axis, Along);
+			Constraint.TwistAxis = Axis;
+			Constraint.AngularTargetAxis = Axis;
+			Constraint.AngularTarget = Along;
+		}
+		Creator.Finalize();
+		return Node;
+	}
+
 	/** The retarget node, its settings written through reflection (the node's struct is private). */
 	static UAnimGraphNode_RetargetPoseFromMesh* AddRetargetNode(UEdGraph& Graph, UIKRetargeter* Retargeter)
 	{
@@ -128,6 +235,31 @@ namespace HawkeyeRetargetGraph
 UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetFromParent(
 	const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter)
 {
+	return BuildRetargetWithDynamics(PackageName, Skeleton, Retargeter, TArray<FHawkeyeDynamicsChain>());
+}
+
+int32 UHawkeyeRetargetGraphBuilder::CountDynamicsNodes(UAnimBlueprint* Blueprint)
+{
+#if WITH_EDITOR
+	const UEdGraph* Graph = Blueprint ? HawkeyeRetargetGraph::FindAnimGraph(*Blueprint) : nullptr;
+	if (!Graph)
+	{
+		return -1;
+	}
+	int32 Count = 0;
+	for (const UEdGraphNode* Node : Graph->Nodes)
+	{
+		Count += Cast<UAnimGraphNode_AnimDynamics>(Node) ? 1 : 0;
+	}
+	return Count;
+#else
+	return -1;
+#endif
+}
+
+UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics(const FString& PackageName, USkeleton* Skeleton,
+	UIKRetargeter* Retargeter, const TArray<FHawkeyeDynamicsChain>& Chains)
+{
 #if WITH_EDITOR
 	using namespace HawkeyeRetargetGraph;
 	if (!Skeleton || !Retargeter)
@@ -155,7 +287,62 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetFromParent(
 				 : TEXT("the AnimGraph has no output pose node"));
 		return nullptr;
 	}
-	if (!Graph->GetSchema()->TryCreateConnection(FindPosePin(Retarget, EGPD_Output), FindPosePin(Root, EGPD_Input)))
+	// The chains whose bones the look's skeleton has; the others are left out with a line, never an error.
+	TArray<const FHawkeyeDynamicsChain*> Usable;
+	for (const FHawkeyeDynamicsChain& Chain : Chains)
+	{
+		if (!Chain.BoundBone.IsNone() && HasBone(*Skeleton, Chain.BoundBone) && HasBone(*Skeleton, Chain.ChainEnd))
+		{
+			Usable.Add(&Chain);
+		}
+		else
+		{
+			UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent(%s): no dynamics for %s..%s: %s is missing a bone."), *PackageName,
+				*Chain.BoundBone.ToString(), *Chain.ChainEnd.ToString(), *GetNameSafe(Skeleton));
+		}
+	}
+	UEdGraphNode* Last = Retarget;
+	if (Usable.Num() > 0)
+	{
+		// Local pose to component space, one AnimDynamics node a chain, back to local.
+		FGraphNodeCreator<UAnimGraphNode_LocalToComponentSpace> ToComponentCreator(*Graph);
+		UAnimGraphNode_LocalToComponentSpace* ToComponent = ToComponentCreator.CreateNode(/*bSelectNewNode=*/false);
+		ToComponent->NodePosX = -300;
+		ToComponentCreator.Finalize();
+		FString Failure;
+		UEdGraph* TargetGraph = Graph;
+		auto Link = [TargetGraph, &Failure](UEdGraphNode* From, UEdGraphNode* To, const FString& What)
+		{
+			UEdGraphPin* Out = FindAnyPosePin(From, EGPD_Output);
+			UEdGraphPin* In = FindAnyPosePin(To, EGPD_Input);
+			if (Failure.IsEmpty() && (!Out || !In || !TargetGraph->GetSchema()->TryCreateConnection(Out, In)))
+			{
+				Failure = What + TEXT(" would not connect");
+			}
+		};
+		Link(Last, ToComponent, TEXT("the retarget pose to component space"));
+		Last = ToComponent;
+		int32 X = -200;
+		for (const FHawkeyeDynamicsChain* Chain : Usable)
+		{
+			UAnimGraphNode_AnimDynamics* Node = AddDynamicsNode(*Graph, *Chain, *Skeleton, X);
+			Link(Last, Node, FString::Printf(TEXT("dynamics %s"), *Chain->BoundBone.ToString()));
+			Last = Node;
+			X += 60;
+		}
+		FGraphNodeCreator<UAnimGraphNode_ComponentToLocalSpace> ToLocalCreator(*Graph);
+		UAnimGraphNode_ComponentToLocalSpace* ToLocal = ToLocalCreator.CreateNode(/*bSelectNewNode=*/false);
+		ToLocal->NodePosX = -100;
+		ToLocalCreator.Finalize();
+		Link(Last, ToLocal, TEXT("the dynamics to local space"));
+		Last = ToLocal;
+		if (!Failure.IsEmpty())
+		{
+			UE_LOG(LogHawkeye, Error, TEXT("BuildRetargetFromParent(%s): %s."), *PackageName, *Failure);
+			return nullptr;
+		}
+	}
+	if (!Graph->GetSchema()->TryCreateConnection(FindAnyPosePin(Last, EGPD_Output), FindPosePin(Root, EGPD_Input)))
 	{
 		UE_LOG(LogHawkeye, Error,
 			TEXT("BuildRetargetFromParent(%s): the retarget pose would not connect to the output."), *PackageName);
@@ -167,8 +354,8 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetFromParent(
 		return nullptr;
 	}
 	Blueprint->MarkPackageDirty();
-	UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent: %s built, %s from the parent mesh onto %s."), *PackageName,
-		*GetNameSafe(Retargeter), *GetNameSafe(Skeleton));
+	UE_LOG(LogHawkeye, Log, TEXT("BuildRetargetFromParent: %s built, %s from the parent mesh onto %s, %d dynamics chain(s)."),
+		*PackageName, *GetNameSafe(Retargeter), *GetNameSafe(Skeleton), Usable.Num());
 	return Blueprint;
 #else
 	UE_LOG(LogHawkeye, Error, TEXT("BuildRetargetFromParent(%s): editor builds only."), *PackageName);

@@ -93,6 +93,8 @@ def parse_args(who):
     parser.add_argument("--renders", default="", help="default Saved/Screenshots/Blender in the repo")
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--no-export", action="store_true")
+    parser.add_argument("--no-dynamics-bones", action="store_true",
+                        help="Kate: leave out the ponytail chain and the quiver's swing bone (the body's own skeleton)")
     parser.add_argument("--views", default="", help="comma list: front,34,side,back,idle,arms_up,crouch,lunge")
     args = parser.parse_args(argv)
     args.assets_root = assets_root(args.assets_root)
@@ -589,6 +591,27 @@ class Body:
     def bone_head(self, name):
         return np.array(self.armature.matrix_world @ self.armature.data.bones[name].head_local)
 
+    def add_bone(self, name, parent, head, tail):
+        """A new bone under `parent`, last in the bone order (head and tail in the armature's frame, metres). The body's
+        own weights get a zero column for it; arrays built before the call are padded by skin(). Used for the bones a
+        costume simulates in the engine (a ponytail, a quiver): bones with no weight to the body, only to the garment."""
+        arm = self.armature
+        for o in bpy.context.view_layer.objects:
+            o.select_set(False)
+        bpy.context.view_layer.objects.active = arm
+        arm.select_set(True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        edit = arm.data.edit_bones.new(name)
+        edit.head = arm.matrix_world.inverted() @ Vector(head)
+        edit.tail = arm.matrix_world.inverted() @ Vector(tail)
+        edit.parent = arm.data.edit_bones[parent]
+        edit.use_connect = False
+        bpy.ops.object.mode_set(mode="OBJECT")
+        self.bones.append(name)
+        self.bone_index[name] = len(self.bones) - 1
+        self.W = np.pad(self.W, ((0, 0), (0, 1)))
+        log("bone", name, "under", parent)
+
     def weights_of(self, obj):
         W = np.zeros((len(obj.data.vertices), len(self.bones)))
         names = {g.index: g.name for g in obj.vertex_groups}
@@ -943,6 +966,9 @@ def box_uv(obj, tile):
 def skin(obj, body, W, max_influences=4):
     """Write W (verts x bones) as vertex groups (strongest max_influences, normalised) and bind to the armature."""
     W = np.array(W, np.float64)
+    if W.shape[1] < len(body.bones):
+        # Built before bones were added to the armature (Body.add_bone): no weight to them.
+        W = np.pad(W, ((0, 0), (0, len(body.bones) - W.shape[1])))
     if max_influences < W.shape[1]:
         cut = np.partition(W, -max_influences, axis=1)[:, -max_influences][:, None]
         W = np.where(W >= cut, W, 0.0)

@@ -935,6 +935,17 @@ FEMALE_RIG = BODIES + "/IK_Body_Female"
 KATE_LOOK = "/Game/Characters/Kate/Look"
 KATE_BP = "/Game/Blueprints/Player/BP_Kate"
 
+# AnimDynamics on her visible body (claude-docs/animation.md, "Secondary motion"): the ponytail's chain and the quiver's single
+# body, on the bones Tools/Blender/build_kate.py adds (ponytail_01..04 under Head, quiver_01 under spine_03). A chain whose bones
+# the imported skeleton does not have is left out, so Kate built before those bones existed is unchanged. Keys are
+# FHawkeyeDynamicsChain's fields in Python's names.
+KATE_DYNAMICS = [
+    {"bound_bone": "ponytail_01", "chain_end": "ponytail_04", "cone_degrees": 38.0, "angular_spring": 45.0, "damping": 1.3,
+     "acceleration_scale": 0.55, "velocity_drag": 0.2, "max_acceleration": 1200.0},
+    {"bound_bone": "quiver_01", "cone_degrees": 12.0, "angular_spring": 160.0, "damping": 1.6, "acceleration_scale": 0.35,
+     "velocity_drag": 0.1, "max_acceleration": 900.0},
+]
+
 
 def ensure_kate(female, built):
     """Kate's built look: IK_Body_Female on the female body, RTG_Kate_To_Body from her driver (IK_Kate_UEFN, the
@@ -962,7 +973,8 @@ def ensure_kate(female, built):
         return fallback("no IK rig on the female body or no driver rig (IK_Kate_UEFN)")
     c.ensure_directory(KATE_LOOK)
     rtg = kl.ensure_retargeter(source["rig"], source["mesh"], rig, female, path=KATE_LOOK + "/RTG_Kate_To_Body")
-    abp = kl.ensure_anim_bp(female, rtg, path=KATE_LOOK + "/ABP_Kate_Body") if rtg is not None else None
+    abp = (kl.ensure_anim_bp(female, rtg, path=KATE_LOOK + "/ABP_Kate_Body", dynamics=KATE_DYNAMICS)
+           if rtg is not None else None)
     if abp is None:
         return fallback("no retargeter or AnimBP")
     mesh, materials = built[KATE_LOOK_KEY]
