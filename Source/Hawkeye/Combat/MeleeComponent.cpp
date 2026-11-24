@@ -721,7 +721,7 @@ void UMeleeComponent::DeliverImpact(AActor& Target, const FHawkeyeStrikeImpact& 
 		}
 		if (Theirs)
 		{
-			Theirs->BeginFreeze(Seconds, Impact.Direction, Impact.Weight, /*bFlipVibration=*/false);
+			Theirs->BeginFreeze(Seconds, Impact.Direction, Impact.Weight, /*bFlipVibration=*/false, /*bHoldByMontage=*/true);
 			AlignVictim(Target, *Theirs);
 		}
 	}

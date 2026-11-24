@@ -5,6 +5,8 @@
 #include "Combat/HitContactRules.h"
 #include "HitReactionComponent.generated.h"
 
+class UAnimInstance;
+class UAnimMontage;
 class UCurveFloat;
 class UPhysicalAnimationComponent;
 class USkeletalMeshComponent;
@@ -49,9 +51,11 @@ public:
 	 * The weld's freeze (FHawkeyeWeldTuning): this body holds on its pose for Seconds (the world's clock) on its own clock,
 	 * CustomTimeDilation near 0, while the world runs on, and its mesh vibrates along BlowDirection (decaying, by
 	 * Weight; bFlipVibration starts it the other way, for the other party). Also notes the stop (BeginHitStop), so a
-	 * reaction and a knockout's throw wait for the release. A freeze under way is replaced by the new one.
+	 * reaction and a knockout's throw wait for the release. A freeze under way is replaced by the new one. bHoldByMontage (the
+	 * victim): his own clock is left alone and the montages playing on him are set to rate 0 instead, so the pose he holds is the
+	 * reaction clip's hit pose for certain (a clock at 0.001 left his new montage unevaluated and he stood in his idle pose).
 	 */
-	void BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration);
+	void BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration, bool bHoldByMontage = false);
 
 	/**
 	 * Something to do when the freeze lets go (a knockdown: the victim holds the blow's hit pose through the freeze, then goes
@@ -84,6 +88,11 @@ public:
 	 * movement's time is the owner's, which is stopped) and so starts at the release. A character only.
 	 */
 	void ApplyKnockback(const FVector& Direction, float DistanceCm);
+
+	/** Starts the knock-back that ApplyKnockback queued (the tick does it once no freeze holds him). */
+	void FlushKnockback();
+
+	void ApplyKnockbackNow(const FVector& Direction, float DistanceCm);
 
 	/** The physical reaction to Impact; waits for a hit-stop under way to end, so the body freezes, then snaps. */
 	void PlayHitReaction(const FHawkeyeStrikeImpact& Impact);
@@ -238,6 +247,18 @@ protected:
 	FVector AppliedVibration = FVector::ZeroVector;
 
 	TFunction<void()> PostFreezeAction;
+
+	/** The victim's hold: montages set to rate 0 (and what to give back), and whether the owner's clock was stopped. */
+	TArray<TPair<TWeakObjectPtr<UAnimInstance>, TWeakObjectPtr<UAnimMontage>>> HeldMontages;
+	bool bDilatedClock = false;
+
+	/** A knock-back waiting for the freeze to end. */
+	bool bKnockbackPending = false;
+	FVector PendingKnockbackDirection = FVector::ZeroVector;
+	float PendingKnockbackCm = 0.f;
+
+	void HoldMontages();
+	void ReleaseMontages();
 
 	/** The alignment over the freeze: totals, and the share of them applied so far (0 to 1). */
 	bool bAligning = false;

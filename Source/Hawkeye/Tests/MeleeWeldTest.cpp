@@ -449,7 +449,8 @@ bool FHawkeyeWeldFreezeTwoParties::RunTest(const FString& Parameters)
 	Kate->GetMeleeComponent()->AdvanceAttack(Kate->GetMeleeComponent()->GetCurrentAttack().WindupSeconds + 0.01f);
 	const float Frozen = Thug->GetHitReactionComponent()->Weld.FreezeDilation + 0.0001f;
 	TestTrue(TEXT("Kate is held on the hit pose"), Kate->GetHitReactionComponent()->IsFrozen() && Kate->CustomTimeDilation <= Frozen);
-	TestTrue(TEXT("So is the thug"), Thug->GetHitReactionComponent()->IsFrozen() && Thug->CustomTimeDilation <= Frozen);
+	TestTrue(TEXT("So is the thug: held by his montage, his own clock left alone"), Thug->GetHitReactionComponent()->IsFrozen()
+		&& Thug->CustomTimeDilation > Frozen);
 	TestEqual(TEXT("The bystander is not"), Bystander->CustomTimeDilation, 1.f);
 	TestEqual(TEXT("And the world's time is not touched"), Kate->GetWorld()->GetWorldSettings()->TimeDilation, 1.f, 0.0001f);
 	TestEqual(TEXT("Her freeze is her light's hit-stop (62 ms)"), Kate->GetHitReactionComponent()->GetFreezeSeconds(), 0.062f, 0.002f);

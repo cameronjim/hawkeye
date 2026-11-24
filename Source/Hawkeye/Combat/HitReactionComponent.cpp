@@ -118,7 +118,7 @@ USkeletalMeshComponent* UHitReactionComponent::GetBodyMesh() const
 
 void UHitReactionComponent::UpdateTickEnabled()
 {
-	const bool bNeed = HitStopRemaining > 0.f || bReactionQueued || bReacting || (bKnockout && !bKnockoutSettled);
+	const bool bNeed = bKnockbackPending || HitStopRemaining > 0.f || bReactionQueued || bReacting || (bKnockout && !bKnockoutSettled);
 	if (IsComponentTickEnabled() != bNeed)
 	{
 		SetComponentTickEnabled(bNeed);
@@ -157,7 +157,49 @@ USkeletalMeshComponent* UHitReactionComponent::GetVibratedMesh() const
 	return Mesh && !Mesh->IsSimulatingPhysics() ? Mesh : nullptr;
 }
 
-void UHitReactionComponent::BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration)
+void UHitReactionComponent::HoldMontages()
+{
+	ReleaseMontages();
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	USkeletalMeshComponent* Mesh = Character ? Character->GetMesh() : nullptr;
+	if (!Mesh)
+	{
+		return;
+	}
+	for (UAnimInstance* Instance : { Mesh->GetAnimInstance(), Mesh->GetPostProcessInstance() })
+	{
+		UAnimMontage* Montage = Instance ? Instance->GetCurrentActiveMontage() : nullptr;
+		if (Montage)
+		{
+			Instance->Montage_SetPlayRate(Montage, 0.f);
+			HeldMontages.Emplace(Instance, Montage);
+		}
+	}
+}
+
+void UHitReactionComponent::ReleaseMontages()
+{
+	for (const TPair<TWeakObjectPtr<UAnimInstance>, TWeakObjectPtr<UAnimMontage>>& Held : HeldMontages)
+	{
+		if (UAnimInstance* Instance = Held.Key.Get(); Instance && Held.Value.IsValid())
+		{
+			Instance->Montage_SetPlayRate(Held.Value.Get(), 1.f);
+		}
+	}
+	HeldMontages.Reset();
+}
+
+void UHitReactionComponent::FlushKnockback()
+{
+	if (!bKnockbackPending)
+	{
+		return;
+	}
+	bKnockbackPending = false;
+	ApplyKnockbackNow(PendingKnockbackDirection, PendingKnockbackCm);
+}
+
+void UHitReactionComponent::BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration, bool bHoldByMontage)
 {
 	AActor* Owner = GetOwner();
 	if (!Owner || Seconds <= 0.f)
@@ -168,6 +210,7 @@ void UHitReactionComponent::BeginFreeze(float Seconds, const FVector& BlowDirect
 	if (!bFrozen)
 	{
 		SavedCustomDilation = Owner->CustomTimeDilation;
+		bDilatedClock = false;
 	}
 	bFrozen = true;
 	++FreezeCount;
@@ -179,8 +222,16 @@ void UHitReactionComponent::BeginFreeze(float Seconds, const FVector& BlowDirect
 	{
 		FreezeAxis = FVector::ForwardVector;
 	}
-	// Never faster than the clock it came with (a body already slowed stays slowed).
-	Owner->CustomTimeDilation = FMath::Min(SavedCustomDilation, Weld.FreezeDilation);
+	if (bHoldByMontage)
+	{
+		HoldMontages();
+	}
+	else
+	{
+		// Never faster than the clock it came with (a body already slowed stays slowed).
+		Owner->CustomTimeDilation = FMath::Min(SavedCustomDilation, Weld.FreezeDilation);
+		bDilatedClock = true;
+	}
 	// The remaining stop is this freeze's whole length (BeginHitStop keeps the longer of two).
 	HitStopRemaining = 0.f;
 	BeginHitStop(Seconds);
@@ -242,10 +293,13 @@ void UHitReactionComponent::EndFreeze()
 	}
 	AppliedVibration = FVector::ZeroVector;
 	bFrozen = false;
-	if (Owner)
+	if (Owner && bDilatedClock)
 	{
 		Owner->CustomTimeDilation = SavedCustomDilation;
 	}
+	bDilatedClock = false;
+	ReleaseMontages();
+	FlushKnockback();
 	RunPostFreezeAction();
 }
 
@@ -272,6 +326,15 @@ void UHitReactionComponent::BeginAlignment(float TurnDegrees, const FVector& Nud
 }
 
 void UHitReactionComponent::ApplyKnockback(const FVector& Direction, float DistanceCm)
+{
+	// Queued: the tick starts it once nothing holds him (a freeze begins later in the same frame, after the damage).
+	bKnockbackPending = true;
+	PendingKnockbackDirection = Direction;
+	PendingKnockbackCm = DistanceCm;
+	UpdateTickEnabled();
+}
+
+void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float DistanceCm)
 {
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
@@ -691,6 +754,10 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 		{
 			EndHitStop();
 		}
+	}
+	if (bKnockbackPending && !bFrozen)
+	{
+		FlushKnockback();
 	}
 	if (bReactionQueued && HitStopRemaining <= 0.f)
 	{

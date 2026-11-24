@@ -332,7 +332,8 @@ bool FHawkeyeHitContactUnchanged::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Still winding up: a guarded boss is not staggered by a light"), His->IsWindingUp());
 	TestEqual(TEXT("His telegraph's clock did not move"), His->GetPhaseRemaining(), TelegraphLeft, 0.0001f);
 	const float Frozen = Thug->GetHitReactionComponent()->Weld.FreezeDilation + 0.0001f;
-	TestTrue(TEXT("Both parties hold, each on their own clock"), Thug->CustomTimeDilation <= Frozen && Kate->CustomTimeDilation <= Frozen);
+	TestTrue(TEXT("Both parties hold: she on her own clock, he by his montage"),
+		Thug->GetHitReactionComponent()->IsFrozen() && Kate->CustomTimeDilation <= Frozen);
 	TestEqual(TEXT("The world's time runs on (only the parry's stop is global)"), Kate->GetWorld()->GetWorldSettings()->TimeDilation,
 		1.f, 0.0001f);
 	TestTrue(TEXT("The impact is known: its weight is her light's"),
