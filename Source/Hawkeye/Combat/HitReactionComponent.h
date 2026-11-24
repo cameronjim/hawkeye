@@ -46,7 +46,7 @@ public:
 	bool IsHitStopped() const { return HitStopRemaining > 0.f; }
 
 	/**
-	 * The weld's freeze (FHawkeyeWeldTuning): this body holds on its pose for Seconds (real time) on its own clock,
+	 * The weld's freeze (FHawkeyeWeldTuning): this body holds on its pose for Seconds (the world's clock) on its own clock,
 	 * CustomTimeDilation near 0, while the world runs on, and its mesh vibrates along BlowDirection (decaying, by
 	 * Weight; bFlipVibration starts it the other way, for the other party). Also notes the stop (BeginHitStop), so a
 	 * reaction and a knockout's throw wait for the release. A freeze under way is replaced by the new one.

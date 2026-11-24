@@ -669,8 +669,9 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 
 	if (HitStopRemaining > 0.f)
 	{
-		// Real time: the freeze stops this actor's own clock (and the parry's slow motion the world's), so neither can time it.
-		HitStopRemaining -= FMath::Max(static_cast<float>(FApp::GetDeltaTime()), 0.f);
+		// The world's clock, not the owner's (the freeze stops that one): a parry's or a finisher's slow motion stretches it,
+		// and a capture that stops the world holds it, so a strip can be shot frame by frame through a freeze.
+		HitStopRemaining -= Step;
 		if (HitStopRemaining > 0.f)
 		{
 			AdvanceFreeze(0.f);

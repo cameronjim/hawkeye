@@ -2,7 +2,9 @@
 #include "Animation/AnimMontage.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "Combat/AnimNotifyState_HitWindow.h"
 #include "Combat/CombatAnimPlayback.h"
+#include "Combat/MeleeComponent.h"
 #include "Combat/TakedownComponent.h"
 #include "Combat/HealthComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -44,6 +46,12 @@
  * knockdown clip, and a blast throwing him in the ragdoll; each is stopped (the world's time held) at fixed times after
  * the get-up starts (getup_from_clip.png, getup_from_ragdoll.png), and each must end with him on his feet, the AI free.
  * A clip that is not imported on this machine is skipped with a warning.
+ *
+ * Then two live blows as contact strips (contact_light_<tag>.png, contact_heavy_<tag>.png; <tag> is -ContactStripTag=,
+ * "after" by default, so the same test on the old build with -ContactStripTag=before gives the comparison): Kate's light
+ * and her heavy on a thug 110 cm off, side on, eight frames at 30 fps round the hit: two before the frame the damage
+ * lands, that frame, and five after. The world is run to each time and stopped for the shot, so the strip shows what the
+ * weld does on the frames after contact (both held on the hit pose, vibrating, then the knock-back eased away).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotClips, "Hawkeye.Screenshot.Clips",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
@@ -276,6 +284,109 @@ namespace HawkeyeClipShots
 		const FString File = OutDir() / TEXT("Frames") / (Name + TEXT(".png"));
 		State->Frames.FindOrAdd(Strip).Add(File);
 		HawkeyeShots::Request(Test, File, /*bShowUI=*/false);
+	}
+
+	/** Where a live blow's strip is shot: Kate and a thug this far apart. */
+	static constexpr float ContactGap = 110.f;
+
+	/**
+	 * A live blow (Kate's light or heavy at a thug ContactGap off) as eight frames round its hit: two before, the hit
+	 * frame, five after, 1 / 30 s apart. The world runs on to each time (from the press) and is stopped for the shot.
+	 */
+	static void AddContact(FAutomationTestBase* Test, TSharedRef<FState> State, const FString& Name, bool bHeavy)
+	{
+		struct FContact
+		{
+			double StartedAt = 0.0;
+			float HitSeconds = 0.25f;
+		};
+		const TSharedRef<FContact> Run = MakeShared<FContact>();
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, bHeavy]()
+		{
+			AHawkeyeCharacter* Kate = State->Kate.Get();
+			AThugCharacter* Thug = State->Thug.Get();
+			if (!Kate || !Thug)
+			{
+				return true;
+			}
+			const float KateHalf = Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+			const float ThugHalf = Thug->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+			for (ACharacter* Who : { static_cast<ACharacter*>(Kate), static_cast<ACharacter*>(Thug) })
+			{
+				Who->SetActorHiddenInGame(false);
+				if (UCharacterMovementComponent* Movement = Who->GetCharacterMovement())
+				{
+					Movement->StopMovementImmediately();
+					Movement->SetMovementMode(MOVE_Walking);
+				}
+			}
+			Kate->TeleportTo(State->Feet + FVector(0.f, 0.f, KateHalf + 2.f), State->Along.Rotation(), false, true);
+			Thug->TeleportTo(State->Feet + State->Along * ContactGap + FVector(0.f, 0.f, ThugHalf + 2.f), (-State->Along).Rotation(), false, true);
+			Thug->GetHealthComponent()->SetMaxHealth(500.f, true);
+			Frame(*State, Kate, -ContactGap * 0.5f);
+			UMeleeComponent* Melee = Kate->GetMeleeComponent();
+			Melee->SetNextAttackTarget(Thug);
+			const bool bStarted = bHeavy ? Kate->StartHeavyAttack() : Kate->StartLightAttack();
+			if (!bStarted)
+			{
+				Test->AddError(TEXT("The contact strip: the blow did not start."));
+				return true;
+			}
+			// When its hit window opens: the clip's, else the attack's wind-up.
+			float Start = 0.f;
+			float End = 0.f;
+			Run->HitSeconds = Melee->GetCurrentAttack().WindupSeconds;
+			if (HawkeyeCombatAnim::FindNotifyWindow(Melee->GetCurrentMontage(), UAnimNotifyState_HitWindow::StaticClass(), Start, End))
+			{
+				Run->HitSeconds = Start;
+			}
+			Run->StartedAt = Kate->GetWorld()->GetTimeSeconds();
+			return true;
+		}));
+		// Two frames before the hit, the hit frame, five after: 30 fps apart.
+		for (int32 Offset = -2; Offset <= 5; ++Offset)
+		{
+			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([State, Run, Offset]()
+			{
+				const AHawkeyeCharacter* Kate = State->Kate.Get();
+				return !Kate || Kate->GetWorld()->GetTimeSeconds() - Run->StartedAt >= Run->HitSeconds + Offset / 30.0;
+			}, []() { return true; }, 4.f));
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
+			{
+				if (UWorld* World = FindWorld())
+				{
+					UGameplayStatics::SetGlobalTimeDilation(World, 0.0001f);
+				}
+				return true;
+			}));
+			ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.3f));
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, Name, Offset]()
+			{
+				const AHawkeyeCharacter* Kate = State->Kate.Get();
+				const double Elapsed = Kate ? Kate->GetWorld()->GetTimeSeconds() - Run->StartedAt : 0.0;
+				AddShot(Test, State, Name, FString::Printf(TEXT("%s_%d_%+d_%.3fs"), *Name, Offset + 2, Offset, Elapsed));
+				return true;
+			}));
+			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([Test]() { return ShotsDone(Test); }, []() { return true; }, 12.f));
+			ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
+			{
+				if (UWorld* World = FindWorld())
+				{
+					UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+				}
+				return true;
+			}));
+		}
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.5f));
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([State]()
+		{
+			if (AHawkeyeCharacter* Kate = State->Kate.Get())
+			{
+				Kate->GetMeleeComponent()->CancelAttack();
+				PutOnStage(*State, Kate);
+			}
+			return true;
+		}));
 	}
 
 	/** One clip's strip: per time, the montage set there and paused on its wearer, then the shot. */
@@ -707,6 +818,10 @@ bool FHawkeyeScreenshotClips::RunTest(const FString& Parameters)
 			AddClip(this, State, Clip);
 		}
 	}
+	FString Tag = TEXT("after");
+	FParse::Value(FCommandLine::Get(), TEXT("ContactStripTag="), Tag);
+	AddContact(this, State, TEXT("contact_light_") + Tag, false);
+	AddContact(this, State, TEXT("contact_heavy_") + Tag, true);
 	AddGetUp(this, State, TEXT("getup_from_clip"), false, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
 	AddGetUp(this, State, TEXT("getup_from_ragdoll"), true, {0.02f, 0.25f, 0.5f, 0.8f, 1.1f, 1.4f, 1.62f});
 	AddTakedown(this, State, {0.0f, 0.2f, 0.45f, 0.7f, 0.95f, 1.2f, 1.45f, 1.75f}, false, TEXT("takedown_before"));
