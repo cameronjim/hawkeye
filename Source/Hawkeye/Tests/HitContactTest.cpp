@@ -324,6 +324,8 @@ bool FHawkeyeHitContactUnchanged::RunTest(const FString& Parameters)
 	TestTrue(TEXT("His unblockable swing starts"), His->StartAttack(Through));
 	const float Before = Health->GetCurrentHealth();
 	const float TelegraphLeft = His->GetPhaseRemaining();
+	// The parry above was the one global stop; put the world back so the light's own effect is what is measured.
+	Kate->GetWorld()->GetWorldSettings()->TimeDilation = 1.f;
 	TestTrue(TEXT("Her light starts"), Kate->StartLightAttack());
 	Kate->GetMeleeComponent()->AdvanceAttack(Kate->GetMeleeComponent()->GetCurrentAttack().WindupSeconds + 0.001f);
 	TestEqual(TEXT("It lands at his guard's share"), Before - Health->GetCurrentHealth(), 15.f * 0.3f, 0.01f);
