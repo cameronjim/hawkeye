@@ -39,8 +39,9 @@ struct FCityLedgeRecord;
  *
  * Clutter: every FCityClutterGroup becomes one transient hierarchical instanced mesh (water towers,
  * HVAC boxes, chimneys, hydrants, bins, bags, scaffolding, parked cars), added at once at load. A
- * group with bCollision blocks pawns and physics but ignores the visibility, camera and traversable
- * traces, and none of them affect navigation.
+ * group with bCollision blocks pawns and physics but ignores the visibility and traversable traces (and
+ * the camera's, unless bBlocksCamera: the parked cars, water towers, HVAC boxes and chimneys), and none
+ * of them affect navigation.
  *
  * Chimney wisps: in a game world, ChimneyWispCount of the chimneys nearest the player at load get
  * a slow smoke stream (ChimneyWispVfx, NS_ChimneyWisp) ChimneyTopCm above their base, spawned on the

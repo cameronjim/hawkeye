@@ -448,9 +448,9 @@ void ACityLedgeSpawner::SpawnClutter()
 			Instances->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			Instances->SetCollisionObjectType(ECC_WorldStatic);
 			Instances->SetCollisionResponseToAllChannels(ECR_Block);
-			// Traces that aim, frame or find ledges look straight through it.
+			// Traces that aim or find ledges look straight through it; the camera does too unless the group is a big solid.
 			Instances->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
-			Instances->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+			Instances->SetCollisionResponseToChannel(ECC_Camera, Group.bBlocksCamera ? ECR_Block : ECR_Ignore);
 			Instances->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Ignore);
 		}
 		else

@@ -2604,7 +2604,7 @@ def city_props_hash(ledges, anchors, ledge_cls, anchor_cls, fire_escapes=None, c
         parts.append([[f[0], f[1], list(f[2]), f[3], f[4], f[5]] for f in fire_escapes])
         parts.append([list(FIRE_ESCAPE_SLAB), FIRE_ESCAPE_GAP, FIRE_ESCAPE_RAIL, FIRE_ESCAPE_RAIL_THICK])
     if clutter:
-        parts.append([[kind, c.safe_name(mesh), c.safe_name(material), collision, shadow,
+        parts.append([[kind, c.safe_name(mesh), c.safe_name(material), collision, shadow, blocks_camera(kind),
                        [_xform_key(x) for x in xforms]]
                       for kind, mesh, material, collision, shadow, xforms in clutter])
     return geo.record_hash(GENERATOR_VERSION, "props", *parts)
@@ -3024,6 +3024,22 @@ CLUTTER_KINDS = {
     "ParkedCar_Grey": ("SM_City_ParkedCar", "CarGrey", True, True, 245.0),
     "ParkedCar_Navy": ("SM_City_ParkedCar", "CarNavy", True, True, 245.0),
 }
+# Which clutter the camera cannot pass through (the CityClutterGroup's blocks_camera, the Camera channel only: pawns,
+# physics and every traversal trace are decided by `collision` and unchanged, so the traversal audit's numbers hold).
+# A solid thing the lens could end up inside, wider than the probe's 20 cm radius, blocks it: the parked cars, the
+# water towers, HVAC boxes and chimneys. Small solids (hydrant, bin, bag: footprint under CAMERA_BLOCK_MIN_RADIUS) do
+# not: a camera that pulls in for every hydrant it passes behind is worse than one that clips a hydrant, and the
+# camera's floor rule keeps the lens above anything low. The December dressing's thin things (wires, bulbs, wreaths,
+# awnings, signs, trees, snow) never block it, and the street look (trees, signs) is render-only.
+CAMERA_BLOCK_MIN_RADIUS = 60.0
+
+
+def blocks_camera(kind):
+    """Whether this clutter kind blocks the Camera channel."""
+    spec = CLUTTER_KINDS.get(kind)
+    return bool(spec and spec[2] and spec[4] >= CAMERA_BLOCK_MIN_RADIUS)
+
+
 # cm from the base to the top, for the fire-escape landing check.
 CLUTTER_HEIGHTS = {"WaterTower": 710.0, "HVAC": 130.0, "Chimney": 170.0, "Scaffold": SCAFFOLD_BAY[2]}
 LANDING_CLEAR = 30.0                   # cm between a prop and a fire-escape landing it shares height with
@@ -3572,6 +3588,7 @@ def _clutter_record(group):
     rec.set_editor_property("mesh", mesh)
     rec.set_editor_property("material", material)
     rec.set_editor_property("collision", collision)
+    rec.set_editor_property("blocks_camera", blocks_camera(kind))
     rec.set_editor_property("cast_shadow", shadow)
     rec.set_editor_property("instances", xforms)
     return rec

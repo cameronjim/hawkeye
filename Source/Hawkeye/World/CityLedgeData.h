@@ -118,6 +118,13 @@ struct HAWKEYE_API FCityClutterGroup
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City")
 	bool bCollision = true;
 
+	/**
+	 * Also blocks the Camera channel, so the lens cannot sit inside it (parked cars, water towers, HVAC boxes, chimneys:
+	 * generate_city.py's blocks_camera). Only meaningful with bCollision; the camera is the only thing that asks.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City")
+	bool bBlocksCamera = false;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City")
 	bool bCastShadow = true;
 
