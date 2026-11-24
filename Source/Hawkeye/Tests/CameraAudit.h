@@ -62,7 +62,7 @@ namespace HawkeyeCameraAudit
 	};
 
 	/** One frame's measurements: the world sampling fills it, the rules read it. */
-	struct FFrame
+	struct FAuditFrame
 	{
 		double Time = 0.0;
 		/** Seconds of the clock the player watches (dilation taken out). */
@@ -103,7 +103,7 @@ namespace HawkeyeCameraAudit
 		explicit FRuleBook(const FLimits& InLimits = FLimits()) : Limits(InLimits) {}
 
 		/** Appends this frame's violations to Out. */
-		void Evaluate(const FFrame& Frame, TArray<FViolation>& Out);
+		void Evaluate(const FAuditFrame& Frame, TArray<FViolation>& Out);
 
 		/** Forgets the previous frame (the next one is the first). */
 		void Reset();
@@ -113,7 +113,7 @@ namespace HawkeyeCameraAudit
 	private:
 		FLimits Limits;
 		bool bHasPrevious = false;
-		FFrame Previous;
+		FAuditFrame Previous;
 		TArray<double> ToggleTimes;
 	};
 

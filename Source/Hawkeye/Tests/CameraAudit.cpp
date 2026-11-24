@@ -47,7 +47,7 @@ namespace HawkeyeCameraAudit
 		ToggleTimes.Reset();
 	}
 
-	void FRuleBook::Evaluate(const FFrame& Frame, TArray<FViolation>& Out)
+	void FRuleBook::Evaluate(const FAuditFrame& Frame, TArray<FViolation>& Out)
 	{
 		auto Add = [&](ERule Rule, float Value, float Limit, float Severity)
 		{
@@ -179,7 +179,7 @@ namespace HawkeyeCameraAudit
 		}
 
 		/** Where the player's screen is looking from, measured. False when there is nothing to measure (no pawn, a cutscene). */
-		bool SampleFrame(UWorld* World, float DeltaSeconds, FSession& Session, FFrame& Out)
+		bool SampleFrame(UWorld* World, float DeltaSeconds, FSession& Session, FAuditFrame& Out)
 		{
 			APlayerController* PC = World->GetFirstPlayerController();
 			AHawkeyeCharacter* Kate = PC ? Cast<AHawkeyeCharacter>(PC->GetPawn()) : nullptr;
@@ -258,7 +258,7 @@ namespace HawkeyeCameraAudit
 			{
 				return;
 			}
-			FFrame Frame;
+			FAuditFrame Frame;
 			if (!SampleFrame(World, DeltaSeconds, *Session, Frame))
 			{
 				Session->Rules.Reset();

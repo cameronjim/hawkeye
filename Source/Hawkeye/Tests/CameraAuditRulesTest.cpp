@@ -12,9 +12,9 @@ namespace HawkeyeCameraAuditTest
 	using namespace HawkeyeCameraAudit;
 
 	/** A calm frame: Kate at the origin, the lens 350 behind her and 150 up, looking along +X, 1/60 s after the last. */
-	static FFrame Calm(double Time)
+	static FAuditFrame Calm(double Time)
 	{
-		FFrame Frame;
+		FAuditFrame Frame;
 		Frame.Time = Time;
 		Frame.Delta = 1.f / 60.f;
 		Frame.Pivot = FVector(0.f, 0.f, 90.f);
@@ -59,7 +59,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		// Floors: 25 cm is clear, 10 is not; under her and under it.
 		FRuleBook Rules;
 		TArray<FViolation> Found;
-		FFrame Frame = Calm(0.0);
+		FAuditFrame Frame = Calm(0.0);
 		Frame.Lens.Z = 25.f;
 		Rules.Evaluate(Frame, Found);
 		TestEqual(TEXT("25 cm above both floors is clear"), Found.Num(), 0);
@@ -80,7 +80,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 	{
 		FRuleBook Rules;
 		TArray<FViolation> Found;
-		FFrame Frame = Calm(0.0);
+		FAuditFrame Frame = Calm(0.0);
 		Frame.bLensOverlap = true;
 		Frame.NearPlaneHits = 2;
 		Rules.Evaluate(Frame, Found);
@@ -93,7 +93,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook Rules;
 		TArray<FViolation> Found;
 		Rules.Evaluate(Calm(0.0), Found);
-		FFrame Jump = Calm(1.0 / 60.0);
+		FAuditFrame Jump = Calm(1.0 / 60.0);
 		Jump.Lens.X = -50.f;
 		Rules.Evaluate(Jump, Found);
 		TestEqual(TEXT("300 cm in a frame is a jump"), Count(Found, ERule::LensJump), 1);
@@ -109,7 +109,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook OrbitRules;
 		TArray<FViolation> OrbitFound;
 		OrbitRules.Evaluate(Calm(0.0), OrbitFound);
-		FFrame Orbit = Calm(1.0 / 60.0);
+		FAuditFrame Orbit = Calm(1.0 / 60.0);
 		Orbit.View = FRotator(0.f, 9.f, 0.f);
 		Orbit.Lens = Orbit.Pivot - Orbit.View.Vector() * 350.f + FVector(0.f, 0.f, 60.f);
 		OrbitRules.Evaluate(Orbit, OrbitFound);
@@ -122,7 +122,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook Rules;
 		TArray<FViolation> Found;
 		Rules.Evaluate(Calm(0.0), Found);
-		FFrame Spin = Calm(1.0 / 60.0);
+		FAuditFrame Spin = Calm(1.0 / 60.0);
 		Spin.View = FRotator(0.f, 20.f, 0.f);
 		Spin.Lens = Spin.Pivot - Spin.View.Vector() * 350.f + FVector(0.f, 0.f, 60.f);
 		Rules.Evaluate(Spin, Found);
@@ -147,7 +147,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		FRuleBook FlipRules;
 		TArray<FViolation> FlipFound;
 		FlipRules.Evaluate(Calm(0.0), FlipFound);
-		FFrame Flip = Calm(1.0 / 60.0);
+		FAuditFrame Flip = Calm(1.0 / 60.0);
 		Flip.View = FRotator(0.f, 180.f, 0.f);
 		FlipRules.Evaluate(Flip, FlipFound);
 		TestEqual(TEXT("A yaw flip is caught"), Count(FlipFound, ERule::AngularSpeed), 1);
@@ -157,7 +157,7 @@ bool FHawkeyeCameraAuditRules::RunTest(const FString& Parameters)
 		// The body hide: two toggles inside a second is a violation, one each side of it is not.
 		FRuleBook Rules;
 		TArray<FViolation> Found;
-		FFrame Frame = Calm(0.0);
+		FAuditFrame Frame = Calm(0.0);
 		Rules.Evaluate(Frame, Found);
 		Frame = Calm(0.1);
 		Frame.bBodyHidden = true;

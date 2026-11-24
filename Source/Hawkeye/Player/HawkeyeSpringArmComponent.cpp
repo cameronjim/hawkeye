@@ -140,7 +140,7 @@ void UHawkeyeSpringArmComponent::ResolveShoulder(const FVector& Base, const FVec
 		FHitResult Hit;
 		if (World->SweepSingleByChannel(Hit, Base, Base + TargetOffset, FQuat::Identity, ProbeChannel, Probe, Query))
 		{
-			LiftHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, TargetOffset.Size());
+			LiftHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, static_cast<float>(TargetOffset.Size()));
 		}
 	}
 	LiftScale = bCut ? LiftHit : HawkeyeCameraRules::EaseFraction(LiftScale, 1.f, LiftHit, Delta, ReleaseSpeed);
@@ -154,7 +154,7 @@ void UHawkeyeSpringArmComponent::ResolveShoulder(const FVector& Base, const FVec
 		FHitResult Hit;
 		if (World->SweepSingleByChannel(Hit, Pivot, Pivot + Right * SocketOffset.Y, FQuat::Identity, ProbeChannel, Probe, Query))
 		{
-			ShoulderHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, FMath::Abs(SocketOffset.Y));
+			ShoulderHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, static_cast<float>(FMath::Abs(SocketOffset.Y)));
 		}
 	}
 	ShoulderScale = bCut ? ShoulderHit : HawkeyeCameraRules::EaseFraction(ShoulderScale, 1.f, ShoulderHit, Delta, ReleaseSpeed);
@@ -170,7 +170,7 @@ float UHawkeyeSpringArmComponent::SweepArm(const FVector& Shoulder, const FVecto
 	FHitResult Hit;
 	if (World->SweepSingleByChannel(Hit, Shoulder, Lens, FQuat::Identity, ProbeChannel, FCollisionShape::MakeSphere(ProbeSize), Query))
 	{
-		MainHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, (Lens - Shoulder).Size());
+		MainHit = Hit.bStartPenetrating ? 0.f : HawkeyeCameraRules::BackOffFraction(Hit.Time, static_cast<float>((Lens - Shoulder).Size()));
 	}
 
 	// The feelers: the same reach, turned a little to each side. A wall they find first eases the arm in before the main
@@ -228,7 +228,7 @@ FVector UHawkeyeSpringArmComponent::ApplyFloorRule(const FVector& Lens, const FV
 	}
 	const float FloorUnderLens = FindFloor(Start, Query);
 
-	const float Need = HawkeyeCameraRules::RiseNeededForFloor(Lens.Z, FloorUnderLens, FloorUnderCharacter, FloorClearance);
+	const float Need = HawkeyeCameraRules::RiseNeededForFloor(static_cast<float>(Lens.Z), FloorUnderLens, FloorUnderCharacter, FloorClearance);
 	FloorCorrection = bCut ? Need : HawkeyeCameraRules::EaseFloorCorrection(FloorCorrection, Need, Delta);
 	if (FloorCorrection < 0.5f)
 	{
@@ -293,10 +293,10 @@ void UHawkeyeSpringArmComponent::UpdateDesiredArmLocation(bool bDoTrace, bool bD
 
 	// The pivot's target: her centre, its height held inside the dead zone while she is in the air.
 	FVector PivotTarget = Base;
-	const float Reference = UpdateHoldReference(Base.Z, bCut, Delta);
+	const float Reference = UpdateHoldReference(static_cast<float>(Base.Z), bCut, Delta);
 	if (bVerticalHold && !bCut)
 	{
-		PivotTarget.Z = Reference + HawkeyeCameraRules::DeadZoneOffset(Base.Z - Reference, VerticalDeadZone);
+		PivotTarget.Z = Reference + HawkeyeCameraRules::DeadZoneOffset(static_cast<float>(Base.Z) - Reference, VerticalDeadZone);
 	}
 	const FVector LaggedBase = LagPivot(PivotTarget, bDoLocationLag, bCut, Delta);
 

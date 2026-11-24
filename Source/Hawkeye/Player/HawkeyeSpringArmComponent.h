@@ -4,6 +4,8 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "HawkeyeSpringArmComponent.generated.h"
 
+struct FCollisionQueryParams;
+
 /**
  * The player's camera arm (gameplay-semantics.md, "Camera rules"). The engine's spring arm with the parts a third-person
  * action camera needs and the engine's does not have:
