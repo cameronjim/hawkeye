@@ -129,7 +129,7 @@ void UHawkeyeBowIKAnimInstance::UpdateTraversalPose(float DeltaSeconds)
 	const FVector Here = Owner->GetActorLocation();
 	const float Jump = static_cast<float>(FVector::Dist(Here, LastActorLocation));
 	Input.bTeleported = bHaveLastActorLocation &&
-		Jump > FMath::Max(300.f, Input.Velocity.Size() * FMath::Max(DeltaSeconds, 0.f) * 3.f + 150.f);
+		Jump > FMath::Max(300.f, static_cast<float>(Input.Velocity.Size()) * FMath::Max(DeltaSeconds, 0.f) * 3.f + 150.f);
 	LastActorLocation = Here;
 	bHaveLastActorLocation = true;
 	ApplyTraversalPose(State.Step(Input, Owner->GetTraversalPoseSettings()));
