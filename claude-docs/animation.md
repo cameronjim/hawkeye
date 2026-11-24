@@ -582,36 +582,92 @@ authored clip would have had to beat that.
 `Hawkeye.Screenshot.Traversal` (standalone `-game`): per scenario and mode, `Saved/Screenshots/Traversal/<scenario>_<side |
 three_quarter>_<off|on>.png`, the frames in `Frames/`. A yellow line is drawn from the drawn hand to the rope's end.
 
-## Secondary motion (written 2026-11-23; OFF since 2026-11-24: AnimDynamics put NaNs in the pose)
+## Secondary motion (Kawaii Physics; written 2026-11-24, code only: not yet built or seen)
 
-**Status: switched off.** Run in a standalone game, every AnimDynamics node in the body look's AnimBP (the ponytail as a chain, as four
-single bodies in series, the quiver as one body) put NaNs in `ponytail_01` on the first frame, a hard assert in `BonePose.h`; with
-the springs, the sim-space clamps or the constraints left out it did the same, and the same graph with no node is clean.
-`import_bodies.KATE_DYNAMICS` is empty (the chains are in its comment), the bones stay on Kate's skeleton, and
-`BuildRetargetWithDynamics` stays for the next try. Kawaii Physics (MIT) is the fallback the note below names; Cameron is to be told
-before it is added.
+Kate's ponytail and quiver swing, simulated by the Kawaii Physics plugin (pafuhana1213/KawaiiPhysics, MIT, vendored at
+`Plugins/KawaiiPhysics`, pinned to v1.21.0, commit 0035f52; `docs/CREDITS.md`). It replaced the engine's AnimDynamics, which
+put NaNs in `ponytail_01` on the first frame (a hard assert in `BonePose.h`) as a chain, as single bodies and as one body, with
+and without every constraint, while the same graph with no node was clean; the cause was never found. **None of this has been
+compiled or run yet** (written while another job owned the engine): the checklist at the end of this section is what the
+first build and look must settle before any number here is trusted.
 
-AnimDynamics, the engine's own (no physics asset, no plugin; Kawaii Physics, MIT, stays the fallback if it proves inadequate and
-Cameron is told first). `UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics` takes `FHawkeyeDynamicsChain`s and puts the
-body look's pose into component space through one node per chain and back; a chain whose bones the look's skeleton lacks is
-left out with a log line (a Kate built before the bones existed is unchanged). `create_kate_look.ensure_anim_bp(dynamics=...)`
-is the script side and `import_bodies.KATE_DYNAMICS` the list. Each node simulates in component space with only part of the
-actor's motion passed in (`AccelerationScale` 0.55, `VelocityDrag` 0.2) and clamped (`MaxAcceleration` 1200 cm/s^2, the
-actor's turning 8 rad/s and 60 rad/s^2) so an 18 m/s zip does not throw it about; each body is a cone round its bone's own
-axis (found from the skeleton: the dominant axis of the child's rest offset) with a spring back to the pose. The engine
-resets every AnimDynamics node on a teleport (`USkeletalMeshComponent::OnUpdateTransform`).
+Where it lives:
+
+- `Source/Hawkeye/Player/SecondaryMotion.h/.cpp`: `FHawkeyeDynamicsChain` (one chain: root bone, optional last bone,
+  damping, stiffness, world damping, radius, limit angle, gravity scale, teleport thresholds, warm-up steps, step rate,
+  colliders), `FHawkeyeDynamicsCollider` and `HawkeyeSecondary::` (which bones a chain simulates, `DescribeProblem`, where a
+  collider sits in a bone's axes). No editor, no plugin: the game target links it and `Hawkeye.SecondaryMotion.*` tests it.
+  The structs kept their AnimDynamics-era names so the scripts did not change.
+- `UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics` (`RetargetGraphBuilder.cpp`): the look's pose goes to component
+  space, through one Kawaii Physics node per usable chain, and back to local space. Editor builds only. The plugin's anim graph
+  node class (`UAnimGraphNode_KawaiiPhysics`, in its `KawaiiPhysicsEd` module) is **not exported**, so the builder cannot link
+  it: it loads the module, finds the class by name (`/Script/KawaiiPhysicsEd.AnimGraphNode_KawaiiPhysics`), creates the node
+  through `FGraphNodeCreator<UAnimGraphNode_Base>::CreateNode(false, Class)` and writes the plugin's runtime struct
+  `FAnimNode_KawaiiPhysics` (exported, `Hawkeye.Build.cs` depends on `KawaiiPhysics`, editor targets only) through
+  reflection, as the Retarget Pose node already is. A chain `DescribeProblem` rejects (a missing bone, fewer than two bones,
+  a zero-length, non-finite or unscaled bone, numbers out of range, a collider on a missing bone) is left out with a line in
+  `LogHawkeye` (Log for a missing bone, Warning for anything else), so a Kate built before the bones existed is the plain graph.
+- `import_bodies.KATE_DYNAMICS` is the list (Python names: `bound_bone`, `chain_end`, `damping`, ..., `colliders` with
+  `bone`, `radius`, `length`, `offset`, `axis`); `create_kate_look.ensure_anim_bp(dynamics=...)` turns it into structs and
+  stamps the AnimBP with it, so a changed value rebuilds the graph and an unchanged one does not (idempotent).
+
+What each chain is (starting values, to be tuned by eye):
+
+| | ponytail `ponytail_01..05` | quiver `quiver_01..02` |
+|---|---|---|
+| damping / stiffness | 0.15 / 0.08 | 0.25 / 0.6 |
+| limit angle | 60 degrees | 12 degrees |
+| world damping (location / rotation) | 0.88 / 0.85 | 0.9 / 0.9 |
+| gravity | 1.0 (980 cm/s^2, world down) | 0.5 |
+| bone radius | 1.2 cm | 1.0 cm |
+| collision | Head sphere (r 6.5, 8 cm up), neck_01 capsule (r 5, 6 long), spine_03 capsule (r 11, 12 long) | none |
+
+Component-space simulation with the plugin's own reading of her motion: each frame the bones are moved back by
+`(1 - WorldDamping)` of the mesh's travel and pulled toward the pose by `Stiffness` per step, so an 18 m/s sprint or zip (30 cm a
+frame at 60 fps) saturates at the limit angle and streams the ponytail back, a walk gives a few cm of trail, standing gives
+gravity's sag (a few cm for the ponytail; these are worked out from the plugin's code, not seen). The plugin sub-steps at a fixed 1/60 s (`UKawaiiPhysicsDeveloperSettings`,
+`bUseFixedSubstepping` true, 4 steps at most, its defaults, nothing in `Config/`), so the look does not depend on the frame rate.
+
+Guards against the first-frame NaN, all in the plugin's own fields plus the builder's checks:
+
+- **Reference-pose checks first.** `DescribeProblem` refuses a bone on its parent (a zero-length direction), non-finite or zero
+  scale poses, and any number out of range, so the plugin is never handed a pose it normalises to NaN.
+- **Zero delta time.** The plugin returns from a step with `DeltaTime <= 0` (the pose passes through untouched) and divides
+  velocity by `max(DeltaTimeOld, KINDA_SMALL_NUMBER)`, `DeltaTimeOld` starting at `1 / TargetFramerate`; the builder clamps
+  `TargetFramerate` to at least 1.
+- **Warm-up and reset.** `bNeedWarmUp` with `WarmUpFrames` 6 settles the chain under gravity before it is seen, and
+  `bUseWarmUpWhenResetDynamics` repeats it after every `ResetDynamics` (the engine calls it on a teleport, so
+  `NotifyTeleported()` and a fast-travel cut restart the chain from the pose, not from a whip).
+- **Teleport thresholds.** A mesh move over 150 cm in one frame, or a turn over 45 degrees in one frame, is a teleport to the
+  plugin: that frame the bones do not follow it. A zip's 18 m/s is 30 cm a frame at 60 fps and a snap turn is
+  well over 45 degrees, so zips and runs trail and cuts do not.
+
+Collision shapes are written once, in the skeleton's reference-pose axes with Z up ("8 cm up the head", capsule along Z), and
+`HawkeyeSecondary::ColliderInBoneSpace` turns them into the plugin's bone-space offset and rotation from the bone's reference
+pose, so the way the Blender export pointed a bone's axes does not matter. A shape that overlaps the ponytail's own rest pose
+pushes it off its animation every frame: if the rest ponytail is displaced, shrink or move the Head sphere first.
+
+Not done / not known (read before changing): none of the starting numbers has been seen; the plugin's v1.21.0 README states 5.3
+to 5.7 and no 5.8 build was possible while this was written (the engine virtuals it overrides, the headers it includes and the
+physics asset members it reads were compared with the 5.8 headers by reading, not by compiling); the jacket's hem, the
+bow on her back (a static mesh on the driver's holster socket: it rides the driver rigidly, simulating it means a spring on
+the holster socket, not a node here) and the plugin's `BoneForwardAxis` (only the dummy-bone tip reads it; `DummyBoneLength` is
+0 because both chains end in real leaf bones) are left alone.
 
 Bones: the built Kate had none worth simulating (her ponytail's 26 locks were skinned to Head and neck_01, the quiver to
-spine_02 and 03). `Tools/Blender/build_kate.py` now adds, with `costume.Body.add_bone`: `ponytail_01..04` under Head down the
+spine_02 and 03). `Tools/Blender/build_kate.py` adds, with `costume.Body.add_bone`: `ponytail_01..04` under Head down the
 ponytail's axis (joints at 0.12, 0.35, 0.60 and 0.85 of its length, the head holding the tie) and a leaf `ponytail_05` so the
-engine finds the last bone's axis; `quiver_01` under spine_03 from the quiver's mouth to its bottom and its leaf
+last real bone has a direction; `quiver_01` under spine_03 from the quiver's mouth to its bottom and its leaf
 `quiver_02`, the quiver's own pieces (not the strap) handing weight from the spine to it down their length (85% at the bottom).
 `--no-dynamics-bones` builds the old skeleton and weights. **It must be built into a staging folder**: `--out
 <staging>\built\kate` (the engine import reads `<assets root>\built\kate`; point `HAWKEYE_ASSETS_ROOT` at a staging copy for
-the import until it has been looked at). Not done: the jacket's hem (the top is zipped and skinned to the body, no bones),
-the game's bow on her back (a static mesh on the driver's holster bone: it rides the driver rigidly, so simulating it means
-a physics-free spring on the holster socket, not a node here), collision of the ponytail against the back (the cone limits
-only).
+the import until it has been looked at).
+
+First build and look, in order: build the editor target (a failure in `Plugins/KawaiiPhysics/Source/KawaiiPhysics/Private/Tests`
+means delete that folder, the tests are the plugin's own); run `Hawkeye.SecondaryMotion` and `KawaiiPhysics`; rebuild Kate
+(`create-content.ps1`, the AnimBP stamp changed so it rebuilds) and check `LogHawkeye` says two Kawaii Physics nodes; run a
+standalone game and confirm no assert in `BonePose.h`; then look at the ponytail in the `Hawkeye.Screenshot.Traversal` strips
+(run, stop, a zip pull, a landing) with `a.AnimNode.KawaiiPhysics.Debug 1` drawing the shapes, and tune from there.
 
 ## Known limits
 
