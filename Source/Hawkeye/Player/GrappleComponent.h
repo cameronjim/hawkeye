@@ -4,6 +4,8 @@
 #include "Components/ActorComponent.h"
 #include "Player/HawkeyeMovementTypes.h"
 #include "Traversal/GrappleReachTypes.h"
+#include "Traversal/GrappleRopeRules.h"
+#include "Traversal/GrappleShotRules.h"
 #include "GrappleComponent.generated.h"
 
 class ACharacter;
@@ -11,6 +13,8 @@ class AGrappleAnchor;
 class AGrappleArrowProjectile;
 class UArrowDefinition;
 class UAudioComponent;
+class UBowComponent;
+class UGrappleRopeComponent;
 class UNiagaraComponent;
 class UNiagaraSystem;
 class USoundBase;
@@ -167,6 +171,67 @@ public:
 	/** Arrow arrived at Anchor: start (or redirect) the zip. Called by AGrappleArrowProjectile. */
 	void HandleArrowArrived(AGrappleArrowProjectile* Arrow, AGrappleAnchor* Anchor);
 
+	/**
+	 * Makes Anchor the marked target now (tests and the shot strips, which put an anchor where they want it and fire at it
+	 * without a camera). TryFire still checks the state.
+	 */
+	void SetTargetForTest(AGrappleAnchor* Anchor)
+	{
+		TargetAnchor = Anchor;
+	}
+
+	/**
+	 * Drops everything the shot has up: a pending shot, every rope, the bow's scripted aim and the arrow waiting to be taken out.
+	 * The traversal strips call it between scenarios.
+	 */
+	void ClearShot();
+
+	/** One tick of the shot, the ropes and the bow's hold with no world ticking (tests; TickComponent runs the same). */
+	void TickShotForTest(float DeltaSeconds)
+	{
+		AdvanceShot(DeltaSeconds);
+		UpdateRopes(DeltaSeconds);
+		UpdateBowHold(DeltaSeconds);
+		UpdateLingeringArrow(DeltaSeconds);
+	}
+
+	/** The shot's phase now: None with no shot, Raise and Draw until the release, Flight until the arrow bites, Stuck after. */
+	EGrappleShotPhase GetShotPhase() const;
+
+	/** Seconds since the press, while a shot is pending (before the release); else 0. */
+	float GetShotSeconds() const
+	{
+		return bShotPending ? ShotElapsed : 0.f;
+	}
+
+	/** The pending (or last) shot's clock. */
+	const FGrappleShotSchedule& GetShotSchedule() const
+	{
+		return ShotSchedule;
+	}
+
+	/** The press has been taken and the arrow has not left the bow yet. */
+	UFUNCTION(BlueprintPure, Category = "Grapple")
+	bool IsShotPending() const
+	{
+		return bShotPending;
+	}
+
+	/** Ropes on the screen now (a chain's old one whips away while the new one pays out). */
+	int32 GetVisibleRopeCount() const;
+
+	/** The state of the newest rope, Hidden with none. */
+	EGrappleRopeState GetNewestRopeState() const;
+
+	/** Where the rope is tied on her side: the bow hand. */
+	FVector GetRopeHandLocation() const
+	{
+		return GetZipLineStart();
+	}
+
+	/** hawkeye.Grapple.LegacyBeam: 1 draws the old Niagara beam (NS_ZipLine) as well as the rope. */
+	static bool IsLegacyBeamForced();
+
 	/** The owner's movement component is carrying her along a zip. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
 	bool IsZipping() const;
@@ -182,8 +247,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Grapple")
 	AGrappleAnchor* GetZipAnchor() const { return ZipAnchor.Get(); }
 
+	/** A shot is pending (the press is taken, the arrow not yet loosed) or the arrow is in the air. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
-	bool IsArrowInFlight() const { return InFlightArrow.IsValid(); }
+	bool IsArrowInFlight() const { return bShotPending || InFlightArrow.IsValid(); }
 
 	/** Arrows fired this session. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
@@ -353,7 +419,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple|Audio")
 	TSoftObjectPtr<USoundBase> LandSound;
 
-	/** The line from her hand to the anchor while she zips (NS_ZipLine; User.BeamStart/BeamEnd each frame). */
+	/** The grapple shot: raise, draw and release before the arrow leaves, the rope instead of the beam. See FHawkeyeGrappleShotSettings. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple|Shot")
+	FHawkeyeGrappleShotSettings Shot;
+
+	/** The rope's numbers: thickness, sag, the snap and the shiver, the release. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple|Rope")
+	FHawkeyeGrappleRopeSettings Rope;
+
+	/** The arrow biting the anchor: the thunk (MS_Grapple_Bite). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple|Audio")
+	TSoftObjectPtr<USoundBase> HitSound;
+
+	/**
+	 * The old line from her hand to the anchor while she zips (NS_ZipLine; User.BeamStart/BeamEnd each frame). Replaced by the
+	 * rope when Shot.bEnabled; kept for the unticked test worlds and hawkeye.Grapple.LegacyBeam.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple|Effects")
 	TSoftObjectPtr<UNiagaraSystem> ZipLineVfx;
 
@@ -392,8 +473,79 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UNiagaraComponent> ZipLine = nullptr;
 
-	/** Puts the zip line's ends on her hand and the anchor (spawning it on the first call of a zip). */
+	/** Puts the zip line's ends on her hand and the anchor (spawning it on the first call of a zip). Not when the rope draws it. */
 	void UpdateZipLine();
+
+	// --- The shot and the rope (claude-docs/gameplay-semantics.md, "Grapple shot" and "Grapple rope") --------
+
+	/** True when this owner can play the shot: it is enabled and she carries a bow. */
+	bool CanPlayShot() const;
+
+	/** The press: raise the bow on Anchor and start the clock. Releases at once when the schedule has no draw. */
+	void BeginShot(AGrappleAnchor* Anchor, UArrowDefinition* Definition, bool bChain);
+
+	/** Moves the clock and the draw on; releases when it is time. */
+	void AdvanceShot(float DeltaSeconds);
+
+	/** The release: the string lets go, the arrow leaves the bow hand and the rope starts to pay out. */
+	void ReleaseShot();
+
+	/** Drops a pending shot (the anchor went, the owner is going): the bow comes down, nothing flies. */
+	void CancelShot();
+
+	/** What an arrow of Definition flies at, cm/s: a chain's speed when bChain, else the projectile's own. */
+	float GetArrowSpeed(const UArrowDefinition* Definition, bool bChain) const;
+
+	/** The bow stays up on the line while a shot, an arrow or a pull needs it, and comes down a moment after. */
+	void UpdateBowHold(float DeltaSeconds);
+
+	/** One rope: its state machine, its drawing component and what its far end is tied to. */
+	struct FRopeSlot
+	{
+		FGrappleRope State;
+		TWeakObjectPtr<UGrappleRopeComponent> View;
+		TWeakObjectPtr<AGrappleArrowProjectile> Arrow;
+		TWeakObjectPtr<AGrappleAnchor> Anchor;
+		FVector LastEnd = FVector::ZeroVector;
+	};
+
+	/** A free slot (a hidden one, else the oldest), cleared. Never more than MaxRopes. */
+	FRopeSlot& AcquireRope();
+
+	/** Starts a rope tied to Arrow, flying toward Anchor. */
+	void StartRope(AGrappleArrowProjectile* Arrow, AGrappleAnchor* Anchor);
+
+	/** The arrow bit: the rope on it goes taut. */
+	void TightenRope(AGrappleArrowProjectile* Arrow, AGrappleAnchor* Anchor);
+
+	/** Lets every taut rope go except one tied to KeepAnchor (null: all of them). */
+	void ReleaseRopes(const AGrappleAnchor* KeepAnchor);
+
+	/** Steps every rope and lays it along her hand and its arrow. */
+	void UpdateRopes(float DeltaSeconds);
+
+	/** The anchor's arrow is taken out a moment after a let-go. */
+	void UpdateLingeringArrow(float DeltaSeconds);
+
+	static constexpr int32 MaxRopes = 3;
+	TArray<FRopeSlot> Ropes;
+
+	bool bShotPending = false;
+	bool bShotChain = false;
+	float ShotElapsed = 0.f;
+	FGrappleShotSchedule ShotSchedule;
+	TWeakObjectPtr<AGrappleAnchor> ShotAnchor;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UArrowDefinition> ShotDefinition = nullptr;
+
+	/** The bow is held up and aimed at the line from the press until a moment after it is gone. */
+	bool bBowHeld = false;
+	float BowHoldRemaining = 0.f;
+
+	/** An anchor whose arrow is taken out after a let-go, and how long until. */
+	TWeakObjectPtr<AGrappleAnchor> LingerAnchor;
+	float LingerRemaining = 0.f;
 
 	/** 0..1 for the zip loop: low on the hop up to the line, full along it (scaled by the movement's ZipSpeed). */
 	float ComputeZipSoundSpeed() const;
