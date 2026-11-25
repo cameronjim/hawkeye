@@ -247,6 +247,19 @@ push that regenerates the city. Roofs it does not fail on (no sidewalk spot in r
 listed in its JSON's `roofs_off_the_street` with how they are reached instead. It needs the engine, so it is not in CI.
 `-Probe` checks the generator's reach model against the game pair by pair (`tools-traversal-debugger.md`).
 
+## 2j. Demo shots (written 2026-11-25)
+
+`Hawkeye.Demo.GrappleRun`, `.Descent`, `.Lucky`, `.Establish` (`Tests/DemoCaptureTest.cpp`) play one shot of the portfolio video
+with the lap bots and write 1920x1080, 60 fps frame sequences to `Saved/Demo/<shot>/frame_%05d.png` plus a `shot.json` (the frame of
+every zip, landing, mantle and ring). They skip their bodies without `-HawkeyeDemo` and without a renderer, so they are part of the
+headless count (4 of it) and do nothing there. `.\Tools\demo-capture.ps1 -Shot <grapple_run|descent|lucky|establish>` runs one in its own
+process under an 8-minute timeout (a shot takes 50 to 75 s of wall time including the load); it always goes through
+`Automation RunTests`, so the game writes the `HawkeyeCampaignAutomation` slot and never `HawkeyeCampaign`. The route and descent
+shots use a camera of their own (the player's boom folds in to nothing on a parapet), the Lucky shot a side camera.
+`Hawkeye.Editor.TraversalDebugger.Shot` draws the debugger tab off screen (editor, real renderer, `-HawkeyeDemo`). The cut is
+`Tools/Demo/cut.py` from `docs/demo/edl.json`; `Tools/Demo/make_terminal.py` makes the terminal shots' text from real run output.
+The owner's own clips: `docs/demo/recording-guide.md` and `Tools\demo-record.ps1`, which backs up and restores his campaign save.
+
 ## 3. Playtest checklist (human)
 
 Before any commit that touches player feel, AI, or a level, play through this in
