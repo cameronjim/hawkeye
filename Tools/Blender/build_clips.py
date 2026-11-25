@@ -1039,7 +1039,7 @@ ARM_STRAIGHT = 0.94
 BALL_FROM_WALL = 5.0
 PARAPET = 90.0
 START_BACK = 50.0
-DROP_HOP = PARAPET + 30.0
+DROP_HOP = PARAPET + 12.0
 DROP_SECONDS = 0.5
 DROP_TURN = 0.45
 CLIMB_SECONDS = 1.0
@@ -1233,7 +1233,13 @@ def ledge_drop_to_hang(rig):
             a = time / t
             p = pelvis(time)
             shoulder = (p[0] + (sh[0] if side == "l" else -sh[0]), p[1] + sh[1], p[2] + sh[2])
-            return _reach_limited(shoulder, _dismount_edge_local(a, side), reach)
+            target = _dismount_edge_local(a, side)
+            # Out of reach the hand rests ready in front of the chest, elbow bent (not an arm flung out at the lip); it goes
+            # to the lip as the lip comes within reach.
+            ready = (shoulder[0] * 0.9, shoulder[1] - 0.45 * reach, shoulder[2] - 0.55 * reach)
+            dist = math.sqrt(sum((t_ - s_) ** 2 for t_, s_ in zip(target, shoulder)))
+            w = ck.smoothstep((1.12 * reach - dist) / (0.25 * reach))
+            return _lerp(ready, _reach_limited(shoulder, target, reach), w)
         return at
 
     def foot(base, hang_foot):
@@ -1260,7 +1266,7 @@ def ledge_drop_to_hang(rig):
         "fingers_r": T([(0.0, 1.2), (0.25, 1.2), (t, 1.35)]),
     }
     return ck.Clip("Ledge_DropToHang", t, tracks, strip_times=[0.0, 0.08, 0.16, 0.24, 0.32, 0.40, t], torso_clear=False,
-                   extra={"floor_cm": LEDGE_FLOOR, "span": (-130.0, 130.0), "pop_degrees": 70.0})
+                   extra={"floor_cm": LEDGE_FLOOR, "span": (-130.0, 130.0), "pop_degrees": 56.0})
 
 
 def _climb_edge_local(a, side, push):

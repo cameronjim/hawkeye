@@ -301,6 +301,12 @@ public:
 	/** The hang camera: the shoulder offset goes to the open side of the wall. AHawkeyeCharacter::UpdateCamera calls it. */
 	void ApplyHangCamera(FHawkeyeCameraTargets& InOutTargets, float DeltaSeconds);
 
+	/** The degrees the lens is tipped down by the ledge framing right now. AHawkeyeCharacter::UpdateCamera adds it to the lens tilt. */
+	float GetLedgeCameraTip() const { return LedgeFrameAlpha * LedgeCameraTipDegrees; }
+
+	/** 0..1: how far the ledge framing has eased in. */
+	float GetLedgeFrameAlpha() const { return LedgeFrameAlpha; }
+
 	/** The control yaw that keeps the camera off the wall: within MaxDegrees of looking straight at it. Pure. */
 	static float ComputeHangCameraYaw(float ControlYaw, const FVector& WallNormal, float MaxDegrees);
 
@@ -612,6 +618,21 @@ public:
 	/** How fast the camera eases back inside that limit, 1/s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.0"))
 	float HangCameraYawSpeed = 6.f;
+
+	/**
+	 * On a ledge move (a roof dismount, a catch, the hang, the climb out) the pivot rises this much and the lens tips down to match,
+	 * so the whole of her stays in frame over the lip or off the wall, cm. The arm keeps its length.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.0"))
+	float LedgeCameraLift = 90.f;
+
+	/** How far the lens tips down on a ledge move, degrees (the lift's own, so she stays centred). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.0", ClampMax = "45.0"))
+	float LedgeCameraTipDegrees = 14.f;
+
+	/** The framing eases in and out over this, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.05"))
+	float LedgeCameraSeconds = 0.35f;
 
 	// --- Clips ----------------------------------------------------------------------------------
 
@@ -941,6 +962,11 @@ protected:
 	FVector MovePivot = FVector::ZeroVector;
 	/** The hang transfer's target, which becomes HangObstacle when it ends. */
 	FHawkeyeParkourObstacle TransferTarget;
+
+	/** The ledge framing's weight (a dismount, a catch, a hang, the climb out). */
+	float LedgeFrameAlpha = 0.f;
+	/** On a ledge move: true, and OutNormal the wall's outward normal. */
+	bool GetLedgeFraming(FVector& OutNormal) const;
 
 	/** The lens's shoulder: +1 right, -1 left, eased between. */
 	float HangCameraSide = 1.f;

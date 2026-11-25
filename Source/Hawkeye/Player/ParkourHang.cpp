@@ -1429,15 +1429,31 @@ float UParkourComponent::ComputeHangSocketSide(float ControlYaw, const FVector& 
 	return CurrentSide < 0.f ? -1.f : 1.f;
 }
 
+bool UParkourComponent::GetLedgeFraming(FVector& OutNormal) const
+{
+	if (bHanging)
+	{
+		OutNormal = HangLine.Normal;
+		return true;
+	}
+	if (ActiveMove == EHawkeyeParkourMove::DropToHang || ActiveMove == EHawkeyeParkourMove::LedgeGrab)
+	{
+		OutNormal = HangObstacle.WallNormal;
+		return !OutNormal.IsNearlyZero();
+	}
+	return false;
+}
+
 void UParkourComponent::KeepHangCameraOffTheWall(float DeltaSeconds)
 {
 	AController* Controller = HawkeyeHang::LocalController(GetOwner());
-	if (!Controller || !bHanging)
+	FVector Normal;
+	if (!Controller || !GetLedgeFraming(Normal))
 	{
 		return;
 	}
 	FRotator Control = Controller->GetControlRotation();
-	const float Want = ComputeHangCameraYaw(Control.Yaw, HangLine.Normal, HangCameraMaxYaw);
+	const float Want = ComputeHangCameraYaw(Control.Yaw, Normal, HangCameraMaxYaw);
 	const float Off = FRotator::NormalizeAxis(Want - Control.Yaw);
 	if (FMath::Abs(Off) < 0.01f)
 	{
@@ -1451,6 +1467,16 @@ void UParkourComponent::KeepHangCameraOffTheWall(float DeltaSeconds)
 void UParkourComponent::ApplyHangCamera(FHawkeyeCameraTargets& InOutTargets, float DeltaSeconds)
 {
 	using namespace HawkeyeHang;
+	// A dismount or a catch is not the hang yet (the hang's own tick eases the camera): bring the camera round to the open
+	// side of the wall from the first frame, or it stays behind the parapet and loses her.
+	FVector FrameNormal;
+	const bool bFraming = GetLedgeFraming(FrameNormal);
+	if (bFraming && !bHanging)
+	{
+		KeepHangCameraOffTheWall(DeltaSeconds);
+	}
+	LedgeFrameAlpha = FMath::FInterpConstantTo(LedgeFrameAlpha, bFraming ? 1.f : 0.f, DeltaSeconds, 1.f / LedgeCameraSeconds);
+	InOutTargets.PivotLift += FMath::SmoothStep(0.f, 1.f, LedgeFrameAlpha) * LedgeCameraLift;
 	const bool bOn = bHanging || IsHangTransfer(ActiveMove);
 	float Want = 1.f;
 	if (bOn)

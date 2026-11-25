@@ -811,6 +811,54 @@ namespace HawkeyeTraversalShots
 			S.Start = FallPastTheEdge;
 			Out.Add(S);
 		}
+		// Her own camera, at night with the character light rig: what the player sees of each ledge move.
+		const auto PlayerView = [&Out](const TCHAR* Name, double Reference, const TArray<float>& Times, const auto& Start,
+			bool bReferenceIsMove, double ClimbAt, double DropAt)
+		{
+			FScenario S;
+			S.Name = Name;
+			S.Reference = Reference;
+			S.Times = Times;
+			S.bLedge = true;
+			S.bNight = true;
+			S.bPlayerCamera = true;
+			S.bReferenceIsMove = bReferenceIsMove;
+			S.Start = Start;
+			if (ClimbAt > 0.0)
+			{
+				S.Events.Add({ClimbAt, [](FStage& Stage, UWorld&)
+					{
+						if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+						{
+							Kate->GetParkourComponent()->ClimbFromHang();
+						}
+					}});
+			}
+			if (DropAt > 0.0)
+			{
+				S.Events.Add({DropAt, [](FStage& Stage, UWorld&)
+					{
+						if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+						{
+							Kate->GetParkourComponent()->DropFromHang();
+						}
+					}});
+			}
+			Out.Add(S);
+		};
+		const auto DismountStart = [](FStage& Stage, UWorld& World)
+		{
+			PlaceKateOnLedgeStage(Stage, World, 0.f, 0.f, 0.f, 0.f, /*bFalling=*/false);
+			if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+			{
+				Kate->GetParkourComponent()->TryDropToHang(Kate->GetActorForwardVector(), TEXT("strip"));
+			}
+		};
+		PlayerView(TEXT("roof_dismount_player"), 0.0, Frames60(0.f, 8, 9), DismountStart, true, 0.0, 0.0);
+		PlayerView(TEXT("ledge_catch_player"), 0.0, Frames60(0.f, 8, 6), FallPastTheEdge, true, 0.0, 0.0);
+		PlayerView(TEXT("hang_player"), 1.9, Frames60(0.f, 4, 20), FallPastTheEdge, false, 0.0, 0.0);
+		PlayerView(TEXT("hang_drop_player"), 1.5, Frames60(-6.f / 60.f, 8, 4), FallPastTheEdge, false, 0.0, 1.5);
+		PlayerView(TEXT("climb_up_player"), 1.5, Frames60(0.f, 8, 8), FallPastTheEdge, false, 1.5, 0.0);
 		return Out;
 	}
 
@@ -1230,6 +1278,19 @@ namespace HawkeyeTraversalShots
 			if (!bActive || !Body)
 			{
 				return;
+			}
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const FName Shoulder(Side == 0 ? TEXT("upperarm_l") : TEXT("upperarm_r"));
+				const FName Hand(Side == 0 ? TEXT("hand_l") : TEXT("hand_r"));
+				if (Body->DoesSocketExist(Shoulder) && Body->DoesSocketExist(Hand))
+				{
+					Test->AddInfo(FString::Printf(TEXT("  %s side %d: target %s, drawn hand %s, shoulder %s, shoulder to target %.1f cm, shoulder to drawn hand %.1f cm, alpha %.2f"),
+						*Scenario.Name, Side, *Pose.Hand[Side].ToCompactString(), *Body->GetSocketLocation(Hand).ToCompactString(),
+						*Body->GetSocketLocation(Shoulder).ToCompactString(),
+						static_cast<float>(FVector::Dist(Body->GetSocketLocation(Shoulder), Pose.Hand[Side])),
+						static_cast<float>(FVector::Dist(Body->GetSocketLocation(Shoulder), Body->GetSocketLocation(Hand))), Pose.HandAlpha[Side]));
+				}
 			}
 			for (int32 Side = 0; Side < 2; ++Side)
 			{

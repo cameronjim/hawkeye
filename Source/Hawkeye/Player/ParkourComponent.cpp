@@ -72,7 +72,7 @@ namespace HawkeyeParkour
 	/** A floor within this of the feet is still the floor being stood on, cm. */
 	static constexpr float FloorTolerance = 20.f;
 	/** The drop to hang hops this far over the lip on its way over, cm. */
-	static constexpr float DropHopClearance = 30.f;
+	static constexpr float DropHopClearance = 12.f;
 	/** In the air the front face is probed from this far above the feet, cm. */
 	static constexpr float AirProbeLowest = 5.f;
 	/** In the air a top this far above the feet is still worth a mantle (she would slide down its face). */
