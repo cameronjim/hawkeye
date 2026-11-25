@@ -1017,9 +1017,10 @@ def ensure_looks(mesh, materials, built=None):
             apply_look(bp_path, look_mesh, abp.generated_class(), look_materials)
             # Every wearer is written its variants, none included: BP_Thug_Heavy is a child of BP_Thug and would draw
             # the thugs' faces on the heavy's body from the parent's list.
-            wanted = LOOK_VARIANTS.get(body_mi, [])
-            entries = [built[v] for v in wanted if v in built] if body_mi in built else []
-            apply_variants(bp_path, abp.generated_class(), entries)
+            if body_mi in ("MI_Body_Thug", "MI_Body_Heavy"):    # Clint is not an AThugCharacter
+                wanted = LOOK_VARIANTS.get(body_mi, [])
+                entries = [built[v] for v in wanted if v in built] if body_mi in built else []
+                apply_variants(bp_path, abp.generated_class(), entries)
     # After BP_Thug: a child compiled before its parent changes would take the parent's look back.
     for bp_path in KEEP_MANNEQUIN:
         apply_look(bp_path, None, None, [])

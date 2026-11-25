@@ -114,13 +114,13 @@ def skin_maps(face, grid, size=1024):
     flush = hs.gauss(ax - 0.048, z - hs.Z(0.37), 0.014, 0.017) * front
     flush += 1.1 * hs.gauss(ax, z - (lm.sub + 0.008), 0.017, 0.022) * front
     flush += 1.6 * hs.gauss(ax - 0.073, z - hs.Z(0.47), 0.016, 0.034)
-    albedo += (face.skin_ruddy * (0.55 + 0.45 * face.age) * 0.12 * np.clip(flush, 0, 1.4))[:, :, None] \
+    albedo += (face.skin_ruddy * (0.55 + 0.45 * face.age) * 0.055 * np.clip(flush, 0, 1.4))[:, :, None] \
         * np.array([0.95, -0.40, -0.30])
     # The ears' patch (the ear meshes sample the skin round their anchor): a shade darker and redder than the cheek.
     ear_patch = hs.gauss(ax - 0.0745, z - hs.Z(0.47), 0.022, 0.036)
-    albedo *= 1.0 - (0.20 * ear_patch)[:, :, None] * np.array([0.55, 0.95, 0.95])
+    albedo *= 1.0 - (0.12 * ear_patch)[:, :, None] * np.array([0.55, 0.95, 0.95])
     # Under the chin: the throat falls into shadow.
-    albedo *= 1.0 - (0.30 * hs.smoothstep(hs.Z(0.03), hs.Z(-0.10), z) * hs.smoothstep(-0.2, 0.4, fr.cos))[:, :, None]
+    albedo *= 1.0 - (0.26 * hs.smoothstep(hs.Z(0.04), hs.Z(-0.14), z) * hs.smoothstep(-0.6, 0.6, fr.cos))[:, :, None]
     # Eye sockets and under-eye shadow.
     socket = hs.gauss(ax - lm.eye_x, z - lm.eye, 0.023, 0.016) * front
     bag = hs.gauss(ax - lm.eye_x, z - (lm.eye - 0.016), 0.016, 0.006) * front
@@ -167,7 +167,7 @@ def skin_maps(face, grid, size=1024):
     # Fine grain, freckle-scale blotches.
     albedo *= 1.0 + 0.020 * tileable_noise(h, w, seed + 5, 0.8)[:, :, None]
     blot = tileable_noise(h, w, seed + 6, 7.0)
-    albedo *= 1.0 - (0.05 * (0.4 + face.age)) * np.clip(blot - 1.0, 0.0, 2.0)[:, :, None] * np.array([0.6, 0.8, 1.0])
+    albedo *= 1.0 - (0.025 * (0.4 + face.age)) * np.clip(blot - 1.0, 0.0, 2.0)[:, :, None] * np.array([0.6, 0.8, 1.0])
     albedo = np.clip(albedo, 0.0, 1.0)
 
     # Height: pores, lines of age, the lips' fine vertical lines.

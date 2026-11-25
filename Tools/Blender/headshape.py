@@ -231,7 +231,7 @@ def displacement(face, ax, z):
     zb = lm.brow - 0.0030 * np.clip((ax - 0.028) / 0.028, 0.0, 1.0)
     front += 0.0095 * f.brow * gauss(ax - 0.031, z - zb, 0.024, 0.0070)
     front += 0.0050 * f.brow * gauss(ax, z - (lm.brow - 0.0045), 0.010, 0.0105)
-    front += 0.0035 * gauss(ax - 0.024, z - Z(0.69), 0.034, 0.030)
+    front += 0.0020 * gauss(ax - 0.024, z - Z(0.69), 0.034, 0.030)
     # eye socket, the lid opening the eyeball shows through, the lid's rim and crease, the tear trough and the bag
     front -= SOCKET_DEPTH * f.eye_sink * gauss(ax - ex, z - ze, 0.0205, 0.0135)
     ap, r = aperture(f, ax, z)
@@ -242,10 +242,10 @@ def displacement(face, ax, z):
     front -= (0.0010 + 0.0030 * age) * gauss(ax - ex * 0.92, z - (ze - 0.0150), 0.013, 0.0035)
     front += (0.0012 + 0.0028 * age) * gauss(ax - ex * 1.02, z - (ze - 0.0225), 0.014, 0.0045)
     # cheek fullness: rounds the step from the cheekbone's width down to the jaw's (flesh over the masseter)
-    side += 0.0030 * (0.6 + 0.4 * f.cheek) * (1.0 - 0.7 * f.cheek_hollow) * gauss(ax - 0.062, z - Z(0.32), 0.022, 0.060)
+    side += 0.0020 * (0.6 + 0.4 * f.cheek) * (1.0 - 0.7 * f.cheek_hollow) * gauss(ax - 0.062, z - Z(0.32), 0.018, 0.060)
     # cheekbone, the hollow under it, the temple
-    side += 0.0040 * f.cheek * gauss(ax - 0.0545, z - Z(0.40), 0.018, 0.022)
-    front += 0.0022 * f.cheek * gauss(ax - 0.042, z - (Z(0.41) + 0.35 * (ax - 0.040)), 0.018, 0.020)
+    side += 0.0028 * f.cheek * gauss(ax - 0.0545, z - Z(0.40), 0.014, 0.022)
+    front += 0.0013 * f.cheek * gauss(ax - 0.042, z - (Z(0.41) + 0.35 * (ax - 0.040)), 0.014, 0.020)
     front -= 0.0045 * f.cheek_hollow * (0.6 + 0.8 * age) * gauss(ax - 0.044, z - (Z(0.275) + 0.30 * (ax - 0.040)), 0.018, 0.022)
     side -= 0.0030 * f.cheek_hollow * gauss(ax - 0.060, z - Z(0.30), 0.010, 0.018)
     side -= 0.0020 * gauss(ax - 0.0735, z - Z(0.58), 0.008, 0.022)
@@ -267,7 +267,7 @@ def displacement(face, ax, z):
     front -= 0.0016 * gauss(ax, z - (lm.sub - 0.0085), 0.0042, 0.0070)
     front += 0.0010 * gauss(ax - 0.0075, z - (lm.sub - 0.009), 0.0022, 0.0060)
     # the muzzle: mouth and the cheeks beside it stand forward of the plane of the face, so the front is round
-    front += 0.0035 * gauss(ax, z - Z(0.27), 0.036, 0.045)
+    front += 0.0015 * gauss(ax, z - Z(0.27), 0.030, 0.045)
     # lips, the line between them, the corners, the groove under the lower lip, the chin
     front += 0.0058 * f.lips * gauss(ax, z - lm.ul, 0.0135 * mw, 0.0045)
     front += 0.0075 * f.lips * gauss(ax, z - lm.ll, 0.0130 * mw, 0.0052)
@@ -346,7 +346,7 @@ class HeadGrid:
         d = front * mf + side * ms
         d = d * smoothstep(CHIN_Z - 0.03, CHIN_Z + 0.01, z)      # the neck has no face
         P = np.stack([x + nx * d, y + ny * d, z], axis=2)
-        self.P = smooth_grid(P, iters=1, factor=0.3)
+        self.P = smooth_grid(P, iters=2, factor=0.35)
         top_prof = profile(face, np.array([CROWN_Z]), neck_y)
         self.apex = np.array([0.0, float(top_prof["yc"][0]), CROWN_Z])
         self.N = grid_normals(self.P, self.apex)
