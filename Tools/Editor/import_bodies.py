@@ -664,7 +664,14 @@ BUILT_LODS = 4   # LOD0 as built, then the engine's reductions at 50, 25 and 12.
 # root>\built\<who>, whose SK_<Who>.glb replaces it; the base body, BASE_BODIES, whose skeleton it was built on).
 KATE_LOOK_KEY = "Kate"
 BUILT_LOOKS = {"MI_Body_Thug": ("thug", "male"), "MI_Body_Heavy": ("heavy", "male"), "MI_Body_Clint": ("clint", "male"),
-               KATE_LOOK_KEY: ("kate", "female")}
+               KATE_LOOK_KEY: ("kate", "female"),
+               # The thugs' other faces and builds (Tools/Blender/looks.py rows, `build_thug.py --look <id>`): each its own
+               # built folder, mesh and slot table, all on the same skeleton and AnimBP as "thug".
+               "MI_Body_Thug_b": ("thug_b", "male"), "MI_Body_Thug_c": ("thug_c", "male"),
+               "MI_Body_Thug_d": ("thug_d", "male")}
+# BP_Thug's own look (the key) and the looks it also draws from, one per spawn (AThugCharacter::BodyLookVariants, picked by
+# the actor's name so a placed thug keeps his face). The same rows as looks.BLUEPRINT_LOOKS["BP_Thug"].
+LOOK_VARIANTS = {"MI_Body_Thug": ["MI_Body_Thug_b", "MI_Body_Thug_c", "MI_Body_Thug_d"]}
 WHITE_TEX = "/Engine/EngineResources/WhiteSquareTexture"
 FLAT_NORMAL_TEX = "/Engine/EngineMaterials/FlatNormal"
 
@@ -933,6 +940,43 @@ def apply_look(bp_path, mesh, anim_class, materials):
     return True
 
 
+def apply_variants(bp_path, anim_class, entries):
+    """BodyLookVariants on a Blueprint's defaults: one FHawkeyeBodyLook per (mesh, materials) in entries, all on the
+    one AnimBP (same skeleton). True when it changed. A build without the C++ property logs a line and leaves it."""
+    import create_kate_look as kl  # noqa: PLC0415
+
+    bp = c.load_or_none(bp_path)
+    cdo = c.blueprint_cdo(bp) if bp is not None else None
+    label = bp_path + ".BodyLookVariants"
+    if cdo is None:
+        c.log("skipped", label, "no Blueprint")
+        return False
+    try:
+        current = cdo.get_editor_property("body_look_variants")
+    except Exception as exc:  # noqa: BLE001
+        c.log("skipped", label, "no such property (build HawkeyeEditor first): {0}".format(exc))
+        return False
+    wanted = [(kl._path_of(mesh), kl._path_of(anim_class), [kl._path_of(x) for x in mats]) for mesh, mats in entries]
+    have = [(kl._path_of(look.get_editor_property("mesh")), kl._path_of(look.get_editor_property("anim_class")),
+             [kl._path_of(x) for x in look.get_editor_property("materials")]) for look in current]
+    names = ", ".join(mesh.get_name() for mesh, _mats in entries) or "none"
+    if have == wanted:
+        c.log("exists", label, names)
+        return False
+    variants = []
+    for mesh, mats in entries:
+        look = unreal.HawkeyeBodyLook()
+        look.set_editor_property("mesh", mesh)
+        look.set_editor_property("anim_class", anim_class)
+        look.set_editor_property("materials", list(mats))
+        variants.append(look)
+    cdo.set_editor_property("body_look_variants", variants)
+    c.compile_blueprint(bp)
+    c.save(bp)
+    c.log("updated", label, names)
+    return True
+
+
 def ensure_looks(mesh, materials, built=None):
     """The rig, a retargeter and AnimBP per driver, and each wearer's BodyLook: its built costume when one is on disk
     (built: {look MI name: (mesh, materials)} from ensure_built, same skeleton, same AnimBP), else the painted body."""
@@ -971,6 +1015,9 @@ def ensure_looks(mesh, materials, built=None):
         if abp is not None:
             look_mesh, look_materials = built.get(body_mi, (mesh, _slot_materials(mesh, materials, body_mi)))
             apply_look(bp_path, look_mesh, abp.generated_class(), look_materials)
+            if body_mi in LOOK_VARIANTS:
+                entries = [built[v] for v in LOOK_VARIANTS[body_mi] if v in built] if body_mi in built else []
+                apply_variants(bp_path, abp.generated_class(), entries)
     # After BP_Thug: a child compiled before its parent changes would take the parent's look back.
     for bp_path in KEEP_MANNEQUIN:
         apply_look(bp_path, None, None, [])
