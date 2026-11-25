@@ -462,6 +462,39 @@ picks back or front, `gameplay-semantics.md`, "Authored clips"); out of the knoc
 lay onto the capsule over 0.3 s, out of the ragdoll the physics weight falls 1 to 0 over 0.3 s. Strips:
 `getup_from_clip.png`, `getup_from_ragdoll.png`.
 
+**Ledge clips (written 2026-11-25, phase 1: code only; not built in Blender, not imported, not seen).** Six clips on Kate's rig
+(`uefn`) in `build_clips.py` ("the ledge clips"), for the ledge body (`gameplay-semantics.md`, "Ledge body"). All in place (no
+root motion): the capsule's path is the game's and the rig's origin is the capsule's bottom, so the ledge is keyed where the game
+puts it relative to her (hang: edge top 145 cm over the origin and 36 cm ahead, wrists a shoulder width apart; the numbers are
+game cm over the driver's 0.93). The visible body's IK finishes the contact, so a hand here only has to be close; hand turns are
+the idle's (the IK turns the hand), the elbows are poles out and back.
+
+| Clip | Length | Role | What |
+|------|--------|------|------|
+| Ledge_DropToHang | 0.5 s | LedgeDropToHang | crouch at the parapet, hips over it as she turns, lowered to the hang; the hands follow the parapet's top as the game's path and turn move it past her (`_dismount_edge_local`), pointing at what they cannot reach yet; ends on the hang's first frame exactly |
+| Ledge_Catch | 0.45 s | LedgeCatch | arms up for the edge, the hands close, the body's weight comes on (arms out straight, feet out behind), swings in, knees bend, toes meet the wall; ends on the hang |
+| Ledge_HangIdle | 1.6 s | LedgeHangIdle (loops) | the hang: near-straight arms, toes on the brick, a slow sway |
+| Ledge_HangDrop | 0.35 s | LedgeHangDrop | a small pull, the hands come off the edge, a push off the wall, arms out and down, knees bent for the landing |
+| Ledge_ClimbUp | 1.0 s | LedgeClimbUp | pull, chest over with the palms pressed back onto the top, a knee up, stand (the last 0.25 s cross-fade into the idle); the ledge sinks past her and comes back behind her as the climb's path does (`_climb_edge_local`) |
+| Vault_Plant | 0.6 s | LedgeVaultPlant (`in_set: false`) | a vault at a run: one hand on the top, hips over, legs swung left; not wired: the vault stays the sample's hurdle |
+
+The clips are made with `Tools/Blender/build_clips.py` as the others are (`--only ledge_hang_idle,ledge_catch,...`; the function names),
+the pose checks run with one change: a clip may say how low it goes (`extra["floor_cm"]`, -45 cm for these: the arms are straight
+in a hang 145 cm under the ledge, so the body is under the capsule's bottom). Checked in Python only so far, with Blender and the
+rig stubbed (the clips' ends meet the hang pose exactly; the worst per-frame hand jump is 26 cm on the dismount, 37 on the climb
+and the vault's 16): the bone-turn and torso checks have not run, and will say which of the `pop_degrees` need raising or which
+hand keys need softening. The first Blender run also settles the hand and foot turn signs, which were worked out on paper.
+
+`import_combat_anims.ROLE_DEFAULTS` has the six roles (DefaultSlot, in place; the hang idle loops) and `manifest.json` six lines
+for `AuthoredKate` (Kate only). `UParkourComponent` plays them through the owner's combat anim set (`PlayLedgeRole`); a set without them
+leaves the sample's clips. `ABP_Kate_Body` has the Hawkeye Ledge IK node after the Kawaii nodes (`create_kate_look.ensure_anim_bp(...,
+ledge_ik=True)`, from `import_bodies.ensure_kate`).
+
+**The ledge strips** (`Hawkeye.Screenshot.Traversal`, written, not run): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`,
+`hang_hands` and `<name>_wide` of each, in `Saved/Screenshots/Traversal/<name>_<side | three_quarter>_<off | on>.png`, on a stage built
+200 m over the district at a fixed 1/60 s a frame, with the ledge body off (`hawkeye.LedgePose 0`) and on; eight frames of 1/30 s
+around where the hands reach the edge (`hang_hands`: eight of 1/10 s once it has settled, the camera 110 cm from her hands).
+
 ## Hands on the bodies (fixed 2026-11-24)
 
 Symptoms: fingers splayed straight like claws, wrists cocked, palms the wrong way, arms held out from the body.

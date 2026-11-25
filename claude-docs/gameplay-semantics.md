@@ -637,6 +637,73 @@ to `hawkeye.Traversal.MotionBlur` (0.12; the engine default is 0.5) and `MotionB
 Test: `Hawkeye.Traversal.MotionBlurWeight`. The demo shots' own camera (`Hawkeye.Demo.GrappleRun`, `.Descent`) is not the follow
 camera, so `DemoCaptureTest` gives it the same two values; without them the frame smeared in a zip at the volume's 0.5.
 
+## Ledge body (written 2026-11-25, phase 1: code, rules and tests written, not built, run or seen; Blender clips not built)
+
+Why (the owner, after watching captured gameplay: "parkour is off; the hands and body when dismounting from a roof is not right").
+The frames (`Saved/Demo/descent`, `grapple_run`) show the capsule on the right path and the body playing a pose that knows nothing
+about the ledge. Roof dismount: she crouches at the parapet with both arms up, then is on the wall face with one arm up and a
+knee up (the sample's 2.5 m climb clip, paused where its hands reach the edge: one hand, a climbing step), and when she lets go
+(the demo's script drops on the first tick of the hang) she falls down the wall with her arms out sideways (the sample's fall
+pose): no turn round, no hands on the edge, no hang, no push off. Ledge catch on a fire escape: the same paused clip and then the
+same fall, the arms out beside the rail. A vault: the sample's hurdle (root motion) squeezed to 0.35 s at a sprint, one arm
+flung out sideways and nothing touching the top. Before this the hands were only ever placed by IK from her first shimmy, on the
+hidden driver.
+
+What changed. The capsule's path, every timing and the traversal audit are untouched (`Hawkeye.Ledge.CapsulePathIsUnchanged`
+steps a dismount and a climb with the body on and off and compares the capsule every step). What changed is the body, in four
+parts, all in the files named:
+- **Stages** (`Traversal/LedgeBodyRules.h`, `HawkeyeLedge::GetSequence`): every ledge move is a sequence of stages over its time;
+  `UParkourComponent` (`LedgeBody.cpp`) works out where she is in it. Drop to hang (0.5 s): Plant 0 to 0.30, Lower to 0.78, Settle;
+  she turns to face the wall by `DropTurnFraction` 0.45 of the move (the capsule's yaw is eased over it, the camera is not
+  carried: the hang camera eases it round after) and the movement keys' yaw is the only part of the path that moved. Ledge grab
+  from the ground (0.35 s): Reach, Catch, Settle; a catch of a fall (0.15 s): Reach 0 to 0.4, Catch. Climb (1.0 s): Pull to 0.38,
+  ChestOver to 0.62, KneeUp to 0.84, Stand. Mantle (ours): Reach, Pull, ChestOver, KneeUp, Stand. Vault (ours, root motion):
+  VaultPlant to 0.45, VaultSwing. Hang leap and hop: Release, Reach, Catch. A hang is Settle (until `SettleSeconds` 1.4 or the swing
+  is under a degree) and then Hang. `StageWeights` says what each stage holds, 0 to 1: hands, feet, body, grip.
+- **Hands on the real edge.** The edge is the hang's ledge line while she hangs (`FHawkeyeLedgeLine`: ends, along, normal), the
+  probed obstacle's `LedgePoint` and `WallNormal` in a move, with a synthetic 120 cm either way (no ledge line is probed for a move).
+  `PlanHands`: the wrists on the edge `HandHalfGap` 19 cm either side of her (a shoulder width), 1 cm out over the face and
+  2.5 cm over the top, slid along until both are `HandEndMargin` 8 cm inside the line's ends, the gap narrowed to what is left
+  on a short ledge, closed up on the middle (`bCramped`) when under `MinHandGap` 10 cm is left (a 40 cm post: 24 cm for the hands).
+  A climb's ChestOver slides the palms back onto the top (`PushBack` 22 cm). Once she has shimmied the hands are the driver's
+  hand-over-hand places (`HandAlong`), through the same clamp.
+- **The IK on the visible body** (`Player/LedgeIKNode.h`, `FAnimNode_HawkeyeLedgeIK`; the graph node is
+  `AnimGraphNode_HawkeyeLedgeIK` in the `HawkeyeAnimEditor` module, uncooked-only like the body pose node's, so it loads in
+  standalone `-game`). It runs after the retarget and the Kawaii nodes on `ABP_Kate_Body` (parent class
+  `UHawkeyeKateBodyAnimInstance`, which reads `UParkourComponent::GetLedgeBodyPose` each frame; built by
+  `UHawkeyeRetargetGraphBuilder::BuildRetargetWithLedgeIK`, stamp `ledge-ik-1`, set up by `import_bodies.ensure_kate`). In component
+  space: (1) the whole body from the pelvis is turned by the swing about the hands' line and moved so the shoulders hang
+  `ShoulderOut` 17 cm out from the wall with the arms `ArmStraightness` 94% stretched (never more than `MaxBodyShift` 40 cm);
+  (2) each arm is two-bone IK'd to its wrist (`SolveTwoBone`, elbows out, back and down), the hand turned so the fingers point into
+  the wall tipped `FingerDownDegrees` 18 down and the palm is on the top (`AlignFrames`), the fingers written from the new
+  `EHandPose::Hang` table (`HawkeyeBodyPose::BlendHang`) by the grip; an arm whose target is further than it reaches is left to the
+  clip (`ReachWeight`: full to 98% of the arm's length, none at 130%), so a clip that has not got her there yet is not stretched;
+  (3) each foot is moved, not turned, so the ball is `BallFromWall` 5 cm off the wall's plane, then two-bone IK'd, the knees toward the wall;
+  weighted by how near the wall the swing leaves her. Everything is the pose's weights; the driver (the bow, the rope hand) is untouched.
+- **The swing** (`FLedgePendulum`): a damped pendulum, ω 5.2 rad/s, ζ 0.22, stepped in 1/120 s substeps (the same answer at 30 and
+  144 Hz), the wall stopping the feet at `SwingWallDegrees` -3 and giving back a quarter of the speed. A catch kicks it as the hands
+  take the edge by `CatchKickBase` 8 + 0.012 per cm/s of the fall (at most 26 degrees); a drop to hang by 4. Positive is the feet away from the wall.
+- **Clips.** Our own, in the combat anim set (roles `LedgeDropToHang`, `LedgeCatch`, `LedgeHangIdle` (loops), `LedgeHangDrop`,
+  `LedgeClimbUp`, `LedgeVaultPlant`; `Tools/Blender/build_clips.py`, "Ledge clips"; animation.md), played in place over the capsule's
+  path (`PlayLedgeRole`: rate fitted to the move's time within half and double). The drop to hang, the catch, the climb and a hop or leap play theirs; the hang
+  loops `LedgeHangIdle` where the move's clip ended (without it the move's clip is held on its last frame, as before); the let-go
+  plays `LedgeHangDrop`. A set without a role plays the sample's clip, as before. The vault plant clip is in the manifest
+  `in_set: false`: the vault stays the sample's hurdle (root motion warped to the probed top), its plant made by the IK.
+- **Release.** `DropFromHang` (and the hop with nothing behind) lets the capsule go at once, as before; the IK fades out over
+  `ReleaseSeconds` 0.16 on the pose she hung in (the hand targets stay where they were). Anything that leaves no pose
+  (a corner, a ledge move that is over) is let go of over about a tenth of a second, never dropped.
+- `hawkeye.LedgePose 0` (and `bLedgeBodyPose` off) is the old behaviour exactly, for the strips' off mode.
+- Tests (written, not run): the rules, `Hawkeye.Ledge.Sequences`, `.StageWeights`, `.HandPlacement`, `.TwoBoneAndReach`,
+  `.PendulumSettles`, `.HandFramesAndSwing`; on the component, on boxes, `Hawkeye.Ledge.RoofDismountPlantsTurnsAndHangs`,
+  `.CapsulePathIsUnchanged`, `.CatchSwingsInAndSettles`, `.ClimbPressesThePalmsOntoTheTop`, `.LetGoFadesTheHands`,
+  `.ShortLedgeClosesTheHands`. The strips: `Hawkeye.Screenshot.Traversal` with `-HawkeyeTraversalOnly=roof_dismount+ledge_catch+hang_drop+climb_up+vault+hang_hands`
+  (animation.md): at a fixed 1/60 s a frame, on a stage 200 m over the district, with the drawn hand's distance to its target checked
+  (8 cm; 4 for `hang_hands`) with the ledge body on.
+- Known limits, written before it was run: the roof dismount's capsule path is a hop 30 cm over the parapet, so her feet pass
+  the lip and the hands can only touch it at the start and from about 0.3 s on the way down (the reach weight leaves the middle to
+  the clip); a hand on the lip through the whole move wants a path that hugs the lip, which is a path change and so not made.
+  The vault's plant and the transfers (leap, hop, corner) use the same frozen-pose fade and are the least tuned.
+
 ## Bow and arrows (built 2026-09-26; the rules below hold, with these notes)
 - Data: `UBowDefinition` (DA_Bow_Kate 0.8 s draw, DA_Bow_Clint 1.0 s) and
   `UArrowDefinition` (DA_Arrow_Standard 40 damage, cap 30, recoverable; DA_Arrow_Grapple
