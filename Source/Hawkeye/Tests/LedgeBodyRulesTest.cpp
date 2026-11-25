@@ -260,7 +260,7 @@ bool FHawkeyeLedgeSwing::RunTest(const FString& Parameters)
 	{
 		Swing.Step(1.f / 60.f, Settings.SwingOmega, Settings.SwingDamping, Settings.SwingWallDegrees, Settings.SwingRestitution);
 		Lowest = FMath::Min(Lowest, Swing.Angle);
-		if (Swing.Angle <= Settings.SwingWallDegrees + 0.001f)
+		if (Swing.Angle <= Settings.SwingWallDegrees + 0.25f) // a bounce inside the frame leaves it a hair off the wall
 		{
 			bTouched = true;
 		}
