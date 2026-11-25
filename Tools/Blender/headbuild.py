@@ -51,15 +51,17 @@ def override_image(look, suffix, name, search_dirs, non_color):
     return None
 
 
-def make_mesh(name, verts, faces, uvs=None, smooth=True):
+def make_mesh(name, verts, faces, uvs=None, smooth_angle=100.0):
+    """A mesh object from arrays, smooth-shaded (cs.mark_sharp: every face smooth, edges sharper than smooth_angle
+    split; None leaves it flat), with a UVMap when uvs (one per face corner, in face order) is given."""
     obj = cs.mesh_object(name, verts, faces)
     me = obj.data
     if uvs is not None:
         layer = me.uv_layers.new(name="UVMap")
         layer.data.foreach_set("uv", np.asarray(uvs, np.float32).ravel())
-    if smooth:
-        me.polygons.foreach_set("use_smooth", np.ones(len(me.polygons), bool))
     me.update()
+    if smooth_angle is not None:
+        cs.mark_sharp(obj, smooth_angle)
     return obj
 
 
