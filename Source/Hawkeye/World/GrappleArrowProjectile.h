@@ -46,10 +46,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Grapple")
 	AGrappleAnchor* GetTargetAnchor() const { return TargetAnchor.Get(); }
 
+	/** The nock end of the shaft, where the rope is tied: ShaftLength behind the tip along the arrow's own axis. */
+	UFUNCTION(BlueprintPure, Category = "Grapple")
+	FVector GetTailLocation() const;
+
 protected:
 	virtual void Tick(float DeltaSeconds) override;
 
-	/** Sticks in the anchor and hands over to the grapple component. */
+	/** Sticks in the anchor, lets go of the flight effects and hands over to the grapple component. */
 	void Arrive();
 
 	TWeakObjectPtr<AGrappleAnchor> TargetAnchor;

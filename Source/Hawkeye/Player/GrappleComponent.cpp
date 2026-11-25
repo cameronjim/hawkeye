@@ -17,9 +17,11 @@
 #include "Player/HawkeyeCharacter.h"
 #include "Player/HawkeyeMovementComponent.h"
 #include "Player/InventoryComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "NiagaraComponent.h"
 #include "Traversal/GrappleReachQuery.h"
 #include "Traversal/GrappleTraces.h"
+#include "Vfx/GrappleRopeComponent.h"
 #include "Vfx/HawkeyeVfxSubsystem.h"
 #include "World/GrappleAnchor.h"
 #include "World/GrappleArrowProjectile.h"
@@ -28,6 +30,12 @@ static TAutoConsoleVariable<int32> CVarHawkeyeDebugGrapple(
 	TEXT("hawkeye.DebugGrapple"),
 	0,
 	TEXT("1 writes on the HUD why a grey grapple diamond cannot be zipped to, and the marked anchor's state."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<int32> CVarHawkeyeLegacyBeam(
+	TEXT("hawkeye.Grapple.LegacyBeam"),
+	0,
+	TEXT("1 draws the old Niagara beam (NS_ZipLine) along the rope while she zips; the rope draws without it."),
 	ECVF_Default);
 
 namespace HawkeyeGrapple
@@ -50,6 +58,15 @@ void UGrappleComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	UHawkeyeAudioSubsystem::StopLoop(ZipLoop, TEXT("grapple zip"));
 	UHawkeyeVfxSubsystem::Kill(ZipLine);
+	CancelShot();
+	for (FRopeSlot& Slot : Ropes)
+	{
+		if (UGrappleRopeComponent* View = Slot.View.Get())
+		{
+			View->DestroyComponent();
+		}
+	}
+	Ropes.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -63,6 +80,8 @@ float UGrappleComponent::ComputeZipSoundSpeed() const
 UGrappleComponent::UGrappleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	// After the body has animated (the bow does the same), so the rope and the arrow's release sit on this frame's hand.
+	PrimaryComponentTick.TickGroup = TG_PostUpdateWork;
 	ArrowClass = AGrappleArrowProjectile::StaticClass();
 }
 
@@ -71,6 +90,7 @@ void UGrappleComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	AdvanceShot(DeltaTime);
 	if (IsZipping())
 	{
 		UpdateZipLine();
@@ -79,6 +99,9 @@ void UGrappleComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			ZipLoop->SetFloatParameter(SpeedParameter, ComputeZipSoundSpeed());
 		}
 	}
+	UpdateRopes(DeltaTime);
+	UpdateBowHold(DeltaTime);
+	UpdateLingeringArrow(DeltaTime);
 
 	RefreshAccumulator += DeltaTime;
 	if (RefreshAccumulator >= RefreshSeconds)
@@ -471,6 +494,13 @@ bool UGrappleComponent::TryFire()
 	UArrowDefinition* Definition = (Inventory && Slot != INDEX_NONE) ? Inventory->GetArrowSlot(Slot).Arrow.Get() : nullptr;
 	++UseCount;
 
+	if (CanPlayShot())
+	{
+		// Raise, draw, release: the arrow leaves at the end of the draw and flies the rest of the same press-to-pull time.
+		BeginShot(Anchor, Definition, IsZipping());
+		return true;
+	}
+
 	const AActor* Owner = GetOwner();
 	AGrappleArrowProjectile* Arrow = SpawnGrappleArrow(Definition, Anchor);
 	if (Owner)
@@ -537,7 +567,8 @@ AGrappleArrowProjectile* UGrappleComponent::SpawnGrappleArrow(UArrowDefinition* 
 	}
 	if (Arrow)
 	{
-		Arrow->InitArrow(Definition, nullptr, 0.f, Owner, nullptr);
+		// The bow is its source, so it whistles and trails like any arrow; it has no bow definition and no damage.
+		Arrow->InitArrow(Definition, nullptr, 0.f, Owner, Owner->FindComponentByClass<UBowComponent>());
 	}
 	return Arrow;
 }
@@ -568,11 +599,21 @@ FVector UGrappleComponent::GetZipLineStart() const
 	return Character->GetActorLocation() + FVector(0.f, 0.f, 40.f);
 }
 
+bool UGrappleComponent::IsLegacyBeamForced()
+{
+	return CVarHawkeyeLegacyBeam.GetValueOnGameThread() != 0;
+}
+
 void UGrappleComponent::UpdateZipLine()
 {
 	const AGrappleAnchor* Anchor = ZipAnchor.Get();
 	if (!Anchor)
 	{
+		return;
+	}
+	if (Shot.bEnabled && !IsLegacyBeamForced())
+	{
+		// The rope draws the line; the emissive beam it replaced was the laser the owner saw.
 		return;
 	}
 	const FVector Start = GetZipLineStart();
@@ -597,11 +638,14 @@ void UGrappleComponent::HandleArrowArrived(AGrappleArrowProjectile* Arrow, AGrap
 		const FVector Back = Owner ? (Owner->GetActorLocation() - Anchor->GetMarkerLocation()).GetSafeNormal() : FVector::UpVector;
 		UHawkeyeVfxSubsystem::SpawnAt(this, AnchorSparksVfx, Anchor->GetMarkerLocation(), Back.Rotation(),
 			UHawkeyeVfxSubsystem::AnchorSparksEvent);
+		UHawkeyeAudioSubsystem::PlayAt(this, HitSound, Anchor->GetMarkerLocation(), TEXT("grapple bite"));
 	}
 	if (InFlightArrow.Get() == Arrow)
 	{
 		InFlightArrow.Reset();
 	}
+	// The rope snaps straight the moment the arrow bites, before the pull (and a chain's old rope) lets go.
+	TightenRope(Arrow, Anchor);
 	StartZip(Anchor);
 }
 
@@ -875,6 +919,8 @@ bool UGrappleComponent::StartZip(AGrappleAnchor* Anchor)
 		{
 			ReelBackArrow(ZipAnchor.Get(), TEXT("chained off it"));
 		}
+		// The old line comes away from her hand and whips back to its anchor; the new rope stays.
+		ReleaseRopes(Anchor);
 	}
 	if (bRedirect)
 	{
@@ -994,6 +1040,12 @@ void UGrappleComponent::HandleZipEnded(EHawkeyeZipEnd Reason)
 	ZipAnchor.Reset();
 	UHawkeyeAudioSubsystem::StopLoop(ZipLoop, TEXT("grapple zip"));
 	UHawkeyeVfxSubsystem::Kill(ZipLine);
+	// Landed or let go: the rope goes slack and is drawn back; the bow comes down a moment after.
+	ReleaseRopes(nullptr);
+	if (bBowHeld)
+	{
+		BowHoldRemaining = Shot.BowHoldAfterZipSeconds;
+	}
 	const FString Where = Character ? Character->GetActorLocation().ToCompactString() : TEXT("?");
 	const float Speed = Character ? Character->GetVelocity().Size() : 0.f;
 
@@ -1016,6 +1068,12 @@ void UGrappleComponent::HandleZipEnded(EHawkeyeZipEnd Reason)
 	{
 		ReelBackArrow(Anchor, TEXT("the zip was blocked"));
 	}
+	else if (Shot.bEnabled && Anchor)
+	{
+		// Let go (or interrupted): the arrow stays in the anchor a moment, then is taken out.
+		LingerAnchor = Anchor;
+		LingerRemaining = Shot.ArrowLingerSeconds;
+	}
 	UE_LOG(LogHawkeye, Log, TEXT("%s: zip to %s %s at %s; falling at %.0f cm/s"), *GetNameSafe(Character), *GetNameSafe(Anchor),
 		Reason == EHawkeyeZipEnd::Blocked ? TEXT("blocked") : Reason == EHawkeyeZipEnd::Released ? TEXT("let go")
 		: TEXT("interrupted by a movement mode change"), *Where, Speed);
@@ -1032,4 +1090,368 @@ void UGrappleComponent::ReleaseZip(bool bJump)
 	UE_LOG(LogHawkeye, Log, TEXT("%s: let go of the zip to %s at %.0f%% with %s"), *GetNameSafe(GetOwner()),
 		*GetNameSafe(ZipAnchor.Get()), Movement->GetZipProgress() * 100.f, bJump ? TEXT("a jump") : TEXT("a crouch"));
 	Movement->ReleaseZip(bJump);
+}
+
+// --- The shot -------------------------------------------------------------------------------------
+
+bool UGrappleComponent::CanPlayShot() const
+{
+	const AActor* Owner = GetOwner();
+	const UBowComponent* Bow = Owner ? Owner->FindComponentByClass<UBowComponent>() : nullptr;
+	return Shot.bEnabled && Bow && Bow->GetBow() && !bShotPending;
+}
+
+float UGrappleComponent::GetArrowSpeed(const UArrowDefinition* Definition, bool bChain) const
+{
+	if (bChain)
+	{
+		return ChainArrowSpeed;
+	}
+	// The projectile class's own speed (BP_Arrow_Grapple), else the component's arrow class.
+	const UClass* Class = (Definition && Definition->ProjectileClass) ? Definition->ProjectileClass.Get() : ArrowClass.Get();
+	const AGrappleArrowProjectile* Default = Class ? Cast<AGrappleArrowProjectile>(Class->GetDefaultObject()) : nullptr;
+	return Default ? Default->Speed : GetDefault<AGrappleArrowProjectile>()->Speed;
+}
+
+void UGrappleComponent::BeginShot(AGrappleAnchor* Anchor, UArrowDefinition* Definition, bool bChain)
+{
+	AActor* Owner = GetOwner();
+	UBowComponent* Bow = Owner ? Owner->FindComponentByClass<UBowComponent>() : nullptr;
+	if (!Anchor || !Bow)
+	{
+		return;
+	}
+	bShotPending = true;
+	bShotChain = bChain;
+	ShotElapsed = 0.f;
+	ShotAnchor = Anchor;
+	ShotDefinition = Definition;
+
+	const FVector Marker = Anchor->GetMarkerLocation();
+	const float Distance = static_cast<float>(FVector::Dist(Bow->GetArrowSpawnLocation(), Marker));
+	ShotSchedule = FGrappleShotRules::MakeSchedule(Distance, GetArrowSpeed(Definition, bChain), bChain, Shot);
+
+	// The bow comes up on the line now and stays there (legs keep going: the clip is upper body, the IK and the aim offset
+	// turn the chest).
+	Bow->BeginScriptedShot(Marker, ShotSchedule.RaiseSeconds + ShotSchedule.DrawSeconds);
+	bBowHeld = true;
+	BowHoldRemaining = Shot.BowHoldAfterZipSeconds;
+
+	UE_LOG(LogHawkeye, Log,
+		TEXT("%s: grapple shot at %s, %.0f cm: release at %.2f s (raise %.2f, draw %.2f, squeezed to %.0f%%), arrow %.0f cm/s for %.2f s, pull at %.2f s"),
+		*GetNameSafe(Owner), *GetNameSafe(Anchor), Distance, ShotSchedule.ReleaseSeconds, ShotSchedule.RaiseSeconds,
+		ShotSchedule.DrawSeconds, ShotSchedule.Compression * 100.f, ShotSchedule.ArrowSpeed, ShotSchedule.FlightSeconds,
+		ShotSchedule.TotalSeconds);
+
+	if (ShotSchedule.HasReleased(0.f))
+	{
+		// No draw to play (a chain that still arrives at once): the string lets go in the same frame.
+		ReleaseShot();
+	}
+}
+
+void UGrappleComponent::AdvanceShot(float DeltaSeconds)
+{
+	if (!bShotPending)
+	{
+		return;
+	}
+	if (!ShotAnchor.IsValid())
+	{
+		CancelShot();
+		return;
+	}
+	ShotElapsed += FMath::Max(DeltaSeconds, 0.f);
+	if (UBowComponent* Bow = GetOwner() ? GetOwner()->FindComponentByClass<UBowComponent>() : nullptr)
+	{
+		Bow->SetScriptedDrawFraction(FGrappleShotRules::DrawFractionAt(ShotElapsed, ShotSchedule));
+	}
+	if (ShotSchedule.HasReleased(ShotElapsed))
+	{
+		ReleaseShot();
+	}
+}
+
+void UGrappleComponent::ReleaseShot()
+{
+	AGrappleAnchor* Anchor = ShotAnchor.Get();
+	UArrowDefinition* Definition = ShotDefinition.Get();
+	const bool bChain = bShotChain;
+	AActor* Owner = GetOwner();
+	UBowComponent* Bow = Owner ? Owner->FindComponentByClass<UBowComponent>() : nullptr;
+	bShotPending = false;
+	ShotDefinition = nullptr;
+	if (!Anchor || !Bow)
+	{
+		CancelShot();
+		return;
+	}
+	Bow->ReleaseScriptedShot();
+	UHawkeyeAudioSubsystem::PlayAt(this, FireSound, Bow->GetArrowSpawnLocation(), TEXT("grapple fire"));
+
+	AGrappleArrowProjectile* Arrow = SpawnGrappleArrow(Definition, Anchor);
+	if (!Arrow)
+	{
+		// No world to fly through: the arrow is there at once.
+		Anchor->AddStuckArrow(nullptr, Owner);
+		HandleArrowArrived(nullptr, Anchor);
+		return;
+	}
+	InFlightArrow = Arrow;
+	StartRope(Arrow, Anchor);
+
+	// The rest of the press-to-pull time, from where the hand is now (it has come up since the press).
+	const float Distance = static_cast<float>(FVector::Dist(Arrow->GetActorLocation(), Anchor->GetMarkerLocation()));
+	const float Speed = ShotSchedule.FlightSeconds > KINDA_SMALL_NUMBER ? Distance / ShotSchedule.FlightSeconds
+		: (bChain ? ChainArrowSpeed : 0.f);
+	Arrow->Launch(Anchor, this, Speed);
+}
+
+void UGrappleComponent::ClearShot()
+{
+	CancelShot();
+	for (FRopeSlot& Slot : Ropes)
+	{
+		Slot.State.Reset();
+		Slot.Arrow.Reset();
+		Slot.Anchor.Reset();
+		if (UGrappleRopeComponent* View = Slot.View.Get())
+		{
+			View->Hide();
+		}
+	}
+	LingerAnchor.Reset();
+	LingerRemaining = 0.f;
+	BowHoldRemaining = 0.f;
+}
+
+void UGrappleComponent::CancelShot()
+{
+	const bool bWas = bShotPending;
+	bShotPending = false;
+	ShotDefinition = nullptr;
+	ShotAnchor.Reset();
+	if (bWas || bBowHeld)
+	{
+		if (UBowComponent* Bow = GetOwner() ? GetOwner()->FindComponentByClass<UBowComponent>() : nullptr)
+		{
+			Bow->EndScriptedAim();
+		}
+		bBowHeld = false;
+	}
+}
+
+EGrappleShotPhase UGrappleComponent::GetShotPhase() const
+{
+	if (bShotPending)
+	{
+		return FGrappleShotRules::PhaseAt(ShotElapsed, ShotSchedule, false);
+	}
+	if (InFlightArrow.IsValid())
+	{
+		return EGrappleShotPhase::Flight;
+	}
+	if (IsZipping() || (Ropes.Num() > 0 && GetNewestRopeState() == EGrappleRopeState::Taut))
+	{
+		return EGrappleShotPhase::Stuck;
+	}
+	return EGrappleShotPhase::None;
+}
+
+void UGrappleComponent::UpdateBowHold(float DeltaSeconds)
+{
+	if (!bBowHeld)
+	{
+		return;
+	}
+	UBowComponent* Bow = GetOwner() ? GetOwner()->FindComponentByClass<UBowComponent>() : nullptr;
+	if (!Bow)
+	{
+		bBowHeld = false;
+		return;
+	}
+	// Up and on the line while the shot, the arrow or the pull needs it: the bow hand keeps the line through the jerk.
+	const bool bNeeded = bShotPending || InFlightArrow.IsValid() || IsZipping();
+	if (bNeeded)
+	{
+		BowHoldRemaining = Shot.BowHoldAfterZipSeconds;
+		Bow->ExtendFollowThrough(FMath::Max(0.12f, DeltaSeconds * 2.f));
+		return;
+	}
+	BowHoldRemaining -= DeltaSeconds;
+	if (BowHoldRemaining <= 0.f)
+	{
+		bBowHeld = false;
+		Bow->EndScriptedAim();
+	}
+}
+
+void UGrappleComponent::UpdateLingeringArrow(float DeltaSeconds)
+{
+	if (LingerRemaining <= 0.f)
+	{
+		return;
+	}
+	LingerRemaining -= DeltaSeconds;
+	if (LingerRemaining > 0.f)
+	{
+		return;
+	}
+	LingerRemaining = 0.f;
+	if (AGrappleAnchor* Anchor = LingerAnchor.Get())
+	{
+		// Only if she has not shot at it again since.
+		if (!IsZipping() || ZipAnchor.Get() != Anchor)
+		{
+			ReelBackArrow(Anchor, TEXT("the zip ended"));
+		}
+	}
+	LingerAnchor.Reset();
+}
+
+// --- The rope -------------------------------------------------------------------------------------
+
+UGrappleComponent::FRopeSlot& UGrappleComponent::AcquireRope()
+{
+	for (FRopeSlot& Slot : Ropes)
+	{
+		if (!Slot.State.IsVisible())
+		{
+			Slot.State.Reset();
+			Slot.Arrow.Reset();
+			Slot.Anchor.Reset();
+			return Slot;
+		}
+	}
+	if (Ropes.Num() < MaxRopes)
+	{
+		return Ropes.AddDefaulted_GetRef();
+	}
+	// All busy: the oldest (the first) is taken over.
+	Ropes[0].State.Reset();
+	Ropes[0].Arrow.Reset();
+	Ropes[0].Anchor.Reset();
+	return Ropes[0];
+}
+
+void UGrappleComponent::StartRope(AGrappleArrowProjectile* Arrow, AGrappleAnchor* Anchor)
+{
+	AActor* Owner = GetOwner();
+	if (!Shot.bEnabled || !Owner || !Arrow)
+	{
+		return;
+	}
+	FRopeSlot& Slot = AcquireRope();
+	if (!Slot.View.IsValid())
+	{
+		UGrappleRopeComponent* View = NewObject<UGrappleRopeComponent>(Owner, NAME_None, RF_Transient);
+		View->SetupAttachment(Owner->GetRootComponent());
+		View->RegisterComponent();
+		Slot.View = View;
+	}
+	Slot.Arrow = Arrow;
+	Slot.Anchor = Anchor;
+	Slot.LastEnd = Arrow->GetTailLocation();
+	Slot.State.Begin();
+	// The newest rope goes last, so GetNewestRopeState and the oldest-first takeover agree.
+	const int32 Index = static_cast<int32>(&Slot - Ropes.GetData());
+	if (Index != Ropes.Num() - 1)
+	{
+		Ropes.Swap(Index, Ropes.Num() - 1);
+	}
+}
+
+void UGrappleComponent::TightenRope(AGrappleArrowProjectile* Arrow, AGrappleAnchor* Anchor)
+{
+	for (int32 Index = Ropes.Num() - 1; Index >= 0; --Index)
+	{
+		FRopeSlot& Slot = Ropes[Index];
+		if (Slot.State.GetState() == EGrappleRopeState::Flying && (!Arrow || Slot.Arrow.Get() == Arrow))
+		{
+			Slot.State.Arrive();
+			if (Arrow)
+			{
+				Slot.LastEnd = Arrow->GetTailLocation();
+			}
+			return;
+		}
+	}
+	// An arrow that arrived in the same call it was launched in (a chain at speed 0, no world) before a rope was tied: make one, taut.
+	if (Shot.bEnabled && Arrow && GetOwner())
+	{
+		StartRope(Arrow, Anchor);
+		if (Ropes.Num() > 0)
+		{
+			Ropes.Last().State.Arrive();
+		}
+	}
+}
+
+void UGrappleComponent::ReleaseRopes(const AGrappleAnchor* KeepAnchor)
+{
+	const FVector Hand = GetZipLineStart();
+	for (FRopeSlot& Slot : Ropes)
+	{
+		if (Slot.State.GetState() != EGrappleRopeState::Taut)
+		{
+			continue;
+		}
+		if (KeepAnchor && Slot.Anchor.Get() == KeepAnchor)
+		{
+			continue;
+		}
+		Slot.State.Release(Hand);
+	}
+}
+
+void UGrappleComponent::UpdateRopes(float DeltaSeconds)
+{
+	if (Ropes.Num() == 0)
+	{
+		return;
+	}
+	const FVector Hand = GetZipLineStart();
+	TArray<FVector> Points;
+	for (FRopeSlot& Slot : Ropes)
+	{
+		UGrappleRopeComponent* View = Slot.View.Get();
+		if (!View)
+		{
+			Slot.State.Reset();
+			continue;
+		}
+		if (!Slot.State.IsVisible())
+		{
+			View->Hide();
+			continue;
+		}
+		Slot.State.Step(DeltaSeconds, Rope);
+		if (!Slot.State.IsVisible())
+		{
+			View->Hide();
+			continue;
+		}
+		// Tied to the arrow's tail while it flies and where it sticks; where it was when the arrow is taken out.
+		if (const AGrappleArrowProjectile* Arrow = Slot.Arrow.Get())
+		{
+			Slot.LastEnd = Arrow->GetTailLocation();
+		}
+		Slot.State.BuildPoints(Hand, Slot.LastEnd, Rope, Points);
+		View->SetPoints(Points, Rope.ThicknessCm);
+	}
+}
+
+int32 UGrappleComponent::GetVisibleRopeCount() const
+{
+	int32 Count = 0;
+	for (const FRopeSlot& Slot : Ropes)
+	{
+		Count += Slot.State.IsVisible() ? 1 : 0;
+	}
+	return Count;
+}
+
+EGrappleRopeState UGrappleComponent::GetNewestRopeState() const
+{
+	return Ropes.Num() > 0 ? Ropes.Last().State.GetState() : EGrappleRopeState::Hidden;
 }

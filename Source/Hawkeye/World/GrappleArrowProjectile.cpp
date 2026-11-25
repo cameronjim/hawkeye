@@ -17,7 +17,14 @@ AGrappleArrowProjectile::AGrappleArrowProjectile()
 		Movement->bAutoActivate = false;
 		Movement->ProjectileGravityScale = 0.f;
 	}
-	FletchingColor = FLinearColor(0.1f, 0.8f, 0.2f);
+	// Dark steel vanes: a grapple arrow is a tool, not a signal (it was a bright green). Kate's purple nock stays.
+	FletchingColor = FLinearColor(0.05f, 0.052f, 0.06f);
+	ShaftColor = FLinearColor(0.08f, 0.082f, 0.09f);
+}
+
+FVector AGrappleArrowProjectile::GetTailLocation() const
+{
+	return GetActorLocation() - GetActorForwardVector() * ShaftLength;
 }
 
 void AGrappleArrowProjectile::LaunchWithVelocity(const FVector& /*Velocity*/)
@@ -34,6 +41,8 @@ void AGrappleArrowProjectile::Launch(AGrappleAnchor* Anchor, UGrappleComponent* 
 	{
 		SetActorRotation((Anchor->GetMarkerLocation() - GetActorLocation()).Rotation());
 	}
+	// LaunchWithVelocity is off for this arrow, so its whistle and trail start here (they ride on the source bow's).
+	StartFlightEffects();
 }
 
 void AGrappleArrowProjectile::Launch(AGrappleAnchor* Anchor, UGrappleComponent* InGrapple, float InSpeed)
@@ -93,6 +102,7 @@ void AGrappleArrowProjectile::Arrive()
 	bInFlight = false;
 	bStuck = true;
 	SetActorTickEnabled(false);
+	StopFlightEffects();
 
 	AGrappleAnchor* Anchor = TargetAnchor.Get();
 	if (Anchor)
