@@ -114,9 +114,12 @@ ROLE_DEFAULTS = {
     "LedgeDropToHang": {"slot": "DefaultSlot", "blend_in": 0.1, "blend_out": 0.15, "root_motion": False},
     "LedgeCatch": {"slot": "DefaultSlot", "blend_in": 0.05, "blend_out": 0.2, "root_motion": False},
     "LedgeHangIdle": {"slot": "DefaultSlot", "loop": True, "blend_in": 0.2, "blend_out": 0.2, "root_motion": False},
-    "LedgeHangDrop": {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.25, "root_motion": False},
+    "LedgeHangDrop": {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.15, "root_motion": False},
+    "LedgeFallLoop": {"slot": "DefaultSlot", "loop": True, "blend_in": 0.15, "blend_out": 0.12, "root_motion": False},
+    "LedgeFallBrace": {"slot": "DefaultSlot", "hold": True, "blend_in": 0.1, "blend_out": 0.12, "root_motion": False},
     "LedgeClimbUp": {"slot": "DefaultSlot", "blend_in": 0.1, "blend_out": 0.2, "root_motion": False},
     "LedgeVaultPlant": {"slot": "DefaultSlot", "blend_in": 0.08, "blend_out": 0.15, "root_motion": False},
+    "LedgeVaultCrouch": {"slot": "DefaultSlot", "blend_in": 0.08, "blend_out": 0.15, "root_motion": False},
 }
 
 # Single-frame aim poses (BowAimOffset_CC, _CU, ...): retargeted, then made mesh-space additive and laid

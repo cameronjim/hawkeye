@@ -90,11 +90,18 @@ enum class ECombatAnimRole : uint8
 	LedgeHangIdle,
 	LedgeHangDrop,
 	LedgeClimbUp,
-	LedgeVaultPlant
+	/** A vault at a run: one hand planted on the top, the legs swung beside the hips, landing running. */
+	LedgeVaultPlant,
+	/** Should loop: the fall after a let-go from a hang (arms forward and up, legs under her, small motion). */
+	LedgeFallLoop,
+	/** The last 0.2 s of that fall: the knees up and forward, the arms ready. Held until the landing's clip. */
+	LedgeFallBrace,
+	/** The same vault landing in a crouch (a slow entry). */
+	LedgeVaultCrouch
 };
 
 /** The last role: loops over every slot run to here. */
-constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::LedgeVaultPlant;
+constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::LedgeVaultCrouch;
 
 /**
  * More clips for one role, after the role's own slot: the slot is variant 0, these are 1, 2, ...
@@ -390,9 +397,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
 	TSoftObjectPtr<UAnimMontage> LedgeClimbUp;
 
-	/** A vault with one hand planted on the top and the legs swung to the side. Not wired to a move by default. */
+	/** A vault with one hand planted on the top and the legs swung to the side, landing running. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
 	TSoftObjectPtr<UAnimMontage> LedgeVaultPlant;
+
+	/** Should loop: the fall after a let-go from a hang. Plays after the hang drop's push-off. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeFallLoop;
+
+	/** The brace before the ground: plays when a trace down finds it within about 0.22 s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeFallBrace;
+
+	/** The vault landing in a crouch (a slow entry). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeVaultCrouch;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Finisher")
 	TSoftObjectPtr<UAnimMontage> FinisherAttacker;

@@ -40,7 +40,7 @@ ROLES = ["Light1", "Light2", "Light3", "Heavy", "Kick", "Parry", "DodgeForward",
          "HitHeadLight", "HitHeadHeavy", "HitGutLight", "HitGutHeavy", "HitLegsLight", "HitLegsHeavy",
          "LandStandLight", "LandStandHeavy", "LandWalkLight", "LandWalkHeavy", "LandRunLight", "LandRunHeavy", "LandSprintLight",
          "LandSprintHeavy", "LandRoll", "LandStumble", "FallLoop",
-         "LedgeDropToHang", "LedgeCatch", "LedgeHangIdle", "LedgeHangDrop", "LedgeClimbUp", "LedgeVaultPlant"]
+         "LedgeDropToHang", "LedgeCatch", "LedgeHangIdle", "LedgeHangDrop", "LedgeClimbUp", "LedgeVaultPlant", "LedgeFallLoop", "LedgeFallBrace", "LedgeVaultCrouch"]
 
 # (character, data asset, the folder its montages are in, the Blueprints that wear it)
 CHARACTERS = [
