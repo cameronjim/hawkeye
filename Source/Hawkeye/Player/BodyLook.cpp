@@ -35,6 +35,11 @@ namespace HawkeyeBodyLook
 		return !Package.IsEmpty() && FPackageName::DoesPackageExist(Package) ? Soft.LoadSynchronous() : nullptr;
 	}
 
+	int32 PickVariantIndex(int32 Count, uint32 Seed)
+	{
+		return Count > 1 ? static_cast<int32>(Seed % static_cast<uint32>(Count)) : 0;
+	}
+
 	bool Resolve(const FHawkeyeBodyLook& Look, USkeletalMesh*& OutMesh, UClass*& OutAnimClass)
 	{
 		OutMesh = Look.IsSet() ? LoadIfOnDisk(Look.Mesh) : nullptr;
