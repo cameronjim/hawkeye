@@ -1166,31 +1166,37 @@ FALL_SECONDS = 1.0
 
 
 def _fall_pose(rig, ph):
-    """The fall after a let-go at phase ph (turns, 0..1 loops), in the capsule's frame: standing height with the knees soft,
-    the torso a little forward and the head down at the landing, the arms forward and up for balance (hands in front of the
-    shoulders, elbows down, not out to the side), small continuous motion: the arms circling a few cm against each other, the
-    legs pedalling, the torso breathing with it."""
+    """The fall after a let-go at phase ph (turns, 0..1 loops), in the capsule's frame: falling, not standing. The knees
+    softly bent and offset (the left leg ahead, the right drawn back and up), the toes pointed down, the torso a little
+    forward and the head down at the landing, both arms forward and up for balance with the hands wider than the shoulders
+    (so both read from behind), and a clear continuous sway: the hips and chest rolling and turning, the hands circling, the
+    feet trading a few cm."""
     w = 2.0 * math.pi * ph
     ip = tuple(rig.idle_pelvis)
     sh = tuple(rig.idle_pos["upperarm_l"] - rig.idle_pelvis)
     reach = rig.upper_arm + rig.fore_arm
-    lean = 3.0 + 1.0 * math.sin(w)
-    chest_lean = 5.0 + 1.2 * math.sin(w + 1.0)
+    lean = 5.0 + 1.5 * math.sin(w)
+    chest_lean = 6.0 + 1.5 * math.sin(w + 1.0)
     total = math.radians(lean + chest_lean)
-    pelvis = V(0.0, ip[1] + 1.5 + 0.8 * math.sin(w + 0.5), ip[2] - _r(1.6) + 0.5 * math.sin(2.0 * w))
-    out = {"pelvis_pos": pelvis, "pelvis_rot": V(lean, 0.0, 4.0 * math.sin(w)),
-           "chest": V(5.0 + 1.5 * math.sin(w + 1.0), 2.5 * math.sin(w + 0.4), 3.0 * math.sin(w + 2.0)),
+    pelvis = V(0.0, ip[1] + 2.0 + 1.0 * math.sin(w + 0.5), ip[2] - _r(5.0) + 0.8 * math.sin(2.0 * w))
+    out = {"pelvis_pos": pelvis, "pelvis_rot": V(lean, 5.0 * math.sin(w), 7.0 * math.sin(w)),
+           "chest": V(6.0 + 1.5 * math.sin(w + 1.0), 6.0 * math.sin(w + 0.4), 6.0 * math.sin(w + 2.0)),
            "neck": V(9.0 + 1.5 * math.sin(w + 2.0), 0.0, 0.0)}
     for side, s_, phase in (("l", 1.0, 0.0), ("r", -1.0, math.pi)):
         shoulder = (pelvis[0] + s_ * abs(sh[0]), pelvis[1] + sh[1] - sh[2] * math.sin(total), pelvis[2] + sh[2] * math.cos(total))
         ring = w + phase
-        out["hand_" + side] = V(shoulder[0] + s_ * (9.0 + 7.0 * math.cos(ring)), shoulder[1] - 0.80 * reach + 6.0 * math.sin(ring),
-                                shoulder[2] - 0.10 * reach + 8.0 * math.sin(ring + 1.2))
-        out["pole_hand_" + side] = V(s_ * 0.45, 0.25, -1.0)
+        out["hand_" + side] = V(shoulder[0] + s_ * (16.0 + 4.0 * math.cos(ring)), shoulder[1] - 0.62 * reach + 5.0 * math.sin(ring),
+                                shoulder[2] + 0.06 * reach + 6.0 * math.sin(ring + 1.2))
+        out["pole_hand_" + side] = V(s_ * 0.8, 0.45, -0.55)
         idle = tuple(rig.idle_foot(side))
-        stride = math.sin(w + phase)
-        out["foot_" + side] = V(idle[0] * 0.80 + 3.0 * s_ * stride, idle[1] + 2.0 - 8.0 * stride, idle[2] + 0.5 + 2.5 * max(0.0, -stride))
-        out["foot_%s_rot" % side] = V(18.0 + 6.0 * stride, 0.0, 0.0)
+        lead = 1.0 if side == "l" else -1.0   # +1: the leg ahead
+        sway = math.sin(w + phase)
+        out["pole_foot_" + side] = V(s_ * 0.2, -1.0, 0.0)
+        out["foot_" + side] = V(idle[0] * 0.72 + 2.0 * s_ * sway,
+                                idle[1] - lead * _r(11.0) + 3.0 * sway,
+                                idle[2] + _r(2.0 if lead > 0 else 11.0) + 1.5 * sway)
+        # Toes down, the trailing foot more; the toes turned in a touch to cancel the idle's turn-out.
+        out["foot_%s_rot" % side] = V((26.0 if lead > 0 else 46.0) + 5.0 * sway, -s_ * 8.0, 0.0)
     return out
 
 
