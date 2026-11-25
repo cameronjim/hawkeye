@@ -562,7 +562,7 @@ protected:
 
 	/** A bright green: nothing else on screen is that colour. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "HUD|Grapple")
-	FLinearColor GrappleMarkerColor = FLinearColor(0.22f, 1.f, 0.08f, 1.f);
+	FLinearColor GrappleMarkerColor = FLinearColor(0.86f, 0.80f, 1.f, 1.f);
 
 	/** Point to point size of the diamond, in pixels. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "HUD|Grapple", meta = (ClampMin = "2.0"))

@@ -29,7 +29,9 @@ enum class EHawkeyeColorPalette : uint8
 	Default,
 	Deuteranopia,
 	Protanopia,
-	Tritanopia
+	Tritanopia,
+	/** The old saturated green grapple marker and cyan-white accents, for a dark street at a glance. */
+	HighContrast
 };
 
 /**

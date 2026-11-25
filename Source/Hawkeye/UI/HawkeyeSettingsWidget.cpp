@@ -798,7 +798,7 @@ void UHawkeyeSettingsWidget::HandlePaletteClicked()
 	UHawkeyeAudioSubsystem::PlayUI(this, EHawkeyeUISound::Click);
 	if (UHawkeyeSettingsSubsystem* SettingsSubsystem = UHawkeyeSettingsSubsystem::Get(this))
 	{
-		SettingsSubsystem->SetColorPalette(HawkeyeSettingsWidgetLayout::Next(SettingsSubsystem->GetSettings().ColorPalette, 4));
+		SettingsSubsystem->SetColorPalette(HawkeyeSettingsWidgetLayout::Next(SettingsSubsystem->GetSettings().ColorPalette, 5));
 	}
 	RefreshFromSettings();
 }

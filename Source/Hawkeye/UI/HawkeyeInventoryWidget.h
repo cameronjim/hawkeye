@@ -66,7 +66,7 @@ public:
 
 	/** Colour of a section heading. Rows themselves are left at the text block's default. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Inventory|UI")
-	FLinearColor HeadingColor = FLinearColor(0.22f, 1.f, 0.08f, 0.8f);
+	FLinearColor HeadingColor = FLinearColor(0.86f, 0.80f, 1.f, 0.8f);
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Inventory|UI")
 	FText TitleLabel;

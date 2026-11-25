@@ -17,7 +17,7 @@ struct HAWKEYE_API FHawkeyePalette
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Accessibility")
-	FLinearColor Green = FLinearColor(0.22f, 1.f, 0.08f, 1.f);
+	FLinearColor Green = FLinearColor(0.86f, 0.80f, 1.f, 1.f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Accessibility")
 	FLinearColor Purple = FLinearColor(0.78f, 0.55f, 1.f, 1.f);
@@ -77,7 +77,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Accessibility")
 	static bool ResolveRelease(bool bToggle, bool bActive) { return bToggle ? bActive : false; }
 
-	/** "Default", "Deuteranopia", "Protanopia", "Tritanopia". */
+	/** "Default", "Deuteranopia", "Protanopia", "Tritanopia", "High contrast". */
 	UFUNCTION(BlueprintPure, Category = "Hawkeye|Accessibility")
 	static FText GetPaletteName(EHawkeyeColorPalette Palette);
 

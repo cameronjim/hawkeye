@@ -34,6 +34,10 @@ FHawkeyePalette UHawkeyeAccessibility::GetPalette(EHawkeyeColorPalette Palette)
 		// Off the red bar and the magenta: orange toward yellow.
 		Out.Danger = FLinearColor(1.f, 0.6f, 0.f, 1.f);
 		break;
+	case EHawkeyeColorPalette::HighContrast:
+		// The grapple marker as it was before 2026-11-25: a saturated green, the brightest thing on a dark street.
+		Out.Green = FLinearColor(0.22f, 1.f, 0.08f, 1.f);
+		break;
 	default:
 		break;
 	}
@@ -68,6 +72,8 @@ FText UHawkeyeAccessibility::GetPaletteName(EHawkeyeColorPalette Palette)
 		return NSLOCTEXT("Hawkeye", "PaletteProtanopia", "Protanopia");
 	case EHawkeyeColorPalette::Tritanopia:
 		return NSLOCTEXT("Hawkeye", "PaletteTritanopia", "Tritanopia");
+	case EHawkeyeColorPalette::HighContrast:
+		return NSLOCTEXT("Hawkeye", "PaletteHighContrast", "High contrast");
 	default:
 		return NSLOCTEXT("Hawkeye", "PaletteDefault", "Default");
 	}

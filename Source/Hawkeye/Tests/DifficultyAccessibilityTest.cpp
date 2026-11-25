@@ -439,7 +439,13 @@ bool FHawkeyeAccessibilityPalettes::RunTest(const FString& Parameters)
 {
 	using namespace HawkeyeDifficultyTest;
 	const FHawkeyePalette Default = UHawkeyeAccessibility::GetPalette(EHawkeyeColorPalette::Default);
-	TestTrue(TEXT("Default green is the grapple marker's"), Default.Green.Equals(FLinearColor(0.22f, 1.f, 0.08f, 1.f), 0.001f));
+	TestTrue(TEXT("Default green is the grapple marker's, a pale lavender-white (not neon)"),
+		Default.Green.Equals(FLinearColor(0.86f, 0.80f, 1.f, 1.f), 0.001f));
+	TestTrue(TEXT("The default marker is not saturated"), Default.Green.G < 0.9f && Default.Green.B > Default.Green.G);
+	const FHawkeyePalette Contrast = UHawkeyeAccessibility::GetPalette(EHawkeyeColorPalette::HighContrast);
+	TestTrue(TEXT("High contrast keeps the saturated green"), Contrast.Green.Equals(FLinearColor(0.22f, 1.f, 0.08f, 1.f), 0.001f));
+	TestEqual(TEXT("High contrast has a name"), UHawkeyeAccessibility::GetPaletteName(EHawkeyeColorPalette::HighContrast).ToString(),
+		FString(TEXT("High contrast")));
 	TestTrue(TEXT("Default purple is the reticle's"), Default.Purple.Equals(FLinearColor(0.78f, 0.55f, 1.f, 1.f), 0.001f));
 	for (EHawkeyeColorPalette Palette : { EHawkeyeColorPalette::Deuteranopia, EHawkeyeColorPalette::Protanopia,
 			 EHawkeyeColorPalette::Tritanopia })
