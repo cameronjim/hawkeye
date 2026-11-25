@@ -7,6 +7,7 @@ sources is git-ignored and rebuilt from files outside the repo (`claude-docs/inf
 
 | What | Source | Licence | Notes |
 |------|--------|---------|-------|
+| The thugs' and the heavy's heads, ears, eyes, brows, hair and caps (`SK_Built_Thug*`, `SK_Built_Heavy`), from 2026-11-24 | Ours: `Tools/Blender/looks.py`, `headshape.py`, `headtex.py`, `headbuild.py` | Own work (procedural, no photograph, no model, no real person's likeness) | Textures are baked by script; the pack's head, eyes and brows are no longer used on them. The pack body still sits under their clothes (reshaped) and gives their hands' skin (recoloured). |
 | The base body of the thugs, the heavy and Clint (`SK_Body_Male`), and the hair meshes on the Blender-built costumes | Quaternius, Universal Base Characters (Standard) | CC0 | Clothes are modelled on it by `Tools/Blender/` (ours). |
 | The base body under Kate's Blender-built suit (`Superhero_Female`, reshaped under the clothes), its face, eyes and brows; its buzz-cut hair as a hairline guide only | Quaternius, Universal Base Characters (Standard) | CC0 | The suit, gear, scalp hair and ponytail are modelled by `Tools/Blender/build_kate.py` (ours). In the game since 2026-11-12 (`SK_Body_Female`, `SK_Built_Kate`). |
 | Quaternius's other packs on disk (LowPoly Animated Animals, Universal Animation Library 2) | Quaternius | CC0 | Not used by the game now (the animals pack's pug was Lucky's stand-in until 2026-11-11). |

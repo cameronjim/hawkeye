@@ -190,15 +190,86 @@ a run (500 cm/s), and that the look's hands stay within 5 cm of the driver's in 
 (2.8 to 2.9: at full draw her arm is a little short of the driver's hands); the look's pelvis is 0.0 to 0.1 cm from the
 driver's in every shot.
 
+## Enemy heads and bodies (rebuilt 2026-11-24, phase 1: written, not yet run in Blender)
+
+The owner's verdict on the thugs and the heavy was "bad": a mask-like face with painted features, a bulging chest under a
+tracksuit, a wide straddle, balloon trousers. What the first builds were, and why they read that way:
+
+| Part | How it was built | What looked wrong |
+|------|------------------|-------------------|
+| Head and neck | The pack's `Superhero_Male` skin above the collar: about 1,440 of the body's 7,281 vertices, 18 cm wide, 23 cm tall. The face is **painted into the skin texture** (`T_Superhero_Male_Dark.png`); the geometry has a smooth egg with a nose bump. Eyes are two 3 cm spheres (`Face`, 646 verts) textured from `T_Eye_Brown.png`, brows are alpha cards from `T_Hair_2`. One face for every man. | Features that do not catch the light (a mask), eyes too big and flat, no lips or sockets in the mesh, no way to tell two thugs apart but hair and a balaclava. |
+| Body | The pack's bodybuilder (shoulder joints 42 cm apart, deltoids to 54 cm, chest 27 cm deep, thighs 13 cm radius), the cloth built round it by `pieces.shell` (offset 1.8 cm, voxel remesh, Taubin "ironing"). | A body that wide under 1.2 cm of cloth reads as an inflated torso, whatever the smoothing. |
+| Trousers | `pieces.leg_tubes` tapered from the thigh to **the knee's radius times 0.9 plus 3 cm at the ankle** (about 8.9 cm, 17.8 cm across), unioned with the body's offset shell; the ribbed cuff only gathered the last 4.5 cm. | The balloon: the ankle was never narrow; the cuff pinched a tube that was already wide. |
+| Stance | The skeleton is the pack's: hip joints 22.8 cm apart (a real man's are about 17), feet 22.8 cm apart in the rest pose, legs vertical, arms in a T. The engine retargets the mannequin driver's idle onto it. | The straddle is the skeleton's hip width plus the driver's combat idle; no mesh change fixes it (see "Not changed" below). |
+| Textures | Skin and normal are the pack's; the cloth has only tiling normals; the hair is the pack's card texture tinted. | One skin, no stubble, lips, veins, pores of its own. |
+
+### What replaces it
+
+* **`looks.py`** (pure Python, tested by `test_looks.py`): the data. `FaceSpec` (about 25 numbers: jaw width and squareness,
+  chin, brow, eye spacing, size and depth, cheekbone and hollow, nose projection, width and bridge, lips, mouth width, ears,
+  age, neck, skin tone, flush, hairline and fade, stubble, plus choices: skin and eye colour, hair style
+  `bald/buzz/crop/short`, headwear `none/beanie/cap`, facial hair `none/stubble/goatee/beard`) and `BodyBuild` (shoulder, chest,
+  waist, belly, arm, thigh, hip, cloth ease, ankle radius, trouser taper), each with a range checked by `problems()`. `LOOKS` is the
+  table of rows: `thug` (the default, what `built/thug` always was; a heavy-browed, square-jawed man in his thirties), `thug_b`
+  (long, narrow, hooked nose, beanie), `thug_c` (round, full lips, cap, beard), `thug_d` (shaved head, long square jaw, goatee going
+  grey), `heavy` (balaclava, so brow and eyes). **A new thug is a new row**; `BLUEPRINT_LOOKS` says which a Blueprint draws from.
+  Every face is an original: parameters of a base head, tuned apart by eye, none modelled on a person, actor or photograph.
+* **`headshape.py`** (numpy, tested by `test_headshape.py`): the head as a structured grid, 90 rings (denser over the face: 2.5 mm
+  apart to the brow) of 96 points (denser at the front), a crown apex and a neck cap, 8.6k vertices and 17k triangles. Each ring is a
+  superellipse (half width, front and back depth, centre, squareness from control points through a monotone cubic), so the skull,
+  the jaw, the chin, the under-jaw and the neck are one surface; the face is heights added along the ring's normal: brow ridge and
+  glabella, sockets, the lid openings the eyeballs show through, the lids' rims and creases, tear troughs and bags, cheekbones and
+  hollows, nose (dorsum, tip, wings, nostrils, hump or dip), nasolabial folds, philtrum, lips, mouth line and corners, chin, jaw
+  angle, masseter. Landmarks are ordinary adult proportions (eyes at half the head's height, nose base a third up, mouth a quarter,
+  22.5 cm chin to crown). Also: ears (a lens-shaped solid with a concha and a helix, standing off the head by `ear_flare`),
+  eyeballs (a pole at the front, a 1.1 mm cornea dome inside 33.75 degrees, planar UVs), brow cards sampled off the skin, a hair cap
+  from a hairline curve (forehead, temples, sideburn, nape, skin fade) up to the crown, a beanie (rolled cuff), a cap (crown and a curved brim). UVs
+  are the grid: u round the head (seam at the back), v up it.
+* **`headtex.py`** (numpy): procedural bakes, no network, no model. Skin albedo and normal at 1024 square from the same numbers that
+  shaped the mesh (tone drift, flush, eye shadow, lips, the line between them, roots under the hair, stubble/goatee/beard dots with grey
+  flecks by age; pores, forehead lines, crow's feet, neck creases, lip lines), eye (sclera, veins, iris fibres, limbal ring, pupil),
+  brow (many strokes, alpha-clipped), hair (strand stripes and a groove normal). `<look id>_skin.png` / `_skin_n.png` in `--override-dir` replace the skin
+  bake: the hook for anything made outside the repo. **No AI-generation path is wired**: the only local generation the project has
+  (TRELLIS.2 via Z-Image-Turbo for Lucky, `docs/CREDITS.md`) depends on Meta's DINOv3 licence, whose owner sign-off is still pending, and it makes
+  whole meshes, not faces to a spec.
+* **`headbuild.py`** (bpy): the objects, skinned rigid to `Head` (the head and neck blend into the body's own weights below the
+  chin), the materials (skin, sclera and a wet iris at roughness 0.05 so the dome catches the engine's light, brows, hair, headwear)
+  and the hands' skin (the pack's texture recoloured to the face's tone). The pack's eyes and brows are dropped.
+* **`bodyshape.py`**: `reshape_body` narrows and softens `body.reference` by the look's `BodyBuild` before any garment measures
+  it (torso width and depth by height, belly, arm and thigh girth about the bone lines), then a Taubin pass. Skeleton, rest pose and
+  weights untouched. Clothes hang with `build.ease` of air (the old fixed 1.2 cm), with long drape folds down the jacket and trouser
+  legs, and the trousers taper to `build.ankle` (`pieces.leg_tubes(r_bottom=, taper=)`).
+* **Variants at runtime.** `import_bodies.BUILT_LOOKS` has a row per thug look; `LOOK_VARIANTS` writes them to
+  `BP_Thug.BodyLookVariants` (C++, `AThugCharacter`): each thug takes one of {`BodyLook`, the variants} when he is made, by hash of his actor's
+  name (`HawkeyeBodyLook::PickVariantIndex`), so a placed thug keeps his face. A variant not on disk falls back to `BodyLook`. The
+  heavy has one look. **The C++ for this was written without a compiler; build `HawkeyeEditor` before trusting it.**
+
+```powershell
+$B = "C:\Program Files\Blender Foundation\Blender 5.3\blender.exe"
+foreach ($l in "thug","thug_b","thug_c","thug_d") { & $B --background --factory-startup --python Tools\Blender\build_thug.py -- --look $l }
+& $B --background --factory-startup --python Tools\Blender\build_heavy.py -- --look heavy
+```
+
+Extra flags: `--legacy-head` (the pack's head), `--legacy-body` (no reshape), `--override-dir`, views `face_front, face_34, face_side,
+face_back, eyes` (face close-ups, 0.34 m across), and the usual `--views`. Tests, no Blender: `python Tools/Blender/test_looks.py`,
+`python Tools/Blender/test_headshape.py` (numpy; skipped without it).
+
+**Not changed, on purpose.** The skeleton, its bone names, its rest pose (T-pose arms, vertical legs at 22.8 cm) and the weights
+transfer are the pack's, so `SKEL_Body_Male`, `IK_Body_Male`, the retargeters, the montages and `_handpose.py` see no difference; a
+bind-pose change (an A-pose, narrower hips) would change `_handpose.py`'s frames and the `HawkeyeAligned` retarget pose and
+invalidate every clip already retargeted. The stance is therefore a retarget job, not a mesh one: adduct the thighs
+a degree or two toward the midline about the hip in the retarget pose (what `_handpose.adduct` does for the arms) to bring the
+feet in, and check the driver's idle (the combat clips may stand wider than the rest pose). Not done in phase 1.
+
 ## Known limits
 
 - No cloth simulation: Clint's skirt is skinned. It swings in a stride, but in a deep crouch the front panels fold
   into the boots. A cloth asset (Chaos Cloth) on the skirt would fix it in the engine.
 - LOD0 is still 47k (thug), 60k (heavy) and 77k (Clint) triangles; the engine LODs carry the distance. The LOD screen
   sizes are the engine's defaults, not tuned.
-- The thug's upper sleeves are still full: the Superhero body's deltoids and biceps are under them.
-- The face is the pack's single male face; hair, beard and the balaclava are what tell them apart. Kate has the
-  pack's female face, with its painted eyeliner and heavy brows.
+- The thug's upper sleeves were full of the Superhero body's deltoids and biceps; the reshape (`bodyshape.py`) is meant to fix it.
+- The thugs' and heavy's faces are ours since the rebuild above (once phase 2 has built them); Clint still has the pack's male
+  face, and Kate the pack's female face with its painted eyeliner and heavy brows.
 - A teleport turns Kate's capsule but not her body: the Game Animation Sample's AnimBP keeps the mesh's old facing until
   she moves (a 180 degree teleport in the bodies shot left her facing the old way, the holstered bow on her chest). The
   shot walks her into each facing. Not fixed in the game: fast travel and checkpoint loads may show it for a moment.
