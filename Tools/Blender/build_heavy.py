@@ -27,7 +27,7 @@ VEST_HEM = 0.93
 QUILT = 0.07             # channel spacing
 BOOT_TOP = 0.30
 ARMHOLE_X = 0.232
-SLOT = (1.668, 1.732, 0.068)   # the balaclava's eye slot: bottom, top, half width
+SLOT = (1.674, 1.730, 0.060)   # the balaclava's eye slot: bottom, top, half width
 
 
 def vest_materials(out):

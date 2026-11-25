@@ -2,6 +2,7 @@
 #include "Animation/AnimMontage.h"
 #include "Combat/BowIKAnimInstance.h"
 #include "Combat/CombatAnimSet.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeMovementComponent.h"
