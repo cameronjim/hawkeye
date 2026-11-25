@@ -15,8 +15,11 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bodyshape  # noqa: E402
 import build_thug as bt  # noqa: E402
 import costume as cs  # noqa: E402
+import headbuild  # noqa: E402
+import looks  # noqa: E402
 import pieces  # noqa: E402
 
 WHO = "heavy"
@@ -83,12 +86,28 @@ def build_vest(body, mats, vmats):
     return [(vest, W), collar]
 
 
-def build_mask(body, vmats):
+def mask_from_head(body, head_parts):
+    """The balaclava's volume from our own head: copies of the head and ears pushed out 5 mm and remeshed into one
+    smooth closed surface (the ears merge in), as the pack's head was."""
+    src = [cs.duplicate(o, "BalaclavaSrc") for o in [head_parts.head] + head_parts.ears]
+    for o in src:
+        o.vertex_groups.clear()
+    mask = cs.join(src, "Balaclava")
+    cs.set_co(mask, cs.get_co(mask) + cs.get_vnormals(mask) * 0.005)
+    mask = cs.voxel_remesh(mask, 0.0045)
+    cs.taubin(mask, 10)
+    return mask
+
+
+def build_mask(body, vmats, head_parts=None):
     """A knit balaclava: the head and neck pushed out a few mm (the ears merge in), one eye slot cut on clean
-    lines, its foot tucked into the collar."""
-    fam = body.family
-    keep = (fam["head"] > 0.2) & (body.co[:, 2] > 1.42)
-    mask = pieces.shell(body, "Balaclava", 0.006, voxel=0.005, smooth=10, keep=keep)
+    lines, its foot tucked into the collar. From our head when given, else the pack's."""
+    if head_parts is not None:
+        mask = mask_from_head(body, head_parts)
+    else:
+        fam = body.family
+        keep = (fam["head"] > 0.2) & (body.co[:, 2] > 1.42)
+        mask = pieces.shell(body, "Balaclava", 0.006, voxel=0.005, smooth=10, keep=keep)
     cs.cut_and_delete(mask, (0, 0, 1.46), (0, 0, 1), lambda c, n: c[:, 2] < 1.46)
     lo, hi, hw = SLOT
 
@@ -107,26 +126,52 @@ def build_mask(body, vmats):
     cs.solidify(mask, 0.003)
     cs.box_uv(mask, 0.02)
     cs.mark_sharp(mask, 60)
-    return mask, cs.smooth_values(body.transfer(cs.get_co(mask)), cs.get_edges(mask), 2, 0.5)
+    co = cs.get_co(mask)
+    W = headbuild.head_weights(body, co) if head_parts is not None else body.transfer(co)
+    return mask, cs.smooth_values(W, cs.get_edges(mask), 2, 0.5)
 
 
 def build(args):
+    look = looks.get_look(args.look, default=WHO)
+    if look.family != "heavy":
+        raise SystemExit("build_heavy: '{0}' is a {1} look".format(look.id, look.family))
     body = cs.Body(args.assets_root)
-    mats = bt.make_materials(args.out, who="Heavy")
+    if not args.legacy_body:
+        bodyshape.reshape_body(body, look.build)
+    who = look.id.capitalize()
+    mats = bt.make_materials(args.out, who=who)
     vmats = vest_materials(args.out)
-    head = bt.head_materials(body, args.out, "Heavy", hair_tint=(0.02, 0.016, 0.013))
     boots = pieces.combat_boots(body, mats, top_z=BOOT_TOP)
-    out = bt.build_jacket(body, mats)
-    out.append(bt.build_trousers(body, mats, boots=boots[0][0], boot_top=BOOT_TOP))
+    out = bt.build_jacket(body, mats, look.build)
+    out.append(bt.build_trousers(body, mats, boots=boots[0][0], boot_top=BOOT_TOP, build=look.build))
     out += boots
     out += build_vest(body, mats, vmats)
-    out.append(build_mask(body, vmats))
-    # Skin shows only through the eye slot (and the hands); no hair under the mask.
     lo, hi, hw = SLOT
     co = body.co
     slot = (co[:, 1] < -0.02) & (np.abs(co[:, 0]) < hw + 0.012) & (co[:, 2] > lo - 0.012) & (co[:, 2] < hi + 0.012)
-    parts = bt.dress_head(body, head, hair_file=None, keep=slot) + bt.skin_all(body, out)
-    cs.finish(body, parts, WHO, args)
+    if args.legacy_head:
+        head = bt.head_materials(body, args.out, who, hair_tint=(0.02, 0.016, 0.013))
+        out.append(build_mask(body, vmats))
+        # Skin shows only through the eye slot (and the hands); no hair under the mask.
+        parts = bt.dress_head(body, head, hair_file=None, keep=slot)
+    else:
+        _parts, head_parts = bt.dress_own_head(body, look, args)
+        out.append(build_mask(body, vmats, head_parts))
+        trim_head_to_slot(head_parts, slot_box=SLOT)
+        parts = [body.skin] + head_parts.all()       # the ears are gone: not the list dress_own_head returned
+    parts += bt.skin_all(body, out)
+    cs.finish(body, parts, args.who, args)
+
+
+def trim_head_to_slot(head_parts, slot_box):
+    """Under the balaclava only the eye slot shows: the ears go, and the head keeps the faces round the slot."""
+    lo, hi, hw = slot_box
+    for ear in head_parts.ears:
+        cs.remove(ear)
+    head_parts.ears = []
+    c, _n = cs.face_data(head_parts.head)
+    near = (c[:, 1] < -0.02) & (np.abs(c[:, 0]) < hw + 0.02) & (c[:, 2] > lo - 0.02) & (c[:, 2] < hi + 0.02)
+    cs.delete_faces(head_parts.head, ~near)
 
 
 if __name__ == "__main__":
