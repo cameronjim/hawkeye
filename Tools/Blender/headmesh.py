@@ -130,7 +130,9 @@ class SurfaceGrid:
         self.neck_y = neck_y
         self.theta = hs.angles(hs.SEGMENTS)
         self.z = hs.row_heights()
-        self.z[-1] = hs.CROWN_Z - 0.0003      # the top ring just under the crown, so the shells' fan to the apex is flat
+        # the top ring just under the subdivided crown (Catmull-Clark shrinks the dome a little), so the shells' fan
+        # to the apex is flat
+        self.z[-1] = float(surf.verts[:, 2].max()) - 0.0004
         self.rows, self.segs = len(self.z), len(self.theta)
         self._eyes = eyes
         tris, _owner, _corners = surf.tri_arrays()
@@ -138,7 +140,13 @@ class SurfaceGrid:
         self.surf = surf
         zs = np.linspace(hs.CHIN_Z + 0.01, hs.CROWN_Z - 0.004, 24)
         self._axis_z = zs
-        self._axis_y = np.array([self._skull_mid(z0) for z0 in zs])
+        mids = [self._skull_mid(z0) for z0 in zs]
+        last = next((m for m in mids if m is not None), 0.0)
+        for i, m in enumerate(mids):       # near the crown the off-axis rays pass over the dome: carry the last middle up
+            if m is None:
+                mids[i] = last
+            last = mids[i]
+        self._axis_y = np.array(mids)
         self.P = np.zeros((self.rows, self.segs, 3))
         for r, z0 in enumerate(self.z):
             for c, th in enumerate(self.theta):
@@ -152,7 +160,7 @@ class SurfaceGrid:
         front = self.bvh.ray_cast(Vector((0.045, -0.3, z)), Vector((0.0, 1.0, 0.0)), 0.6)
         back = self.bvh.ray_cast(Vector((0.045, 0.3, z)), Vector((0.0, -1.0, 0.0)), 0.6)
         if front[0] is None or back[0] is None:
-            return 0.0
+            return None
         return 0.5 * (front[0].y + back[0].y)
 
     def ray_x(self, z, side, y):
@@ -272,3 +280,27 @@ def brow_arrays(face, grid, side, chin_z):
     u = np.repeat(np.linspace(0.0, 1.0, rows)[:, None], cols, axis=1)
     v = np.repeat(np.linspace(0.0, 1.0, cols)[None, :], rows, axis=0)
     return P, u, v
+
+
+def cavity(surf):
+    """Per-vertex concavity, 0 on flat or convex skin and up to 1 in a crease (the Laplacian's component along the
+    normal over the local edge length): the fold beside the nose and mouth, a lid's corner, under the lip."""
+    n = len(surf.verts)
+    nbr = [set() for _ in range(n)]
+    for f in surf.faces:
+        for k in range(len(f)):
+            a, b = f[k], f[(k + 1) % len(f)]
+            nbr[a].add(b)
+            nbr[b].add(a)
+    normals = vertex_normals(surf)
+    out = np.zeros(n)
+    v = surf.verts
+    for i in range(n):
+        idx = list(nbr[i])
+        if not idx:
+            continue
+        d = v[idx] - v[i]
+        lap = d.mean(axis=0)
+        edge = float(np.linalg.norm(d, axis=1).mean()) + 1e-9
+        out[i] = float(np.dot(lap, normals[i])) / edge
+    return np.clip(out / 0.18, 0.0, 1.0)

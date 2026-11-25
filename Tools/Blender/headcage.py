@@ -85,8 +85,8 @@ ROW_X = {
     "m2": (1.2, 2.6, 3.9, 5.1),
     "m1": (1.3, 3.5, 4.9, 5.7),
     "m0": (1.25, 2.65, 4.2, 5.6),
-    "sub": (0.65, 2.2, 4.0, 5.7),
-    "tip": (0.8, 2.35, 4.1, 5.8),
+    "sub": (0.65, 2.0, 4.0, 5.7),
+    "tip": (0.8, 2.1, 4.1, 5.8),
     "nb": (1.3, 2.8, 4.6, 6.1),
     "e2": (1.35, 3.0, 4.9, 6.4),
     "e1": (0.9, 3.1, 5.55, 6.9),
@@ -104,10 +104,10 @@ RELIEF = {
     ("e0", 4): (0, -0.10, 0), ("f1", 0): (0, 0.05, 0), ("f1", 1): (0, 0.08, 0), ("f1", 2): (0, 0.12, 0),
     # the eye's orbit (ring C)
     ("e1", 0): (0, -0.25, 0), ("e1", 1): (0, -0.60, 0), ("e1", 3): (0, 0.45, 0), ("e2", 3): (0, 0.95, 0),
-    ("e2", 2): (0, 0.70, 0), ("e2", 1): (0, 0.15, 0), ("e2", 0): (0, 1.20, 0), ("e1", 4): (0, -0.05, 0),
+    ("e2", 2): (0, 0.70, 0), ("e2", 1): (0, 0.15, 0), ("e2", 0): (0, 1.40, 0), ("e1", 4): (0, -0.05, 0),
     # the nose: bridge, dorsum, tip, wings, base, columella
-    ("nb", 0): (0, 2.50, 0), ("nb", 1): (0, 2.05, 0), ("nb", 2): (0, 0.60, 0), ("nb", 3): (0, 0.65, 0),
-    ("tip", 0): (0, 3.0, 0), ("tip", 1): (0, 2.65, 0), ("tip", 2): (0, 1.85, 0), ("tip", 3): (0, 0.35, 0),
+    ("nb", 0): (0, 2.80, 0), ("nb", 1): (0, 2.05, 0), ("nb", 2): (0, 0.60, 0), ("nb", 3): (0, 0.65, 0),
+    ("tip", 0): (0, 3.3, 0), ("tip", 1): (0, 2.65, 0), ("tip", 2): (0, 1.85, 0), ("tip", 3): (0, 0.35, 0),
     ("sub", 0): (0, 0.60, 0), ("sub", 1): (0, 0.45, 0), ("sub", 2): (0, 0.25, 0), ("sub", 3): (0, 0.05, 0),
     ("e2", 4): (0, 0.0, 0),
     # the cheek, the groove beside the nose and mouth, the jaw
@@ -124,12 +124,12 @@ RELIEF = {
 # outer top, outer mid, outer bottom, bottom, inner bottom (the same order as ring C's lattice nodes).
 EYE_B = [(1.35, 11.25), (1.65, 12.4), (3.1, 12.6), (4.8, 12.2), (5.0, 11.4), (4.6, 10.1), (3.1, 9.9), (1.65, 10.1)]
 EYE_B_DY = [-0.85, -0.70, 0.10, -0.75, -0.95, -0.60, -0.15, -0.55]       # from the cornea's pole
-EYE_A = [(1.65, 11.2), (2.15, 11.74), (3.1, 11.8), (4.1, 11.68), (4.55, 11.4), (4.15, 10.72), (3.1, 10.62), (2.15, 10.72)]
+EYE_A = [(1.65, 11.2), (2.15, 11.79), (3.1, 11.86), (4.1, 11.72), (4.55, 11.4), (4.15, 10.72), (3.1, 10.64), (2.15, 10.73)]
 LID_SPHERE_R = 1.42
 POLE_OFFSET = 0.35                       # the cornea's pole in front of the face's plane at the eye, cm
 # Mouth loops, left half: top centre, top 1, top 2, corner, bottom 2, bottom 1, bottom centre; (x, z, dy).
-MOUTH_L1 = [(0.0, 5.0, 0.62), (0.95, 5.2, 0.60), (2.0, 4.7, 0.34), (2.85, 4.10, 0.05), (2.0, 3.4, 0.38),
-            (1.0, 2.95, 0.68), (0.0, 2.9, 0.72)]
+MOUTH_L1 = [(0.0, 4.95, 0.62), (0.95, 5.1, 0.60), (2.0, 4.65, 0.34), (2.85, 4.10, 0.05), (2.0, 3.45, 0.38),
+            (1.0, 3.05, 0.68), (0.0, 3.0, 0.72)]
 MOUTH_L0 = [(0.0, 4.17, 0.38), (1.0, 4.19, 0.36), (2.0, 4.13, 0.2), (2.55, 4.08, -0.05), (2.0, 4.05, 0.2),
             (1.0, 4.02, 0.38), (0.0, 4.03, 0.40)]
 MOUTH_POCKET = 0.9
@@ -314,6 +314,9 @@ class Builder:
         ring = [self.lat(r, j, 1) for j in range(0, 9)] + [self.lat(r, j, -1) for j in range(7, 0, -1)]
         for k in range(len(ring)):
             self.add_face((ring[k], ring[(k + 1) % len(ring)], apex))
+        # the neck's base is closed (inside the collar; the balaclava's voxel shell needs a closed head)
+        base = [self.lat(0, j, 1) for j in range(0, 9)] + [self.lat(0, j, -1) for j in range(7, 0, -1)]
+        self.add_face(tuple(base[::-1]))
 
     # --- the eye -----------------------------------------------------------------------------------------------
     def eye_ring_c(self):
@@ -665,6 +668,8 @@ def cage_groups(cage):
             groups["lash"][i] = 1.0
         if kind in ("L0b", "N2", "Ain"):
             groups["inner"][i] = 1.0
+        if kind == "N1":
+            groups["inner"][i] = 0.7
         if kind == "L" and key[1] == R["e0"] and key[2] in (1, 2, 3):
             groups["ridge"][i] = 1.0
     return groups
@@ -676,8 +681,8 @@ def cage_groups(cage):
 
 EAR_NU = 11            # rows up the ear (lobe to the helix's top)
 EAR_NV = 8             # columns across (the root to the helix's rim)
-EAR_WIDTH = 3.5        # cm at ear_size 1
-EAR_LENGTH = 6.5       # cm at ear_size 1
+EAR_WIDTH = 3.9        # cm at ear_size 1
+EAR_LENGTH = 6.2       # cm at ear_size 1
 EAR_STRIP_U = (0.06, 0.56)   # where the left and right ears' outer sheets start in u
 EAR_STRIP_V = 0.885         # and in v
 EAR_RELIEF = 2.1       # the ear's relief over its plate, times the table's numbers
@@ -733,7 +738,7 @@ def ear_cage(face, anchor, side, uv_anchor, uv_per_cm, anchor_rows=None):
                 if sheet == 1:
                     d = -float(ear_thickness(u, v)) + 0.18 * float(ear_relief(u, v))
                 z = az + (u - 0.52) * L
-                lean = 0.9 * (u - 0.5) * es              # the top leans back
+                lean = 0.5 * (u - 0.5) * es              # the top leans back
                 x0 = ax if rows_x is None else float(rows_x[i])
                 x = x0 + t[0] * v * W * width[i] + nrm[0] * d - side * 0.9 * (1.0 - v)
                 y = ay + t[1] * v * W * width[i] + nrm[1] * d + lean

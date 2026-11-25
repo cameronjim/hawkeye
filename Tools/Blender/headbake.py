@@ -19,7 +19,7 @@ import numpy as np
 import headtex as ht
 import looks
 
-LIP_HUE = np.array([0.88, 0.60, 0.58])        # multiplies the skin on the lips
+LIP_HUE = np.array([0.84, 0.62, 0.60])        # multiplies the skin on the lips
 SOCKET_HUE = np.array([0.80, 0.60, 0.55])     # what the inside of the lids and the pockets take on
 
 
@@ -119,7 +119,7 @@ def beard_mask(face, lx, lz, lyf, nz):
     mouth = np.exp(-0.5 * ((ax / 2.6) ** 2 + ((lz - 4.1) / 0.55) ** 2))     # the lips themselves are bare
     if face.facial_hair in ("stubble", "beard"):
         top = (5.7 if face.facial_hair == "beard" else 5.3) + 4.4 * smoothstep(1.2, 6.6, ax)             + 0.35 * np.sin(lx * 2.1 + lyf * 0.9)                                  # the cheek line, rising to the ear
-        m = smoothstep(top + 0.9, top - 0.9, lz) * smoothstep(-6.5, -2.5, lz)
+        m = smoothstep(top + 0.9, top - 0.9, lz) * smoothstep(-3.6, -0.6, lz)
         m *= 0.85 if face.facial_hair == "stubble" else 1.0
         # a clean upper lip edge below the nose for stubble; a moustache joins a beard
         gap = np.exp(-0.5 * ((ax / 1.0) ** 2 + ((lz - 5.5) / 0.4) ** 2)) if face.facial_hair == "stubble" else 0.0
@@ -149,7 +149,7 @@ def skin_maps(face, parts, chin_z, size=1024, hairline_t=None):
     attrs = {
         "pos": verts,
         "nrm": parts["normals"],
-        "w": np.stack([parts["ao"], parts["lips"], parts["inner"], parts["lash"]], axis=1),
+        "w": np.stack([parts["ao"], parts["lips"], parts["inner"], parts["lash"], parts["cavity"]], axis=1),
         "ridge": parts["ridge"][:, None],
     }
     ras, cover = rasterise(parts["corner_uv"], parts["tri_corners"], parts["tris"], attrs, size)
@@ -157,7 +157,7 @@ def skin_maps(face, parts, chin_z, size=1024, hairline_t=None):
         ras[k] = fill_gutter(ras[k], cover)
     pos = ras["pos"]
     nrm = ras["nrm"] / np.maximum(np.linalg.norm(ras["nrm"], axis=2), 1e-9)[..., None]
-    ao, lips, inner, lash = (ras["w"][..., k] for k in range(4))
+    ao, lips, inner, lash, cavity = (ras["w"][..., k] for k in range(5))
     ridge = ras["ridge"][..., 0]
     loc = local(pos, chin_z)
     lx, lyf, lz = loc[..., 0], loc[..., 1], loc[..., 2]
@@ -183,9 +183,11 @@ def skin_maps(face, parts, chin_z, size=1024, hairline_t=None):
     # the cage's own occlusion shades the sockets, the lip line, under the nose, the fold beside the mouth
     shade = 1.0 - 0.92 * (1.0 - np.clip(ao, 0.0, 1.0)) ** 1.1
     albedo *= shade[..., None] * np.array([1.0, 0.94, 0.92]) + (1.0 - shade[..., None]) * 0.0
+    # creases (cavity, from the mesh's own curvature): the fold beside the nose and mouth, a lid's corner, under the lip
+    albedo *= (1.0 - 0.38 * np.clip(cavity, 0, 1) ** 0.8)[..., None] * np.array([1.0, 0.97, 0.96]) + 0.0
     # lids' margins: a faint dark lash line; the inside of the lids, the mouth's pocket and the nostrils: dark red
     albedo *= 1.0 - 0.45 * np.clip(lash, 0, 1)[..., None]
-    albedo = lerp(albedo, albedo * SOCKET_HUE * 0.35, np.clip(inner * 1.4, 0, 1)[..., None])
+    albedo = lerp(albedo, albedo * SOCKET_HUE * 0.16, np.clip(inner * 1.5, 0, 1)[..., None])
     # lips: from the lip geometry (the weight is 1 on the lip line and the vermilion border, 0 on the ring outside)
     lip_t = smoothstep(0.25, 0.85, lips)
     lip_col = albedo * LIP_HUE * (0.93 + 0.07 * face.skin_ruddy)
@@ -203,7 +205,7 @@ def skin_maps(face, parts, chin_z, size=1024, hairline_t=None):
     dots = ht.tileable_noise(h, w, seed + 3, 0.55)
     if face.facial_hair != "none" and face.stubble > 0.0:
         dens = face.stubble
-        albedo = lerp(albedo, albedo * 0.68 + hair * 0.32, (0.55 * dens * bm)[..., None])
+        albedo = lerp(albedo, albedo * 0.68 + hair * 0.32, (0.42 * dens * bm)[..., None])
         cover_v = np.clip(bm * dens, 0.0, 1.0)
         hair_dots = (dots > (2.35 - 1.75 * cover_v)) & (cover_v > 0.05)
         flecks = ht.tileable_noise(h, w, seed + 4, 0.55) > (1.8 - 1.2 * face.age)

@@ -43,14 +43,11 @@ class CageTests(unittest.TestCase):
             self.assertGreater(quads / len(d.faces), 0.8, look_id)       # quad-dominant
             self.assertTrue(np.isfinite(d.verts).all(), look_id)
 
-    def test_closed_but_for_the_neck(self):
+    def test_closed(self):
         for look_id, d in self.cages.items():
             counts = edge_counts(d.faces)
             self.assertTrue(all(n == 1 for n in counts.values()), "{0}: an edge used twice the same way".format(look_id))
-            boundary = [e for e in counts if (e[1], e[0]) not in counts]
-            self.assertEqual(len(boundary), hc.SEGMENTS, look_id)       # the neck's open ring and nothing else
-            for a, b in boundary:
-                self.assertLess(d.verts[a][2], hc.CHIN_Z - 0.10, look_id)
+            self.assertEqual([e for e in counts if (e[1], e[0]) not in counts], [], look_id)   # watertight (the neck is capped)
 
     def test_faces_look_outward(self):
         for look_id, d in self.cages.items():

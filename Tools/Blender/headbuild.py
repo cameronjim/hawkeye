@@ -277,7 +277,7 @@ def bake_skin(look, full):
     zero = np.zeros(len(full.verts))
     parts = {"verts": full.verts, "tris": tris, "tri_corners": corners, "corner_uv": full.corner_uv,
              "normals": hm.vertex_normals(full), "ao": ao, "lips": w.get("lips", zero), "inner": w.get("inner", zero),
-             "lash": w.get("lash", zero), "ridge": w.get("ridge", zero)}
+             "lash": w.get("lash", zero), "ridge": w.get("ridge", zero), "cavity": hm.cavity(full)}
     return hb.skin_maps(look.face, parts, hc.CHIN_Z, hairline_t=hs.hairline_t)
 
 

@@ -57,7 +57,7 @@ bool FHawkeyeBodyPoseArm::RunTest(const FString& Parameters)
 	const FVector Out = FVector::RightVector;
 	const FVector Forward = FVector::ForwardVector;
 	const FArmRest Rest = ArmRestDirections(Up, Out, Forward);
-	TestTrue(TEXT("The upper arm hangs down"), Rest.Upper.Z < -0.9f);
+	TestTrue(TEXT("The upper arm hangs down"), Rest.Upper.Z < -0.97f);
 	TestTrue(TEXT("and a little out from the body"), Rest.Upper.Y > 0.f);
 	TestTrue(TEXT("The elbow is nearly straight"), FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(Rest.Upper, Rest.Lower))) < 15.f);
 	TestTrue(TEXT("and bends forward"), Rest.Lower.X > Rest.Upper.X);
