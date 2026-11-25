@@ -237,6 +237,13 @@ the rope's end). It fails when the pose is drawing with the pose off, when mid-p
 drawn hand is more than 45 cm off the rope hand's target (a warning past 25), and when the three arrival scenarios are not a two-step, a slide out and a step-down. Read the strips: the pose reads as physical when the body leans into the pull and swings through a chain, the
 legs trail and the hand stays on the line, and each arrival and landing matches its speed.
 
+The ledge strips (written 2026-11-25, not yet run): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`, `hang_hands`, each also
+`_wide`, shot on a stage the test builds 200 m over the district at a fixed 1/60 s a frame (`FApp::SetUseFixedTimeStep`), off
+(`hawkeye.LedgePose 0`) and on; with it on, every frame where a hand is held checks the drawn `hand_l` / `hand_r` is within 8 cm of its
+place on the edge (4 for `hang_hands`). Run just them with `-HawkeyeTraversalOnly=roof_dismount+ledge_catch+hang_drop+climb_up+vault+hang_hands`
+(`+ledge_catch_wide` ... for the whole moves). Read them with `animation.md`, "Ledge clips". The rules and the component on boxes are headless:
+`Hawkeye.Ledge.*` (`gameplay-semantics.md`, "Ledge body").
+
 ## 2i. The traversal audit (a gate since 2026-11-11)
 
 `.\Tools\traversal-audit.ps1` (the `HawkeyeTraversalAudit` commandlet, headless editor, about 30 to 70 s) runs the grapple
