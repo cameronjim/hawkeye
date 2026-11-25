@@ -201,6 +201,11 @@ the same way. `UCharacterLightRigSubsystem` (`World/CharacterLightRig.h`) lights
   the day (bias 0, sun 7 lux plus sky 13) gets under half of the night's lux. `UTimeOfDaySubsystem::GetExposureBiasInForce` is the
   bias.
 - `hawkeye.CharLight.Enable`, `.Key`, `.Fill`, `.Rim`, `.DayScale` (lux at the night's exposure; the day's share), `.Debug 1`.
+- The holder actor is a plain `AActor`: `AInfo` is abstract and `SpawnActor` failed every frame (no lights at all, a silhouette
+  in the game, a hang in the demo shot) until 2026-11-25. A failed spawn now logs once and stops trying. Confirmed in the demo
+  camera at night on the alley route: costume colour, limbs and a rim on hair and shoulder read; the street stays dark blue.
+  `Hawkeye.Screenshot.Bodies` (night and day): Kate, Clint, thugs and Lucky read at night, the day is not blown out; Lucky's
+  cream coat is the hottest thing in a night frame (lower `hawkeye.CharLight.Key` if it bothers).
 - Tests: `Hawkeye.CharLight.Rules`, `Hawkeye.CharLight.PawnsAreInChannelOne`. The strips: `Hawkeye.Screenshot.Traversal` with
   `-HawkeyeTraversalOnly=shot+shot_player` (night, the stage lamp off).
 

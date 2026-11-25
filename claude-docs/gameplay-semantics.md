@@ -614,8 +614,16 @@ for a few frames unseen (no trail, `LaunchWithVelocity` is off for it), and the 
   whips and is drawn back to the anchor over `ReleaseSeconds` (0.2), then Hidden. At most three ropes at once.
 - The Niagara beam is off while `Shot.bEnabled` (`hawkeye.Grapple.LegacyBeam 1` brings it back for a comparison). No debug line
   is drawn by the game; the traversal strips' yellow line is the test's own.
-- The marker's colour (the HUD's bright green diamond, `GrappleMarkerColor`, the accessibility palette's green) is HUD, not the
-  line; the line and the arrow carry no state colour.
+- The marker's colour is HUD, not the line; the line and the arrow carry no state colour. Since 2026-11-25 the default
+  `FHawkeyePalette::Green` (the grapple marker, the hint, the inventory heading) is a pale lavender-white (0.86, 0.80, 1.0), not
+  the neon green (0.22, 1.0, 0.08) the owner called "the grapple". That green is kept as the `HighContrast` palette (settings,
+  "Colour palette", the fifth choice), whose other accents are the default's. `Hawkeye.Accessibility.Palettes` checks both.
+  Demo captures are HUD-free (`bShowUI` false); the strips never draw the HUD.
+- The rope's cord is a dark cool grey (0.022, 0.023, 0.026 linear, `M_GrappleRope`), a very faint rim (0.03); under the
+  character light rig it reads as a thin grey-blue thread against brick and snow, dark against the sky. The arrow in flight (15000
+  cm/s, 250 cm a frame at 60 fps) is a pale streak from the bow's standard arrow trail; it is the one bright thing in a shot.
+- The bow's riser glows purple (`M_Bow`, `BOW_GLOW` 0.35 since 2026-11-25, was 1.2): slung on her back at night it read as
+  a glowing nock parked at her hip. It is the bow's grip, not an arrow; the arrow is only spawned at the release.
 - Tests: `Hawkeye.Grapple.Shot.Schedule`, `.DrawAndPhases`, `.PlaysBeforeTheArrowLeaves` (the whole press to the let-go in an
   unticked world), `Hawkeye.Grapple.Rope.StateMachine`.
 
@@ -625,7 +633,8 @@ for a few frames unseen (no trail, `LaunchWithVelocity` is off for it), and the 
 body pose is in any phase or the shot or the zip is up, and out over 0.35 s, and sets the follow camera's `MotionBlurAmount`
 to `hawkeye.Traversal.MotionBlur` (0.12; the engine default is 0.5) and `MotionBlurMax` to `.MotionBlurMax` (1 % of the screen;
 5). An explosion's `SuppressMotionBlur` wins while it runs. The speed sensation is the camera's speed FOV (`CameraRules`).
-Test: `Hawkeye.Traversal.MotionBlurWeight`.
+Test: `Hawkeye.Traversal.MotionBlurWeight`. The demo shots' own camera (`Hawkeye.Demo.GrappleRun`, `.Descent`) is not the follow
+camera, so `DemoCaptureTest` gives it the same two values; without them the frame smeared in a zip at the volume's 0.5.
 
 ## Bow and arrows (built 2026-09-26; the rules below hold, with these notes)
 - Data: `UBowDefinition` (DA_Bow_Kate 0.8 s draw, DA_Bow_Clint 1.0 s) and
