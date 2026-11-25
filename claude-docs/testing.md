@@ -241,7 +241,7 @@ Saves in automation (2026-11-25): any process whose command line has `-unattende
 `-HawkeyeDemo`, and any process while a test runs, reads and writes only `HawkeyeCampaignAutomation` and `HawkeyeSettingsAutomation`,
 never `HawkeyeCampaign` or `HawkeyeSettings`: `HawkeyeAutomation::SaveSlotName` (`Hawkeye.h`) is the one place, and both subsystems'
 `GetSlotName` go through it, an override naming a player slot included. The player's own launch has none of those flags and is
-unaffected. `Hawkeye.Settings.SaveIsolation` tests the command-line rule and the redirection. (Two agents had overwritten the
+unaffected. The laps used to read the owner's real settings slot, which an old test run had left with a look sensitivity of 0.15 and a stick sensitivity of 0.2; on defaults `Hawkeye.Lap.ReindeerGames`' bot never parried (its aim is turned by the sensitivity), so that lap now sets those two on its own subsystem (the automation slot) at its start. `Hawkeye.Settings.SaveIsolation` tests the command-line rule and the redirection. (Two agents had overwritten the
 owner's campaign: an unquoted `-ExecCmds`, and a console command before `Automation RunTests`. Keep `-ExecCmds` quoted and holding
 only `Automation RunTests <name>; Quit`; pass CVars with `-dpcvars=`.)
 

@@ -40,6 +40,7 @@
 #include "Player/InventoryComponent.h"
 #include "Save/HawkeyeCampaignState.h"
 #include "Save/HawkeyeSaveSubsystem.h"
+#include "Settings/HawkeyeSettingsSubsystem.h"
 #include "SpudSubsystem.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
@@ -432,6 +433,13 @@ bool FHawkeyeReindeerLap::SetUp(UWorld* World, APlayerController* PC, AHawkeyeCh
 	Test->TestTrue(TEXT("Chapter 1 leads to chapter 2"), First && First->NextChapter.ToSoftObjectPath() == FSoftObjectPath(Mission));
 	Test->TestTrue(TEXT("Chapter 2 leads to chapter 3"), Mission->NextChapter.ToSoftObjectPath().GetAssetName() == FollowingChapter);
 	Test->TestFalse(TEXT("No partner in chapter 2"), Mission->bPartnerPresent);
+	// The bot's aim and parries were tuned with these sensitivities (the leftover settings slot the laps used to read had them); the
+	// defaults turn its aim differently and it never parried. Pinned here, and written to the automation settings slot only.
+	if (UHawkeyeSettingsSubsystem* Settings = UHawkeyeSettingsSubsystem::Get(World))
+	{
+		Settings->SetLookSensitivity(0.15f);
+		Settings->SetStickSensitivity(0.2f);
+	}
 	Save->SlotNameOverride = Slot;
 	IFileManager::Get().Delete(*USpudSubsystem::GetSaveGameFilePath(Slot), false, true, true);
 	if (UHawkeyeCampaignState* Campaign = Save->GetCampaignState())
