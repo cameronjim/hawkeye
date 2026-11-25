@@ -190,7 +190,7 @@ a run (500 cm/s), and that the look's hands stay within 5 cm of the driver's in 
 (2.8 to 2.9: at full draw her arm is a little short of the driver's hands); the look's pelvis is 0.0 to 0.1 cm from the
 driver's in every shot.
 
-## Enemy heads and bodies (rebuilt 2026-11-24, phase 1: written, not yet run in Blender)
+## Enemy heads and bodies (rebuilt 2026-11-24; built, read and shipped 2026-11-25)
 
 The owner's verdict on the thugs and the heavy was "bad": a mask-like face with painted features, a bulging chest under a
 tracksuit, a wide straddle, balloon trousers. What the first builds were, and why they read that way:
@@ -255,11 +255,31 @@ face_back, eyes` (face close-ups, 0.34 m across), and the usual `--views`. Tests
 `python Tools/Blender/test_headshape.py` (numpy; skipped without it).
 
 **Not changed, on purpose.** The skeleton, its bone names, its rest pose (T-pose arms, vertical legs at 22.8 cm) and the weights
-transfer are the pack's, so `SKEL_Body_Male`, `IK_Body_Male`, the retargeters, the montages and `_handpose.py` see no difference; a
-bind-pose change (an A-pose, narrower hips) would change `_handpose.py`'s frames and the `HawkeyeAligned` retarget pose and
-invalidate every clip already retargeted. The stance is therefore a retarget job, not a mesh one: adduct the thighs
-a degree or two toward the midline about the hip in the retarget pose (what `_handpose.adduct` does for the arms) to bring the
-feet in, and check the driver's idle (the combat clips may stand wider than the rest pose). Not done in phase 1.
+transfer are the pack's, so `SKEL_Body_Male`, `IK_Body_Male`, the retargeters, the montages and `_handpose.py` see no difference.
+
+**What the first real runs found (2026-11-25).**
+
+* The reshape (`bodyshape.reshape_body`) smoothed the body's reference mesh vertex by vertex. The glTF body's vertices are split at the UV
+  seams, so each copy of a seam vertex moved on its own, the seams tore, and the voxel remesh behind every garment filled only a crust
+  (5.6k vertices instead of 90k) or none, which crashed the trainers. Smoothing and the offset normals now treat coincident vertices as one
+  (`welded_taubin`, `weld_normals`); all five looks build every time.
+* The face is a grid of rings, so a feature is a bump on the ring's normal. Wide Gaussians at one height read as a shelf across the
+  cheek (the cheekbone, the muzzle, a mouth groove in the face-plane profile); each was narrowed, tilted or removed, the face's plane
+  made monotone and the grid smoothed twice. Judge the renders at full size: a 500 px montage of the faces shows moire from the pore
+  normal map that is not in the 1000 px render or the engine.
+* The head sits 2.2 cm lower (`CHIN_Z` 1.563) and 4.5 % wider than first written: the first seat left a 5 cm stalk of neck over the stand
+  collar and a head that looked small on the shoulders.
+* The skin textures are quieter (cheek flush and blotches cut by half or more), the brows thinner and softer, the buzz cut is a stippled
+  alpha (dissolving toward the hairline) instead of a hard-edged shell, and the lids, nostrils, lash lines and the under-chin shadow are
+  painted in.
+* `BP_Thug_Heavy` is a child of `BP_Thug`, so it inherited the thugs' `BodyLookVariants` and wore a beanie thug's face over the vest and
+  balaclava; each wearer is now written its variants (the heavy's none).
+
+**Stance.** The straddle is not in the mesh and the retarget pose cannot fix it: the retargeter's IK puts the feet where the driver's
+combat idle has them, 35 cm apart under hips 22.8 cm apart. It is fixed after the retarget, in `FAnimNode_HawkeyeBodyPose`
+(`HawkeyeBodyPose::LegAdductionTurn`, `Hawkeye.BodyPose.LegAdduction`): by the same at-ease weight as the rest arms, each leg is turned in
+at the hip, in the frontal plane, until the foot is `FeetUnderHipsRatio` (0.92) of the hip's distance out, never more than 24 degrees; the
+foot is turned back so it stays flat. The Bodies shot checks it (`feet N cm apart (hips M)`, a failure past 1.35 times).
 
 ## Known limits
 
