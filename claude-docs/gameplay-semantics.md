@@ -637,7 +637,7 @@ to `hawkeye.Traversal.MotionBlur` (0.12; the engine default is 0.5) and `MotionB
 Test: `Hawkeye.Traversal.MotionBlurWeight`. The demo shots' own camera (`Hawkeye.Demo.GrappleRun`, `.Descent`) is not the follow
 camera, so `DemoCaptureTest` gives it the same two values; without them the frame smeared in a zip at the volume's 0.5.
 
-## Ledge body (written 2026-11-25, phase 1: code, rules and tests written, not built, run or seen; Blender clips not built)
+## Ledge body (written 2026-11-25; phase 2 built it, ran it and tuned it from the strips; see "Phase 2" at the end of this section)
 
 Why (the owner, after watching captured gameplay: "parkour is off; the hands and body when dismounting from a roof is not right").
 The frames (`Saved/Demo/descent`, `grapple_run`) show the capsule on the right path and the body playing a pose that knows nothing
@@ -699,7 +699,15 @@ parts, all in the files named:
   `.ShortLedgeClosesTheHands`. The strips: `Hawkeye.Screenshot.Traversal` with `-HawkeyeTraversalOnly=roof_dismount+ledge_catch+hang_drop+climb_up+vault+hang_hands`
   (animation.md): at a fixed 1/60 s a frame, on a stage 200 m over the district, with the drawn hand's distance to its target checked
   (8 cm; 4 for `hang_hands`) with the ledge body on.
-- Known limits, written before it was run: the roof dismount's capsule path is a hop 30 cm over the parapet, so her feet pass
+- Phase 2 (2026-11-25): built, all `Hawkeye.Ledge.*` pass (the pendulum test now counts a bounce inside a frame as touching the wall).
+  The strips are read with the authored clips actually playing (the anim set had no ledge roles until then). The roof dismount's hop
+  is `DropHopClearance` 12 cm over the lip (was 30): the hands are on the lip for more of the move. The strips' hand check skips a hand
+  whose target is beyond the arm's reach (the IK lets go of it by design and the clip holds the hand). The camera: while she is hanging
+  or in a drop to hang, a catch or the climb out, `GetLedgeFraming` is true and `ApplyHangCamera` brings the control yaw round to the
+  open side of the wall from the first frame (not only once hanging), adds `LedgeCameraLift` (90 cm) to the pivot and tips the lens down
+  `LedgeCameraTipDegrees` (14) by the same ease (`LedgeCameraSeconds` 0.35); the arm keeps its length. Before it, the lens stayed on the
+  roof side of the parapet while she went over, and the player strips showed an empty frame for half a second.
+- Known limits, written before it was run (the hop is now 12 cm, so read 30 as 12): the roof dismount's capsule path is a hop 30 cm over the parapet, so her feet pass
   the lip and the hands can only touch it at the start and from about 0.3 s on the way down (the reach weight leaves the middle to
   the clip); a hand on the lip through the whole move wants a path that hugs the lip, which is a path change and so not made.
   The vault's plant and the transfers (leap, hop, corner) use the same frozen-pose fade and are the least tuned.

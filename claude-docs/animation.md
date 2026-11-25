@@ -462,7 +462,15 @@ picks back or front, `gameplay-semantics.md`, "Authored clips"); out of the knoc
 lay onto the capsule over 0.3 s, out of the ragdoll the physics weight falls 1 to 0 over 0.3 s. Strips:
 `getup_from_clip.png`, `getup_from_ragdoll.png`.
 
-**Ledge clips (written 2026-11-25, phase 1: code only; not built in Blender, not imported, not seen).** Six clips on Kate's rig
+**Ledge clips (2026-11-25; phase 2 built them, imported them and read the strips).** Phase 2 found that `create_combat_anims.py`'s `ROLES`
+list did not name the ledge roles, so `DA_AnimSet_Kate` never held them and none of the authored clips played in phase 1's design:
+the dismount and the catch were the sample's clips under the IK. Now the five roles are in `ROLES` (the vault's plant stays out by
+`in_set: false`); `import-anims.ps1` fills them (41 roles) and `LogHawkeye: ... ledge clip <role> (<montage>) at rate` names each play.
+What phase 2 changed in the clips: the climb up's pelvis now goes to the hips-under-the-top position with the chest on the edge and then
+stands (it dived 117 cm below the floor); the dismount's hands rest in front of the chest while the lip is out of reach and go to it as
+it comes within reach (they were an arm flung out at the lip); the hang drop is 1.6 s, the push-off then her falling feet first with
+the arms down and a little out and the knees soft, so the fall after a let-go no longer goes into the sample's arms-wide fall pose
+(a landing's own montage ends it). `clipkit.py` takes a per-clip `pelvis_cm` limit. Six clips on Kate's rig
 (`uefn`) in `build_clips.py` ("the ledge clips"), for the ledge body (`gameplay-semantics.md`, "Ledge body"). All in place (no
 root motion): the capsule's path is the game's and the rig's origin is the capsule's bottom, so the ledge is keyed where the game
 puts it relative to her (hang: edge top 145 cm over the origin and 36 cm ahead, wrists a shoulder width apart; the numbers are
@@ -474,7 +482,7 @@ the idle's (the IK turns the hand), the elbows are poles out and back.
 | Ledge_DropToHang | 0.5 s | LedgeDropToHang | crouch at the parapet, hips over it as she turns, lowered to the hang; the hands follow the parapet's top as the game's path and turn move it past her (`_dismount_edge_local`), pointing at what they cannot reach yet; ends on the hang's first frame exactly |
 | Ledge_Catch | 0.45 s | LedgeCatch | arms up for the edge, the hands close, the body's weight comes on (arms out straight, feet out behind), swings in, knees bend, toes meet the wall; ends on the hang |
 | Ledge_HangIdle | 1.6 s | LedgeHangIdle (loops) | the hang: near-straight arms, toes on the brick, a slow sway |
-| Ledge_HangDrop | 0.35 s | LedgeHangDrop | a small pull, the hands come off the edge, a push off the wall, arms out and down, knees bent for the landing |
+| Ledge_HangDrop | 1.6 s | LedgeHangDrop | a small pull, the hands come off the edge, a push off the wall (0.35 s), then the fall pose held: arms down and a little out, knees bent |
 | Ledge_ClimbUp | 1.0 s | LedgeClimbUp | pull, chest over with the palms pressed back onto the top, a knee up, stand (the last 0.25 s cross-fade into the idle); the ledge sinks past her and comes back behind her as the climb's path does (`_climb_edge_local`) |
 | Vault_Plant | 0.6 s | LedgeVaultPlant (`in_set: false`) | a vault at a run: one hand on the top, hips over, legs swung left; not wired: the vault stays the sample's hurdle |
 

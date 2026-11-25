@@ -237,7 +237,16 @@ the rope's end). It fails when the pose is drawing with the pose off, when mid-p
 drawn hand is more than 45 cm off the rope hand's target (a warning past 25), and when the three arrival scenarios are not a two-step, a slide out and a step-down. Read the strips: the pose reads as physical when the body leans into the pull and swings through a chain, the
 legs trail and the hand stays on the line, and each arrival and landing matches its speed.
 
-The ledge strips (written 2026-11-25, not yet run): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`, `hang_hands`, each also
+Saves in automation (2026-11-25): any process whose command line has `-unattended`, `Automation` (an `-ExecCmds` line, a report path) or
+`-HawkeyeDemo`, and any process while a test runs, reads and writes only `HawkeyeCampaignAutomation` and `HawkeyeSettingsAutomation`,
+never `HawkeyeCampaign` or `HawkeyeSettings`: `HawkeyeAutomation::SaveSlotName` (`Hawkeye.h`) is the one place, and both subsystems'
+`GetSlotName` go through it, an override naming a player slot included. The player's own launch has none of those flags and is
+unaffected. `Hawkeye.Settings.SaveIsolation` tests the command-line rule and the redirection. (Two agents had overwritten the
+owner's campaign: an unquoted `-ExecCmds`, and a console command before `Automation RunTests`. Keep `-ExecCmds` quoted and holding
+only `Automation RunTests <name>; Quit`; pass CVars with `-dpcvars=`.)
+
+The ledge strips (2026-11-25, read in phase 2; `_player` strips at night with her own camera: `roof_dismount_player`, `ledge_catch_player`,
+`hang_player`, `hang_drop_player`, `climb_up_player`; `hang_drop_instant` lets go as the hang starts): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`, `hang_hands`, each also
 `_wide`, shot on a stage the test builds 200 m over the district at a fixed 1/60 s a frame (`FApp::SetUseFixedTimeStep`), off
 (`hawkeye.LedgePose 0`) and on; with it on, every frame where a hand is held checks the drawn `hand_l` / `hand_r` is within 8 cm of its
 place on the edge (4 for `hang_hands`). Run just them with `-HawkeyeTraversalOnly=roof_dismount+ledge_catch+hang_drop+climb_up+vault+hang_hands`
