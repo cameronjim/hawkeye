@@ -701,6 +701,8 @@ AUDIO_DEFAULTS = [
         ("fire_sound", "MS_Grapple_Fire"),
         ("zip_sound", "MS_Grapple_Zip"),
         ("land_sound", "MS_Grapple_Land"),
+        # The arrow biting the anchor: the stone impact until a thunk of its own is built.
+        ("hit_sound", "MS_Arrow_Impact_Stone"),
     ]),
     (PLAYER_PATH, "BP_HawkeyeCharacter", "parkour_component", [("effort_sound", "MS_Vault_Grunt")]),
     (PLAYER_PATH, "BP_HawkeyeCharacter", "melee_component", [
