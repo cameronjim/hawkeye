@@ -635,7 +635,8 @@ def check_clip(rig, clip, frames):
             if z < low[0]:
                 low = (z, n, f)
     notes.append("lowest joint {0:.1f} cm ({1}, frame {2})".format(*low))
-    if low[0] < FLOOR:
+    # A clip that hangs (the ledge clips: the body is under the capsule's bottom, the feet on a wall) says how low it goes.
+    if low[0] < clip.extra.get("floor_cm", FLOOR):
         problems.append("{0} {1:.1f} cm under the floor at frame {2}".format(low[1], -low[0], low[2]))
     return problems, notes
 

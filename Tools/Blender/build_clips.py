@@ -1018,11 +1018,381 @@ def measure_contact(kind, clip, frames):
     clip.extra["contact_height_cm"] = round(p.z * scale, 1)
 
 
+# --------------------------------------------------------------------------------------------------
+# the ledge clips (2026-11-25): a roof dismount, the catch, the hang, the let-go, the climb up, a vault's plant
+# --------------------------------------------------------------------------------------------------
+
+# claude-docs/gameplay-semantics.md, "Ledge body". Numbers in game centimetres (HANG_*, PARAPET ...) are the game's and are
+# divided by the driver's 0.93 scale into this rig's. The clips are keyed in the capsule's own frame (the rig's origin is the
+# capsule's bottom, she faces -Y, her left is +X) and the capsule's path is the game's (UParkourComponent: the hang is 145 cm
+# under the ledge top and 36 cm out from its edge, a dismount is a hop over a 90 cm parapet that turns her round in the first
+# 45% of 0.5 s, a climb goes up first and then forward), so the ledge moves past her here exactly as it does in the game.
+# The visible body's IK (Player/LedgeIKNode.h) finishes the contact against the real edge: a hand here only has to be close.
+# Clips are in place (no root motion). Feet may go below the capsule's bottom in a hang (the arms are straighter than the
+# 145 cm hang strictly allows with her feet on the floor level), so these clips set extra floor_cm.
+HANG_BACK = 36.0
+HANG_BELOW = 145.0
+HAND_HALF_GAP = 19.0
+WRIST_UP = 2.5
+SHOULDER_OUT = 17.0
+ARM_STRAIGHT = 0.94
+BALL_FROM_WALL = 5.0
+PARAPET = 90.0
+START_BACK = 50.0
+DROP_HOP = PARAPET + 30.0
+DROP_SECONDS = 0.5
+DROP_TURN = 0.45
+CLIMB_SECONDS = 1.0
+CLIMB_FORWARD = 46.0
+PUSH_BACK = 22.0
+LEDGE_FLOOR = -45.0
+
+
+def _r(v):
+    """Game centimetres to this rig's."""
+    return v / KATE_SCALE
+
+
+def hang_pose(rig):
+    """The hang itself, from the rig's own proportions: the wrists on the edge a shoulder width apart, the shoulders hung
+    ARM_STRAIGHT of an arm's length under them, the feet braced on the wall."""
+    wall_y = -_r(HANG_BACK)
+    ledge_z = _r(HANG_BELOW)
+    wrist_z = ledge_z + _r(WRIST_UP)
+    wrist_y = wall_y + _r(1.0)
+    hx = _r(HAND_HALF_GAP)
+    sh = tuple(rig.idle_pos["upperarm_l"] - rig.idle_pelvis)
+    arm = ARM_STRAIGHT * (rig.upper_arm + rig.fore_arm)
+    sh_y = wall_y + _r(SHOULDER_OUT)
+    horiz = abs(sh_y - wrist_y)
+    vert = math.sqrt(max(arm * arm - horiz * horiz, 1.0))
+    pelvis = V(0.0, sh_y - sh[1], wrist_z - vert - sh[2])
+    ball_y = wall_y + _r(BALL_FROM_WALL)
+    feet = {}
+    for side in ("l", "r"):
+        idle = tuple(rig.idle_foot(side))
+        rel_z = idle[2] - rig.idle_pelvis[2]
+        off = tuple(rig.ball_offset(side))
+        feet[side] = V(idle[0] * 0.85, ball_y - off[1], pelvis[2] + rel_z * 0.97)
+    return {"wall_y": wall_y, "ledge_z": ledge_z, "wrist_y": wrist_y, "wrist_z": wrist_z, "hx": hx, "sh": sh, "arm": arm,
+            "pelvis": pelvis, "hand_l": V(hx, wrist_y, wrist_z), "hand_r": V(-hx, wrist_y, wrist_z),
+            "foot_l": feet["l"], "foot_r": feet["r"]}
+
+
+def _reach_limited(shoulder, target, length):
+    """target, or the point on the line from the shoulder toward it that an arm of this length reaches (the arm points at what
+    it cannot yet touch)."""
+    d = tuple(t - s for t, s in zip(target, shoulder))
+    dist = math.sqrt(sum(c * c for c in d))
+    if dist <= length or dist < 1e-6:
+        return target
+    return tuple(s + c * length / dist for s, c in zip(shoulder, d))
+
+
+def _smoothed(keys, passes=2):
+    """Per-frame keys [(t, place)] with each place averaged with its neighbours (1-2-1), `passes` times, the ends held: a hand
+    that follows an edge sweeping past her does not flick when its target comes into reach."""
+    for _ in range(passes):
+        out = [keys[0]]
+        for i in range(1, len(keys) - 1):
+            a, b, c = keys[i - 1][1], keys[i][1], keys[i + 1][1]
+            out.append((keys[i][0], tuple(0.25 * x + 0.5 * y + 0.25 * z for x, y, z in zip(a, b, c))))
+        out.append(keys[-1])
+        keys = out
+    return keys
+
+
+def _arm_pole(side, down=-0.3):
+    """The elbow out to its side, behind her (away from the wall) and a little down."""
+    return V(0.9 if side == "l" else -0.9, 0.4, down)
+
+
+def ledge_hang_idle(rig):
+    """Hanging on both hands, nearly straight arms, toes on the brick, a slow sway that settles; the first and last frames
+    are the same pose (it loops, and the catch and the dismount both end on it)."""
+    hp = hang_pose(rig)
+    P = hp["pelvis"]
+    t = 1.6
+    tracks = {
+        "pelvis_pos": T([(0.0, P), (0.4, add(P, V(0.3, 0.9, 0.5))), (0.8, add(P, V(0.0, 1.5, 0.0))),
+                         (1.2, add(P, V(-0.3, 0.7, -0.5))), (t, P)]),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.4, V(1.5, 1.0, 0.8)), (0.8, V(2.5, 0, 0)), (1.2, V(1.5, -1.0, -0.8)),
+                         (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(-4, 0, 0)), (0.8, V(-2, 0, 0)), (t, V(-4, 0, 0))]),
+        "neck": T([(0.0, V(-18, 0, 0)), (0.8, V(-14, 3, 0)), (t, V(-18, 0, 0))]),
+        "hand_l": hp["hand_l"], "hand_r": hp["hand_r"],
+        "pole_hand_l": _arm_pole("l"), "pole_hand_r": _arm_pole("r"),
+        "foot_l": hp["foot_l"], "foot_r": hp["foot_r"],
+        "fingers_l": 1.35, "fingers_r": 1.35,
+    }
+    return ck.Clip("Ledge_HangIdle", t, tracks, planted=[("l", 0.0, t, "flat"), ("r", 0.0, t, "flat")],
+                   strip_times=[0.0, 0.4, 0.8, 1.2, 1.6], torso_clear=False,
+                   extra={"loop": True, "floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 30.0})
+
+
+def ledge_catch(rig):
+    """Arms up for the edge before the hands arrive, the hands close on it, the body's weight comes on (arms stretched, feet
+    out behind), it swings in under the hands, the knees bend and the toes meet the wall; ends on the hang pose."""
+    hp = hang_pose(rig)
+    P, hl, hr, fl, fr = hp["pelvis"], hp["hand_l"], hp["hand_r"], hp["foot_l"], hp["foot_r"]
+    t = 0.45
+    up = V(0.0, 1.5, 9.0)
+    tracks = {
+        "pelvis_pos": T([(0.0, add(P, V(0, 16, 8))), (0.10, add(P, V(0, 14, -4))), (0.20, add(P, V(0, 8, -5))),
+                         (0.30, add(P, V(0, -2, -2))), (0.40, add(P, V(0, 0.5, 0.5))), (t, P)]),
+        "pelvis_rot": T([(0.0, V(8, 0, 0)), (0.10, V(14, 0, 0)), (0.20, V(8, 0, 0)), (0.30, V(-2, 0, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(-8, 0, 0)), (0.10, V(-14, 0, 0)), (0.30, V(-6, 0, 0)), (t, V(-4, 0, 0))]),
+        "neck": T([(0.0, V(-22, 0, 0)), (0.30, V(-20, 0, 0)), (t, V(-18, 0, 0))]),
+        "hand_l": T([(0.0, add(hl, up)), (0.08, add(hl, V(0, 0, 2.0))), (0.12, hl), (t, hl)]),
+        "hand_r": T([(0.0, add(hr, up)), (0.08, add(hr, V(0, 0, 2.0))), (0.12, hr), (t, hr)]),
+        "pole_hand_l": _arm_pole("l"), "pole_hand_r": _arm_pole("r"),
+        "foot_l": T([(0.0, add(fl, V(0, 24, 4))), (0.10, add(fl, V(0, 26, -2))), (0.22, add(fl, V(0, 12, 0))),
+                     (0.34, add(fl, V(0, 2, 1))), (0.40, fl), (t, fl)]),
+        "foot_r": T([(0.0, add(fr, V(0, 22, 6))), (0.10, add(fr, V(0, 25, -1))), (0.24, add(fr, V(0, 11, 0))),
+                     (0.35, add(fr, V(0, 2, 1))), (0.40, fr), (t, fr)]),
+        "fingers_l": T([(0.0, 1.0), (0.10, 1.0), (0.16, 1.35), (t, 1.35)]),
+        "fingers_r": T([(0.0, 1.0), (0.10, 1.0), (0.16, 1.35), (t, 1.35)]),
+    }
+    return ck.Clip("Ledge_Catch", t, tracks, planted=[("l", 0.40, t, "flat"), ("r", 0.40, t, "flat")],
+                   strip_times=[0.0, 0.08, 0.14, 0.22, 0.30, 0.38, t], torso_clear=False,
+                   extra={"floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 34.0})
+
+
+def ledge_hang_drop(rig):
+    """From the hang: a small pull in, the hands let go and come off the edge, the body pushes off the wall, the arms swing
+    out and down and the knees bend for the landing (the fall loop takes it from there)."""
+    hp = hang_pose(rig)
+    P, hl, hr, fl, fr = hp["pelvis"], hp["hand_l"], hp["hand_r"], hp["foot_l"], hp["foot_r"]
+    idle_l = tuple(rig.idle_hand("l"))
+    idle_r = tuple(rig.idle_hand("r"))
+    ifl = tuple(rig.idle_foot("l"))
+    ifr = tuple(rig.idle_foot("r"))
+    t = 0.35
+    tracks = {
+        "pelvis_pos": T([(0.0, P), (0.06, add(P, V(0, 1, 3))), (0.14, add(P, V(0, 9, 4))), (0.24, add(P, V(0, 14, -4))),
+                         (t, add(P, V(0, 16, -10)))]),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.14, V(-6, 0, 0)), (t, V(10, 0, 0))]),
+        "chest": T([(0.0, V(-4, 0, 0)), (0.14, V(-10, 0, 0)), (t, V(6, 0, 0))]),
+        "neck": T([(0.0, V(-18, 0, 0)), (0.14, V(-16, 0, 0)), (t, V(-4, 0, 0))]),
+        "hand_l": T([(0.0, hl), (0.06, hl), (0.14, add(hl, V(8, 4, 8))), (0.24, add(idle_l, V(8, -8, 34))),
+                     (t, add(idle_l, V(12, -10, 22)))]),
+        "hand_r": T([(0.0, hr), (0.06, hr), (0.14, add(hr, V(-8, 4, 8))), (0.24, add(idle_r, V(-8, -8, 34))),
+                     (t, add(idle_r, V(-12, -10, 22)))]),
+        "pole_hand_l": _arm_pole("l"), "pole_hand_r": _arm_pole("r"),
+        "foot_l": T([(0.0, fl), (0.10, fl), (0.20, add(fl, V(0, 10, 3))), (t, add(ifl, V(8, -2, 14)))]),
+        "foot_r": T([(0.0, fr), (0.10, fr), (0.20, add(fr, V(0, 10, 3))), (t, add(ifr, V(-8, -2, 14)))]),
+        "fingers_l": T([(0.0, 1.35), (0.10, 1.35), (0.20, 1.0), (t, 1.0)]),
+        "fingers_r": T([(0.0, 1.35), (0.10, 1.35), (0.20, 1.0), (t, 1.0)]),
+    }
+    return ck.Clip("Ledge_HangDrop", t, tracks, planted=[("l", 0.0, 0.10, "flat"), ("r", 0.0, 0.10, "flat")],
+                   strip_times=[0.0, 0.06, 0.12, 0.18, 0.24, 0.30, t], torso_clear=False,
+                   extra={"floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 40.0})
+
+
+def _dismount_edge_local(a, side):
+    """The parapet's wrist point for a hand, in her own frame (rig cm) at a (0..1) of the dismount. The capsule's path is the
+    game's (ComputeMoveShape): out over the lip in the first 70% with a hop DROP_HOP high, down onto the hang; she turns to face
+    the wall by DROP_TURN, so the edge, fixed in the world, swings round her."""
+    forward = ck.smoothstep(a / 0.7)
+    rise = math.sin(math.pi * min(a / 0.7, 1.0))
+    run = HANG_BACK + START_BACK
+    y_c = -run + run * forward
+    z_start = HANG_BELOW - PARAPET
+    z_c = z_start + DROP_HOP * rise - z_start * a
+    wrist = (HAND_HALF_GAP * (1.0 if side == "l" else -1.0), -HANG_BACK + 1.0, HANG_BELOW + WRIST_UP)
+    rel = (wrist[0], wrist[1] - y_c, wrist[2] - z_c)
+    phi = math.radians(180.0 * ck.smoothstep(a / DROP_TURN) - 180.0)
+    x = rel[0] * math.cos(phi) - rel[1] * math.sin(phi)
+    y = rel[0] * math.sin(phi) + rel[1] * math.cos(phi)
+    return (_r(x), _r(y), _r(rel[2]))
+
+
+def ledge_drop_to_hang(rig):
+    """Over a roof edge: a crouch at the parapet, the hands on its top, hips over it as she turns round to face the wall, then
+    lowered on straightening arms to the hang. The hands reach the lip while they can (an arm points at what it cannot touch)
+    and take it on the way down; the pose ends on the hang's first frame."""
+    hp = hang_pose(rig)
+    P = hp["pelvis"]
+    sh = hp["sh"]
+    reach = 0.97 * (rig.upper_arm + rig.fore_arm)
+    t = DROP_SECONDS
+    crouch = V(0.0, 0.0, rig.idle_pelvis[2] * 0.80)
+    ifl = tuple(rig.idle_foot("l"))
+    ifr = tuple(rig.idle_foot("r"))
+
+    def pelvis(time):
+        a = time / t
+        return _lerp(crouch, P, ck.smoothstep(a))
+
+    def hand(side):
+        def at(time):
+            a = time / t
+            p = pelvis(time)
+            shoulder = (p[0] + (sh[0] if side == "l" else -sh[0]), p[1] + sh[1], p[2] + sh[2])
+            return _reach_limited(shoulder, _dismount_edge_local(a, side), reach)
+        return at
+
+    def foot(base, hang_foot):
+        def at(time):
+            a = time / t
+            tuck = math.sin(math.pi * min(a / 0.7, 1.0))
+            p = pelvis(time)
+            rel_z = base[2] - rig.idle_pelvis[2]
+            free = V(base[0] * 0.9, p[1] + (base[1] - rig.idle_pelvis[1]) - 6.0 * tuck, p[2] + rel_z * (1.0 - 0.30 * tuck))
+            return _lerp(free, hang_foot, ck.smoothstep((a - 0.7) / 0.3))
+        return at
+
+    tracks = {
+        "pelvis_pos": T(dense(pelvis, 0.0, t)),
+        "pelvis_rot": T([(0.0, V(14, 0, 0)), (0.17, V(22, 0, 0)), (0.30, V(8, 0, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(22, 0, 0)), (0.17, V(16, 0, 0)), (0.30, V(2, 0, 0)), (t, V(-4, 0, 0))]),
+        "neck": T([(0.0, V(-6, 0, 0)), (0.25, V(-18, 0, 0)), (t, V(-18, 0, 0))]),
+        "hand_l": T(_smoothed(dense(hand("l"), 0.0, t))),
+        "hand_r": T(_smoothed(dense(hand("r"), 0.0, t))),
+        "pole_hand_l": _arm_pole("l"), "pole_hand_r": _arm_pole("r"),
+        "foot_l": T(dense(foot(ifl, hp["foot_l"]), 0.0, t)),
+        "foot_r": T(dense(foot(ifr, hp["foot_r"]), 0.0, t)),
+        "fingers_l": T([(0.0, 1.2), (0.25, 1.2), (t, 1.35)]),
+        "fingers_r": T([(0.0, 1.2), (0.25, 1.2), (t, 1.35)]),
+    }
+    return ck.Clip("Ledge_DropToHang", t, tracks, strip_times=[0.0, 0.08, 0.16, 0.24, 0.32, 0.40, t], torso_clear=False,
+                   extra={"floor_cm": LEDGE_FLOOR, "span": (-130.0, 130.0), "pop_degrees": 44.0})
+
+
+def _climb_edge_local(a, side, push):
+    """The wrist point for a hand, in her own frame (rig cm) at a (0..1) of the climb up: the capsule rises first (smoothstep
+    over 0.6) and then goes forward onto the top (smoothstep from 0.35), so the ledge sinks past her and then comes back
+    behind her; `push` cm back onto the top, away from the face (ahead, -Y)."""
+    up = ck.smoothstep(a / 0.6)
+    fwd = ck.smoothstep((a - 0.35) / 0.65)
+    run = HANG_BACK + CLIMB_FORWARD
+    y_c = -run * fwd
+    z_c = HANG_BELOW * up
+    x = HAND_HALF_GAP * (1.0 if side == "l" else -1.0)
+    return (_r(x), _r(-HANG_BACK + 1.0 - push - y_c), _r(HANG_BELOW + WRIST_UP - z_c))
+
+
+def ledge_climb_up(rig):
+    """From the hang: pull (the arms bend, the chest comes to the edge), the chest over it with the palms pressing back onto
+    the top, a knee comes up, she stands (the last quarter second cross-fades into the idle)."""
+    hp = hang_pose(rig)
+    P = hp["pelvis"]
+    sh = hp["sh"]
+    t = CLIMB_SECONDS
+    vert0 = hp["wrist_z"] - P[2] - sh[2]
+    ifl = tuple(rig.idle_foot("l"))
+    ifr = tuple(rig.idle_foot("r"))
+
+    def push_at(time):
+        return PUSH_BACK * ck.smoothstep((time / t - 0.38) / 0.24)
+
+    def hand(side):
+        return lambda time: _climb_edge_local(time / t, side, push_at(time))
+
+    def pelvis(time):
+        a = time / t
+        l = _climb_edge_local(a, "l", push_at(time))
+        r = _climb_edge_local(a, "r", push_at(time))
+        mid = tuple((x + y) * 0.5 for x, y in zip(l, r))
+        # How far under the hands the shoulders hang: the hang's own at the start, bent to a few cm as the chest comes up.
+        vert = (1.0 - ck.smoothstep(a / 0.5)) * (vert0 - 8.0) + 8.0
+        lean = ck.smoothstep((a - 0.2) / 0.4) * (1.0 - ck.smoothstep((a - 0.7) / 0.3))
+        shoulder = (mid[0], mid[1] + _r(SHOULDER_OUT - 1.0) * (1.0 - lean) + 4.0 * lean, mid[2] - vert)
+        return (0.0, shoulder[1] - sh[1], shoulder[2] - sh[2])
+
+    def foot(base, hang_foot, side):
+        def at(time):
+            a = time / t
+            p = pelvis(time)
+            rel_z = base[2] - rig.idle_pelvis[2]
+            hang = _lerp(hang_foot, V(base[0] * 0.85, p[1] + 6.0, p[2] + rel_z * 0.80), ck.smoothstep(a / 0.5))
+            if side == "r":
+                # The right knee comes up onto the top: the foot on the edge, a little in.
+                e = _climb_edge_local(a, "r", 0.0)
+                knee = (-_r(HAND_HALF_GAP) * 0.6, e[1] - _r(6.0), e[2] + _r(4.0))
+                return _lerp(hang, knee, ck.smoothstep((a - 0.55) / 0.2) * (1.0 - ck.smoothstep((a - 0.84) / 0.16)))
+            return hang
+        return at
+
+    tracks = {
+        "pelvis_pos": T(dense(pelvis, 0.0, t)),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.38, V(10, 0, 0)), (0.62, V(30, 0, 0)), (0.84, V(14, 0, 0)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(-4, 0, 0)), (0.38, V(10, 0, 0)), (0.62, V(34, 0, 0)), (0.84, V(10, 0, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(-18, 0, 0)), (0.5, V(-4, 0, 0)), (t, V(0, 0, 0))]),
+        "hand_l": T(_smoothed(dense(hand("l"), 0.0, 0.84)) + [(t, tuple(rig.idle_hand("l")))]),
+        "hand_r": T(_smoothed(dense(hand("r"), 0.0, 0.84)) + [(t, tuple(rig.idle_hand("r")))]),
+        "pole_hand_l": _arm_pole("l", -0.1), "pole_hand_r": _arm_pole("r", -0.1),
+        "foot_l": T(dense(foot(ifl, hp["foot_l"], "l"), 0.0, 0.84) + [(t, ifl)]),
+        "foot_r": T(dense(foot(ifr, hp["foot_r"], "r"), 0.0, 0.84) + [(t, ifr)]),
+        "fingers_l": T([(0.0, 1.35), (0.38, 1.2), (0.84, 1.0), (t, 1.0)]),
+        "fingers_r": T([(0.0, 1.35), (0.38, 1.2), (0.84, 1.0), (t, 1.0)]),
+    }
+    return ck.Clip("Ledge_ClimbUp", t, tracks, fade_out=0.25, strip_times=[0.0, 0.2, 0.38, 0.5, 0.62, 0.73, 0.84, t],
+                   torso_clear=False, extra={"floor_cm": LEDGE_FLOOR, "span": (-130.0, 130.0), "pop_degrees": 40.0})
+
+
+def ledge_vault_plant(rig):
+    """A vault over a 90 cm top at a run (not wired to a move by default: the vault is the sample's hurdle): the right hand
+    plants on the top in front, the hips arc over it and the legs swing to the left, the hand lets go and she lands running.
+    Keyed in the capsule's frame with the capsule travelling 110 cm forward (smoothstep) over 0.6 s."""
+    reach = 0.97 * (rig.upper_arm + rig.fore_arm)
+    sh = tuple(rig.idle_pos["upperarm_r"] - rig.idle_pelvis)
+    t = 0.6
+    run = 110.0
+    P = tuple(rig.idle_pelvis)
+    ifl = tuple(rig.idle_foot("l"))
+    ifr = tuple(rig.idle_foot("r"))
+    ihl = tuple(rig.idle_hand("l"))
+    ihr = tuple(rig.idle_hand("r"))
+
+    def pelvis(time):
+        a = time / t
+        arc = math.sin(math.pi * a)
+        return (P[0] + 6.0 * arc, P[1], P[2] + _r(34.0) * arc)
+
+    def hand_r(time):
+        a = time / t
+        y_c = -_r(run) * ck.smoothstep(a)
+        top = (-_r(8.0), -_r(50.0) - y_c, _r(PARAPET + WRIST_UP))
+        p = pelvis(time)
+        shoulder = (p[0] + sh[0], p[1] + sh[1], p[2] + sh[2])
+        held = _reach_limited(shoulder, top, reach)
+        free = _lerp(ihr, add(ihr, V(-4, -20, 20)), math.sin(math.pi * min(a / 0.4, 1.0)))
+        w = ck.smoothstep(a / 0.25) * (1.0 - ck.smoothstep((a - 0.55) / 0.2))
+        return _lerp(free, held, w)
+
+    def feet(side, base):
+        def at(time):
+            a = time / t
+            arc = math.sin(math.pi * a)
+            p = pelvis(time)
+            swing = (_r(30.0) if side == "l" else _r(10.0)) * arc
+            return add(base, V(swing, -_r(12.0) * arc, p[2] - P[2] + _r(10.0) * arc))
+        return at
+
+    tracks = {
+        "pelvis_pos": T(dense(pelvis, 0.0, t)),
+        "pelvis_rot": T([(0.0, V(8, 0, 0)), (0.2, V(22, 0, 8)), (0.32, V(14, 0, 30)), (0.45, V(6, 0, 18)), (t, V(0, 0, 0))]),
+        "chest": T([(0.0, V(6, 0, 0)), (0.25, V(24, 0, 4)), (0.4, V(10, 0, 0)), (t, V(0, 0, 0))]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.25, V(-12, 0, 0)), (t, V(0, 0, 0))]),
+        "hand_r": T(_smoothed(dense(hand_r, 0.0, t))),
+        "hand_l": T([(0.0, ihl), (0.2, add(ihl, V(6, -26, 12))), (0.45, add(ihl, V(10, -10, 22))), (t, ihl)]),
+        "pole_hand_r": _arm_pole("r", -0.2), "pole_hand_l": _arm_pole("l", -0.2),
+        "foot_l": T(dense(feet("l", ifl), 0.0, t)),
+        "foot_r": T(dense(feet("r", ifr), 0.0, t)),
+        "fingers_r": T([(0.0, 1.0), (0.2, 1.3), (0.55, 1.3), (t, 1.0)]),
+    }
+    return ck.Clip("Vault_Plant", t, tracks, fade_in=0.05, fade_out=0.15, strip_times=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, t],
+                   torso_clear=False, extra={"floor_cm": -10.0, "span": (-140.0, 140.0), "pop_degrees": 44.0})
+
+
+LEDGE = [ledge_hang_idle, ledge_catch, ledge_hang_drop, ledge_drop_to_hang, ledge_climb_up, ledge_vault_plant]
+
 TAKEDOWN_BONES = ("clavicle_l", "clavicle_r", "neck_01", "spine_02", "spine_03", "pelvis", "head")
 
 CLIPS = {
     "ue4": [getup_back, getup_front] + HITS + ZONE_HITS + [takedown_victim],
-    "uefn": list(HITS) + ZONE_HITS + STRIKES + BOW + [takedown_attacker],
+    "uefn": list(HITS) + ZONE_HITS + STRIKES + BOW + [takedown_attacker] + LEDGE,
 }
 
 
