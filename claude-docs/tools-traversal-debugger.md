@@ -6,8 +6,12 @@ every anchor from a point you pick and colours each by why it can or cannot be g
 (the same code `Hawkeye.Grapple.Audit` runs) without a character or a game world. The commandlet runs that audit in
 the pipeline and fails when a street-facing roof is unreachable.
 
-Status (2026-11-10): built, and the commandlet and the audit verified headless (numbers below). **The tab has never
-been seen on screen.** What is verified about it: the module loads, the tab spawner and the Tools menu entry are
+Status (2026-11-10): built, and the commandlet and the audit verified headless (numbers below). **The tab was first seen
+on screen on 2026-11-25, as a picture:** `Hawkeye.Editor.TraversalDebugger.Shot` (opt-in with `-HawkeyeDemo`, a real
+renderer, no window) draws its widget off screen with the widget renderer after a real audit on the district and writes
+`Saved/Demo/traversal_debugger/panel.png` (the demo video's shot 8). It reads as intended: toggles, buttons, the summary
+(2457 anchors, 24272 reachable pairs), the reach list and the roof list; the checkboxes draw as plain squares with no check
+glyph in that renderer. It has still not been used in a window. What is verified about it: the module loads, the tab spawner and the Tools menu entry are
 registered, the panel's widget tree builds under `-nullrhi`, its rows are the view model's, and on the district the
 subsystem's Refresh and Reach from a point run end to end (`Hawkeye.Editor.TraversalDebugger.*`). Not verified: that
 the lines draw in the viewport, the layer toggles, the buttons, Focus, and the layout. Known gaps are at the end.

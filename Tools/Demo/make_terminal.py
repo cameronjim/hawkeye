@@ -12,6 +12,9 @@ text: copies captured console output, dropping colour codes and blank runs.
 city: the generator's and verifier's own lines from a captured generate-city.ps1 -Verify console (wrapped lines joined).
     python Tools/Demo/make_terminal.py city Saved/Demo/terminal/city_raw.txt Saved/Demo/terminal/city_generation.txt
 
+lap: the LogHawkeye lines of a lap's log (Saved/Demo/laps/<Lap>.log from a -game run of Hawkeye.Lap.<Lap>) and its result.
+    python Tools/Demo/make_terminal.py lap Saved/Demo/laps/Campaign.log Saved/Demo/terminal/lap_bot.txt
+
 still: makes a clip of a picture, for a shot that is an image (the Traversal Debugger tab, drawn by
 Hawkeye.Editor.TraversalDebugger.Shot): the picture on the card ground at 1920x1080, a slow push in on its upper half and a
 drift down to the lists. Needs ffmpeg:
@@ -112,7 +115,38 @@ def city_text(raw):
     return chr(10).join(out) + chr(10)
 
 
+LAP_SKIP = ("Hitch:", "Perf [", "placed at", "Camera audit")
+
+
+def lap_text(raw):
+    """The game's own LogHawkeye lines between a lap's start and its result, timestamps cut, and the result line."""
+    out = []
+    started = False
+    for line in raw.splitlines():
+        if "Test Started." in line:
+            started = True
+            continue
+        if not started:
+            continue
+        done = DONE.search(line)
+        if done:
+            out.append(f"Test Completed. Result={{{done.group('result')}}}  {done.group('path')}")
+            break
+        if "LogHawkeye: " not in line or any(skip in line for skip in LAP_SKIP):
+            continue
+        message = line.split("LogHawkeye: ", 1)[1].strip()
+        stamp = re.match(r"\[[0-9.]+-([0-9.]+):([0-9]+)\]", line)
+        out.append(f"{stamp.group(1)} {message}" if stamp else message)
+    return chr(10).join(out) + chr(10)
+
+
 def main(argv):
+    if len(argv) == 3 and argv[0] == "lap":
+        text = lap_text(Path(argv[1]).read_text(encoding="utf-8", errors="replace"))
+        Path(argv[2]).parent.mkdir(parents=True, exist_ok=True)
+        Path(argv[2]).write_text(text, encoding="utf-8")
+        print(f"wrote {argv[2]}: {len(text.splitlines())} lines")
+        return 0
     if len(argv) == 3 and argv[0] == "city":
         text = city_text(Path(argv[1]).read_text(encoding="utf-8", errors="replace"))
         Path(argv[2]).parent.mkdir(parents=True, exist_ok=True)
