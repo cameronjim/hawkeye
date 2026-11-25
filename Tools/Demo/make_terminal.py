@@ -9,6 +9,9 @@ same patterns. Nothing is invented: a count that is not in the log is not in the
 
 text: copies captured console output, dropping colour codes and blank runs.
 
+city: the generator's and verifier's own lines from a captured generate-city.ps1 -Verify console (wrapped lines joined).
+    python Tools/Demo/make_terminal.py city Saved/Demo/terminal/city_raw.txt Saved/Demo/terminal/city_generation.txt
+
 still: makes a clip of a picture, for a shot that is an image (the Traversal Debugger tab, drawn by
 Hawkeye.Editor.TraversalDebugger.Shot): the picture on the card ground at 1920x1080, a slow push in on its upper half and a
 drift down to the lists. Needs ffmpeg:
@@ -86,7 +89,36 @@ def still_clip(source, target, seconds=8, fps=60):
     return 0
 
 
+def city_text(raw):
+    """The generator's and the verifier's own lines from a captured Tools/generate-city.ps1 -Verify console.
+
+    The console wrapped long lines at 120 columns; a line that does not start a log line continues the one before it.
+    The material and asset "exists" lines and the per-spot crime info are dropped as noise; every PASS, FAIL and count stays.
+    """
+    joined = []
+    for line in ANSI.sub("", raw).replace(chr(0xFEFF), "").splitlines():
+        if joined and len(joined[-1]) >= 115 and not line.startswith(("Log", "City generation", "Running ")):
+            joined[-1] += line
+        else:
+            joined.append(line)
+    out = []
+    for line in joined:
+        if "[Hawkeye]" not in line and not line.startswith("City generation"):
+            continue
+        text = line.split("[Hawkeye]", 1)[1].strip() if "[Hawkeye]" in line else line
+        if text.startswith("exists") or text.startswith("info  City_CrimeSpot") or " escape " in text:
+            continue
+        out.append(text)
+    return chr(10).join(out) + chr(10)
+
+
 def main(argv):
+    if len(argv) == 3 and argv[0] == "city":
+        text = city_text(Path(argv[1]).read_text(encoding="utf-8", errors="replace"))
+        Path(argv[2]).parent.mkdir(parents=True, exist_ok=True)
+        Path(argv[2]).write_text(text, encoding="utf-8")
+        print(f"wrote {argv[2]}: {len(text.splitlines())} lines")
+        return 0
     if len(argv) == 3 and argv[0] == "still":
         return still_clip(Path(argv[1]), Path(argv[2]))
     if len(argv) != 3 or argv[0] not in ("tests", "text"):

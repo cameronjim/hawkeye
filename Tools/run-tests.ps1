@@ -62,6 +62,13 @@ if ($Failed.Count -gt 0) {
     $Lines | Select-String -Pattern "LogAutomationController: Error|Error: .*Hawkeye" | ForEach-Object { Write-Host "  $($_.Line.Trim())" }
     exit 1
 }
+# A crash mid-run ends the log early with a handful of passes and, until now, an exit code of 0.
+$Crashed = @($Lines | Select-String -Pattern "LogWindows: Error: Fatal error!" -SimpleMatch).Count -gt 0
+if ($Crashed) {
+    Write-Host ""
+    Write-Host "The editor crashed during the run after $Passed completed tests; the run is not valid. See the Fatal error in $LogFile."
+    exit 1
+}
 if ($Passed -eq 0) {
     Write-Warning "No tests ran. Check the filter '$Filter' and that the Hawkeye module loaded. Log: $LogFile"
     exit 1
