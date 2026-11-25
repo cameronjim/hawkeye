@@ -486,7 +486,7 @@ the idle's (the IK turns the hand), the elbows are poles out and back.
 | Ledge_FallLoop | 1.0 s | LedgeFallLoop (loops) | the fall after a let-go (and an instant drop): standing height with soft knees, torso 8 degrees forward, head down at the landing, the arms forward and up (hands in front of the shoulders, elbows down, not out), the hands circling 6 to 8 cm against each other, the legs pedalling, the hips and chest swaying a few degrees |
 | Ledge_FallBrace | 0.5 s | LedgeFallBrace (holds) | from the fall to the knees up and forward, the hips dropped, the arms down and a little out; plays when a trace down finds the ground within 0.22 s of the fall speed |
 | Ledge_ClimbUp | 1.0 s | LedgeClimbUp | pull, chest over with the palms pressed back onto the top, a knee up, stand (the last 0.25 s cross-fade into the idle); the ledge sinks past her and comes back behind her as the climb's path does (`_climb_edge_local`) |
-| Vault_Plant | 0.6 s | LedgeVaultPlant | a speed vault over a 90 cm top at a run: the torso pitches to 42 degrees, the right hand plants on the top ahead (reach limited to the arm), the legs swing together to the left beside the hips (feet at hip height), the left arm out and back for balance, then she lands running (the lead foot first) |
+| Vault_Plant | 0.6 s | LedgeVaultPlant | a speed vault over a 90 cm top at a run: the torso pitches to 42 degrees, the right hand plants on the top ahead (reach limited to the arm), the legs swing together to the left beside the hips (feet at hip height), the left arm tucked in front of her (out to the side read as flung), then she lands running (the lead foot first) |
 | Vault_Crouch | 0.6 s | LedgeVaultCrouch | the same plant and swing, landing in a crouch with both hands ready (a slow entry: the vault takes 0.45 s or more) |
 
 The clips are made with `Tools/Blender/build_clips.py` as the others are (`--only ledge_hang_idle,ledge_catch,...`; the function names),
@@ -506,9 +506,11 @@ ledge_ik=True)`, from `import_bodies.ensure_kate`).
 the 0.5 s push-off that ends on `Ledge_FallLoop`'s first frame; `UParkourComponent::BeginLedgeFall` (both let-goes) starts the loop as the
 push-off's last 0.15 s begin and `TickLedgeFall` plays `Ledge_FallBrace` when a trace down finds ground within 0.22 s of the fall's speed
 (over 250 cm/s); it ends when she grabs, hangs, starts a move or lands (the landing's own montage takes over). (2) Vault: both vault clips are
-in the set and the vault's capsule path is lower for them (`GetAuthoredVaultRise`: the hips pass 25 cm over the top; Rise was Height + 10,
-a leap no hand could reach); the guard's leap keeps the sample's pose. `Vault_Crouch` plays at 0.45 s or more. (3) `build_clips.py`'s vault is keyed
-against the rig solved without its arms (the shoulders' real place), the elbows poled back so a hanging arm never flips.
+in the set and the vault routes to them (`PlayAuthoredMoveClip`; the guard's leap keeps the sample's pose). `Vault_Crouch` plays at 0.45 s or more.
+The capsule's path is unchanged (Rise = Height + 10: its bottom just clears the parapet; a lower arc, tried first, put the capsule into the parapet and
+the vault ended on top of it). So the clip is keyed with the body far under the capsule over the top: in world heights (hips 27 cm over the top, the hand on it,
+the feet at hip height beside her) and taken into the capsule's frame by the capsule's height (`zb`), floor_cm -110. It is keyed against the rig solved without
+its arms (the shoulders' real place), the elbows poled back so a hanging arm never flips.
 
 **The ledge strips** (`Hawkeye.Screenshot.Traversal`, written, not run): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`,
 `hang_hands` and `<name>_wide` of each, in `Saved/Screenshots/Traversal/<name>_<side | three_quarter>_<off | on>.png`, on a stage built

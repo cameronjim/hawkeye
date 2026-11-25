@@ -712,9 +712,8 @@ parts, all in the files named:
     `LedgeFallLoop` (loops, blend in 0.15 s) starts when its last 0.15 s begin; `LedgeFallBrace` plays once when a line trace from the feet
     down `FallBraceSeconds` 0.22 x the fall speed + 10 cm hits ground and the fall is over 250 cm/s. The fall ends (clips blended out over
     0.1 s) when she is no longer falling, hangs, performs a move (a late catch) or lands. The same for the hop-back drop with nothing behind.
-  - **The vault** with the authored clips: the move's rise is `GetAuthoredVaultRise(Height)` = max(10, Height + 25 - 90) cm (hips 25 cm
-    over the top) instead of Height + 10; the guard's leap (`bGuardLeap`) keeps the sample's clip and the old rise.
-    Test `Hawkeye.Ledge.AuthoredVaultKeepsTheHipsOverTheTop`.
+  - **The vault** with the authored clips: `LedgeVaultPlant` (`LedgeVaultCrouch` at 0.45 s or more), in place over the unchanged path
+    (Rise Height + 10); the guard's leap (`bGuardLeap`) keeps the sample's clip. The clip's body is under the capsule over the top (animation.md).
   - **The climb out of a hang rises as far as the top** (`ClimbFromHang`): over a parapet the stand point is the roof behind it, lower than
     the top, and the path rose only to that: the body, keyed for a rise to the top's level, sank into the parapet and the player camera lost
     her for a frame or two. The path's rise is now max(stand point, ledge top) over the start and the floor blends it back down.
