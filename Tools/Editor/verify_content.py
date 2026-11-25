@@ -435,6 +435,21 @@ def check_bodies():
             base = base_material(c.load_or_none(material_path)) if material_path and c.exists(material_path) else None
             if base is not None and not bool(prop(base, "used_with_skeletal_mesh")):
                 fail("{0}'s body material {1} has no SkeletalMesh usage flag".format(name, material_path))
+        # The thugs' other faces: BP_Thug draws from its variants, BP_Thug_Heavy (its child) must have none, or the heavy
+        # would wear a thug's face. A variant that is not on disk falls back to the look; one that is must be complete.
+        variants = list(prop(cdo, "body_look_variants") or []) if name in ("BP_Thug", "BP_Thug_Heavy") else []
+        if name == "BP_Thug_Heavy" and variants:
+            fail("BP_Thug_Heavy has {0} look variants; the heavy has one look".format(len(variants)))
+        for variant in variants:
+            v_mesh = _soft_path(prop(variant, "mesh"))
+            v_materials = [_soft_path(x) for x in list(prop(variant, "materials") or [])]
+            if not v_mesh or not c.exists(v_mesh):
+                say("  {0}: variant {1} is not on disk (falls back to the look)".format(name, v_mesh or "(empty)"))
+                continue
+            v_missing = [x for x in v_materials if x and not c.exists(x)]
+            say("  {0}: variant {1}, {2} materials".format(name, v_mesh, len(v_materials)))
+            if v_missing:
+                fail("{0}'s variant {1} names materials not on disk: {2}".format(name, v_mesh, ", ".join(v_missing)))
     check_built_kate()
     check_hand_chains()
     for path, name in BODY_KEEP_MANNEQUIN:
