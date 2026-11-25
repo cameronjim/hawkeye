@@ -138,7 +138,7 @@ bool FHawkeyeLedgeRoofDismount::RunTest(const FString& Parameters)
 		Stages.IndexOfByKey(ELedgeStage::Plant) < Stages.IndexOfByKey(ELedgeStage::Lower));
 	TestTrue(TEXT("The hand is not yet fully on the edge in the first moments of the plant"), PlantHandAlpha < 0.95f);
 	TestTrue(TEXT("Hanging after 0.5 s"), Parkour->IsHanging());
-	TestEqual(TEXT("Feet 145 cm under the parapet top, as before the ledge body"), Kate->GetActorLocation().Z - HalfHeight, 90.f - 145.f, 1.f);
+	TestEqual(TEXT("Feet 145 cm under the parapet top, as before the ledge body"), static_cast<float>(Kate->GetActorLocation().Z - HalfHeight), 90.f - 145.f, 1.f);
 	TestEqual(TEXT("36 cm out from the outer face"), static_cast<float>(Kate->GetActorLocation().X), 146.f, 1.f);
 	TestEqual(TEXT("facing the wall"), FMath::Abs(YawOf(Kate)), 180.f, 1.f);
 

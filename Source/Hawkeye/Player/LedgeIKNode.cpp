@@ -324,12 +324,12 @@ void FAnimNode_HawkeyeLedgeIK::SolveArm(int32 Side, TArray<FTransform>& Comp, co
 	// A target further than the arm goes is the clip's to reach, not ours to stretch toward.
 	const float Reach = HawkeyeLedge::ReachWeight(
 		static_cast<float>((TargetC - ShoulderC).Size()) * Scale, (UpperLength + LowerLength) * Scale, Tuning);
-	const float Alpha = FMath::Clamp(Pose.HandAlpha[Side] * Reach, 0.f, 1.f);
-	if (Alpha <= 0.001f)
+	const float ArmAlpha = FMath::Clamp(Pose.HandAlpha[Side] * Reach, 0.f, 1.f);
+	if (ArmAlpha <= 0.001f)
 	{
 		return;
 	}
-	const FVector Goal = FMath::Lerp(WristC, TargetC, static_cast<double>(Alpha));
+	const FVector Goal = FMath::Lerp(WristC, TargetC, static_cast<double>(ArmAlpha));
 
 	// The elbow goes out to this side, away from the wall and a little down.
 	const FVector Right = FVector::CrossProduct(UpC, -NormalC).GetSafeNormal();
@@ -356,11 +356,11 @@ void FAnimNode_HawkeyeLedgeIK::SolveArm(int32 Side, TArray<FTransform>& Comp, co
 	const FQuat Wanted = HawkeyeLedge::AlignFrames(Arm.Frame.Along, Arm.Frame.Palm,
 		ToWorld.InverseTransformVectorNoScale(Fingers).GetSafeNormal(), ToWorld.InverseTransformVectorNoScale(Palm).GetSafeNormal());
 	FQuat HandTurn = Wanted * Comp[Arm.Hand].GetRotation().Inverse();
-	HandTurn = FQuat::Slerp(FQuat::Identity, HandTurn, static_cast<double>(Alpha));
+	HandTurn = FQuat::Slerp(FQuat::Identity, HandTurn, static_cast<double>(ArmAlpha));
 	RotateSlotsAbout(Comp, Arm.FromHand, Comp[Arm.Hand].GetLocation(), HandTurn);
 
 	// The fingers from the authored Hang table by the grip, each joint rebuilt on its own local so the turn carries it.
-	const float Grip = FMath::Clamp(Pose.Grip[Side] * Alpha, 0.f, 1.f);
+	const float Grip = FMath::Clamp(Pose.Grip[Side] * ArmAlpha, 0.f, 1.f);
 	for (const FHandJoint& Joint : Arm.Joints)
 	{
 		FTransform Own = Local[Joint.Slot];

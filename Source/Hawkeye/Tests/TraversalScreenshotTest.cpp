@@ -1216,9 +1216,9 @@ namespace HawkeyeTraversalShots
 			FLedgeBodyPose Pose;
 			const bool bActive = Parkour && Parkour->GetLedgeBodyPose(Pose);
 			Test->AddInfo(FString::Printf(
-				TEXT("%s pose %s frame %d (%+.3f s): ledge stage %s hands %.2f/%.2f feet %.2f body %.2f swing %.1f deg, move %s"),
+				TEXT("%s pose %s frame %d (%+.3f s): ledge stage %d hands %.2f/%.2f feet %.2f body %.2f swing %.1f deg, move %s"),
 				*Scenario.Name, bPoseOn ? TEXT("on") : TEXT("off"), Hold, HeldAt,
-				Parkour ? *UEnum::GetValueAsString(Parkour->GetLedgeStage()) : TEXT("?"), Pose.HandAlpha[0], Pose.HandAlpha[1],
+				Parkour ? static_cast<int32>(Parkour->GetLedgeStage()) : -1, Pose.HandAlpha[0], Pose.HandAlpha[1],
 				Pose.FootAlpha, Pose.BodyAlpha, Pose.SwingDegrees,
 				Parkour ? *UEnum::GetValueAsString(Parkour->GetActiveMove()) : TEXT("?")));
 			if (!bPoseOn)
