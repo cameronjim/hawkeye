@@ -1,6 +1,7 @@
 #include "Async/Async.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "Challenge/ChallengeDefinition.h"
 #include "Challenge/ChallengeStart.h"
 #include "Combat/ArrowDefinition.h"
@@ -1173,6 +1174,17 @@ void FHawkeyeDemoRunner::Prepare(UWorld* World, APlayerController* PC, AHawkeyeC
 		PanCamera = Camera;
 		if (Camera)
 		{
+			if (Shot.Kind != EKind::Lucky && Camera->GetCameraComponent())
+			{
+				// The shot's own camera has no follow camera's trip blur: give it the same low blur, or a zip smears the frame.
+				const IConsoleVariable* Amount = IConsoleManager::Get().FindConsoleVariable(TEXT("hawkeye.Traversal.MotionBlur"));
+				const IConsoleVariable* Max = IConsoleManager::Get().FindConsoleVariable(TEXT("hawkeye.Traversal.MotionBlurMax"));
+				FPostProcessSettings& Settings = Camera->GetCameraComponent()->PostProcessSettings;
+				Settings.bOverride_MotionBlurAmount = true;
+				Settings.MotionBlurAmount = Amount ? Amount->GetFloat() : 0.12f;
+				Settings.bOverride_MotionBlurMax = true;
+				Settings.MotionBlurMax = Max ? Max->GetFloat() : 1.f;
+			}
 			PC->SetViewTarget(Camera);
 			if (Shot.Kind == EKind::Route)
 			{
