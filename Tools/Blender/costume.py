@@ -96,7 +96,15 @@ def parse_args(who):
     parser.add_argument("--no-dynamics-bones", action="store_true",
                         help="Kate: leave out the ponytail chain and the quiver's swing bone (the body's own skeleton)")
     parser.add_argument("--views", default="", help="comma list: front,34,side,back,idle,arms_up,crouch,lunge")
+    parser.add_argument("--look", default="", help="enemy builds: a row of looks.LOOKS (default: the build's own); "
+                        "the output folder, mesh and slot table take its id")
+    parser.add_argument("--legacy-head", action="store_true", help="enemy builds: the pack's own head, eyes and brows")
+    parser.add_argument("--legacy-body", action="store_true", help="enemy builds: the pack's bodybuilder, not reshaped")
+    parser.add_argument("--override-dir", default="", help="enemy builds: a folder of <look id>_skin.png / _skin_n.png "
+                        "that replace the procedural skin bake")
     args = parser.parse_args(argv)
+    args.who = args.look or who
+    who = args.who
     args.assets_root = assets_root(args.assets_root)
     args.out = args.out or os.path.join(args.assets_root, "built", who)
     args.renders = args.renders or os.path.join(repo_root(), "Saved", "Screenshots", "Blender")
@@ -561,6 +569,7 @@ class Body:
 
     def __init__(self, root, gltf=BODY_GLTF):
         bpy.ops.wm.read_factory_settings(use_empty=True)
+        _NORMALS.clear()   # the generated normal maps of an earlier build in this process died with the scene
         self.root = root
         bpy.ops.import_scene.gltf(filepath=pack_file(root, gltf))
         for o in list(bpy.data.objects):
@@ -1161,7 +1170,11 @@ TURNAROUND = {"front": 0.0, "34": 40.0, "side": 90.0, "back": 180.0}
 POSE_ANGLE = {"idle": 30.0, "arms_up": 25.0, "crouch": 50.0, "lunge": 60.0, "draw": 20.0}
 # Close-ups for checking details (not in the default set): (angle, target, ortho scale).
 CLOSEUPS = {"head_front": (20.0, (0, 0, 1.52), 0.55), "head_back": (200.0, (0, 0, 1.52), 0.55),
-            "feet": (35.0, (0, 0, 0.22), 0.7), "hand": (60.0, (0.55, 0, 1.45), 0.5)}
+            "feet": (35.0, (0, 0, 0.22), 0.7), "hand": (60.0, (0.55, 0, 1.45), 0.5),
+            # The enemies' heads: a face on, three quarters, in profile, the back, centred on the face (1.70 m), 0.34 m across.
+            "face_front": (0.0, (0, 0, 1.69), 0.34), "face_34": (40.0, (0, 0, 1.69), 0.34),
+            "face_side": (90.0, (0, 0, 1.69), 0.34), "face_back": (180.0, (0, 0, 1.69), 0.34),
+            "eyes": (0.0, (0, 0, 1.70), 0.14)}
 
 
 def clear_pose(arm):

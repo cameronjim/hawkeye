@@ -124,9 +124,11 @@ def arm_tubes(body, x0, x1, pad0, pad1, sag=0.0, name="ArmTubes", n=32):
     return parts
 
 
-def leg_tubes(body, z_top, z_bottom, pad_top, pad_bottom, name="LegTubes", n=40):
+def leg_tubes(body, z_top, z_bottom, pad_top, pad_bottom, name="LegTubes", n=40, r_bottom=None, taper=1.0):
     """Two closed tubes round the legs, straight-ish from the thigh to z_bottom: trouser legs that hang instead of
-    following knee and calf."""
+    following knee and calf. r_bottom (metres, absolute) is the radius at z_bottom the tube tapers to, `taper` how far
+    from the default (the knee's radius times 0.9 plus pad_bottom, which at the ankle is wider than the ankle itself:
+    balloon trousers) toward it: 0 the default, 1 r_bottom."""
     parts = []
     r_top = None
     for side in ("l", "r"):
@@ -136,7 +138,10 @@ def leg_tubes(body, z_top, z_bottom, pad_top, pad_bottom, name="LegTubes", n=40)
         rings = []
         for z in np.linspace(z_top, z_bottom, 24):
             t = (z_top - z) / (z_top - z_bottom)
-            r = (1 - t) * (r_top + pad_top) + t * (min(r_knee, r_top) * 0.9 + pad_bottom)
+            r_end = min(r_knee, r_top) * 0.9 + pad_bottom
+            if r_bottom is not None:
+                r_end = r_end + taper * (r_bottom - r_end)
+            r = (1 - t) * (r_top + pad_top) + t * r_end
             cx, cy = ax(z)
             a = np.linspace(0, 2 * math.pi, n, endpoint=False)
             rings.append(np.column_stack([cx + r * np.cos(a), cy + r * 1.05 * np.sin(a), np.full(n, z)]))
