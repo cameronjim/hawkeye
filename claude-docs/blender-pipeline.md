@@ -339,6 +339,18 @@ no nose bridge or nostril, no lip line, no lids, ears were plates and the cheeks
 
 Old (`headshape.HeadGrid`, `displacement`, `headtex.skin_maps`) stays in the repo, tested, but `headbuild` no longer calls it.
 
+**What shipped, and what a critical viewer still flags (2026-11-25).** All five looks are in the game on the new heads (the
+four thugs and the heavy's eye slot), each close-up (`Hawkeye.Screenshot.Bodies`, `face_*.png`, 85 cm; the old ones are kept as
+`face_*_old.png`) clearly better than the ring-grid heads: a nose with a bridge and nostril cavities, lips with a lip line and a
+vermilion border, ears with a helix and a concha, lids with thickness, a jaw and chin, no ridges across the cheeks, a
+feathered hairline. Still flagged: the engine's high sun and the camera 85 cm from the face under a wide field of view throw the
+nose's shadow across the upper lip as a dark band (the bake and the studio lights do not show it: `head_preview.py` under all three
+lights is the clean read); the lips are a little full and one flat colour; the eyes are large and glossy (`thug_c`, wide-set and
+shallow, stares); `thug_b`'s long narrow face stretches under the lens; the brows are still hair cards; a stubble mask reads as a
+brown tone from the side; the ears are small and thin at the top; the neck is a plain tube under the collar. The balaclava is built
+from the closed head (an open neck had left it as one ear). LOD0 is 63.4k (heavy), 62.2k to 73.5k (thugs) triangles, the head 13k of
+that. The head cage deforms by landmark: change a `looks.py` number and rebuild.
+
 **Rest arms.** `HawkeyeBodyPose::ArmRestDirections` hangs the arm `OutwardDegrees` from vertical: 12 degrees on the slimmer
 bodies (it was 20, raised from 10 to stop the fingertips sinking into the bodybuilder's trousers; with the reshaped thighs that
 read as a gunslinger). The test asks the upper arm's Z below -0.97 (under about 14 degrees).
@@ -350,7 +362,7 @@ read as a gunslinger). The test asks the upper arm's Z below -0.97 (under about 
 - LOD0 is still 47k (thug), 60k (heavy) and 77k (Clint) triangles; the engine LODs carry the distance. The LOD screen
   sizes are the engine's defaults, not tuned.
 - The thug's upper sleeves were full of the Superhero body's deltoids and biceps; the reshape (`bodyshape.py`) fixed it (the back view still shows a faint lat line under the jacket).
-- The thugs' and heavy's faces are ours (built and in the game since 2026-11-25, with the close-up flaws listed above); Clint still
+- The thugs' and heavy's faces are ours, a subdivided hand-authored cage since the second pass (flaws under "Enemy heads, second pass"); Clint still
   has the pack's male face, and Kate the pack's female face with its painted eyeliner and heavy brows.
 - A teleport turns Kate's capsule but not her body: the Game Animation Sample's AnimBP keeps the mesh's old facing until
   she moves (a 180 degree teleport in the bodies shot left her facing the old way, the holstered bow on her chest). The
