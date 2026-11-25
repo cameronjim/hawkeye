@@ -285,6 +285,12 @@ bands, the ears are flat plates, the brows are a card, the neck is a plain tube 
 cannot make a believable mouth. Next steps would be a hand-sculpted lower face (the `<look id>_skin.png` override and a
 replacement of `headshape.displacement` are the hooks) rather than more Gaussians.
 
+**Nose and lips pass (2026-11-25, two renders, `Saved/Demo/face_thug_*.png`).** `NOSTRIL_INSET` 0.58 to 0.42, `NOSTRIL_DEPTH` 0.75 to 0.35,
+the lips' outer border drawn in a quarter toward the lip line (`LIP_THIN` 0.75), a lower under-nose row (`sub`) and a tip that stands out less,
+a slightly fuller bridge (`nb` 1). In the engine at 85 cm the lips are clearly thinner and read as a mouth rather than a pad, and the nostril holes
+are smaller; the dark bar under the nose is only a little shorter (it is the nose base in shadow under the engine's light, not the cavities), so the
+moustache-bar reading above stands. No third render: the fix is in the lower-face shape or the skin override, not these numbers.
+
 **Cost.** LOD0 is 64.4k (thug), 66.3k (thug_b), 67.4k (thug_c), 61.6k (thug_d) and 64.2k (heavy) triangles, from 47k and 60k; the head
 is 17k of that. `Hawkeye.Lap.EastVillage` through `measure-perf.ps1` on this branch: 6.5 ms average (p95 8.6, game 4.9 ms), the same as
 the main binary before it (6.5, 8.6, 5.0 with Kawaii Physics on); `Hawkeye.Lap.StreetFight` 6.6 ms average (p95 7.9, game 5.2); peak
