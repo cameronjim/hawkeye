@@ -109,6 +109,14 @@ ROLE_DEFAULTS = {
     "BowAimIdle": {"slot": "UpperBody", "loop": True, "blend_in": 0.15, "blend_out": 0.25},
     "BowFire": {"slot": "UpperBody", "blend_in": 0.15, "blend_out": 0.25},
     "BowNock": {"slot": "UpperBody", "blend_in": 0.15, "blend_out": 0.25},
+    # The ledge set (Tools/Blender/build_clips.py): in place, over the capsule's path (UParkourComponent plays them). The hang
+    # loops where the dismount or the catch ended; the others blend out into whatever follows (the hang, the fall, standing).
+    "LedgeDropToHang": {"slot": "DefaultSlot", "blend_in": 0.1, "blend_out": 0.15, "root_motion": False},
+    "LedgeCatch": {"slot": "DefaultSlot", "blend_in": 0.05, "blend_out": 0.2, "root_motion": False},
+    "LedgeHangIdle": {"slot": "DefaultSlot", "loop": True, "blend_in": 0.2, "blend_out": 0.2, "root_motion": False},
+    "LedgeHangDrop": {"slot": "DefaultSlot", "blend_in": 0.06, "blend_out": 0.25, "root_motion": False},
+    "LedgeClimbUp": {"slot": "DefaultSlot", "blend_in": 0.1, "blend_out": 0.2, "root_motion": False},
+    "LedgeVaultPlant": {"slot": "DefaultSlot", "blend_in": 0.08, "blend_out": 0.15, "root_motion": False},
 }
 
 # Single-frame aim poses (BowAimOffset_CC, _CU, ...): retargeted, then made mesh-space additive and laid
