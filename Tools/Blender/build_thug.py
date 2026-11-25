@@ -5,7 +5,10 @@
 A dark red tracksuit: a zip jacket that falls from the chest to a flat ribbed hem at the hips (no blouson: it read
 as a bomber), slim sleeves into ribbed cuffs, a stand collar, a zip with a pull, two white stripes from the collar down each sleeve; trousers with two white
 stripes down the outside of each leg, long enough to rest on the trainers; white trainers with a thick sole, laces and a heel
-tab; buzzed black hair. Writes <assets root>/built/thug/SK_Thug.glb (+ .blend, slots json) and the renders.
+tab. The man in it is a row of looks.py (a face and a build; --look thug_b ... writes built/thug_b/SK_Thug_b.glb): an
+original head from headbuild.py (hair, beanie or cap included) on the pack's body reshaped to an ordinary build by
+bodyshape.py. --legacy-head and --legacy-body build the first version's pack head and bodybuilder. Writes
+<assets root>/built/<look>/SK_<Look>.glb (+ .blend, slots json) and the renders.
 build_heavy.py builds on build_tracksuit() here.
 """
 
@@ -16,7 +19,10 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bodyshape  # noqa: E402
 import costume as cs  # noqa: E402
+import headbuild  # noqa: E402
+import looks  # noqa: E402
 import pieces  # noqa: E402
 
 WHO = "thug"
@@ -86,17 +92,23 @@ def head_materials(body, out, who, hair_tint):
     }
 
 
-def build_jacket(body, mats):
+DEFAULT_BUILD = looks.BUILDS["average"]
+
+
+def build_jacket(body, mats, build=DEFAULT_BUILD):
+    """The zip jacket. build.ease is the room in the cloth over the body: the jacket hangs from the chest and shoulders
+    with that much air (0.012 was the first build's; the body under it is the reshaped one, bodyshape.py)."""
     fam = body.family
-    off = 0.018 * fam["torso"] + 0.010 * fam["arm"] + 0.012 * fam["hand"] + 0.016 * fam["leg"] + 0.012 * fam["head"]
+    ease = build.ease
+    off = (0.006 + ease) * fam["torso"] + (0.004 + 0.5 * ease) * fam["arm"] + 0.012 * fam["hand"]         + (0.004 + ease) * fam["leg"] + 0.012 * fam["head"]
     # Sleeves sag a little underneath (polyester hanging off a T-posed arm).
     off = off + 0.003 * np.clip(-body.normals[:, 2], 0, 1) * cs.smoothstep(0.22, 0.4, np.abs(body.co[:, 0])) \
         * (fam["arm"] > 0.5)
     # Close to the chest and drawn in toward the hem (pad 0.022 and hem_in 0.04 read as an inflated torso).
-    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=0.012, hem_in=0.08)
+    hang = pieces.torso_solid(body, HEM_Z - 0.04, 1.42, pad=ease, hem_in=0.08)
     # Slim sleeves: a tube over the upper arm only (it hides the biceps); the forearm follows the arm down to the cuff.
     # Tubes to the wrist ended in a fat disc above the cuff, the balloon; this one narrows into the forearm.
-    sleeves = pieces.arm_tubes(body, 0.26, 0.53, pad0=0.003, pad1=-0.008, sag=0.002)
+    sleeves = pieces.arm_tubes(body, 0.26, 0.53, pad0=0.25 * ease, pad1=-0.008, sag=0.002)
     jacket = pieces.shell(body, "Jacket", off, extras=[hang] + sleeves, voxel=0.009, smooth=6,
                           keep=body.co[:, 2] > 0.75)
     pieces.iron(body, jacket, torso_iters=60, limb_iters=20, z_range=(0.9, 1.52))
@@ -119,6 +131,10 @@ def build_jacket(body, mats):
         d += hem * (-0.005 + 0.0015 * np.abs(np.sin(theta * 70)))
         blouse = np.exp(-((z - (HEM_Z + RIB_H + 0.03)) / 0.025) ** 2) * (ax < 0.3)
         d += 0.0015 * blouse * (0.6 + 0.4 * cs.fold_noise(theta * 9, 5))
+        # Folds hanging from the chest and the shoulder blades: loose cloth falls in long soft creases, deeper where
+        # it has air under it (the sides and the back) and fading before the ribbed hem gathers it.
+        hang_zone = cs.smoothstep(1.40, 1.26, z) * cs.smoothstep(HEM_Z + RIB_H + 0.01, HEM_Z + RIB_H + 0.10, z)             * (ax < 0.3)
+        d += 0.0035 * hang_zone * (0.5 + 0.5 * np.abs(n[:, 0])) * np.sin(theta * 8.0 + 2.2 * cs.fold_noise(theta * 3, 8))
         cuff = cs.smoothstep(CUFF_X - CUFF_W - 0.006, CUFF_X - CUFF_W + 0.004, ax)
         ang = np.array([math.atan2(zz - ay(xx)[1], yy - ay(xx)[0]) for xx, yy, zz in zip(ax, y, z)])
         d += cuff * (-0.004 + 0.0012 * np.abs(np.sin(ang * 40)))
@@ -184,12 +200,16 @@ def build_jacket(body, mats):
     return out
 
 
-def build_trousers(body, mats, boots=None, boot_top=0.0):
-    """Baggy tracksuit trousers: hang from the thigh, ribbed gathered ankles (or tucked into boots), stripes."""
+def build_trousers(body, mats, boots=None, boot_top=0.0, build=DEFAULT_BUILD):
+    """Tracksuit trousers: hang from the hips, taper from the thigh to the ankle (build.ankle, build.trouser_taper: the
+    first build's leg tubes ended 17 cm wide at the ankle and read as balloons), ribbed gathered ankles (or tucked into
+    boots), stripes."""
     fam = body.family
-    off = 0.016 * (fam["leg"] + fam["torso"]) + 0.01 * fam["foot"]
+    ease = build.ease
+    off = (0.004 + ease) * (fam["leg"] + fam["torso"]) + 0.01 * fam["foot"]
     bottom = boot_top - 0.13 if boots is not None else ANKLE_Z
-    tubes = pieces.leg_tubes(body, 0.76, bottom - 0.03, pad_top=0.018, pad_bottom=0.03)
+    tubes = pieces.leg_tubes(body, 0.76, bottom - 0.03, pad_top=0.006 + ease, pad_bottom=0.03, r_bottom=build.ankle,
+                             taper=build.trouser_taper)
     tr = pieces.shell(body, "TrackTrousers", off, extras=tubes, voxel=0.009, smooth=6, keep=body.co[:, 2] < 1.12)
     pieces.iron(body, tr, torso_iters=10, limb_iters=24, z_range=(0.8, 1.1))
     cs.cut_and_delete(tr, (0, 0, TROUSER_TOP), (0, 0, 1), lambda c, n: c[:, 2] > TROUSER_TOP)
@@ -210,6 +230,9 @@ def build_trousers(body, mats, boots=None, boot_top=0.0):
             d += 0.005 * bunch * np.sin(z / 0.03 * 2 * math.pi + 1.5 * cs.fold_noise(ang, 8))
         knee = np.exp(-((z - 0.55) / 0.06) ** 2)
         d += 0.0025 * knee * np.sin((z + 0.02 * np.sin(ang * 2)) / 0.035 * 2 * math.pi)
+        # Long creases down the thigh and shin, and a break where the leg meets the ankle.
+        shaft = cs.smoothstep(0.30, 0.50, z) * cs.smoothstep(0.98, 0.84, z)
+        d += 0.0026 * shaft * np.sin(ang * 5.0 + 1.4 * cs.fold_noise(z * 14.0, 4))
         return d
 
     cs.displace(tr, shape)
@@ -255,8 +278,8 @@ def crotch_weights(body, co, edges, W):
     return W / np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
 
 
-def build_tracksuit(body, mats, boots=None, boot_top=0.0):
-    return build_jacket(body, mats) + [build_trousers(body, mats, boots, boot_top)]
+def build_tracksuit(body, mats, boots=None, boot_top=0.0, build=DEFAULT_BUILD):
+    return build_jacket(body, mats, build) + [build_trousers(body, mats, boots, boot_top, build)]
 
 
 def dress_head(body, head, hair_file="Hair_Buzzed.gltf", keep=None):
@@ -284,14 +307,34 @@ def skin_all(body, pieces_out):
     return [p for p, _w in pieces_out]
 
 
+def dress_own_head(body, look, args):
+    """Our own head (headbuild.py): the pack's eyes and brows are dropped, the only pack skin kept is the hands, in the
+    face's tone. Returns (the parts to join, the HeadParts)."""
+    parts = headbuild.build_head(body, look, args.out, args.override_dir)
+    headbuild.drop_pack_face(body)
+    body.keep_skin(np.abs(body.co[:, 0]) > CUFF_X - CUFF_W)
+    cs.set_material(body.skin, headbuild.hands_material(body, look, args.out))
+    return [body.skin] + parts.all(), parts
+
+
 def build(args):
+    look = looks.get_look(args.look, default=WHO)
+    if look.family != "thug":
+        raise SystemExit("build_thug: '{0}' is a {1} look".format(look.id, look.family))
     body = cs.Body(args.assets_root)
-    mats = make_materials(args.out)
-    head = head_materials(body, args.out, "Thug", hair_tint=(0.012, 0.010, 0.009))
-    out = build_tracksuit(body, mats)
+    if not args.legacy_body:
+        bodyshape.reshape_body(body, look.build)
+    who = look.id.capitalize()
+    mats = make_materials(args.out, who=who)
+    out = build_tracksuit(body, mats, build=look.build)
     out += pieces.trainers(body, mats)
-    parts = dress_head(body, head) + skin_all(body, out)
-    cs.finish(body, parts, WHO, args)
+    if args.legacy_head:
+        head = head_materials(body, args.out, who, hair_tint=(0.012, 0.010, 0.009))
+        parts = dress_head(body, head)
+    else:
+        parts, _head = dress_own_head(body, look, args)
+    parts += skin_all(body, out)
+    cs.finish(body, parts, args.who, args)
 
 
 if __name__ == "__main__":
