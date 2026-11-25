@@ -94,6 +94,10 @@ FRotator UBowComponent::ComputeHandsAimRotation(const FVector& From) const
 	{
 		return FRotator::ZeroRotator;
 	}
+	if (bScriptedAim && !(ScriptedAimPoint - From).IsNearlyZero())
+	{
+		return (ScriptedAimPoint - From).Rotation();
+	}
 	if (bHasAimOverride && !(AimOverridePoint - From).IsNearlyZero())
 	{
 		return (AimOverridePoint - From).Rotation();
@@ -170,7 +174,7 @@ bool UBowComponent::KeepsBowInHand(bool bRaised, bool bHolsterWhenIdle, float Cl
 	return bRaised || !bHolsterWhenIdle || ClipWeight > ClipKeepsBowWeight;
 }
 
-bool UBowComponent::PlayBowClip(ECombatAnimRole Role)
+bool UBowComponent::PlayBowClip(ECombatAnimRole Role, float Rate)
 {
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	USkeletalMeshComponent* Body = Character ? Character->GetMesh() : nullptr;
@@ -179,8 +183,8 @@ bool UBowComponent::PlayBowClip(ECombatAnimRole Role)
 	{
 		return false;
 	}
-	// The clip's own pace: the manifest trims it and bakes its rate into the montage.
-	UAnimInstance* Instance = HawkeyeCombatAnim::Play(Body, Montage, 1.f);
+	// The clip's own pace (the manifest trims it and bakes its rate into the montage), unless the caller fits it to a time.
+	UAnimInstance* Instance = HawkeyeCombatAnim::Play(Body, Montage, Rate);
 	if (!Instance)
 	{
 		return false;
@@ -210,7 +214,7 @@ void UBowComponent::UpdateBowClip()
 	// BowDraw holds its last frame (no auto blend-out), so "at its end" is its position, not whether it plays.
 	const bool bAtEnd = !IsBowClipPlaying() || !Instance
 		|| Instance->Montage_GetPosition(BowClip) >= BowClip->GetPlayLength() - 0.01f;
-	const ECombatAnimRole Next = NextBowClip(Role, bDrawing, bAtEnd);
+	const ECombatAnimRole Next = NextBowClip(Role, IsDrawPose(), bAtEnd);
 	if (Next == ECombatAnimRole::None)
 	{
 		return;
@@ -303,6 +307,10 @@ float UBowComponent::GetDrawElapsed() const
 
 float UBowComponent::GetDrawFraction() const
 {
+	if (bScriptedDraw)
+	{
+		return ScriptedFraction;
+	}
 	const UBowDefinition* Bow = GetBow();
 	return (bDrawing && Bow) ? Bow->ComputeDrawFraction(GetDrawElapsed()) : 0.f;
 }
@@ -315,7 +323,7 @@ float UBowComponent::GetCurrentSpreadDegrees() const
 
 bool UBowComponent::IsBowRaised() const
 {
-	return bDrawing || GetNowSeconds() < FollowThroughUntilSeconds;
+	return bDrawing || bScriptedDraw || GetNowSeconds() < FollowThroughUntilSeconds;
 }
 
 bool UBowComponent::IsBowInHand() const
@@ -422,6 +430,78 @@ bool UBowComponent::ReleaseDraw()
 		StopBowClip(ClipLetDownSeconds);
 	}
 	return bFired;
+}
+
+// --- Scripted shot (the grapple) -----------------------------------------------------------------
+
+bool UBowComponent::BeginScriptedShot(const FVector& AimPoint, float DrawSeconds)
+{
+	if (!GetBow() || !GetOwner())
+	{
+		return false;
+	}
+	bScriptedAim = true;
+	ScriptedAimPoint = AimPoint;
+	bScriptedDraw = true;
+	ScriptedFraction = 0.f;
+
+	// The sample's draw clip, squeezed into the snap draw; the IK covers the arm while the clip blends in.
+	float Rate = 1.f;
+	if (const UAnimMontage* Clip = UCombatAnimSet::Resolve(AnimSet, ECombatAnimRole::BowDraw))
+	{
+		Rate = HawkeyeCombatAnim::FitRate(Clip->GetPlayLength(), DrawSeconds);
+	}
+	PlayBowClip(ECombatAnimRole::BowDraw, Rate);
+	UpdateBowVisual();
+	return true;
+}
+
+void UBowComponent::SetScriptedDrawFraction(float Fraction)
+{
+	if (bScriptedDraw)
+	{
+		ScriptedFraction = FMath::Clamp(Fraction, 0.f, 1.f);
+	}
+}
+
+bool UBowComponent::ReleaseScriptedShot()
+{
+	if (!bScriptedDraw)
+	{
+		return false;
+	}
+	bScriptedDraw = false;
+	ScriptedFraction = 0.f;
+
+	const FVector Start = GetArrowSpawnLocation();
+	const FVector Direction = (ScriptedAimPoint - Start).GetSafeNormal();
+	UHawkeyeAudioSubsystem::PlayAt(this, ReleaseSound, Start, TEXT("bow release"));
+	UHawkeyeVfxSubsystem::SpawnAt(this, ReleaseVfx, Start, Direction.Rotation(), UHawkeyeVfxSubsystem::BowReleaseEvent);
+
+	FollowThroughUntilSeconds = GetNowSeconds() + FollowThroughSeconds;
+	if (PlayBowClip(ECombatAnimRole::BowFire))
+	{
+		FollowThroughUntilSeconds = FMath::Min(FollowThroughUntilSeconds,
+			GetNowSeconds() + ComputeClipFollowThrough(BowClip->GetPlayLength(), BowClip->BlendOut.GetBlendTime()));
+	}
+	UpdateBowVisual();
+	return true;
+}
+
+void UBowComponent::EndScriptedAim()
+{
+	if (bScriptedDraw)
+	{
+		bScriptedDraw = false;
+		ScriptedFraction = 0.f;
+		StopBowClip(ClipLetDownSeconds);
+	}
+	bScriptedAim = false;
+}
+
+void UBowComponent::ExtendFollowThrough(float Seconds)
+{
+	FollowThroughUntilSeconds = FMath::Max(FollowThroughUntilSeconds, GetNowSeconds() + FMath::Max(Seconds, 0.f));
 }
 
 // --- Firing -----------------------------------------------------------------------------------------
@@ -593,6 +673,10 @@ FVector UBowComponent::ComputeAimPoint() const
 		return FVector::ZeroVector;
 	}
 
+	if (bScriptedAim)
+	{
+		return ScriptedAimPoint;
+	}
 	if (bHasAimOverride)
 	{
 		return AimOverridePoint;
@@ -887,7 +971,7 @@ void UBowComponent::PlaceStringAndArrow(const USkeletalMeshComponent& Body, cons
 	PlaceString(StringLower, BowTransform.TransformPosition(FVector(StringTip.X, StringTip.Y, -StringTip.Z)), Nock);
 
 	// The arrow on the string, from the nock forward through the grip, while drawing.
-	const bool bShowArrow = bDrawing && NockedShaft && NockedNock;
+	const bool bShowArrow = IsDrawPose() && NockedShaft && NockedNock;
 	if (bShowArrow)
 	{
 		NockedArrowTip = Nock + Along * NockedArrowLength;

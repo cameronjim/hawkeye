@@ -68,6 +68,36 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Bow")
 	bool IsDrawing() const { return bDrawing; }
 
+	/** The pose of a drawn bow is on: a real draw, or a scripted one (the grapple shot). The hands IK reads this, not IsDrawing. */
+	bool IsDrawPose() const { return bDrawing || bScriptedDraw; }
+
+	/**
+	 * The grapple shot's draw (claude-docs/gameplay-semantics.md, "Grapple shot"): the bow comes up and the string comes back with
+	 * no input held, aimed at AimPoint, while the owner keeps running. Not IsDrawing: the owner does not slow, strafe or lose
+	 * the sprint, and nothing can fire it. The draw fraction is set by SetScriptedDrawFraction; the BowDraw clip, when the
+	 * anim set has one, plays over DrawSeconds. False with no bow.
+	 */
+	bool BeginScriptedShot(const FVector& AimPoint, float DrawSeconds);
+
+	/** 0..1, how far the scripted draw has come. Ignored when there is none. */
+	void SetScriptedDrawFraction(float Fraction);
+
+	/**
+	 * The scripted draw's release: the string goes back to the hand's rest, the release sound and puff play, the BowFire clip
+	 * runs and the bow follows through (still aimed at the scripted point). No projectile: the grapple component flies its own.
+	 * False when there was no scripted draw.
+	 */
+	bool ReleaseScriptedShot();
+
+	/** Drops the scripted aim and any draw still up (the line is gone, or the shot was cancelled). The bow follows through and lowers. */
+	void EndScriptedAim();
+
+	/** Keeps the bow raised for at least Seconds more (the pull holds it on the rope line). */
+	void ExtendFollowThrough(float Seconds);
+
+	UFUNCTION(BlueprintPure, Category = "Bow")
+	bool HasScriptedAim() const { return bScriptedAim; }
+
 	/** 0..1, how far the current draw has come. 0 while not drawing. */
 	UFUNCTION(BlueprintPure, Category = "Bow")
 	float GetDrawFraction() const;
@@ -446,8 +476,8 @@ protected:
 	/** Ends the draw; the owner drops the forced aim. */
 	void EndDraw();
 
-	/** Plays Role's bow clip at rate 1 (its pace is the clip's own); false when there is none that plays. */
-	bool PlayBowClip(ECombatAnimRole Role);
+	/** Plays Role's bow clip at Rate (1: its pace is the clip's own); false when there is none that plays. */
+	bool PlayBowClip(ECombatAnimRole Role, float Rate = 1.f);
 
 	/** Blends the bow clip out. */
 	void StopBowClip(float BlendOutSeconds);
@@ -515,6 +545,12 @@ protected:
 
 	bool bHasAimOverride = false;
 	FVector AimOverridePoint = FVector::ZeroVector;
+
+	/** The grapple shot's scripted draw and aim (BeginScriptedShot). The aim outlives the draw until EndScriptedAim. */
+	bool bScriptedDraw = false;
+	bool bScriptedAim = false;
+	float ScriptedFraction = 0.f;
+	FVector ScriptedAimPoint = FVector::ZeroVector;
 
 	bool bUseTestTime = false;
 	double TestTimeOverride = 0.0;
