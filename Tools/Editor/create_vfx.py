@@ -547,9 +547,10 @@ EFFECTS = {
                      ((0.0, 1.0), (1.0, 0.3)), ((0.0, 1.0), (1.0, 0.0))).material("M_Vfx_Glow")
         .em("InterpolatedSpawnMode", "Interpolation"),
     ],
-    # Every arrow in flight: a thin, faint streak.
+    # Every arrow in flight: a short, thin, dim streak (a third of the brightness, half the length of the first one:
+    # it read as a laser, brighter than the arrow and the rope).
     "NS_ArrowTrail": [
-        ribbon_trail("Ribbon", 1.6, 0.18, (0.55, 0.45, 0.9, 0.35), 300),
+        ribbon_trail("Ribbon", 1.0, 0.09, (0.55, 0.45, 0.9, 0.12), 300),
     ],
     # Arrow impacts by surface, out along the surface normal (the system's X).
     "NS_ArrowImpact_Stone": [
