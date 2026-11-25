@@ -26,6 +26,10 @@ public class HawkeyeEditor : ModuleRules
 			"InputCore",
 			"Slate",
 			"SlateCore",
+			// FWidgetRenderer (UMG) and FlushRenderingCommands, for the tab's picture (Tests/TraversalDebuggerShotTest.cpp).
+			"UMG",
+			"RenderCore",
+			"RHI",
 			// GEditor, the level viewport client, selection, FEditorDelegates, UEditorLoadingAndSavingUtils.
 			"UnrealEd",
 			// UEditorSubsystem.
