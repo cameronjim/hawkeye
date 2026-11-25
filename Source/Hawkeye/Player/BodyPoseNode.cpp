@@ -211,6 +211,43 @@ void FAnimNode_HawkeyeBodyPose::InitializeBoneReferences(const FBoneContainer& R
 		Side.bValid = Side.HandSlot != INDEX_NONE && Side.LowerSlot != INDEX_NONE;
 		bReady = bReady || Side.bValid;
 	}
+
+	// The legs: the thigh and everything under it, the foot, how far out the hip stands from the midline.
+	const int32 ThighL = Find(TEXT("thigh_l"));
+	const int32 ThighR = Find(TEXT("thigh_r"));
+	for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
+	{
+		FLeg& Leg = Legs[SideIndex];
+		Leg = FLeg();
+		const FString Suffix = SideSuffix(SideIndex);
+		const int32 Thigh = SideIndex == HandLeft ? ThighL : ThighR;
+		const int32 FootBone = Find(TEXT("foot_") + Suffix);
+		if (Thigh == INDEX_NONE || FootBone == INDEX_NONE || ThighL == INDEX_NONE || ThighR == INDEX_NONE)
+		{
+			continue;
+		}
+		Leg.Outward = SideIndex == HandLeft ? Lateral : -Lateral;
+		Leg.HipOffset = static_cast<float>(FVector::DotProduct(Bind[Thigh].GetLocation(), Leg.Outward)
+			- 0.5 * FVector::DotProduct(Bind[ThighL].GetLocation() + Bind[ThighR].GetLocation(), Leg.Outward));
+		TArray<int32> SlotOfBone;
+		SlotOfBone.Init(INDEX_NONE, Num);
+		for (int32 I = Thigh; I < Num; ++I)
+		{
+			const FCompactPoseBoneIndex Parent = RequiredBones.GetParentBoneIndex(FCompactPoseBoneIndex(I));
+			if (I != Thigh && (Parent.GetInt() == INDEX_NONE || SlotOfBone[Parent.GetInt()] == INDEX_NONE))
+			{
+				continue;
+			}
+			SlotOfBone[I] = Leg.Bones.Num();
+			if (I == FootBone)
+			{
+				Leg.FootSlot = Leg.Bones.Num();
+			}
+			Leg.Bones.Add(FCompactPoseBoneIndex(I));
+		}
+		Leg.bValid = Leg.FootSlot != INDEX_NONE && Leg.HipOffset > 1.f;
+		bReady = bReady || Leg.bValid;
+	}
 }
 
 void FAnimNode_HawkeyeBodyPose::EvaluateSkeletalControl_AnyThread(
@@ -221,6 +258,13 @@ void FAnimNode_HawkeyeBodyPose::EvaluateSkeletalControl_AnyThread(
 		if (Sides[SideIndex].bValid)
 		{
 			EvaluateSide(Sides[SideIndex], SideIndex, Output, OutBoneTransforms);
+		}
+	}
+	for (const FLeg& Leg : Legs)
+	{
+		if (Leg.bValid && State.ArmRest > UE_KINDA_SMALL_NUMBER)
+		{
+			EvaluateLeg(Leg, Output, OutBoneTransforms);
 		}
 	}
 	OutBoneTransforms.Sort([](const FBoneTransform& A, const FBoneTransform& B) { return A.BoneIndex < B.BoneIndex; });
@@ -327,5 +371,40 @@ void FAnimNode_HawkeyeBodyPose::EvaluateSide(const FSide& Side, int32 SideIndex,
 	for (int32 Slot = 0; Slot < Count; ++Slot)
 	{
 		OutBoneTransforms.Add(FBoneTransform(Side.Joints[Slot].Bone, Comp[Slot]));
+	}
+}
+
+void FAnimNode_HawkeyeBodyPose::EvaluateLeg(
+	const FLeg& Leg, FComponentSpacePoseContext& Output, TArray<FBoneTransform>& OutBoneTransforms) const
+{
+	const int32 Count = Leg.Bones.Num();
+	TArray<FTransform> Comp;
+	TArray<int32> All;
+	TArray<int32> Below;
+	Comp.SetNum(Count);
+	for (int32 Slot = 0; Slot < Count; ++Slot)
+	{
+		Comp[Slot] = Output.Pose.GetComponentSpaceTransform(Leg.Bones[Slot]);
+		All.Add(Slot);
+		if (Slot >= Leg.FootSlot)
+		{
+			Below.Add(Slot);
+		}
+	}
+	const FVector Hip = Comp[0].GetLocation();
+	const FVector Foot = Comp[Leg.FootSlot].GetLocation();
+	// The turn is about the hip; HipOffset is the hip's distance out from the midline in the reference pose (the pelvis moves
+	// both hips together, so it holds).
+	const FQuat Turn = LegAdductionTurn(Hip, Foot, Leg.Outward, FVector::UpVector, Leg.HipOffset, State.ArmRest);
+	if (Turn.Equals(FQuat::Identity, 1e-6f))
+	{
+		return;
+	}
+	RotateAbout(Comp, All, Hip, Turn);
+	// The foot and what is under it stay as flat as they were: only the leg turned.
+	RotateAbout(Comp, Below, Comp[Leg.FootSlot].GetLocation(), Turn.Inverse());
+	for (int32 Slot = 0; Slot < Count; ++Slot)
+	{
+		OutBoneTransforms.Add(FBoneTransform(Leg.Bones[Slot], Comp[Slot]));
 	}
 }

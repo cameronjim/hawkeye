@@ -42,7 +42,9 @@ private:
 /**
  * Hawkeye Body Pose: after the retarget, in component space, writes every finger joint of both hands from the authored
  * table (HawkeyeBodyPose::Blend: Relaxed, Fist, Grip), brings the arms down to hang beside the thighs by the instance's
- * ArmRest weight, and turns a gripping wrist toward the prop's axis. Nothing of the retargeted fingers is kept.
+ * ArmRest weight, and turns a gripping wrist toward the prop's axis. Nothing of the retargeted fingers is kept. By the same
+ * weight the legs are turned in at the hip so the feet stand under the hips (HawkeyeBodyPose::LegAdductionTurn): the skeleton's
+ * hips are 22.8 cm apart and the driver's idle plants its feet far wider, a straddle no retarget offset fixes.
  */
 USTRUCT(BlueprintInternalUseOnly)
 struct HAWKEYE_API FAnimNode_HawkeyeBodyPose : public FAnimNode_SkeletalControlBase
@@ -84,10 +86,22 @@ private:
 		bool bValid = false;
 	};
 
+	/** One leg: the thigh, the foot, and everything under the thigh in compact (parent first) order. */
+	struct FLeg
+	{
+		TArray<FCompactPoseBoneIndex> Bones;
+		int32 FootSlot = INDEX_NONE;
+		FVector Outward = FVector::RightVector;
+		float HipOffset = 0.f;
+		bool bValid = false;
+	};
+
 	FSide Sides[2];
+	FLeg Legs[2];
 	FHawkeyeBodyPoseState State;
 	bool bReady = false;
 
 	void EvaluateSide(const FSide& Side, int32 SideIndex, FComponentSpacePoseContext& Output,
 		TArray<FBoneTransform>& OutBoneTransforms) const;
+	void EvaluateLeg(const FLeg& Leg, FComponentSpacePoseContext& Output, TArray<FBoneTransform>& OutBoneTransforms) const;
 };

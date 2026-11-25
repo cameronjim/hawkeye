@@ -153,6 +153,34 @@ namespace HawkeyeBodyPose
 		return (Pose == EHandPose::Grip ? Grip[Row] : Fist[Row]).GetSafeNormal();
 	}
 
+	FQuat LegAdductionTurn(const FVector& Hip, const FVector& Foot, const FVector& Outward, const FVector& Up,
+		float HipOffset, float Weight)
+	{
+		const FVector Leg = Foot - Hip;
+		const double Lateral = FVector::DotProduct(Leg, Outward);
+		const double Vertical = FVector::DotProduct(Leg, Up);
+		const double Length = FMath::Sqrt(Lateral * Lateral + Vertical * Vertical);
+		if (Weight <= UE_KINDA_SMALL_NUMBER || Length < 1.0 || Vertical >= 0.0)
+		{
+			return FQuat::Identity;
+		}
+		// The foot's wanted offset from the hip along the outward axis: it stands at Ratio of the hip's distance out.
+		const double WantedLateral = FMath::Clamp(static_cast<double>(HipOffset) * (FeetUnderHipsRatio - 1.f), -Length * 0.95, Length * 0.95);
+		if (Lateral <= WantedLateral)
+		{
+			return FQuat::Identity;
+		}
+		const FVector From = (Outward * Lateral + Up * Vertical) / Length;
+		const FVector To = Outward * WantedLateral - Up * FMath::Sqrt(FMath::Max(Length * Length - WantedLateral * WantedLateral, 0.0));
+		FQuat Turn = FQuat::FindBetweenNormals(From, To.GetSafeNormal());
+		const float Angle = FMath::RadiansToDegrees(Turn.GetAngle());
+		if (Angle > MaxLegAdductionDegrees)
+		{
+			Turn = FQuat::Slerp(FQuat::Identity, Turn, MaxLegAdductionDegrees / Angle);
+		}
+		return FQuat::Slerp(FQuat::Identity, Turn, FMath::Clamp(Weight, 0.f, 1.f));
+	}
+
 	float RestArmWeight(bool bActing, float SpeedCmPerSecond)
 	{
 		if (bActing)

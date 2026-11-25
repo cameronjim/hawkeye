@@ -329,7 +329,13 @@ public:
 	}
 
 private:
-	enum ESubject : int32 { ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, DrawShot, LuckyKateShot, FistsShot, FirstKateShot };
+	enum ESubject : int32
+	{
+		ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, DrawShot, LuckyKateShot, FistsShot,
+		/** Each look's face from 85 cm (the thugs' four, then the heavy), and all five side by side. */
+		FaceThugShot, FaceThugBShot, FaceThugCShot, FaceThugDShot, FaceHeavyShot, LineupShot,
+		FirstKateShot
+	};
 	/** Kate's shots, taken once by day and once by night after the others. */
 	enum EKateShot : int32 { KFront, KBack, KRun, KCrouch, KPunch, KDraw, KTrio, NumKateShots };
 	static constexpr int32 NumSubjects = FirstKateShot + NumKateShots * 2;
@@ -357,7 +363,8 @@ private:
 	static FString ShotName(int32 Subject)
 	{
 		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
-			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate"), TEXT("body_thug_empty")};
+			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate"), TEXT("body_thug_empty"),
+			TEXT("face_thug"), TEXT("face_thug_b"), TEXT("face_thug_c"), TEXT("face_thug_d"), TEXT("face_heavy"), TEXT("body_lineup")};
 		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
 			TEXT("draw"), TEXT("trio")};
 		if (!IsKate(Subject))
@@ -490,7 +497,7 @@ private:
 	}
 
 	/** A thug of Class at the spot, facing the camera, not thinking. */
-	AThugCharacter* SpawnThug(UWorld* World, const TCHAR* ClassPath)
+	AThugCharacter* SpawnThug(UWorld* World, const TCHAR* ClassPath, int32 LookIndex = -1, const FVector& Offset = FVector::ZeroVector)
 	{
 		UClass* Class = LoadClass<AThugCharacter>(nullptr, ClassPath);
 		if (!Class)
@@ -498,7 +505,7 @@ private:
 			Test->AddError(FString::Printf(TEXT("Body shots: no %s."), ClassPath));
 			return nullptr;
 		}
-		const FTransform At(Along.Rotation(), Feet + FVector(0.f, 0.f, 100.f));
+		const FTransform At(Along.Rotation(), Feet + Offset + FVector(0.f, 0.f, 100.f));
 		AThugCharacter* Thug = World->SpawnActorDeferred<AThugCharacter>(Class, At, nullptr, nullptr,
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 		if (!Thug)
@@ -506,8 +513,9 @@ private:
 			return nullptr;
 		}
 		Thug->AutoPossessAI = EAutoPossessAI::Disabled;
+		Thug->LookIndexOverride = LookIndex;
 		Thug->FinishSpawning(At);
-		Thug->TeleportTo(Feet + FVector(0.f, 0.f, Thug->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f), Along.Rotation(),
+		Thug->TeleportTo(Feet + Offset + FVector(0.f, 0.f, Thug->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f), Along.Rotation(),
 			false, true);
 		Spawned.Add(Thug);
 		return Thug;
@@ -730,8 +738,37 @@ private:
 		}
 		const FVector Chest = Feet + FVector(0.f, 0.f, 110.f);
 		const FVector Side = FVector::CrossProduct(FVector::UpVector, Along);
+		if (UPointLightComponent* Lamp = Light ? Light->PointLightComponent.Get() : nullptr)
+		{
+			Lamp->SetIntensity(500.f);   // the hand close-ups turn it down; every full shot starts from the same lamp
+		}
 		switch (Subject)
 		{
+		case FaceThugShot:
+		case FaceThugBShot:
+		case FaceThugCShot:
+		case FaceThugDShot:
+		case FaceHeavyShot:
+			Current = SpawnThug(World, Subject == FaceHeavyShot ? HawkeyeBodyShots::HeavyClassPath : HawkeyeBodyShots::ThugClassPath,
+				Subject == FaceHeavyShot ? 0 : Subject - FaceThugShot);
+			Frame(PC, Feet + FVector(0.f, 0.f, 166.f), 85.f, 38.f);
+			if (UPointLightComponent* Lamp = Light ? Light->PointLightComponent.Get() : nullptr)
+			{
+				Lamp->SetIntensity(160.f);
+			}
+			break;
+		case LineupShot:
+			for (int32 K = 0; K < 5; ++K)
+			{
+				AThugCharacter* Man = SpawnThug(World, K == 4 ? HawkeyeBodyShots::HeavyClassPath : HawkeyeBodyShots::ThugClassPath,
+					K == 4 ? 0 : K, Side * ((K - 2) * 95.f));
+				if (K == 0)
+				{
+					Current = Man;
+				}
+			}
+			Frame(PC, Feet + FVector(0.f, 0.f, 95.f), 760.f, 50.f);
+			break;
 		case ThugShot:
 			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
 			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
@@ -956,6 +993,16 @@ private:
 		else if (Subject >= PunchShot)
 		{
 			ShootMoment(Subject, ShotLabel);
+			if (Subject == LineupShot)
+			{
+				for (const TWeakObjectPtr<AActor>& Man : Spawned)
+				{
+					if (const AThugCharacter* Thug = Cast<AThugCharacter>(Man.Get()))
+					{
+						Test->AddInfo(FString::Printf(TEXT("body_lineup.png: %s wears %s."), *Thug->GetName(), *GetNameSafe(Thug->GetBodyMesh()->GetSkeletalMeshAsset())));
+					}
+				}
+			}
 		}
 		else if (Character)
 		{

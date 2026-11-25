@@ -71,6 +71,34 @@ bool FHawkeyeBodyPoseArm::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyPoseLegs, "Hawkeye.BodyPose.LegAdduction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeBodyPoseLegs::RunTest(const FString& Parameters)
+{
+	const FVector Up = FVector::UpVector;
+	const FVector Out = FVector::RightVector;
+	const FVector Hip(0.0, 11.4, 90.0);
+	// A foot 25 cm out from the hip, 90 cm down: the straddle.
+	const FVector Wide(0.0, 36.4, 0.0);
+	const FQuat Turn = LegAdductionTurn(Hip, Wide, Out, Up, 11.4f, 1.f);
+	const FVector Moved = Hip + Turn.RotateVector(Wide - Hip);
+	TestTrue(TEXT("A wide foot is brought in"), Moved.Y < Wide.Y - 10.0);
+	TestEqual(TEXT("to the share of the hip's own distance out"), static_cast<float>(Moved.Y), 11.4f * FeetUnderHipsRatio, 0.2f);
+	TestEqual(TEXT("and the leg keeps its length"), static_cast<float>((Moved - Hip).Size()), static_cast<float>((Wide - Hip).Size()), 0.01f);
+	TestTrue(TEXT("Weight 0 turns nothing"), LegAdductionTurn(Hip, Wide, Out, Up, 11.4f, 0.f).Equals(FQuat::Identity, 1e-6f));
+	const FVector Half = Hip + LegAdductionTurn(Hip, Wide, Out, Up, 11.4f, 0.5f).RotateVector(Wide - Hip);
+	TestTrue(TEXT("Half weight is part way"), Half.Y < Wide.Y && Half.Y > Moved.Y);
+	const FVector Under(0.0, 10.2, 0.0);
+	TestTrue(TEXT("A foot already under the hip is left alone"), LegAdductionTurn(Hip, Under, Out, Up, 11.4f, 1.f).Equals(FQuat::Identity, 1e-6f));
+	const FVector Crossed(0.0, -5.0, 0.0);
+	TestTrue(TEXT("A foot across the midline is not pushed out"), LegAdductionTurn(Hip, Crossed, Out, Up, 11.4f, 1.f).Equals(FQuat::Identity, 1e-6f));
+	const FVector VeryWide(0.0, 80.0, 0.0);
+	const FQuat Capped = LegAdductionTurn(Hip, VeryWide, Out, Up, 11.4f, 1.f);
+	TestTrue(TEXT("The turn is capped"), FMath::RadiansToDegrees(Capped.GetAngle()) <= MaxLegAdductionDegrees + 0.01f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyPoseEase, "Hawkeye.BodyPose.Ease",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 

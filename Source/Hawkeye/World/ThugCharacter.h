@@ -859,6 +859,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Look")
 	TArray<FHawkeyeBodyLook> BodyLookVariants;
 
+	/** Tests and shots: the look this thug wears (0 BodyLook, 1.. BodyLookVariants) in place of the pick by his name; set before he is spawned. */
+	int32 LookIndexOverride = -1;
+
 	/** The mesh people see: the look's while BodyLook is on, else GetMesh(). His materials (hit flash, telegraph) are on it. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Look")
 	USkeletalMeshComponent* GetBodyMesh() const;

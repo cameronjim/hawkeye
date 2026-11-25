@@ -116,6 +116,20 @@ namespace HawkeyeBodyPose
 	/** How far the wrist may turn toward a prop's axis, degrees (a bat is held across the fingers on a diagonal). */
 	constexpr float MaxWristTurnDegrees = 50.f;
 
+	/** At ease the feet stand under the hips: a foot's distance out from the midline as a share of the hip's own. */
+	constexpr float FeetUnderHipsRatio = 0.92f;
+	/** The most the legs are turned in at the hip, degrees (the driver's combat idle stands far wider than the skeleton's hips). */
+	constexpr float MaxLegAdductionDegrees = 24.f;
+
+	/**
+	 * The turn (about the hip, in the frontal plane) that brings a leg that stands wider than the hips in toward them:
+	 * the hip-to-foot line is tipped so the foot's distance out from the midline becomes FeetUnderHipsRatio times the hip's
+	 * (HipOffset: the hip's own distance out), never more than MaxLegAdductionDegrees and never outward, scaled by Weight
+	 * (0 none). Hip, Foot, Outward (away from the midline on this leg's side, unit) and Up are in one space; Foot below Hip.
+	 */
+	HAWKEYE_API FQuat LegAdductionTurn(const FVector& Hip, const FVector& Foot, const FVector& Outward, const FVector& Up,
+		float HipOffset, float Weight);
+
 	/** Rest arm weight from the thug's state: 1 standing at ease, 0 while he moves faster than ~1.5 m/s or acts. */
 	HAWKEYE_API float RestArmWeight(bool bActing, float SpeedCmPerSecond);
 }

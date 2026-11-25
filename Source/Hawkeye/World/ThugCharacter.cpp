@@ -459,7 +459,8 @@ USkeletalMeshComponent* AThugCharacter::ApplyBodyLook()
 		return LookMesh;
 	}
 	// Index 0 is BodyLook itself, 1.. are the variants; the pick is a function of his actor's name.
-	const int32 Pick = HawkeyeBodyLook::PickVariantIndex(BodyLookVariants.Num() + 1, GetTypeHash(GetFName()));
+	const int32 Pick = LookIndexOverride >= 0 ? LookIndexOverride
+		: HawkeyeBodyLook::PickVariantIndex(BodyLookVariants.Num() + 1, GetTypeHash(GetFName()));
 	if (Pick > 0 && BodyLookVariants.IsValidIndex(Pick - 1) && BodyLookVariants[Pick - 1].IsSet())
 	{
 		LookMesh = HawkeyeBodyLook::Apply(*GetMesh(), BodyLookVariants[Pick - 1]);
