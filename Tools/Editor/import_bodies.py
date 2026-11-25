@@ -1081,7 +1081,7 @@ def ensure_kate(female, built):
         return fallback("no IK rig on the female body or no driver rig (IK_Kate_UEFN)")
     c.ensure_directory(KATE_LOOK)
     rtg = kl.ensure_retargeter(source["rig"], source["mesh"], rig, female, path=KATE_LOOK + "/RTG_Kate_To_Body")
-    abp = (kl.ensure_anim_bp(female, rtg, path=KATE_LOOK + "/ABP_Kate_Body", dynamics=KATE_DYNAMICS)
+    abp = (kl.ensure_anim_bp(female, rtg, path=KATE_LOOK + "/ABP_Kate_Body", dynamics=KATE_DYNAMICS, ledge_ik=True)
            if rtg is not None else None)
     if abp is None:
         return fallback("no retargeter or AnimBP")
