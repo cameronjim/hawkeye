@@ -720,6 +720,10 @@ last real bone has a direction; `quiver_01` under spine_03 from the quiver's mou
 <staging>\built\kate` (the engine import reads `<assets root>\built\kate`; point `HAWKEYE_ASSETS_ROOT` at a staging copy for
 the import until it has been looked at).
 
+Cost: the same `Hawkeye.Lap.EastVillage` lap through `measure-perf.ps1`, one binary, Kawaii on then switched off with
+`-dpcvars=a.AnimNode.KawaiiPhysics.Enable=0`: 6.5 ms average both ways (p95 8.6 / 8.5), game thread 5.0 / 4.9 ms, so the two
+nodes cost about 0.1 ms on the game thread, inside the noise.
+
 Checking it again: `Hawkeye.SecondaryMotion`, `create-content.ps1` (LogHawkeye: "2 Kawaii Physics node(s)"), then the strips with
 `a.AnimNode.KawaiiPhysics.Debug 1` to draw the shapes.
 
