@@ -548,18 +548,19 @@ def _concrete_floor_color(material):
     return multiply(material, tiled, floor_dirt, 100, 0)
 
 
-STEEL_PAINTED_BUILD = "black-iron-snow-7"   # metadata tag CastleBuild (pre-rename key, kept); a different value rebuilds the graph
+STEEL_PAINTED_BUILD = "worn-iron-snow-8"   # metadata tag CastleBuild (pre-rename key, kept); a different value rebuilds the graph
 
 
 def _build_steel_painted(material):
-    """Black iron (base 0.02) with noise scuffs showing duller metal: fire escapes, lamp poles, doors.
-    Snow (MF_Snow) settles on its upward faces: fire-escape landings, rail tops."""
+    """Worn dark iron (base 0.10, scuffs to 0.22, lifted from black 0.02 so a rail reads against a dark wall at night
+    without glowing; metallic 0.3, as a mostly-metal surface only shows what it reflects) with noise scuffs: fire escapes,
+    lamp poles, doors. Snow (MF_Snow) settles on its upward faces: fire-escape landings, rail tops."""
     scuff = noise(material, 0.6, -900, -400, levels=3)
-    paint = constant3(material, (0.02, 0.02, 0.02), -900, -200)
-    worn = constant3(material, (0.07, 0.07, 0.07), -900, -60)
+    paint = constant3(material, (0.10, 0.10, 0.11), -900, -200)
+    worn = constant3(material, (0.22, 0.22, 0.235), -900, -60)
     base = lerp(material, paint, worn, scuff, -600, -200)
-    snow = snowed(material, base, constant(material, 0.5, -600, 150))
-    metallic = lerp(material, None, None, None, -200, 280, const_a=0.6, const_b=0.0)
+    snow = snowed(material, base, constant(material, 0.6, -600, 150))
+    metallic = lerp(material, None, None, None, -200, 280, const_a=0.3, const_b=0.0)
     connect(snow, "Mask", metallic, "Alpha")
     connect_property(metallic, unreal.MaterialProperty.MP_METALLIC)
 
