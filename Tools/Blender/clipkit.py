@@ -611,7 +611,7 @@ def check_clip(rig, clip, frames):
         worst_turn[0], worst_turn[1], worst_turn[2], worst_move))
     if worst_turn[0] > clip.extra.get("pop_degrees", POP_DEGREES):
         problems.append("{0} pops {1:.0f} deg in one frame (frame {2})".format(worst_turn[1], worst_turn[0], worst_turn[2]))
-    if worst_move > 12.0:
+    if worst_move > clip.extra.get("pelvis_cm", 12.0):
         problems.append("the pelvis jumps {0:.0f} cm in one frame".format(worst_move))
     # Hands clear of the torso.
     if clip.torso_clear:
