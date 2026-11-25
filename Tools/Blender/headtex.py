@@ -129,15 +129,15 @@ def skin_maps(face, grid, size=1024):
     # Lips: the skin tinted toward red between a soft edge, a darker line where they meet, a lighter lower lip.
     lip_u = hs.gauss(ax, z - (lm.ul - 0.0005), lm.corner * 0.82, 0.0058)
     lip_l = hs.gauss(ax, z - (lm.ll + 0.0005), lm.corner * 0.80, 0.0070)
-    lips = hs.smoothstep(0.12, 0.85, np.maximum(lip_u, lip_l)) * front
+    lips = hs.smoothstep(0.22, 0.62, np.maximum(lip_u, lip_l)) * front
     albedo = lerp(albedo, albedo * np.array(MOUTH_COLOUR) * (0.92 + 0.08 * face.skin_ruddy), lips[:, :, None])
-    albedo *= 1.0 - 0.40 * (hs.gauss(ax, z - lm.mouth, lm.corner, 0.0013) * front)[:, :, None]
+    albedo *= 1.0 - 0.55 * (hs.gauss(ax, z - lm.mouth, lm.corner, 0.0011) * front)[:, :, None]
     # The nose's own shading, the front view's only cue: nostrils, the shadow under the tip, the creases at the wings.
     nw = face.nose_width
     nostril = hs.gauss(ax - 0.0082 * nw, z - (lm.sub + 0.0040), 0.0036, 0.0024) * front
     under = hs.gauss(ax, z - (lm.sub - 0.0030), 0.0125 * nw, 0.0028) * front
     alar = hs.gauss(ax - 0.0185 * nw, z - (lm.sub + 0.0070), 0.0024, 0.0070) * front
-    albedo *= 1.0 - np.clip(0.42 * nostril + 0.10 * under + 0.16 * alar, 0, 0.7)[:, :, None] * np.array([0.9, 1.0, 0.8])
+    albedo *= 1.0 - np.clip(0.26 * nostril + 0.035 * under + 0.09 * alar, 0, 0.7)[:, :, None] * np.array([0.9, 1.0, 0.8])
     # Lash lines on the lid margins (the rim of the opening the eyeball shows through).
     ap, rr = hs.aperture(face, ax, z)
     lash = np.exp(-(((rr - 1.0) / 0.13) ** 2)) * front

@@ -511,7 +511,7 @@ Retarget Pose From Mesh, to component space, one **Hawkeye Body Pose** node (`FA
 game module finds the class by path); built by
 `UHawkeyeRetargetGraphBuilder::BuildRetargetWithBodyPose`, stamp `body-pose-1`), back to local. Its parent class is
 `UHawkeyeBodyAnimInstance`, which each frame asks the owner (`AThugCharacter::GetBodyPoseWish`) what the hands are doing and
-eases it into alphas over 0.12 s. Kate and Clint have no such node.
+eases it into alphas over 0.12 s. Kate and Clint have no such node. Since 2026-11-25 the thugs' faces and builds vary (`BodyLookVariants`, `blender-pipeline.md`, "Enemy heads and bodies"): the same skeleton, retargeter and AnimBP for every variant.
 - **Fingers.** Every finger joint is written outright: local rotation = swing about the palm normal (thumb only) * curl about the
   finger's own flexion axis * the joint's reference rotation, all axes taken from the body's bind pose (the palm frame is the
   same formula as `_handpose.palm_frame`, `HawkeyeBodyPose::ComputeHandFrame`). The table is `HawkeyeBodyPose::Angles`:
@@ -526,6 +526,13 @@ eases it into alphas over 0.12 s. Kate and Clint have no such node.
   knockdown or collapse) turns the upper arm to hang down 20 degrees out from the body (10 until 2026-11-24, when the fingertips sank into the
   tracksuit trousers; `hands_thug_empty.png` against `hands_thug_empty_before_arm.png`: the hand now hangs clear of the hip by a
   hand's width), and the forearm on it bent 6 degrees forward (`ArmRestDirections`), about the shoulder and elbow, in component space.
+- **Rest legs (2026-11-25).** By the same `ArmRest` weight each leg is turned in about the hip, in the frontal plane, until the foot
+  stands at 0.92 of the hip's distance out from the midline (`LegAdductionTurn`, never more than 24 degrees, never outward), the foot
+  and toes turned back so they stay flat (`EvaluateLeg`). The retargeter's IK puts the feet where the driver's combat idle has them,
+  35 cm apart under hips 22.8 cm apart, and neither the bind pose nor a retarget-pose offset on the thigh changes where IK puts a
+  foot (a 3 degree thigh offset in the retarget pose, tried first, moved nothing). The Bodies shot measures it:
+  `feet 19 cm apart (hips 21)` for a thug at rest, and fails past 1.35 times the hips; Clint, whose retarget is the plain one, stands
+  43 cm apart (hips 22) and is not checked. Walking fades it out with the arms (full at rest, nothing by 150 cm/s).
 - **Props.** The pistol and the bat follow the visible hand (`GetBodyHandGrip`), placed again from
   `OnBoneTransformsFinalized` so they do not lag a frame. The pistol's grip block centre sits in the fist (handle across the
   knuckles, muzzle along the fingers 18 degrees away from the thigh); a gripping wrist turns toward the bat's axis, up to 50
