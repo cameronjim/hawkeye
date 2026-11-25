@@ -220,6 +220,8 @@ struct FLedgeBodyPose
 	float PlaneD = 0.f;
 	/** The ledge's height the hands are at. */
 	float EdgeZ = 0.f;
+	/** The component's tunables, so the node places the shoulders, the fingers and the feet by the same numbers the rules did. */
+	FHawkeyeLedgeBodySettings Tuning;
 
 	bool IsActive() const { return Weight > 0.001f; }
 };
