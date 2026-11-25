@@ -512,6 +512,18 @@ the vault ended on top of it). So the clip is keyed with the body far under the 
 the feet at hip height beside her) and taken into the capsule's frame by the capsule's height (`zb`), floor_cm -110. It is keyed against the rig solved without
 its arms (the shoulders' real place), the elbows poled back so a hanging arm never flips.
 
+**Phase 4 (2026-11-25, from the player-camera night frames).** (1) `Ledge_FallLoop` (`_fall_pose`) no longer stands: the knees bent and
+offset (left foot 11 cm ahead and low, right drawn back and 11 cm up), the toes pitched down (26 and 46 degrees) and turned in 8, the hands
+16 cm wider than the shoulders at shoulder height with the elbows out, and a larger continuous sway (hips roll 7, turn 5, chest 6). The
+hang drop and the brace follow it (they key from its first frame). Read in `hang_fall_player`; still off: the right arm reads rather
+straight out to the side from behind. (2) Hang fingers: the body's bind pose fans its fingers (T-pose), and the ledge IK node only wrote
+curls, so they hooked as a claw. `FAnimNode_HawkeyeLedgeIK` now also takes each finger joint's angle about the palm's normal to the middle
+finger's same joint and closes 95% of it (`ClosedFingers`), and the Hang table curls deeper (index 34/52/34 to pinky 42/54/34, thumb spread
+8). Read in `hang_hands`: four knuckles side by side over the lip. (3) `M_SteelPainted` (fire escapes, lamp poles, doors) is worn dark iron,
+base 0.10 scuffed to 0.22 (was 0.02 to 0.07), metallic 0.3 (was 0.6), snow coverage 0.6, tag `worn-iron-snow-8`: the rails now read blue-grey
+against the wall in the descent shot without glowing. (4) `NS_ArrowTrail` (every arrow in flight, the grapple arrow's included): ribbon
+1.0 wide (was 1.6), 0.09 s long (0.18), alpha 0.12 (0.35).
+
 **The ledge strips** (`Hawkeye.Screenshot.Traversal`, written, not run): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`,
 `hang_hands` and `<name>_wide` of each, in `Saved/Screenshots/Traversal/<name>_<side | three_quarter>_<off | on>.png`, on a stage built
 200 m over the district at a fixed 1/60 s a frame, with the ledge body off (`hawkeye.LedgePose 0`) and on; eight frames of 1/30 s
