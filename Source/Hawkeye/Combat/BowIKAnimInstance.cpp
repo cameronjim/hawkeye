@@ -205,7 +205,7 @@ void UHawkeyeBowIKAnimInstance::UpdateAfterClipAlpha(const UBowComponent* Bow, f
 	const bool bHasBow = Bow && Bow->GetBow();
 	const float BlendSeconds = Bow ? Bow->HandsIK.BlendSeconds : FBowHandIKSettings().BlendSeconds;
 	BowAlpha = StepAlpha(BowAlpha, (bHasBow && Bow->IsBowRaised()) ? 1.f : 0.f, DeltaSeconds, BlendSeconds);
-	DrawAlpha = StepAlpha(DrawAlpha, (bHasBow && Bow->IsDrawing()) ? 1.f : 0.f, DeltaSeconds, BlendSeconds);
+	DrawAlpha = StepAlpha(DrawAlpha, (bHasBow && Bow->IsDrawPose()) ? 1.f : 0.f, DeltaSeconds, BlendSeconds);
 	StringCorrectionAlpha = 0.f;
 	StringOffLine = 0.f;
 
