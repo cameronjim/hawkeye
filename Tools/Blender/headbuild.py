@@ -1,7 +1,7 @@
-"""Blender side of the enemies' heads (claude-docs/blender-pipeline.md, "Enemy heads and bodies"): turns the arrays of
-`headshape` and the bakes of `headtex` into skinned objects on the body's own armature: the head and neck (one
-surface), two ears, two eyeballs (a cornea dome on each), two brow cards, a hair cap or a beanie or a cap with its
-brim, their materials and textures.
+"""Blender side of the enemies' heads (claude-docs/blender-pipeline.md, "Enemy heads, second pass"): turns the cage of
+`headcage` (subdivided in `headmesh`), the bakes of `headbake` and `headtex` and the hair and headwear shells of
+`headshape` into skinned objects on the body's own armature: the head and neck (one surface), two ears, two eyeballs
+(a cornea dome on each), two brow cards, a hair cap or a beanie or a cap with its brim, their materials and textures.
 
 Runs inside Blender 5.3 (bpy), called by build_thug.py and build_heavy.py. The pack's own head, eyes and brows are
 not used: `build_head` replaces them. Everything is deterministic; nothing is downloaded and no model is run.
@@ -13,6 +13,9 @@ import bpy
 import numpy as np
 
 import costume as cs
+import headbake as hb
+import headcage as hc
+import headmesh as hm
 import headshape as hs
 import headtex as ht
 import looks
@@ -84,7 +87,8 @@ def head_weights(body, co):
 
 
 def rigid_head(body, obj):
-    cs.skin(obj, body, cs.rigid(body, len(obj.data.vertices), {"Head": 1.0}))
+    if body is not None:        # (the preview has no body)
+        cs.skin(obj, body, cs.rigid(body, len(obj.data.vertices), {"Head": 1.0}))
     return obj
 
 
@@ -119,14 +123,15 @@ class HeadParts:
                 if o is not None]
 
 
-def head_materials(look, grid, out, search_dirs):
+def head_materials(look, bake, out, search_dirs):
+    """The materials; `bake` is a function returning (albedo, normal) arrays, called only when no override image."""
     face = look.face
     who = who_of(look)
     m = cs.material
     skin_img = override_image(look, "skin", "T_{0}_skin".format(who), search_dirs, non_color=False)
     skin_n = override_image(look, "skin_n", "T_{0}_skin_n".format(who), search_dirs, non_color=True)
     if skin_img is None or skin_n is None:
-        albedo, normal, _zones = ht.skin_maps(face, grid)
+        albedo, normal = bake()
         skin_img = skin_img or colour_image("T_{0}_skin".format(who), albedo, os.path.join(out, "skin.png"))
         skin_n = skin_n or data_image("T_{0}_skin_n".format(who), normal, os.path.join(out, "skin_n.png"))
     eye_img = colour_image("T_{0}_eye".format(who), ht.eye_image(face), os.path.join(out, "eye.png"))
@@ -154,17 +159,22 @@ def head_materials(look, grid, out, search_dirs):
     return mats
 
 
-def build_ear(body, look, grid, side, mats):
-    face = look.face
-    verts, faces, anchor = hs.ear_arrays(face, grid, side)
-    ear = make_mesh("Ear" + ("L" if side > 0 else "R"), verts, faces)
-    cs.recalc_normals(ear)
-    prof = hs.profile(face, np.array([anchor[2]]), grid.neck_y)
-    theta = float(np.arctan2(anchor[1] - prof["yc"][0], anchor[0]) + np.pi / 2)
-    u0 = float(grid.column_of_theta(np.array([theta]))[0]) / grid.segs
-    v0 = float(np.interp(anchor[2], grid.z, np.arange(grid.rows))) / (grid.rows - 1.0)
-    uv = np.stack([u0 + (verts[:, 1] - anchor[1]) * 2.0 * side, v0 + (verts[:, 2] - anchor[2]) * 2.5], axis=1)
-    vertex_uvs(ear, uv)
+def ear_surface(face, data, grid, side):
+    """The ear, subdivided: rooted on the skull's side at the ears' height, its UVs in the head's own texture."""
+    z_c = hc.CHIN_Z + 0.5 * (hc.EAR_TOP_Z + hc.EAR_BOTTOM_Z) * 0.01
+    y_a = grid.axis_y(z_c) + 0.004
+    x_h = grid.ray_x(z_c, side, y_a)
+    u_side, per_cm = data.ear_uv
+    v0 = (0.5 * (hc.EAR_TOP_Z + hc.EAR_BOTTOM_Z) - hc.V_MIN) / (hc.APEX_Z - hc.V_MIN)
+    anchor = (x_h, y_a, z_c)
+    zs = z_c + (np.linspace(0.0, 1.0, hc.EAR_NU) - 0.52) * hc.EAR_LENGTH * face.ear_size * 0.01
+    rows = [grid.ray_x(z, side, y_a) for z in zs]
+    verts, faces, uv = hc.ear_cage(face, anchor, side, (u_side if side > 0 else 1.0 - u_side, v0), per_cm, rows)
+    return hm.subdivide("Ear", verts, faces, uv, fix_normals=True)
+
+
+def build_ear(body, surf, side, mats):
+    ear = make_mesh("Ear" + ("L" if side > 0 else "R"), surf.verts, surf.faces, surf.corner_uv)
     cs.set_material(ear, mats["skin"])
     return rigid_head(body, ear)
 
@@ -186,7 +196,7 @@ def build_eyes(body, grid, mats):
 def build_brows(body, look, grid, mats):
     objs = []
     for side in (1, -1):
-        P, _N, u, v = hs.brow_arrays(look.face, grid, side)
+        P, u, v = hm.brow_arrays(look.face, grid, side, hc.CHIN_Z)
         rows, cols = P.shape[0], P.shape[1]
         faces = []
         for r in range(rows - 1):
@@ -259,32 +269,49 @@ def build_headwear(body, look, grid, mats):
     return out
 
 
-def build_head(body, look, out, override_dir=""):
+def bake_skin(look, full):
+    """(albedo, normal) of the skin from the head-and-ears surface `full`."""
+    tris, _owner, corners = full.tri_arrays()
+    ao = hm.ambient_occlusion(full)
+    w = full.weights
+    zero = np.zeros(len(full.verts))
+    parts = {"verts": full.verts, "tris": tris, "tri_corners": corners, "corner_uv": full.corner_uv,
+             "normals": hm.vertex_normals(full), "ao": ao, "lips": w.get("lips", zero), "inner": w.get("inner", zero),
+             "lash": w.get("lash", zero), "ridge": w.get("ridge", zero)}
+    return hb.skin_maps(look.face, parts, hc.CHIN_Z, hairline_t=hs.hairline_t)
+
+
+def build_head(body, look, out, override_dir="", neck_y=None):
     """The whole head for a look: HeadParts. The caller drops the pack's eyes and brows (`drop_pack_face`) and keeps
     only the hands of the pack's skin."""
     problems = look.problems()
     if problems:
         raise SystemExit("looks: " + "; ".join(problems))
     face = look.face
-    cy, _rx, _ry = pieces.neck_shape(body)
-    neck_y = float(np.clip(cy + pieces.NECK_FORWARD, 0.0, 0.06))
-    grid = hs.HeadGrid(face, neck_y=neck_y)
+    if neck_y is None:
+        cy, _rx, _ry = pieces.neck_shape(body)
+        neck_y = float(np.clip(cy + pieces.NECK_FORWARD, 0.0, 0.06))
+    data = hc.build_cage(face, neck_y)
+    surf = hm.subdivide("Head", data.verts, data.faces, data.uvs, data.creases, data.groups)
+    grid = hm.SurfaceGrid(surf, face, data.eyes, neck_y)
+    ear_surfs = [] if face.headwear == "beanie" else [ear_surface(face, data, grid, side) for side in (1, -1)]
+    full = surf
+    for e in ear_surfs:
+        full = hm.concat(full, e)
     parts = HeadParts()
     parts.grid = grid
-    parts.mats = head_materials(look, grid, out, [override_dir, out])
-    verts = grid.vertices()
-    faces = grid.quads()
-    head = make_mesh("Head", verts, faces, grid.loop_uvs(faces))
+    parts.mats = head_materials(look, lambda: bake_skin(look, full), out, [override_dir, out])
+    head = make_mesh("Head", surf.verts, surf.faces, surf.corner_uv)
     cs.set_material(head, parts.mats["skin"])
-    cs.skin(head, body, head_weights(body, verts))
+    if body is not None:
+        cs.skin(head, body, head_weights(body, surf.verts))
     parts.head = head
-    if face.headwear != "beanie":
-        parts.ears = [build_ear(body, look, grid, side, parts.mats) for side in (1, -1)]
+    parts.ears = [build_ear(body, e, side, parts.mats) for e, side in zip(ear_surfs, (1, -1))]
     parts.eyes = build_eyes(body, grid, parts.mats)
     parts.brows = build_brows(body, look, grid, parts.mats)
     parts.hair = build_hair(body, look, grid, parts.mats)
     parts.headwear = build_headwear(body, look, grid, parts.mats)
-    cs.log("head", look.id, len(verts), "verts,", sum(cs.poly_count(o) for o in parts.all()), "tris")
+    cs.log("head", look.id, len(surf.verts), "verts,", sum(cs.poly_count(o) for o in parts.all()), "tris")
     return parts
 
 

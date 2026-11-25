@@ -251,7 +251,7 @@ def brow_image(face, width=256, height=64):
         # Hairs grow up and out at the inner end, flat along the body, down and out at the tail.
         angle = lerp(0.55, -0.35, float(hs.smoothstep(0.0, 1.0, u0))) + rng.normal(0, 0.12)
         length = rng.uniform(0.10, 0.26)
-        shade = rng.uniform(0.9, 1.9)
+        shade = rng.uniform(0.9, 1.9) if hair.mean() < 0.2 else rng.uniform(0.8, 1.15)
         for s in np.linspace(0.0, 1.0, 36):
             u = u0 + math.cos(angle) * length * s
             v = v0 + math.sin(angle) * length * s * 0.5
