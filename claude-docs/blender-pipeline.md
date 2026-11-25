@@ -275,6 +275,22 @@ transfer are the pack's, so `SKEL_Body_Male`, `IK_Body_Male`, the retargeters, t
 * `BP_Thug_Heavy` is a child of `BP_Thug`, so it inherited the thugs' `BodyLookVariants` and wore a beanie thug's face over the vest and
   balaclava; each wearer is now written its variants (the heavy's none).
 
+**What shipped, and what a critical viewer still flags (2026-11-25).** All five looks are in the game (`thug`, `thug_b` beanie,
+`thug_c` cap and beard, `thug_d` shaved, `heavy`), each thug drawing one of the four by his actor's name. Their bodies are the clear gain:
+an ordinary man's shoulders and chest in the tracksuit, no muscle under it, trousers narrowing to a ribbed ankle on the trainer, feet
+under the hips. The faces differ at a glance (a line-up at 7 m, `body_lineup.png`) and the eyes hold up close (lids, depth, wet
+iris); close up (`face_*.png`, 85 cm) the rest still reads as clay: the lips are a soft smear with no lip line, the nostrils and the
+shadow under the nose read as a moustache bar under the engine's light, the cheek and jaw ridges catch the light in horizontal
+bands, the ears are flat plates, the brows are a card, the neck is a plain tube under the stand collar, and the ring-grid head
+cannot make a believable mouth. Next steps would be a hand-sculpted lower face (the `<look id>_skin.png` override and a
+replacement of `headshape.displacement` are the hooks) rather than more Gaussians.
+
+**Cost.** LOD0 is 64.4k (thug), 66.3k (thug_b), 67.4k (thug_c), 61.6k (thug_d) and 64.2k (heavy) triangles, from 47k and 60k; the head
+is 17k of that. `Hawkeye.Lap.EastVillage` through `measure-perf.ps1` on this branch: 6.5 ms average (p95 8.6, game 4.9 ms), the same as
+the main binary before it (6.5, 8.6, 5.0 with Kawaii Physics on); `Hawkeye.Lap.StreetFight` 6.6 ms average (p95 7.9, game 5.2); peak
+working set 7.8 GB for the two laps. Not a same-binary comparison (the old heads are no longer built into one); the same lap on the two
+commits.
+
 **Stance.** The straddle is not in the mesh and the retarget pose cannot fix it: the retargeter's IK puts the feet where the driver's
 combat idle has them, 35 cm apart under hips 22.8 cm apart. It is fixed after the retarget, in `FAnimNode_HawkeyeBodyPose`
 (`HawkeyeBodyPose::LegAdductionTurn`, `Hawkeye.BodyPose.LegAdduction`): by the same at-ease weight as the rest arms, each leg is turned in
@@ -287,9 +303,9 @@ foot is turned back so it stays flat. The Bodies shot checks it (`feet N cm apar
   into the boots. A cloth asset (Chaos Cloth) on the skirt would fix it in the engine.
 - LOD0 is still 47k (thug), 60k (heavy) and 77k (Clint) triangles; the engine LODs carry the distance. The LOD screen
   sizes are the engine's defaults, not tuned.
-- The thug's upper sleeves were full of the Superhero body's deltoids and biceps; the reshape (`bodyshape.py`) is meant to fix it.
-- The thugs' and heavy's faces are ours since the rebuild above (once phase 2 has built them); Clint still has the pack's male
-  face, and Kate the pack's female face with its painted eyeliner and heavy brows.
+- The thug's upper sleeves were full of the Superhero body's deltoids and biceps; the reshape (`bodyshape.py`) fixed it (the back view still shows a faint lat line under the jacket).
+- The thugs' and heavy's faces are ours (built and in the game since 2026-11-25, with the close-up flaws listed above); Clint still
+  has the pack's male face, and Kate the pack's female face with its painted eyeliner and heavy brows.
 - A teleport turns Kate's capsule but not her body: the Game Animation Sample's AnimBP keeps the mesh's old facing until
   she moves (a 180 degree teleport in the bodies shot left her facing the old way, the holstered bow on her chest). The
   shot walks her into each facing. Not fixed in the game: fast travel and checkpoint loads may show it for a moment.
