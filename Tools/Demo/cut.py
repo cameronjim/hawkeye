@@ -417,6 +417,7 @@ def build_segment(shot, index, edl, ffmpeg="ffmpeg", placeholder=False, source_r
         filters.append(drawtext(name, TERMINAL_SIZE, y, font="mono.ttf", x="60", color="0xd8d8d8"))
         if shot.prompt:
             files[f"prompt_{index:02d}.txt"] = shot.prompt
+            filters.append("drawbox=x=0:y=0:w=iw:h=72:color=0x0c0c0c:t=fill")
             filters.append(drawtext(f"prompt_{index:02d}.txt", TERMINAL_SIZE, "24", font="mono.ttf", x="60", color="0x7fd18b"))
     elif shot.type == "frames":
         folder = resolve_source(shot, source_root)

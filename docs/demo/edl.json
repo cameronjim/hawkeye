@@ -34,7 +34,7 @@
       "type": "terminal",
       "source": "Saved/Demo/terminal/city_generation.txt",
       "duration": 5,
-      "caption": "City generation: a rerun on the same data changes nothing, and the verifier checks 526 buildings and 2457 anchors",
+      "caption": "City generation, rerun: 526 buildings, 2457 anchors, every check passes",
       "prompt": "PS> .\\Tools\\generate-city.ps1 -Verify"
     },
     {
@@ -75,7 +75,7 @@
       "source": "Saved/Demo/screen/traversal_debugger.mp4",
       "start": 0,
       "duration": 6,
-      "caption": "Traversal Debugger: the editor tab, with the district's real audit: 2457 anchors, 24272 reachable pairs, and why a roof fails"
+      "caption": "Traversal Debugger: the editor tab, real audit rows from the district"
     },
     {
       "id": "lucky",
@@ -92,7 +92,7 @@
       "owner": true,
       "start": 0,
       "duration": 8,
-      "caption": "Combat: attack tokens decide who swings, so there are no stunlocks"
+      "caption": "Combat: attack tokens decide who swings, so no stunlocks"
     },
     {
       "id": "stealth_takedown",
@@ -117,7 +117,7 @@
       "type": "terminal",
       "source": "Saved/Demo/terminal/tests_run.txt",
       "duration": 5,
-      "caption": "655 automation tests, run headless (60 of them check themselves only in the standalone game)",
+      "caption": "655 automation tests, run headless (60 only in the standalone game)",
       "prompt": "PS> .\\Tools\\run-tests.ps1"
     },
     {
@@ -125,7 +125,7 @@
       "type": "terminal",
       "source": "Saved/Demo/terminal/lap_bot.txt",
       "duration": 4,
-      "caption": "Lap bots play the chapter from the menu: the log of a real run",
+      "caption": "Lap bots play the chapter from the menu: a real run's log",
       "prompt": "PS> UnrealEditor-Cmd ... -ExecCmds=\"Automation RunTests Hawkeye.Lap.Campaign\""
     },
     {

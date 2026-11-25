@@ -119,7 +119,7 @@ LAP_SKIP = ("Hitch:", "Perf [", "placed at", "Camera audit")
 
 
 def lap_text(raw):
-    """The game's own LogHawkeye lines between a lap's start and its result, timestamps cut, and the result line."""
+    """The game's own subsystem lines (LogHawkeye: <Name>Subsystem_n: ...) between a lap's start and its result, timestamps cut, and the result line."""
     out = []
     started = False
     for line in raw.splitlines():
@@ -133,6 +133,9 @@ def lap_text(raw):
             out.append(f"Test Completed. Result={{{done.group('result')}}}  {done.group('path')}")
             break
         if "LogHawkeye: " not in line or any(skip in line for skip in LAP_SKIP):
+            continue
+        # The game's systems talking (the chase, missions, saves, the phone), not the load's asset chatter.
+        if not re.search(r"LogHawkeye: \w*Subsystem_\d+:", line):
             continue
         message = line.split("LogHawkeye: ", 1)[1].strip()
         stamp = re.match(r"\[[0-9.]+-([0-9.]+):([0-9]+)\]", line)
