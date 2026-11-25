@@ -96,13 +96,9 @@ UWorld* UHawkeyeSaveSubsystem::GetGameWorld() const
 
 FString UHawkeyeSaveSubsystem::GetSlotName() const
 {
-	if (!SlotNameOverride.IsEmpty())
-	{
-		return SlotNameOverride;
-	}
-	// An automation pass completes objectives and enters the safehouse, and each of those saves;
-	// none of that may land in the player's own campaign.
-	return HawkeyeAutomation::IsTestRunning() ? FString::Printf(TEXT("%sAutomation"), DefaultSlotName) : FString(DefaultSlotName);
+	// An automation, -unattended or demo process completes objectives and enters the safehouse, and each of
+	// those saves; none of that may land in the player's own campaign, whatever the override says.
+	return HawkeyeAutomation::SaveSlotName(SlotNameOverride.IsEmpty() ? FString(DefaultSlotName) : SlotNameOverride);
 }
 
 bool UHawkeyeSaveSubsystem::HasSave() const

@@ -44,4 +44,23 @@ namespace HawkeyeAutomation
 
 	/** IsAutomationRun and not PlaysAsPlayer: automation drives the game itself, so the player's flow stays out. */
 	HAWKEYE_API bool SkipsPlayerFlow();
+
+	/**
+	 * Does a process with this command line keep its hands off the player's real save slots? True for
+	 * -unattended, anything with "Automation" in it (-ExecCmds="Automation RunTests ...", a report path) and
+	 * -HawkeyeDemo. Pure, so a test can ask it about made-up command lines.
+	 */
+	HAWKEYE_API bool CommandLineIsolatesSaves(const TCHAR* CommandLine);
+
+	/** CommandLineIsolatesSaves for this process's command line (read once), or a test is running. */
+	HAWKEYE_API bool IsolatesSaves();
+
+	/** The slot names the player's own play uses. Never touched by an isolated process. */
+	HAWKEYE_API bool IsPlayerSaveSlot(const FString& SlotName);
+
+	/** SlotName as is, unless an isolated process (bIsolated) names a player slot: then "<SlotName>Automation". */
+	HAWKEYE_API FString SaveSlotNameFor(const FString& SlotName, bool bIsolated);
+
+	/** SaveSlotNameFor(SlotName, IsolatesSaves()). Every read and write of a campaign or settings slot goes through it. */
+	HAWKEYE_API FString SaveSlotName(const FString& SlotName);
 }

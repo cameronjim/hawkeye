@@ -45,7 +45,7 @@ float UHawkeyeSettingsSubsystem::ClampStickSensitivity(float Value)
 
 FString UHawkeyeSettingsSubsystem::GetSlotName() const
 {
-	return SlotNameOverride.IsEmpty() ? FString(DefaultSlotName) : SlotNameOverride;
+	return HawkeyeAutomation::SaveSlotName(SlotNameOverride.IsEmpty() ? FString(DefaultSlotName) : SlotNameOverride);
 }
 
 void UHawkeyeSettingsSubsystem::Commit()

@@ -50,6 +50,38 @@ namespace HawkeyeAutomation
 	{
 		return IsAutomationRun() && !PlaysAsPlayer();
 	}
+
+	bool CommandLineIsolatesSaves(const TCHAR* CommandLine)
+	{
+		if (!CommandLine)
+		{
+			return false;
+		}
+		return FCString::Stristr(CommandLine, TEXT("-unattended")) != nullptr
+			|| FCString::Stristr(CommandLine, TEXT("Automation")) != nullptr
+			|| FCString::Stristr(CommandLine, TEXT("-HawkeyeDemo")) != nullptr;
+	}
+
+	bool IsolatesSaves()
+	{
+		static const bool bByCommandLine = CommandLineIsolatesSaves(FCommandLine::Get());
+		return bByCommandLine || IsAutomationRun();
+	}
+
+	bool IsPlayerSaveSlot(const FString& SlotName)
+	{
+		return SlotName == TEXT("HawkeyeCampaign") || SlotName == TEXT("HawkeyeSettings");
+	}
+
+	FString SaveSlotNameFor(const FString& SlotName, bool bIsolated)
+	{
+		return bIsolated && IsPlayerSaveSlot(SlotName) ? SlotName + TEXT("Automation") : SlotName;
+	}
+
+	FString SaveSlotName(const FString& SlotName)
+	{
+		return SaveSlotNameFor(SlotName, IsolatesSaves());
+	}
 }
 
 /**

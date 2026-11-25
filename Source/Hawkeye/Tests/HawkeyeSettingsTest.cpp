@@ -1,3 +1,4 @@
+#include "Hawkeye.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
@@ -204,6 +205,41 @@ bool FHawkeyeSettingsDriveLookDelta::RunTest(const FString& Parameters)
 	TestEqual(TEXT("A later change takes effect immediately"),
 		static_cast<float>(Kate->ComputeLookDelta(FVector2D(10.f, 0.f), false).X), 1.f);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeSaveIsolation, "Hawkeye.Settings.SaveIsolation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeSaveIsolation::RunTest(const FString& Parameters)
+{
+	// Which command lines keep off the player's slots.
+	TestTrue(TEXT("-unattended isolates"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -unattended -nullrhi")));
+	TestTrue(TEXT("-ExecCmds with Automation isolates"),
+		HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -ExecCmds=\"Automation RunTests Foo; Quit\"")));
+	TestTrue(TEXT("-HawkeyeDemo isolates"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -HawkeyeDemo -game")));
+	TestTrue(TEXT("a lower-case flag isolates"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("-UNATTENDED")));
+	TestFalse(TEXT("the player's own launch does not"),
+		HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject /Game/Maps/L_District_EastVillage -game -windowed -log")));
+	TestFalse(TEXT("an empty command line does not"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("")));
+	TestFalse(TEXT("a null one does not"), HawkeyeAutomation::CommandLineIsolatesSaves(nullptr));
+
+	// The slot names: the two player slots are redirected, a test's own slot is left alone.
+	TestEqual(TEXT("campaign, isolated"), HawkeyeAutomation::SaveSlotNameFor(TEXT("HawkeyeCampaign"), true), FString(TEXT("HawkeyeCampaignAutomation")));
+	TestEqual(TEXT("settings, isolated"), HawkeyeAutomation::SaveSlotNameFor(TEXT("HawkeyeSettings"), true), FString(TEXT("HawkeyeSettingsAutomation")));
+	TestEqual(TEXT("campaign, the player"), HawkeyeAutomation::SaveSlotNameFor(TEXT("HawkeyeCampaign"), false), FString(TEXT("HawkeyeCampaign")));
+	TestEqual(TEXT("a test slot, isolated"), HawkeyeAutomation::SaveSlotNameFor(TEXT("HawkeyeCampaignAutomationTest"), true),
+		FString(TEXT("HawkeyeCampaignAutomationTest")));
+
+	// This process is one: a test is running, so the real slots must never come back from the subsystems.
+	TestTrue(TEXT("this run is isolated"), HawkeyeAutomation::IsolatesSaves());
+	UHawkeyeSettingsSubsystem* Settings = HawkeyeSettingsTest::MakeSubsystem(/*bUseTestSlot=*/false);
+	if (TestNotNull(TEXT("settings subsystem"), Settings))
+	{
+		TestFalse(TEXT("the settings slot is not the player's"), HawkeyeAutomation::IsPlayerSaveSlot(Settings->GetSlotName()));
+		Settings->SlotNameOverride = TEXT("HawkeyeSettings");
+		TestFalse(TEXT("an override naming the player's slot is redirected"), HawkeyeAutomation::IsPlayerSaveSlot(Settings->GetSlotName()));
+	}
 	return true;
 }
 
