@@ -9,7 +9,10 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "Engine/PointLight.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "Components/StaticMeshComponent.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerStart.h"
@@ -27,6 +30,7 @@
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/HawkeyeMovementComponent.h"
+#include "Player/ParkourComponent.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
@@ -54,6 +58,13 @@
  * climb), arrive_brake, arrive_slide and arrive_step (the three arrival classes), land_light, land_heavy and land_roll.
  * With the pose on it also checks, in the log and as errors: the phase the pose is in at each key moment, the body
  * tipped mid-pull, and that her drawn hand is on the rope hand's target (within 45 cm; a warning past 25).
+ *
+ * The ledge strips (2026-11-25, "Ledge body"): roof_dismount, ledge_catch, hang_drop, climb_up and vault, and hang_hands
+ * (the hands at the hang, close up). They are shot on a stage the test builds 200 m over the district (a roof with a 90 cm
+ * parapet over a 15 m drop, a street slab below, a 90 cm wall across the roof to vault), at a fixed 60 fps so the frames are
+ * exactly 1/60 s apart, around the moment the hands reach the edge; "off" is hawkeye.LedgePose 0 (the sample's pose), "on" the
+ * ledge body. `<name>_wide` is the same move over its whole length. With the pose on every ledge frame where the hands are held
+ * checks each drawn hand is on its target (within 8 cm, 4 for hang_hands).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotTraversal, "Hawkeye.Screenshot.Traversal",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
@@ -77,6 +88,11 @@ namespace HawkeyeTraversalShots
 		FVector RunHeading = FVector::ForwardVector;
 		/** Per strip name, its frames in order. */
 		TMap<FString, TArray<FString>> Frames;
+		/** The ledge stage (a roof, a parapet, a street slab, a wall to vault), built once on first use, high over the district. */
+		TArray<TWeakObjectPtr<AActor>> LedgeActors;
+		FVector LedgeOrigin = FVector::ZeroVector;
+		FVector LedgeAlong = FVector::ForwardVector;
+		bool bLedgeBuilt = false;
 	};
 
 	enum class EPhase : uint8
@@ -113,6 +129,14 @@ namespace HawkeyeTraversalShots
 		bool bReferenceIsBrace = false;
 		/** The shot is from the player's own camera behind her (no stage camera), one view. */
 		bool bPlayerCamera = false;
+		/** A ledge scenario: on the ledge stage, at a fixed 60 fps, off and on being hawkeye.LedgePose; checks the hands on the edge. */
+		bool bLedge = false;
+		/** The reference moment is when she starts a parkour move (or the sample's traversal). */
+		bool bReferenceIsMove = false;
+		/** The camera is close on her hands (the hang's), not on her whole body. */
+		bool bHandCloseUp = false;
+		/** How close a drawn hand must be to its target with the ledge body on (cm), where the hands are held. */
+		float HandTolerance = 8.f;
 	};
 
 	static UWorld* FindWorld()
@@ -138,6 +162,95 @@ namespace HawkeyeTraversalShots
 		{
 			Variable->Set(bOn ? 1 : 0, ECVF_SetByCode);
 		}
+	}
+
+	/** hawkeye.LedgePose: the ledge body on (the hands on the edge, the authored clips) or off (the sample's pose, as before). */
+	static void SetLedgeEnabled(bool bOn)
+	{
+		if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(TEXT("hawkeye.LedgePose")))
+		{
+			Variable->Set(bOn ? 1 : 0, ECVF_SetByCode);
+		}
+	}
+
+	/** One box of the ledge stage, in the stage's own frame (X toward the roof's edge, Y across, Z up from the roof's top). */
+	static void SpawnLedgeBox(FStage& Stage, UWorld& World, const FVector& Min, const FVector& Max)
+	{
+		const FVector Side = FVector::CrossProduct(FVector::UpVector, Stage.LedgeAlong).GetSafeNormal();
+		const FVector Centre = (Min + Max) * 0.5;
+		const FVector At = Stage.LedgeOrigin + Stage.LedgeAlong * Centre.X + Side * Centre.Y + FVector(0.f, 0.f, Centre.Z);
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AStaticMeshActor* Box = World.SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), At, Stage.LedgeAlong.Rotation(), Params);
+		UStaticMeshComponent* Mesh = Box ? Box->GetStaticMeshComponent() : nullptr;
+		if (!Mesh)
+		{
+			return;
+		}
+		Mesh->SetMobility(EComponentMobility::Movable);
+		Mesh->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+		Mesh->SetWorldScale3D((Max - Min) / 100.0);
+		Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+		Stage.LedgeActors.Add(Box);
+	}
+
+	/**
+	 * The ledge stage, 200 m over the district so nothing of the city is in the way: a roof (its top z = 0 in the stage's frame)
+	 * whose edge is at x = 110 with a 90 cm, 30 cm thick parapet on it, 15 m of air below and a street slab under that, and a
+	 * 90 cm wall across the roof at x = -1200 to run at. Built once.
+	 */
+	static void EnsureLedgeStage(FStage& Stage, UWorld& World)
+	{
+		if (Stage.bLedgeBuilt)
+		{
+			return;
+		}
+		Stage.bLedgeBuilt = true;
+		Stage.LedgeAlong = Stage.Along.GetSafeNormal2D();
+		Stage.LedgeOrigin = Stage.Feet + FVector(0.f, 0.f, 20000.f);
+		SpawnLedgeBox(Stage, World, FVector(-3000.f, -3000.f, -1500.f), FVector(110.f, 3000.f, 0.f));
+		SpawnLedgeBox(Stage, World, FVector(80.f, -300.f, 0.f), FVector(110.f, 300.f, 90.f));
+		SpawnLedgeBox(Stage, World, FVector(110.f, -3000.f, -1600.f), FVector(3000.f, 3000.f, -1500.f));
+		SpawnLedgeBox(Stage, World, FVector(-1200.f, -300.f, 0.f), FVector(-1170.f, 300.f, 90.f));
+	}
+
+	static void DestroyLedgeStage(FStage& Stage)
+	{
+		for (const TWeakObjectPtr<AActor>& Box : Stage.LedgeActors)
+		{
+			if (AActor* Actor = Box.Get())
+			{
+				Actor->Destroy();
+			}
+		}
+		Stage.LedgeActors.Reset();
+		Stage.bLedgeBuilt = false;
+	}
+
+	/** Kate standing (or falling) at X in the stage's frame (feet at Z over the roof top), facing Yaw degrees from the stage's +X. */
+	static void PlaceKateOnLedgeStage(FStage& Stage, UWorld& World, float X, float Y, float FeetZ, float YawFromAlong, bool bFalling)
+	{
+		AHawkeyeCharacter* Kate = Stage.Kate.Get();
+		UHawkeyeMovementComponent* Movement = Kate ? Kate->GetHawkeyeMovement() : nullptr;
+		if (!Kate || !Movement)
+		{
+			return;
+		}
+		EnsureLedgeStage(Stage, World);
+		if (Movement->IsZipping())
+		{
+			Movement->ReleaseZip(false);
+		}
+		Kate->ClearTraversalRopeTarget();
+		Kate->ClearTraversalOverrides();
+		const FVector Side = FVector::CrossProduct(FVector::UpVector, Stage.LedgeAlong).GetSafeNormal();
+		const FVector Feet = Stage.LedgeOrigin + Stage.LedgeAlong * X + Side * Y + FVector(0.f, 0.f, FeetZ);
+		const FRotator Facing = Stage.LedgeAlong.Rotation() + FRotator(0.f, YawFromAlong, 0.f);
+		Kate->TeleportTo(Feet + FVector(0.f, 0.f, Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f), Facing, false, true);
+		Kate->SetActorRotation(Facing);
+		Movement->StopMovementImmediately();
+		Movement->SetMovementMode(bFalling ? MOVE_Falling : MOVE_Walking);
+		Kate->GetTraversalPoseState().Reset();
 	}
 
 	/** The nearest ground to Start where everything within 150 cm is within 3 cm of its height (the clip strips' test).
@@ -518,6 +631,128 @@ namespace HawkeyeTraversalShots
 				}});
 			Out.Add(S);
 		}
+
+		// --- The ledge strips (2026-11-25), on the ledge stage at a fixed 60 fps. Times are seconds from the reference moment (a
+		// parkour move starting, or a fixed time) in steps of 1/60 s, around where the hands reach the edge; `_wide` is the
+		// move over its whole length.
+		const auto Frames60 = [](float FromSeconds, int32 Count, int32 StepFrames)
+		{
+			TArray<float> Times;
+			for (int32 Index = 0; Index < Count; ++Index)
+			{
+				Times.Add(FromSeconds + static_cast<float>(Index * StepFrames) / 60.f);
+			}
+			return Times;
+		};
+		// Kate falling past the parapet's outer face with her feet 200 cm under its top, facing the wall: she catches it and hangs.
+		const auto FallPastTheEdge = [](FStage& Stage, UWorld& World)
+		{
+			PlaceKateOnLedgeStage(Stage, World, 155.f, 0.f, -110.f, 180.f, /*bFalling=*/true);
+			if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+			{
+				Kate->GetHawkeyeMovement()->Velocity = FVector(0.f, 0.f, -500.f);
+			}
+		};
+		for (const bool bWide : {false, true})
+		{
+			{
+				// Standing at the parapet, crouch: over it and down to the hang, the hand on the lip as she turns round.
+				FScenario S;
+				S.Name = bWide ? TEXT("roof_dismount_wide") : TEXT("roof_dismount");
+				S.Times = bWide ? Frames60(0.f, 8, 4) : Frames60(14.f / 60.f, 8, 2);
+				S.bLedge = true;
+				S.bReferenceIsMove = true;
+				S.Start = [](FStage& Stage, UWorld& World)
+				{
+					PlaceKateOnLedgeStage(Stage, World, 0.f, 0.f, 0.f, 0.f, /*bFalling=*/false);
+					if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+					{
+						Kate->GetParkourComponent()->TryDropToHang(Kate->GetActorForwardVector(), TEXT("strip"));
+					}
+				};
+				Out.Add(S);
+			}
+			{
+				// A fall past the edge: the arms up, the hands take it, the body swings in under them and settles.
+				FScenario S;
+				S.Name = bWide ? TEXT("ledge_catch_wide") : TEXT("ledge_catch");
+				S.Times = bWide ? Frames60(0.f, 8, 8) : Frames60(0.f, 8, 2);
+				S.bLedge = true;
+				S.bReferenceIsMove = true;
+				S.Start = FallPastTheEdge;
+				Out.Add(S);
+			}
+			{
+				// Letting go of the hang 1.5 s in: the hands come off, the body pushes off the wall and gets its legs ready.
+				FScenario S;
+				S.Name = bWide ? TEXT("hang_drop_wide") : TEXT("hang_drop");
+				S.Reference = 1.5;
+				S.Times = bWide ? Frames60(-4.f / 60.f, 8, 4) : Frames60(-2.f / 60.f, 8, 2);
+				S.bLedge = true;
+				S.Start = FallPastTheEdge;
+				S.Events.Add({1.5, [](FStage& Stage, UWorld&)
+					{
+						if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+						{
+							Kate->GetParkourComponent()->DropFromHang();
+						}
+					}});
+				Out.Add(S);
+			}
+			{
+				// Climbing out of the hang 1.5 s in: pull, chest over with the palms on the top, a knee up, stand.
+				FScenario S;
+				S.Name = bWide ? TEXT("climb_up_wide") : TEXT("climb_up");
+				S.Reference = 1.5;
+				S.Times = bWide ? Frames60(0.f, 8, 8) : Frames60(18.f / 60.f, 8, 3);
+				S.bLedge = true;
+				S.Start = FallPastTheEdge;
+				S.Events.Add({1.5, [](FStage& Stage, UWorld&)
+					{
+						if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+						{
+							Kate->GetParkourComponent()->ClimbFromHang();
+						}
+					}});
+				Out.Add(S);
+			}
+			{
+				// A sprint at a 90 cm wall across the roof: the vault, from the move's first frame.
+				FScenario S;
+				S.Name = bWide ? TEXT("vault_wide") : TEXT("vault");
+				S.Times = bWide ? Frames60(0.f, 8, 4) : Frames60(0.f, 8, 2);
+				S.bLedge = true;
+				S.bReferenceIsMove = true;
+				S.Start = [](FStage& Stage, UWorld& World)
+				{
+					PlaceKateOnLedgeStage(Stage, World, -1700.f, 0.f, 0.f, 0.f, /*bFalling=*/false);
+					if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+					{
+						Kate->PressSprint(false);
+					}
+				};
+				S.PerTick = [](FStage& Stage, UWorld&, double)
+				{
+					if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+					{
+						Kate->AddMovementInput(Stage.LedgeAlong, 1.f);
+					}
+				};
+				Out.Add(S);
+			}
+		}
+		{
+			// The hands at the hang, close up, once the swing has settled: where the fingers lie on the edge.
+			FScenario S;
+			S.Name = TEXT("hang_hands");
+			S.Reference = 1.9;
+			S.Times = Frames60(0.f, 8, 6);
+			S.bLedge = true;
+			S.bHandCloseUp = true;
+			S.HandTolerance = 4.f;
+			S.Start = FallPastTheEdge;
+			Out.Add(S);
+		}
 		return Out;
 	}
 
@@ -591,7 +826,18 @@ namespace HawkeyeTraversalShots
 			switch (Phase)
 			{
 				case EPhase::Setup:
-					SetPoseEnabled(bPoseOn);
+					if (Scenario.bLedge)
+					{
+						// The ledge strips: the grapple pose as it is, the ledge body off or on, and exactly 1/60 s a frame.
+						SetPoseEnabled(true);
+						SetLedgeEnabled(bPoseOn);
+						FApp::SetUseFixedTimeStep(true);
+						FApp::SetFixedDeltaTime(1.0 / 60.0);
+					}
+					else
+					{
+						SetPoseEnabled(bPoseOn);
+					}
 					Scenario.Start(*Stage, *World);
 					if (Scenario.bPlayerCamera)
 					{
@@ -656,6 +902,10 @@ namespace HawkeyeTraversalShots
 					break;
 				case EPhase::Cleanup:
 					UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+					if (Scenario.bLedge)
+					{
+						FApp::SetUseFixedTimeStep(false);
+					}
 					StandKate(*Stage, *World);
 					Phase = EPhase::Done;
 					return true;
@@ -711,8 +961,24 @@ namespace HawkeyeTraversalShots
 			{
 				BraceAt = Elapsed;
 			}
+			if (Scenario.bReferenceIsMove && MoveAt < 0.0)
+			{
+				const UParkourComponent* Parkour = Kate.GetParkourComponent();
+				if (Parkour && Parkour->IsBusy())
+				{
+					MoveAt = Elapsed;
+				}
+			}
 			double Reference = Scenario.Reference;
-			if (Scenario.bReferenceIsZipEnd || Scenario.bReferenceIsTouchdown || Scenario.bReferenceIsBrace)
+			if (Scenario.bReferenceIsMove)
+			{
+				if (MoveAt < 0.0)
+				{
+					return TimedOut(Elapsed);
+				}
+				Reference = MoveAt;
+			}
+			else if (Scenario.bReferenceIsZipEnd || Scenario.bReferenceIsTouchdown || Scenario.bReferenceIsBrace)
 			{
 				const double At = Scenario.bReferenceIsBrace
 					? BraceAt
@@ -723,7 +989,8 @@ namespace HawkeyeTraversalShots
 				}
 				Reference = At;
 			}
-			if (Hold < Scenario.Times.Num() && Elapsed - Reference >= Scenario.Times[Hold])
+			// A fixed 1/60 s step lands on the frame; a hair of slack so 0.2 s is not missed to rounding.
+			if (Hold < Scenario.Times.Num() && Elapsed - Reference >= Scenario.Times[Hold] - (Scenario.bLedge ? 0.002 : 0.0))
 			{
 				HeldAt = Elapsed - Reference;
 				Phase = EPhase::Freeze;
@@ -770,9 +1037,24 @@ namespace HawkeyeTraversalShots
 				Forward = Kate.GetActorForwardVector().GetSafeNormal2D();
 			}
 			const FVector Left = -FVector::CrossProduct(FVector::UpVector, Forward);
-			const FVector Centre = Kate.GetActorLocation() + FVector(0.f, 0.f, 10.f);
+			FVector Centre = Kate.GetActorLocation() + FVector(0.f, 0.f, 10.f);
+			float Distance = 480.f;
+			float FieldOfView = 50.f;
+			float Lift = bQuarter ? 50.f : 15.f;
+			if (Scenario.bHandCloseUp)
+			{
+				// Close on her hands (their middle, from the drawn body), a metre out: the fingers on the edge.
+				const USkeletalMeshComponent* Body = Kate.GetBodyMesh();
+				if (Body && Body->DoesSocketExist(FName(TEXT("hand_l"))) && Body->DoesSocketExist(FName(TEXT("hand_r"))))
+				{
+					Centre = 0.5 * (Body->GetSocketLocation(FName(TEXT("hand_l"))) + Body->GetSocketLocation(FName(TEXT("hand_r"))));
+				}
+				Distance = 110.f;
+				FieldOfView = 34.f;
+				Lift = bQuarter ? 22.f : 6.f;
+			}
 			const FVector Direction = bQuarter ? (Forward * 0.75f + Left * 0.66f).GetSafeNormal() : Left;
-			FVector Eye = Centre + Direction * 480.f + FVector(0.f, 0.f, bQuarter ? 50.f : 15.f);
+			FVector Eye = Centre + Direction * Distance + FVector(0.f, 0.f, Lift);
 			// A pole or a post between her and the lens: bring the lens in front of it.
 			FCollisionQueryParams Block(SCENE_QUERY_STAT(TraversalShotLens), false, &Kate);
 			FHitResult Hit;
@@ -781,7 +1063,7 @@ namespace HawkeyeTraversalShots
 				Eye = Centre + (Eye - Centre) * FMath::Max(0.35f, Hit.Time - 0.05f);
 			}
 			Camera->SetActorLocationAndRotation(Eye, (Centre - Eye).Rotation());
-			Camera->GetCameraComponent()->SetFieldOfView(50.f);
+			Camera->GetCameraComponent()->SetFieldOfView(FieldOfView);
 			Camera->GetCameraComponent()->bConstrainAspectRatio = false;
 			PC->SetViewTarget(Camera);
 			if (APointLight* Light = Stage->Light.Get())
@@ -801,8 +1083,54 @@ namespace HawkeyeTraversalShots
 		}
 
 		/** What the pose is doing at this hold, logged; with the pose on, the checks that mean it is working. */
+		/** A ledge frame: the stage she is in; with the ledge body on, every held hand's drawn bone is on its target. */
+		void CheckLedge(const AHawkeyeCharacter& Kate)
+		{
+			const UParkourComponent* Parkour = Kate.GetParkourComponent();
+			FLedgeBodyPose Pose;
+			const bool bActive = Parkour && Parkour->GetLedgeBodyPose(Pose);
+			Test->AddInfo(FString::Printf(
+				TEXT("%s pose %s frame %d (%+.3f s): ledge stage %s hands %.2f/%.2f feet %.2f body %.2f swing %.1f deg, move %s"),
+				*Scenario.Name, bPoseOn ? TEXT("on") : TEXT("off"), Hold, HeldAt,
+				Parkour ? *UEnum::GetValueAsString(Parkour->GetLedgeStage()) : TEXT("?"), Pose.HandAlpha[0], Pose.HandAlpha[1],
+				Pose.FootAlpha, Pose.BodyAlpha, Pose.SwingDegrees,
+				Parkour ? *UEnum::GetValueAsString(Parkour->GetActiveMove()) : TEXT("?")));
+			if (!bPoseOn)
+			{
+				Test->TestFalse(*FString::Printf(TEXT("%s: the ledge body off draws nothing (frame %d)"), *Scenario.Name, Hold), bActive);
+				return;
+			}
+			const USkeletalMeshComponent* Body = Kate.GetBodyMesh();
+			if (!bActive || !Body)
+			{
+				return;
+			}
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const FName Socket(Side == 0 ? TEXT("hand_l") : TEXT("hand_r"));
+				if (Pose.HandAlpha[Side] < 0.95f || !Body->DoesSocketExist(Socket))
+				{
+					continue;
+				}
+				const float Off = static_cast<float>(FVector::Dist(Body->GetSocketLocation(Socket), Pose.Hand[Side]));
+				if (Off > Scenario.HandTolerance * 0.5f)
+				{
+					Test->AddWarning(FString::Printf(TEXT("%s frame %d: her drawn %s is %.1f cm off its place on the edge."), *Scenario.Name,
+						Hold, *Socket.ToString(), Off));
+				}
+				Test->TestTrue(*FString::Printf(TEXT("%s frame %d: the drawn %s is on the edge (%.1f cm off, up to %.0f)"),
+								   *Scenario.Name, Hold, *Socket.ToString(), Off, Scenario.HandTolerance),
+					Off < Scenario.HandTolerance);
+			}
+		}
+
 		void Check(const AHawkeyeCharacter& Kate)
 		{
+			if (Scenario.bLedge)
+			{
+				CheckLedge(Kate);
+				return;
+			}
 			const UBowComponent* Bow = Kate.GetBowComponent();
 			const UHawkeyeBowIKAnimInstance* Hands = Bow ? Bow->GetHandsIKInstance() : nullptr;
 			if (!Hands)
@@ -890,6 +1218,7 @@ namespace HawkeyeTraversalShots
 		double TouchedAt = -1.0;
 		double ZipEndedAt = -1.0;
 		double BraceAt = -1.0;
+		double MoveAt = -1.0;
 		bool bTouchedDown = false;
 		bool bWasZipping = false;
 		TSet<int32> FiredEvents;
@@ -1000,9 +1329,12 @@ bool FHawkeyeScreenshotTraversal::RunTest(const FString& Parameters)
 		}
 	}
 	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand(
-		[]()
+		[Stage]()
 		{
 			SetPoseEnabled(true);
+			SetLedgeEnabled(true);
+			FApp::SetUseFixedTimeStep(false);
+			DestroyLedgeStage(*Stage);
 			if (UWorld* World = FindWorld())
 			{
 				UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
