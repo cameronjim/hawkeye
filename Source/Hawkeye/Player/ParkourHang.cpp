@@ -1168,6 +1168,7 @@ bool UParkourComponent::JumpFromHang()
 		StopClip(0.2f);
 		BeginLedgeRelease();
 		PlayLedgeRole(ECombatAnimRole::LedgeHangDrop, 0.f);
+		BeginLedgeFall();
 		Character->SetActorRotation(FRotator(0.f, N.Rotation().Yaw, 0.f));
 		// A step off the wall, then the push off it: a controlled drop all the same.
 		Movement->ReleaseTraversal(N * HangHopDropVelocity.X + FVector(0.f, 0.f, HangHopDropVelocity.Y), N * 15.f);
@@ -1478,6 +1479,13 @@ void UParkourComponent::ApplyHangCamera(FHawkeyeCameraTargets& InOutTargets, flo
 	}
 	LedgeFrameAlpha = FMath::FInterpConstantTo(LedgeFrameAlpha, bFraming ? 1.f : 0.f, DeltaSeconds, 1.f / LedgeCameraSeconds);
 	InOutTargets.PivotLift += FMath::SmoothStep(0.f, 1.f, LedgeFrameAlpha) * LedgeCameraLift;
+	// Closer on a ledge move: she reads small from the full arm.
+	InOutTargets.ArmLength *= FMath::Lerp(1.f, LedgeCameraArmScale, FMath::SmoothStep(0.f, 1.f, LedgeFrameAlpha));
+	// The climb out: the lens comes up with her at once and goes back more slowly, so the lip never stands between them.
+	const bool bClimbing = ActiveMove == EHawkeyeParkourMove::Climb && IsPerformingMove();
+	LedgeClimbCameraAlpha = FMath::FInterpConstantTo(LedgeClimbCameraAlpha, bClimbing ? 1.f : 0.f, DeltaSeconds,
+		bClimbing ? 1.f / FMath::Max(LedgeClimbCameraRiseSeconds, 0.05f) : 1.f / (LedgeCameraSeconds * 1.5f));
+	InOutTargets.PivotLift += FMath::SmoothStep(0.f, 1.f, LedgeClimbCameraAlpha) * LedgeClimbCameraLift;
 	const bool bOn = bHanging || IsHangTransfer(ActiveMove);
 	float Want = 1.f;
 	if (bOn)

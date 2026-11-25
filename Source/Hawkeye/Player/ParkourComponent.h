@@ -306,6 +306,10 @@ public:
 
 	/** 0..1: how far the ledge framing has eased in. */
 	float GetLedgeFrameAlpha() const { return LedgeFrameAlpha; }
+	/** The capsule's rise over a vault of a Height cm top with the authored clip, cm: the hips pass 25 cm over it (Tools/Blender/build_clips.py, vault_rise). */
+	static float GetAuthoredVaultRise(float Height);
+	/** 0..1: how far the climb's extra lift is in (the character tips the lens by it). */
+	float GetLedgeClimbCameraAlpha() const { return LedgeClimbCameraAlpha; }
 
 	/** The control yaw that keeps the camera off the wall: within MaxDegrees of looking straight at it. Pure. */
 	static float ComputeHangCameraYaw(float ControlYaw, const FVector& WallNormal, float MaxDegrees);
@@ -633,6 +637,24 @@ public:
 	/** The framing eases in and out over this, s. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.05"))
 	float LedgeCameraSeconds = 0.35f;
+
+	/** On a ledge move the boom is this share of its length (she reads small from the full arm over a lip), blended with the framing. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.4", ClampMax = "1.0"))
+	float LedgeCameraArmScale = 0.82f;
+
+	/**
+	 * The climb out of a hang raises the pivot this much more, cm, over LedgeClimbCameraRiseSeconds from the press, and the lens
+	 * tips down LedgeClimbCameraTipDegrees to match: the lens is level with the lip when her chest comes over it, and she is
+	 * not lost behind the parapet. Both ease out after the climb.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.0"))
+	float LedgeClimbCameraLift = 110.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.0", ClampMax = "45.0"))
+	float LedgeClimbCameraTipDegrees = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Hang", meta = (ClampMin = "0.05"))
+	float LedgeClimbCameraRiseSeconds = 0.2f;
 
 	// --- Clips ----------------------------------------------------------------------------------
 
@@ -970,6 +992,7 @@ protected:
 
 	/** The lens's shoulder: +1 right, -1 left, eased between. */
 	float HangCameraSide = 1.f;
+	float LedgeClimbCameraAlpha = 0.f;
 	float HangCameraSideTarget = 1.f;
 
 	/** A turning move's turn is finished by this fraction of its time (a roof dismount's plant); 1 turns over all of it. */
@@ -997,6 +1020,12 @@ protected:
 	bool PlayLedgeRole(ECombatAnimRole Role, float FitSeconds);
 	/** The authored clip of a move, when the set has it. */
 	bool PlayAuthoredMoveClip(EHawkeyeParkourMove Move, float Seconds);
+	/** The set has the authored vault (and the ledge body and its clips are on): the vault's path is lower for it. */
+	bool HasAuthoredVault() const;
+	/** A let-go: the hang drop's push-off plays, then the fall loop, then the brace when the ground is under her. */
+	void BeginLedgeFall();
+	void TickLedgeFall(float DeltaSeconds);
+	void EndLedgeFall(float BlendOutSeconds);
 
 	/** The pose handed out (the last wanted pose, scaled by the master weight), and the one wanted last. */
 	FLedgeBodyPose LedgePose;
@@ -1012,6 +1041,9 @@ protected:
 	float HangElapsed = 0.f;
 	bool bHangSettled = false;
 	float ReleaseElapsed = -1.f;
+	bool bLedgeFallActive = false;
+	bool bLedgeFallLoopStarted = false;
+	bool bLedgeFallBracing = false;
 	float MoveEntryDownSpeed = 0.f;
 	bool bMoveIsCatch = false;
 	bool bSwingKicked = false;

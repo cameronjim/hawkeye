@@ -1766,6 +1766,7 @@ void AHawkeyeCharacter::ApplyCameraLayers(FHawkeyeCameraTargets& Blend, float De
 		ParkourComponent->ApplyHangCamera(Blend, DeltaSeconds);
 		// The lift raised the pivot; the lens tips down by as much so she stays centred.
 		OutFightPitch += FMath::SmoothStep(0.f, 1.f, ParkourComponent->GetLedgeFrameAlpha()) * ParkourComponent->LedgeCameraTipDegrees;
+		OutFightPitch += FMath::SmoothStep(0.f, 1.f, ParkourComponent->GetLedgeClimbCameraAlpha()) * ParkourComponent->LedgeClimbCameraTipDegrees;
 	}
 }
 

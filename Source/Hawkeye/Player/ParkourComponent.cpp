@@ -1196,7 +1196,11 @@ bool UParkourComponent::StartMove(EHawkeyeParkourMove Move, const FHawkeyeParkou
 		const FVector End = Obstacle.LandingPoint + Lift;
 		const float EntrySpeed = static_cast<float>(FVector::DotProduct(Movement->Velocity, -Obstacle.WallNormal.GetSafeNormal2D()));
 		const float Seconds = GetVaultSeconds(static_cast<float>(FVector::Dist2D(Character->GetActorLocation(), End)), EntrySpeed);
-		return BeginMove(Move, End, Obstacle.Height + 10.f, Seconds, VaultClip, Climbed);
+		// With the authored vault the hips go over the top, a hurdle, instead of a leap the planted hand could not reach.
+		const float Rise = HasAuthoredVault()
+			? GetAuthoredVaultRise(Obstacle.Height)
+			: Obstacle.Height + 10.f;
+		return BeginMove(Move, End, Rise, Seconds, VaultClip, Climbed);
 	}
 	case EHawkeyeParkourMove::Mantle:
 	{
@@ -1558,8 +1562,13 @@ bool UParkourComponent::ClimbFromHang()
 	bHanging = false;
 	EndHangState();
 	const FVector Lift(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + HawkeyeParkour::FloorGap);
-	return BeginMove(EHawkeyeParkourMove::Climb, HangObstacle.StandPoint + Lift, -1.f, ClimbSeconds, ClimbClip,
-		FindClimbedActors(HangObstacle));
+	// Over a parapet she stands on the roof behind it, lower than its top: the path would rise only that far and the body, keyed for
+	// a climb that rises to the top's level, sank into the parapet (the strips lost her behind the lip). So it rises as far as
+	// the top and the floor beyond blends it back down: the hips are over the lip when the chest comes to it.
+	const FVector End = HangObstacle.StandPoint + Lift;
+	const float RiseToTop = static_cast<float>(HangObstacle.LedgePoint.Z + Lift.Z - Character->GetActorLocation().Z);
+	const float Rise = FMath::Max(static_cast<float>(End.Z - Character->GetActorLocation().Z), RiseToTop);
+	return BeginMove(EHawkeyeParkourMove::Climb, End, Rise, ClimbSeconds, ClimbClip, FindClimbedActors(HangObstacle));
 }
 
 bool UParkourComponent::DropFromHang()
@@ -1576,6 +1585,7 @@ bool UParkourComponent::DropFromHang()
 	// The hands let go over a moment (the IK fades on the pose she hung in) and the body pushes off and gets its legs ready.
 	BeginLedgeRelease();
 	PlayLedgeRole(ECombatAnimRole::LedgeHangDrop, 0.f);
+	BeginLedgeFall();
 	// Falling from still, a step off the wall first so the capsule does not scrape down it.
 	Movement->ReleaseTraversal(FVector::ZeroVector, HangObstacle.WallNormal.GetSafeNormal2D() * 15.f);
 	RegrabCooldown = DropRegrabSeconds;
@@ -1772,6 +1782,7 @@ void UParkourComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	RegrabCooldown = FMath::Max(0.f, RegrabCooldown - DeltaTime);
+	TickLedgeFall(DeltaTime);
 	TickJumpAssist(DeltaTime);
 	TickRoofEdgeGuard(DeltaTime);
 	TickSampleExit();

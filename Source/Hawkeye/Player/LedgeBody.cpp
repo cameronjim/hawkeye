@@ -6,6 +6,7 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Combat/CombatAnimSet.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Character.h"
 #include "HAL/IConsoleManager.h"
@@ -30,6 +31,16 @@ namespace HawkeyeLedgeBody
 	static constexpr float VaultHandSide = 8.f;
 	/** The authored clips never play faster than this or slower than a half, whatever time they are fitted to. */
 	static constexpr float MaxClipRate = 2.f;
+	/** The fall loop comes in this long before the hang drop's push-off ends, s. */
+	static constexpr float FallLoopLeadSeconds = 0.15f;
+	/** The brace plays when a trace finds the ground within this many seconds of the fall's speed (and over FallBraceMinSpeed, cm/s). */
+	static constexpr float FallBraceSeconds = 0.22f;
+	static constexpr float FallBraceMinSpeed = 250.f;
+	/** A vault of at least this long (a slow entry) lands in a crouch, s. */
+	static constexpr float VaultCrouchSeconds = 0.45f;
+	/** The authored vault's hips pass this far over the top: the capsule's rise is the top's height plus this less the capsule's half height (the clip is keyed for it). */
+	static constexpr float VaultHipsOverTop = 25.f;
+	static constexpr float VaultMinRise = 10.f;
 	static constexpr float MinClipRate = 0.5f;
 
 	static float Smooth(float X)
@@ -385,10 +396,109 @@ bool UParkourComponent::PlayLedgeRole(ECombatAnimRole Role, float FitSeconds)
 	return true;
 }
 
+bool UParkourComponent::HasAuthoredVault() const
+{
+	const AHawkeyeCharacter* Kate = Cast<AHawkeyeCharacter>(GetOwner());
+	return bUseAuthoredLedgeClips && IsLedgeBodyOn() && Kate && UCombatAnimSet::Resolve(Kate->GetCombatAnimSet(), ECombatAnimRole::LedgeVaultPlant);
+}
+
+float UParkourComponent::GetAuthoredVaultRise(float Height)
+{
+	return FMath::Max(HawkeyeLedgeBody::VaultMinRise, Height + HawkeyeLedgeBody::VaultHipsOverTop - 90.f);
+}
+
+void UParkourComponent::BeginLedgeFall()
+{
+	bLedgeFallActive = true;
+	bLedgeFallLoopStarted = false;
+	bLedgeFallBracing = false;
+}
+
+void UParkourComponent::EndLedgeFall(float BlendOutSeconds)
+{
+	if (!bLedgeFallActive)
+	{
+		return;
+	}
+	bLedgeFallActive = false;
+	const ACharacter* Character = GetCharacter();
+	const AHawkeyeCharacter* Kate = Cast<AHawkeyeCharacter>(GetOwner());
+	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+	if (Anim && Kate && bLedgeFallLoopStarted)
+	{
+		for (const ECombatAnimRole Role : { ECombatAnimRole::LedgeFallLoop, ECombatAnimRole::LedgeFallBrace })
+		{
+			if (UAnimMontage* Montage = UCombatAnimSet::Resolve(Kate->GetCombatAnimSet(), Role); Montage && Anim->Montage_IsPlaying(Montage))
+			{
+				Anim->Montage_Stop(BlendOutSeconds, Montage);
+			}
+		}
+	}
+	bLedgeFallLoopStarted = false;
+	bLedgeFallBracing = false;
+}
+
+void UParkourComponent::TickLedgeFall(float DeltaSeconds)
+{
+	if (!bLedgeFallActive)
+	{
+		return;
+	}
+	const ACharacter* Character = GetCharacter();
+	const UCharacterMovementComponent* Movement = GetMovement();
+	const AHawkeyeCharacter* Kate = Cast<AHawkeyeCharacter>(GetOwner());
+	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
+	// Over when she grabs something, starts a move or lands (a landing's own clip takes it from here).
+	if (!Anim || !Kate || !Movement || !Movement->IsFalling() || IsPerformingMove() || bHanging)
+	{
+		EndLedgeFall(0.1f);
+		return;
+	}
+	if (!bLedgeFallLoopStarted)
+	{
+		// The push-off (the hang drop's clip) first; the loop comes in over its last moments.
+		const UAnimMontage* Drop = UCombatAnimSet::Resolve(Kate->GetCombatAnimSet(), ECombatAnimRole::LedgeHangDrop);
+		const bool bDropPlaying = Drop && Anim->Montage_IsPlaying(Drop);
+		const float Remaining = bDropPlaying ? Drop->GetPlayLength() - Anim->Montage_GetPosition(Drop) : 0.f;
+		if (!bDropPlaying || Remaining <= HawkeyeLedgeBody::FallLoopLeadSeconds)
+		{
+			bLedgeFallLoopStarted = true;
+			if (!PlayLedgeRole(ECombatAnimRole::LedgeFallLoop, 0.f))
+			{
+				bLedgeFallActive = false;
+			}
+		}
+		return;
+	}
+	if (!bLedgeFallBracing)
+	{
+		// The ground within about a fifth of a second at this speed: the knees come up.
+		const float Speed = -static_cast<float>(Movement->Velocity.Z);
+		if (Speed > HawkeyeLedgeBody::FallBraceMinSpeed)
+		{
+			const FVector Feet = Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+			FHitResult Hit;
+			if (TraceLine(Feet, Feet - FVector(0.f, 0.f, Speed * HawkeyeLedgeBody::FallBraceSeconds + 10.f), Hit))
+			{
+				bLedgeFallBracing = true;
+				PlayLedgeRole(ECombatAnimRole::LedgeFallBrace, 0.f);
+			}
+		}
+	}
+}
+
 bool UParkourComponent::PlayAuthoredMoveClip(EHawkeyeParkourMove Move, float Seconds)
 {
 	switch (Move)
 	{
+	case EHawkeyeParkourMove::Vault:
+		// The guard's leap ends in the air past the top and keeps the sample's pose; a vault's plant and swing are ours, at a
+		// run or (a slow entry, the longer vault) landing in a crouch.
+		if (bGuardLeap)
+		{
+			return false;
+		}
+		return PlayLedgeRole(Seconds >= HawkeyeLedgeBody::VaultCrouchSeconds ? ECombatAnimRole::LedgeVaultCrouch : ECombatAnimRole::LedgeVaultPlant, Seconds);
 	case EHawkeyeParkourMove::DropToHang:
 		return PlayLedgeRole(ECombatAnimRole::LedgeDropToHang, Seconds);
 	case EHawkeyeParkourMove::LedgeGrab:
