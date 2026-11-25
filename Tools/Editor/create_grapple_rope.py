@@ -37,12 +37,12 @@ PLAYER_PATH = "/Game/Blueprints/Player"
 PLAYER_BLUEPRINT = "BP_HawkeyeCharacter"
 
 # Braided nylon, linear: a dark cool grey, not black (it has to read against snow and brick at night under the character rig).
-ROPE_COLOR = (0.045, 0.047, 0.052)
+ROPE_COLOR = (0.022, 0.023, 0.026)
 ROPE_ROUGHNESS = 0.42
 ROPE_SPECULAR = 0.5
 # The rim: a cool tint at a fraction of an emissive unit. Very faint by design; 0 turns it off.
 ROPE_RIM_COLOR = (0.45, 0.6, 1.0)
-ROPE_RIM_INTENSITY = 0.05
+ROPE_RIM_INTENSITY = 0.03
 
 
 def _build_rope(material):
