@@ -37,7 +37,9 @@ namespace HawkeyeBodyPose
 		/** A closed fist, thumb across: the hand of a punch. */
 		Fist,
 		/** Closed round a handle (a pistol grip, a bat), looser than the fist. */
-		Grip
+		Grip,
+		/** Laid over the top of a ledge, palm down: the fingers pressing it, a little hooked (Kate's hang; the ledge IK node writes it). */
+		Hang
 	};
 
 	/** One finger: the curl at its three joints (the thumb's is out of the palm's plane), and its swing at the first joint
@@ -53,6 +55,9 @@ namespace HawkeyeBodyPose
 
 	/** Relaxed, blended to the fist by FistAlpha, then to the grip by GripAlpha (the grip wins where both are on). */
 	HAWKEYE_API FFingerAngles Blend(EFinger Finger, float FistAlpha, float GripAlpha);
+
+	/** The relaxed hand blended to the hang's grip over a ledge by HangAlpha (0 relaxed, 1 the hang pose). */
+	HAWKEYE_API FFingerAngles BlendHang(EFinger Finger, float HangAlpha);
 
 	/** Current moved toward Target so a full swing takes BlendSeconds (0.12 s: a hand closing, not snapping). */
 	HAWKEYE_API float StepAlpha(float Current, float Target, float DeltaSeconds, float BlendSeconds = 0.12f);
