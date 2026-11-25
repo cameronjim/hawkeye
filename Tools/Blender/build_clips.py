@@ -1171,25 +1171,25 @@ def ledge_hang_drop(rig):
     idle_r = tuple(rig.idle_hand("r"))
     ifl = tuple(rig.idle_foot("l"))
     ifr = tuple(rig.idle_foot("r"))
-    t = 0.35
+    t = 1.6   # the push-off takes 0.35 s; the rest is her falling feet first, arms down and a little out, knees soft
     tracks = {
         "pelvis_pos": T([(0.0, P), (0.06, add(P, V(0, 1, 3))), (0.14, add(P, V(0, 9, 4))), (0.24, add(P, V(0, 14, -4))),
-                         (t, add(P, V(0, 16, -10)))]),
-        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.14, V(-6, 0, 0)), (t, V(10, 0, 0))]),
-        "chest": T([(0.0, V(-4, 0, 0)), (0.14, V(-10, 0, 0)), (t, V(6, 0, 0))]),
-        "neck": T([(0.0, V(-18, 0, 0)), (0.14, V(-16, 0, 0)), (t, V(-4, 0, 0))]),
+                         (0.35, add(P, V(0, 16, -10))), (0.8, add(P, V(0, 16, -8))), (t, add(P, V(0, 16, -10)))]),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.14, V(-6, 0, 0)), (0.35, V(10, 0, 0)), (0.9, V(8, 0, 0)), (t, V(10, 0, 0))]),
+        "chest": T([(0.0, V(-4, 0, 0)), (0.14, V(-10, 0, 0)), (0.35, V(6, 0, 0)), (0.9, V(4, 0, 0)), (t, V(6, 0, 0))]),
+        "neck": T([(0.0, V(-18, 0, 0)), (0.14, V(-16, 0, 0)), (0.35, V(-4, 0, 0)), (t, V(-4, 0, 0))]),
         "hand_l": T([(0.0, hl), (0.06, hl), (0.14, add(hl, V(8, 4, 8))), (0.24, add(idle_l, V(8, -8, 34))),
-                     (t, add(idle_l, V(12, -10, 22)))]),
+                     (0.35, add(idle_l, V(12, -10, 22))), (0.9, add(idle_l, V(14, -8, 18))), (t, add(idle_l, V(12, -10, 22)))]),
         "hand_r": T([(0.0, hr), (0.06, hr), (0.14, add(hr, V(-8, 4, 8))), (0.24, add(idle_r, V(-8, -8, 34))),
-                     (t, add(idle_r, V(-12, -10, 22)))]),
+                     (0.35, add(idle_r, V(-12, -10, 22))), (0.9, add(idle_r, V(-14, -8, 18))), (t, add(idle_r, V(-12, -10, 22)))]),
         "pole_hand_l": _arm_pole("l"), "pole_hand_r": _arm_pole("r"),
-        "foot_l": T([(0.0, fl), (0.10, fl), (0.20, add(fl, V(0, 10, 3))), (t, add(ifl, V(8, -2, 14)))]),
-        "foot_r": T([(0.0, fr), (0.10, fr), (0.20, add(fr, V(0, 10, 3))), (t, add(ifr, V(-8, -2, 14)))]),
+        "foot_l": T([(0.0, fl), (0.10, fl), (0.20, add(fl, V(0, 10, 3))), (0.35, add(ifl, V(8, -2, 14))), (t, add(ifl, V(8, -2, 14)))]),
+        "foot_r": T([(0.0, fr), (0.10, fr), (0.20, add(fr, V(0, 10, 3))), (0.35, add(ifr, V(-8, -2, 14))), (t, add(ifr, V(-8, -2, 14)))]),
         "fingers_l": T([(0.0, 1.35), (0.10, 1.35), (0.20, 1.0), (t, 1.0)]),
         "fingers_r": T([(0.0, 1.35), (0.10, 1.35), (0.20, 1.0), (t, 1.0)]),
     }
     return ck.Clip("Ledge_HangDrop", t, tracks, planted=[("l", 0.0, 0.10, "flat"), ("r", 0.0, 0.10, "flat")],
-                   strip_times=[0.0, 0.06, 0.12, 0.18, 0.24, 0.30, t], torso_clear=False,
+                   strip_times=[0.0, 0.06, 0.12, 0.24, 0.35, 0.7, 1.1, t], torso_clear=False,
                    extra={"floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 55.0})
 
 
