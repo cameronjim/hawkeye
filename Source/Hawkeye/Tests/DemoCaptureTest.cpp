@@ -349,6 +349,7 @@ namespace HawkeyeDemo
 		Prepare,
 		Settle,
 		Capture,
+		Drain,
 		Done
 	};
 }
@@ -369,11 +370,14 @@ private:
 	bool StepRoute(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate);
 	bool StepLucky(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate);
 	bool StepEstablish(UWorld* World, APlayerController* PC);
+	void StepChase(UWorld* World, AHawkeyeCharacter* Kate);
+	void StepProfile(UWorld* World, AHawkeyeCharacter* Kate);
 	void WatchEvents(AHawkeyeCharacter* Kate);
 
 	// The route's legs (the traversal challenge lap's bot, without the challenge).
 	bool Steer(APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Target, bool bSprint, float Arrive);
 	void StopMoving(APlayerController* PC);
+	void EaseCamera(APlayerController* PC, const FVector& Toward);
 	void RunLeg(APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Ring);
 	void GrappleLeg(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Ring);
 	void DescentLeg(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Ring);
@@ -391,6 +395,7 @@ private:
 	int32 Dropped = 0;
 	uint64 LastFrameCounter = 0;
 	int32 TailLeft = -1;
+	int32 DrainLeft = 4;
 	bool bFailed = false;
 	FString FailReason;
 	TArray<TPair<int32, FString>> Events;
@@ -433,6 +438,13 @@ private:
 	bool bWasOnGround = true;
 	float PeakFall = 0.f;
 
+	// The demo's own chase camera (the player's boom folds in on a parapet; see StepChase).
+	FVector ChaseHeading = FVector::ForwardVector;
+	FVector ChaseOffset = FVector::ZeroVector;
+	FVector ChaseAim = FVector::ZeroVector;
+	bool bChaseStarted = false;
+	float ProfileSide = 1.f;
+
 	// Lucky.
 	FVector RunDirection = FVector::ForwardVector;
 	ELuckyState LastLucky = ELuckyState::Idle;
@@ -442,6 +454,21 @@ void FHawkeyeDemoRunner::Note(const FString& What)
 {
 	Events.Emplace(FrameIndex, What);
 	UE_LOG(LogHawkeye, Log, TEXT("Demo %s frame %d: %s"), *Shot.Name, FrameIndex, *What);
+}
+
+/** The player's view eased to look along the way she goes, a little down, so a zip is seen from behind, not from the aim. */
+void FHawkeyeDemoRunner::EaseCamera(APlayerController* PC, const FVector& Toward)
+{
+	if (Toward.Size2D() < 250.f)
+	{
+		return; // Arrived: the direction is noise, keep the view.
+	}
+	const FRotator Control = PC->GetControlRotation();
+	const float Yaw = Toward.GetSafeNormal2D().Rotation().Yaw;
+	const float MaxTurn = 150.f * HawkeyeDemo::StepSeconds;
+	const float NewYaw = Control.Yaw + FMath::Clamp(FMath::FindDeltaAngleDegrees(Control.Yaw, Yaw), -MaxTurn, MaxTurn);
+	const float NewPitch = Control.Pitch + FMath::Clamp(FMath::FindDeltaAngleDegrees(Control.Pitch, -12.f), -MaxTurn, MaxTurn);
+	PC->SetControlRotation(FRotator(NewPitch, NewYaw, 0.f));
 }
 
 void FHawkeyeDemoRunner::StopMoving(APlayerController* PC)
@@ -545,6 +572,10 @@ void FHawkeyeDemoRunner::GrappleLeg(UWorld* World, APlayerController* PC, AHawke
 	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
 	if (bZipped)
 	{
+		if (Anchor.IsValid())
+		{
+			EaseCamera(PC, Anchor->GetLandingLocation() - Kate->GetActorLocation());
+		}
 		if (Grapple->IsZipping() || Grapple->IsArrowInFlight() || !Kate->GetCharacterMovement()->IsMovingOnGround())
 		{
 			return;
@@ -572,6 +603,10 @@ void FHawkeyeDemoRunner::GrappleLeg(UWorld* World, APlayerController* PC, AHawke
 	}
 	if (LegFrames - PressedFrame < 24)
 	{
+		if (LegFrames - PressedFrame > 8)
+		{
+			EaseCamera(PC, Anchor->GetLandingLocation() - Kate->GetActorLocation());
+		}
 		return;
 	}
 	++AimFrames;
@@ -772,7 +807,7 @@ bool FHawkeyeDemoRunner::StepLucky(UWorld* World, APlayerController* PC, AHawkey
 {
 	using namespace HawkeyeDemo;
 	// Jog out along the street for 7 s, turning round when something stops her, then stand: he catches up and sits.
-	constexpr int32 JogFrames = 7 * Fps;
+	constexpr int32 JogFrames = 5 * Fps;
 	if (FrameIndex < JogFrames)
 	{
 		const bool bStopped = Kate->GetCharacterMovement()->IsMovingOnGround() && Kate->GetVelocity().Size2D() < 60.f;
@@ -803,6 +838,7 @@ bool FHawkeyeDemoRunner::StepLucky(UWorld* World, APlayerController* PC, AHawkey
 			LastLucky = State;
 		}
 	}
+	StepProfile(World, Kate);
 	return false;
 }
 
@@ -830,6 +866,118 @@ bool FHawkeyeDemoRunner::StepEstablish(UWorld* World, APlayerController* PC)
 	const FVector Look = Centre + FVector(0.f, 0.f, 900.f);
 	Camera->SetActorLocationAndRotation(At, FRotationMatrix::MakeFromX(Look - At).Rotator());
 	return false;
+}
+
+/**
+ * A chase camera of the demo's own, so the body is always in the picture: behind her along the way she is going (her velocity,
+ * or the zip's line), up and a little to her right, eased, and pulled in by a sphere sweep when a wall is in the way.
+ * The game's camera boom folds in to nothing and hides her mesh when she lands on a parapet (a finding, see shot-list.md),
+ * which would spoil the shot of the arrival; the camera's own rules are untouched.
+ */
+void FHawkeyeDemoRunner::StepChase(UWorld* World, AHawkeyeCharacter* Kate)
+{
+	using namespace HawkeyeDemo;
+	ACameraActor* Camera = PanCamera.Get();
+	if (!Camera)
+	{
+		return;
+	}
+	constexpr float Arm = 340.f;
+	constexpr float Up = 120.f;
+	constexpr float Side = 55.f;
+	const FVector Pivot = Kate->GetActorLocation() + FVector(0.f, 0.f, 40.f);
+	if (Shot.Kind == EKind::Descent)
+	{
+		// The fire escape is seen from the street: out in front of the wall and a little to one side, her height followed.
+		const FVector Out = DescentOut.GetSafeNormal2D();
+		const FVector Across = FVector::CrossProduct(FVector::UpVector, Out).GetSafeNormal();
+		const FVector Wanted = Pivot + Out * 400.f + Across * 130.f + FVector(0.f, 0.f, 80.f);
+		ChaseOffset = bChaseStarted ? FMath::Lerp(ChaseOffset, Wanted - Pivot, 1.f - FMath::Exp(-6.f * StepSeconds)) : Wanted - Pivot;
+		bChaseStarted = true;
+		const FVector Lens = Pivot + ChaseOffset;
+		Camera->SetActorLocationAndRotation(Lens, FRotationMatrix::MakeFromX(Pivot + FVector(0.f, 0.f, 20.f) - Lens).Rotator());
+		return;
+	}
+	FVector Velocity = Kate->GetVelocity();
+	FVector Want = Velocity.GetSafeNormal2D();
+	if (Kate->GetGrappleComponent()->IsZipping() && Velocity.Size() > 300.f)
+	{
+		Want = Velocity.GetSafeNormal2D();
+	}
+	if (!bChaseStarted)
+	{
+		ChaseHeading = Kate->GetActorForwardVector().GetSafeNormal2D();
+		bChaseStarted = true;
+	}
+	if (Velocity.Size2D() > 250.f && !Want.IsNearlyZero())
+	{
+		const float Alpha = 1.f - FMath::Exp(-3.5f * StepSeconds);
+		ChaseHeading = FMath::Lerp(ChaseHeading, Want, Alpha).GetSafeNormal2D();
+	}
+	const FVector Right = FVector::CrossProduct(FVector::UpVector, ChaseHeading).GetSafeNormal() * -1.f;
+	const FVector Desired = Pivot - ChaseHeading * Arm + FVector(0.f, 0.f, Up) + Right * Side;
+	FHitResult Hit;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(DemoChase), false, Kate);
+	FVector At = Desired;
+	if (World->SweepSingleByChannel(Hit, Pivot, Desired, FQuat::Identity, ECC_Camera, FCollisionShape::MakeSphere(18.f), Query))
+	{
+		At = Pivot + (Desired - Pivot) * FMath::Max(Hit.Time, 0.3f);
+	}
+	// Ease what the lens sees as an offset from her, so it does not trail.
+	const FVector Offset = At - Pivot;
+	const float Follow = 1.f - FMath::Exp(-14.f * StepSeconds);
+	ChaseOffset = FMath::Lerp(ChaseOffset.IsNearlyZero() ? Offset : ChaseOffset, Offset, Follow);
+	const FVector Lens = Pivot + ChaseOffset;
+	const FVector Aim = Pivot + FVector(0.f, 0.f, 45.f) + ChaseHeading * 120.f;
+	ChaseAim = ChaseAim.IsNearlyZero() ? Aim : FMath::Lerp(ChaseAim, Aim, 1.f - FMath::Exp(-10.f * StepSeconds));
+	Camera->SetActorLocationAndRotation(Lens, FRotationMatrix::MakeFromX(ChaseAim - Lens).Rotator());
+}
+
+/** Lucky's shot: a camera to the side of the two of them, so Kate and the dog are both in the picture. */
+void FHawkeyeDemoRunner::StepProfile(UWorld* World, AHawkeyeCharacter* Kate)
+{
+	using namespace HawkeyeDemo;
+	ACameraActor* Camera = PanCamera.Get();
+	if (!Camera)
+	{
+		return;
+	}
+	const FVector KateAt = Kate->GetActorLocation();
+	const FVector Mid = Dog.IsValid() ? (KateAt + Dog->GetActorLocation()) * 0.5f : KateAt;
+	if (Kate->GetVelocity().Size2D() > 150.f)
+	{
+		ChaseHeading = FMath::Lerp(ChaseHeading, Kate->GetVelocity().GetSafeNormal2D(), 1.f - FMath::Exp(-2.f * StepSeconds)).GetSafeNormal2D();
+	}
+	if (!bChaseStarted)
+	{
+		ChaseHeading = RunDirection;
+		bChaseStarted = true;
+	}
+	const FVector Across = FVector::CrossProduct(FVector::UpVector, ChaseHeading).GetSafeNormal();
+	const FVector Pivot = Mid + FVector(0.f, 0.f, 70.f);
+	FVector Wanted = Pivot;
+	bool bFound = false;
+	for (const float Sign : { ProfileSide, -ProfileSide })
+	{
+		const FVector Try = Pivot + Across * Sign * 520.f + ChaseHeading * 120.f + FVector(0.f, 0.f, 50.f);
+		FHitResult Hit;
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(DemoProfile), false, Kate);
+		if (!World->SweepSingleByChannel(Hit, Pivot, Try, FQuat::Identity, ECC_Camera, FCollisionShape::MakeSphere(25.f), Query))
+		{
+			Wanted = Try;
+			ProfileSide = Sign;
+			bFound = true;
+			break;
+		}
+	}
+	if (!bFound)
+	{
+		Wanted = Pivot - ChaseHeading * 450.f + FVector(0.f, 0.f, 120.f);
+	}
+	ChaseOffset = ChaseOffset.IsNearlyZero() ? Wanted - Pivot : FMath::Lerp(ChaseOffset, Wanted - Pivot, 1.f - FMath::Exp(-4.f * StepSeconds));
+	const FVector Lens = Pivot + ChaseOffset;
+	ChaseAim = ChaseAim.IsNearlyZero() ? Pivot : FMath::Lerp(ChaseAim, Pivot, 1.f - FMath::Exp(-8.f * StepSeconds));
+	Camera->SetActorLocationAndRotation(Lens, FRotationMatrix::MakeFromX(ChaseAim - Lens).Rotator());
 }
 
 void FHawkeyeDemoRunner::WatchEvents(AHawkeyeCharacter* Kate)
@@ -885,6 +1033,11 @@ void FHawkeyeDemoRunner::Prepare(UWorld* World, APlayerController* PC, AHawkeyeC
 		}
 	}
 	HawkeyeFreezePartner(World);
+	// The challenge pedestals (their ring icons and floating labels) are not part of the picture.
+	for (TActorIterator<AChallengeStart> It(World); It; ++It)
+	{
+		It->SetActorHiddenInGame(true);
+	}
 	for (TActorIterator<ALuckyCharacter> It(World); It; ++It)
 	{
 		It->SetThinkingEnabled(Shot.Kind == EKind::Lucky);
@@ -961,8 +1114,8 @@ void FHawkeyeDemoRunner::Prepare(UWorld* World, APlayerController* PC, AHawkeyeC
 	}
 	case EKind::Lucky:
 	{
-		PutKate(PC, Kate, StartFeet, Along.Rotation().Yaw);
-		RunDirection = Along;
+		RunDirection = -Along;
+		PutKate(PC, Kate, StartFeet, RunDirection.Rotation().Yaw);
 		Dog = nullptr;
 		for (TActorIterator<ALuckyCharacter> It(World); It && !Dog.IsValid(); ++It)
 		{
@@ -1012,6 +1165,21 @@ void FHawkeyeDemoRunner::Prepare(UWorld* World, APlayerController* PC, AHawkeyeC
 		break;
 	}
 	}
+	if ((Shot.Kind == EKind::Route || Shot.Kind == EKind::Descent || Shot.Kind == EKind::Lucky) && !bFailed)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ACameraActor* Camera = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform(Kate->GetActorLocation()), Params);
+		PanCamera = Camera;
+		if (Camera)
+		{
+			PC->SetViewTarget(Camera);
+			if (Shot.Kind == EKind::Route)
+			{
+				StepChase(World, Kate);
+			}
+		}
+	}
 	Sink.Start();
 }
 
@@ -1026,10 +1194,13 @@ void FHawkeyeDemoRunner::Finish(UWorld* World, APlayerController* PC, AHawkeyeCh
 	}
 	FApp::SetUseFixedTimeStep(bHadFixedStep);
 	FApp::SetFixedDeltaTime(PreviousFixedDelta);
-	if (Kate && Shot.Kind == EKind::Establish)
+	if (Kate)
 	{
-		Kate->SetActorHiddenInGame(false);
-		Kate->SetActorEnableCollision(true);
+		if (Shot.Kind == EKind::Establish)
+		{
+			Kate->SetActorHiddenInGame(false);
+			Kate->SetActorEnableCollision(true);
+		}
 		if (PC)
 		{
 			PC->SetViewTarget(Kate);
@@ -1146,6 +1317,20 @@ bool FHawkeyeDemoRunner::Update()
 	case EPhase::Capture:
 		break;
 
+	case EPhase::Drain:
+		// The last request is drawn a frame or two later; the world keeps ticking until it is.
+		if (--DrainLeft > 0)
+		{
+			return false;
+		}
+		for (int32 Waits = 0; Sink.Outstanding() > 0 && Waits < 12000; ++Waits)
+		{
+			FPlatformProcess::Sleep(0.005f);
+		}
+		Phase = EPhase::Done;
+		Finish(World, PC, Kate);
+		return true;
+
 	case EPhase::Done:
 		return true;
 	}
@@ -1162,6 +1347,7 @@ bool FHawkeyeDemoRunner::Update()
 	case EKind::Route:
 	case EKind::Descent:
 		bScriptDone = StepRoute(World, PC, Kate);
+		StepChase(World, Kate);
 		break;
 	case EKind::Lucky:
 		bScriptDone = StepLucky(World, PC, Kate);
@@ -1191,7 +1377,7 @@ bool FHawkeyeDemoRunner::Update()
 		TailLeft = 0;
 	}
 
-	if (!bFailed || TailLeft != 0)
+	if ((!bFailed || TailLeft != 0) && FrameIndex < Shot.MaxFrames)
 	{
 		++FrameIndex;
 		const FString Path = ShotDir(Shot.Name) / FString::Printf(TEXT("frame_%05d.png"), FrameIndex);
@@ -1212,14 +1398,8 @@ bool FHawkeyeDemoRunner::Update()
 	{
 		return false;
 	}
-	// Let the writers finish before the process quits.
-	for (int32 Waits = 0; Sink.Outstanding() > 0 && Waits < 12000; ++Waits)
-	{
-		FPlatformProcess::Sleep(0.005f);
-	}
-	Phase = EPhase::Done;
-	Finish(World, PC, Kate);
-	return true;
+	Phase = EPhase::Drain;
+	return false;
 }
 
 namespace HawkeyeDemo
