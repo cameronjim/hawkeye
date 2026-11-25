@@ -5,7 +5,6 @@
 Skipped, with a note, where numpy is not installed (the engine's bundled Python has none).
 """
 
-import math
 import os
 import sys
 import unittest

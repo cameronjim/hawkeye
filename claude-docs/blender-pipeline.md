@@ -339,7 +339,7 @@ no nose bridge or nostril, no lip line, no lids, ears were plates and the cheeks
 
 Old (`headshape.HeadGrid`, `displacement`, `headtex.skin_maps`) stays in the repo, tested, but `headbuild` no longer calls it.
 
-**Rest arms.** `HawkeyeBodyPose::ArmRestDirections` hangs the arm `OutwardDegrees` from vertical: 10 degrees on the slimmer
+**Rest arms.** `HawkeyeBodyPose::ArmRestDirections` hangs the arm `OutwardDegrees` from vertical: 12 degrees on the slimmer
 bodies (it was 20, raised from 10 to stop the fingertips sinking into the bodybuilder's trousers; with the reshaped thighs that
 read as a gunslinger). The test asks the upper arm's Z below -0.97 (under about 14 degrees).
 
