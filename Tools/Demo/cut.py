@@ -11,6 +11,10 @@ The list is JSON (docs/demo/edl.json, the shot list as data). Each shot is one o
             "source" is the folder, "start" the second to start at
     clip    a video file, an owner recording or a screen capture: "source", "start", optional "speed" (a
             time-lapse: 8 plays eight seconds of source in one)
+    terminal  a text file shown as terminal output in a monospace font, scrolling up through the whole file over
+            the shot (the last lines are on screen for its final second): "source" is the file (real output
+            from a real run, made by Tools/Demo/make_terminal.py), optional "prompt" is the command line shown
+            above the output
 
 Every shot has an "id" and a "duration" (seconds in the finished video), and may have a "caption" (a lower
 third) and "fade_in" / "fade_out" seconds (dip to black; the default is a hard cut, cards fade 0.4 s). A clip with
@@ -39,9 +43,16 @@ REPO = Path(__file__).resolve().parents[2]
 DEFAULT_EDL = REPO / "docs" / "demo" / "edl.json"
 DEFAULT_OUT = REPO / "Saved" / "Demo" / "hawkeye-kate-bishop.mp4"
 
-SHOT_TYPES = ("card", "frames", "clip")
+SHOT_TYPES = ("card", "frames", "clip", "terminal")
 CARD_FADE = 0.4
 CARD_BACKGROUND = "0x0b0d12"
+
+MONO_CANDIDATES = (
+    "C:/Windows/Fonts/consola.ttf",
+    "C:/Windows/Fonts/cour.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+)
 
 FONT_CANDIDATES = (
     "Tools/Demo/fonts/Roboto-Regular.ttf",
@@ -67,6 +78,7 @@ class Shot:
     start: float = 0.0
     speed: float = 1.0
     owner: bool = False
+    prompt: str = ""
     lines: list = field(default_factory=list)
     fade_in: float = 0.0
     fade_out: float = 0.0
@@ -110,6 +122,7 @@ def parse_shot(raw, fps):
     shot = Shot(id=shot_id, type=kind, duration=duration)
     shot.caption = str(raw.get("caption", ""))
     shot.owner = bool(raw.get("owner", False))
+    shot.prompt = str(raw.get("prompt", ""))
     shot.start = _number(raw.get("start", 0), f"shot {shot_id}: start", 0)
     shot.speed = _number(raw.get("speed", 1), f"shot {shot_id}: speed", 0, exclusive=True)
     fade_default = CARD_FADE if kind == "card" else 0.0
@@ -275,15 +288,38 @@ def fmt(value):
     return text or "0"
 
 
-def drawtext(textfile, size, y, enable=None, box=False):
+def find_mono(root=REPO):
+    """A monospace font file for terminal shots, or None."""
+    for item in MONO_CANDIDATES:
+        path = Path(item)
+        if not path.is_absolute():
+            path = root / path
+        if path.is_file():
+            return path
+    return None
+
+
+TERMINAL_COLUMNS = 118
+TERMINAL_SIZE = 26
+
+
+def terminal_text(raw):
+    """The file's lines cut to the screen's width, as one string."""
+    lines = []
+    for line in raw.replace(chr(9), "    ").splitlines():
+        lines.append(line if len(line) <= TERMINAL_COLUMNS else line[: TERMINAL_COLUMNS - 3] + "...")
+    return chr(10).join(lines) + chr(10)
+
+
+def drawtext(textfile, size, y, enable=None, box=False, font="font.ttf", x="(w-text_w)/2", color="white"):
     """One drawtext filter. y is an ffmpeg expression. The text is read from textfile (relative to the work folder)."""
     parts = [
-        "drawtext=fontfile=font.ttf",
+        f"drawtext=fontfile={font}",
         f"textfile={textfile}",
         "expansion=none",
-        "fontcolor=white",
+        f"fontcolor={color}",
         f"fontsize={size}",
-        "x=(w-text_w)/2",
+        f"x={x}",
         f"y={y}",
     ]
     if box:
@@ -370,6 +406,18 @@ def build_segment(shot, index, edl, ffmpeg="ffmpeg", placeholder=False, source_r
             name = f"card_{index:02d}_{line_number}.txt"
             files[name] = text
             filters.append(drawtext(name, size, str(top)))
+    elif shot.type == "terminal":
+        text = terminal_text(resolve_source(shot, source_root).read_text(encoding="utf-8", errors="replace"))
+        name = f"terminal_{index:02d}.txt"
+        files[name] = text
+        inputs = ["-f", "lavfi", "-i", f"color=c=0x0c0c0c:s={width}x{height}:r={fps}"]
+        scroll_for = max(duration - 1.2, 0.5)
+        # The block starts with its first line at the bottom and ends with its last line there.
+        y = f"{height}-70-text_h*min(t/{fmt(scroll_for)}" + chr(92) + ",1)"
+        filters.append(drawtext(name, TERMINAL_SIZE, y, font="mono.ttf", x="60", color="0xd8d8d8"))
+        if shot.prompt:
+            files[f"prompt_{index:02d}.txt"] = shot.prompt
+            filters.append(drawtext(f"prompt_{index:02d}.txt", TERMINAL_SIZE, "24", font="mono.ttf", x="60", color="0x7fd18b"))
     elif shot.type == "frames":
         folder = resolve_source(shot, source_root)
         first = 1 + round(shot.start * fps)
@@ -386,7 +434,7 @@ def build_segment(shot, index, edl, ffmpeg="ffmpeg", placeholder=False, source_r
         filters.append(f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2")
 
     filters.append("setsar=1")
-    if shot.type != "card" or placeholder:
+    if shot.type not in ("card",) or placeholder:
         caption = None if placeholder else _caption_filter(shot, index, duration, files, height)
         if caption:
             filters.append(caption)
@@ -444,6 +492,11 @@ def make_video(edl, out_path, ffmpeg, font, placeholders, dry_run=False, keep_wo
     try:
         if font is not None:
             shutil.copyfile(font, work / "font.ttf")
+        mono = find_mono()
+        if mono is not None:
+            shutil.copyfile(mono, work / "mono.ttf")
+        elif any(shot.type == "terminal" for shot in edl.shots) and not dry_run:
+            raise EdlError("no monospace font found for the terminal shots (Consolas, Courier New or DejaVu Sans Mono)")
         names = []
         for index, shot in enumerate(edl.shots, start=1):
             segment = build_segment(shot, index, edl, ffmpeg, placeholder=shot.id in placeholders, source_root=source_root)

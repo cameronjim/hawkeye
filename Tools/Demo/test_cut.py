@@ -267,6 +267,20 @@ class ArgsTest(unittest.TestCase):
     def test_fmt(self):
         self.assertEqual(fmt_all(0.3, 4.6, 12, 0.0), ["0.3", "4.6", "12", "0"])
 
+    def test_terminal_shot_scrolls_the_file(self):
+        edl = edl_of({"id": "t", "type": "terminal", "duration": 5, "source": "x/out.txt", "prompt": "PS> run"})
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root) / "x").mkdir()
+            (Path(root) / "x" / "out.txt").write_text("one" + chr(10) + "two" * 80 + chr(10), encoding="utf-8")
+            seg = cut.build_segment(edl.shots[0], 1, edl, source_root=Path(root))
+        self.assertIn("terminal_01.txt", seg.files)
+        self.assertIn("prompt_01.txt", seg.files)
+        text = seg.files["terminal_01.txt"]
+        self.assertTrue(all(len(line) <= cut.TERMINAL_COLUMNS for line in text.splitlines()))
+        joined = " ".join(seg.args)
+        self.assertIn("fontfile=mono.ttf", joined)
+        self.assertIn("text_h*min(t/3.8", joined)
+
     def test_font_lookup(self):
         with tempfile.TemporaryDirectory() as folder:
             font = Path(folder) / "f.ttf"
