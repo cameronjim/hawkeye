@@ -1196,11 +1196,7 @@ bool UParkourComponent::StartMove(EHawkeyeParkourMove Move, const FHawkeyeParkou
 		const FVector End = Obstacle.LandingPoint + Lift;
 		const float EntrySpeed = static_cast<float>(FVector::DotProduct(Movement->Velocity, -Obstacle.WallNormal.GetSafeNormal2D()));
 		const float Seconds = GetVaultSeconds(static_cast<float>(FVector::Dist2D(Character->GetActorLocation(), End)), EntrySpeed);
-		// With the authored vault the hips go over the top, a hurdle, instead of a leap the planted hand could not reach.
-		const float Rise = HasAuthoredVault()
-			? GetAuthoredVaultRise(Obstacle.Height)
-			: Obstacle.Height + 10.f;
-		return BeginMove(Move, End, Rise, Seconds, VaultClip, Climbed);
+		return BeginMove(Move, End, Obstacle.Height + 10.f, Seconds, VaultClip, Climbed);
 	}
 	case EHawkeyeParkourMove::Mantle:
 	{

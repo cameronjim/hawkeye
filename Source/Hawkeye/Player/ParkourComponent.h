@@ -306,8 +306,6 @@ public:
 
 	/** 0..1: how far the ledge framing has eased in. */
 	float GetLedgeFrameAlpha() const { return LedgeFrameAlpha; }
-	/** The capsule's rise over a vault of a Height cm top with the authored clip, cm: the hips pass 25 cm over it (Tools/Blender/build_clips.py, vault_rise). */
-	static float GetAuthoredVaultRise(float Height);
 	/** 0..1: how far the climb's extra lift is in (the character tips the lens by it). */
 	float GetLedgeClimbCameraAlpha() const { return LedgeClimbCameraAlpha; }
 
@@ -1020,8 +1018,6 @@ protected:
 	bool PlayLedgeRole(ECombatAnimRole Role, float FitSeconds);
 	/** The authored clip of a move, when the set has it. */
 	bool PlayAuthoredMoveClip(EHawkeyeParkourMove Move, float Seconds);
-	/** The set has the authored vault (and the ledge body and its clips are on): the vault's path is lower for it. */
-	bool HasAuthoredVault() const;
 	/** A let-go: the hang drop's push-off plays, then the fall loop, then the brace when the ground is under her. */
 	void BeginLedgeFall();
 	void TickLedgeFall(float DeltaSeconds);

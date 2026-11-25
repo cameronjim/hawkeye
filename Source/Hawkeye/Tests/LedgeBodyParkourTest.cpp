@@ -350,18 +350,6 @@ bool FHawkeyeLedgeClimbHands::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLedgeVaultRise, "Hawkeye.Ledge.AuthoredVaultKeepsTheHipsOverTheTop",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-bool FHawkeyeLedgeVaultRise::RunTest(const FString& Parameters)
-{
-	// The authored vault is a hurdle: the hips pass 25 cm over the top (the capsule's centre starts 90 up), never under 10 cm of rise.
-	TestEqual(TEXT("A 90 cm top"), UParkourComponent::GetAuthoredVaultRise(90.f), 25.f);
-	TestEqual(TEXT("A 110 cm top"), UParkourComponent::GetAuthoredVaultRise(110.f), 45.f);
-	TestEqual(TEXT("A low top has the minimum"), UParkourComponent::GetAuthoredVaultRise(60.f), 10.f);
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLedgeCamera, "Hawkeye.Ledge.CameraClosesInAndLiftsForTheClimb",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

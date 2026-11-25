@@ -38,9 +38,6 @@ namespace HawkeyeLedgeBody
 	static constexpr float FallBraceMinSpeed = 250.f;
 	/** A vault of at least this long (a slow entry) lands in a crouch, s. */
 	static constexpr float VaultCrouchSeconds = 0.45f;
-	/** The authored vault's hips pass this far over the top: the capsule's rise is the top's height plus this less the capsule's half height (the clip is keyed for it). */
-	static constexpr float VaultHipsOverTop = 25.f;
-	static constexpr float VaultMinRise = 10.f;
 	static constexpr float MinClipRate = 0.5f;
 
 	static float Smooth(float X)
@@ -394,17 +391,6 @@ bool UParkourComponent::PlayLedgeRole(ECombatAnimRole Role, float FitSeconds)
 	UE_LOG(LogHawkeye, Log, TEXT("%s: ledge clip %s (%s) at rate %.2f"), *GetNameSafe(GetOwner()), *UEnum::GetValueAsString(Role),
 		*GetNameSafe(Montage), Rate);
 	return true;
-}
-
-bool UParkourComponent::HasAuthoredVault() const
-{
-	const AHawkeyeCharacter* Kate = Cast<AHawkeyeCharacter>(GetOwner());
-	return bUseAuthoredLedgeClips && IsLedgeBodyOn() && Kate && UCombatAnimSet::Resolve(Kate->GetCombatAnimSet(), ECombatAnimRole::LedgeVaultPlant);
-}
-
-float UParkourComponent::GetAuthoredVaultRise(float Height)
-{
-	return FMath::Max(HawkeyeLedgeBody::VaultMinRise, Height + HawkeyeLedgeBody::VaultHipsOverTop - 90.f);
 }
 
 void UParkourComponent::BeginLedgeFall()
