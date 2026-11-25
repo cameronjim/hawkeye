@@ -4,7 +4,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "CharacterLightRig.generated.h"
 
-class AInfo;
+class AActor;
 class APawn;
 class UDirectionalLightComponent;
 class UPrimitiveComponent;
@@ -104,7 +104,7 @@ private:
 	void ScanPawns();
 
 	UPROPERTY(Transient)
-	TObjectPtr<AInfo> Holder = nullptr;
+	TObjectPtr<AActor> Holder = nullptr;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UDirectionalLightComponent>> Lights;
@@ -112,4 +112,6 @@ private:
 	float ScanAccumulator = 1.f;
 	int32 PawnsLit = 0;
 	bool bLightsVisible = false;
+	/** The holder could not be spawned: do not try again every frame. */
+	bool bSpawnFailed = false;
 };

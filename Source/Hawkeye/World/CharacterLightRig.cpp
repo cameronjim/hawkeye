@@ -142,7 +142,7 @@ int32 UCharacterLightRigSubsystem::ApplyChannels(const APawn* Pawn)
 
 void UCharacterLightRigSubsystem::EnsureLights()
 {
-	if (IsValid(Holder) && Lights.Num() == 3)
+	if ((IsValid(Holder) && Lights.Num() == 3) || bSpawnFailed)
 	{
 		return;
 	}
@@ -154,9 +154,11 @@ void UCharacterLightRigSubsystem::EnsureLights()
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	Params.ObjectFlags |= RF_Transient;
-	Holder = World->SpawnActor<AInfo>(AInfo::StaticClass(), FTransform::Identity, Params);
+	Holder = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);
 	if (!Holder)
 	{
+		bSpawnFailed = true;
+		UE_LOG(LogHawkeye, Warning, TEXT("Character light rig: the holder actor could not be spawned; no rig."));
 		return;
 	}
 #if WITH_EDITOR
