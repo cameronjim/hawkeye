@@ -5,6 +5,7 @@
 #include "Player/ParkourComponent.h"
 
 #include "CollisionQueryParams.h"
+#include "Combat/CombatAnimSet.h"
 #include "Combat/StrikePose.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -1165,6 +1166,8 @@ bool UParkourComponent::JumpFromHang()
 		bHanging = false;
 		EndHangState();
 		StopClip(0.2f);
+		BeginLedgeRelease();
+		PlayLedgeRole(ECombatAnimRole::LedgeHangDrop, 0.f);
 		Character->SetActorRotation(FRotator(0.f, N.Rotation().Yaw, 0.f));
 		// A step off the wall, then the push off it: a controlled drop all the same.
 		Movement->ReleaseTraversal(N * HangHopDropVelocity.X + FVector(0.f, 0.f, HangHopDropVelocity.Y), N * 15.f);
@@ -1198,6 +1201,8 @@ bool UParkourComponent::BeginHangTransfer(EHawkeyeParkourMove Move, const FHawke
 	LastObstacle = Target;
 	// A turning move turns over its length; any other faces the new wall at once.
 	bMoveTurns = !FMath::IsNearlyZero(TurnDegrees);
+	MoveTurnEnd = 1.f;
+	bTurnCarriesCamera = true;
 	MoveYawStart = Character->GetActorRotation().Yaw;
 	MoveYawDelta = TurnDegrees;
 	CameraFollowedYaw = MoveYawStart;
@@ -1233,13 +1238,15 @@ float UParkourComponent::ComputeMoveYaw(float Alpha) const
 	{
 		return MoveYaw;
 	}
-	return MoveYawStart + MoveYawDelta * FMath::SmoothStep(0.f, 1.f, FMath::Clamp(Alpha, 0.f, 1.f));
+	// The turn is done by MoveTurnEnd of the move (a roof dismount has turned to face the wall while its hand plants).
+	const float Done = FMath::Clamp(Alpha / FMath::Max(MoveTurnEnd, 0.05f), 0.f, 1.f);
+	return MoveYawStart + MoveYawDelta * FMath::SmoothStep(0.f, 1.f, Done);
 }
 
 void UParkourComponent::TickMoveTurnCamera()
 {
 	const AActor* Owner = GetOwner();
-	if (!bMoveTurns || !Owner)
+	if (!bMoveTurns || !bTurnCarriesCamera || !Owner)
 	{
 		return;
 	}

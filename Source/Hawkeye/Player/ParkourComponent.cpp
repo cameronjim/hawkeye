@@ -4,6 +4,7 @@
 #include "Animation/AnimMontage.h"
 #include "Hawkeye.h"
 #include "Audio/HawkeyeAudioSubsystem.h"
+#include "Combat/CombatAnimSet.h"
 #include "CollisionQueryParams.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -1219,7 +1220,25 @@ bool UParkourComponent::StartMove(EHawkeyeParkourMove Move, const FHawkeyeParkou
 		DropHop = FMath::Max(0.f, Obstacle.Height) + HawkeyeParkour::DropHopClearance;
 		TArray<TWeakObjectPtr<AActor>> Through = Climbed;
 		Through.Add(Movement->CurrentFloor.HitResult.GetActor());
-		return BeginMove(Move, HangLocationFor(Obstacle), DropHop, DropToHangSeconds, CatchClip, Through);
+		if (IsLedgeBodyOn())
+		{
+			// She turns round to face the wall over the first of the move (the plant), not at once, and the camera stays
+			// where it is (the hang camera eases it round after).
+			bMoveTurns = true;
+			MoveYawStart = Character->GetActorRotation().Yaw;
+			MoveYawDelta = FRotator::NormalizeAxis((-Obstacle.WallNormal).Rotation().Yaw - MoveYawStart);
+			MoveTurnEnd = HawkeyeLedge::TurnFraction(EHawkeyeParkourMove::DropToHang, LedgeBody);
+			bTurnCarriesCamera = false;
+			CameraFollowedYaw = MoveYawStart;
+		}
+		if (!BeginMove(Move, HangLocationFor(Obstacle), DropHop, DropToHangSeconds, CatchClip, Through))
+		{
+			bMoveTurns = false;
+			MoveTurnEnd = 1.f;
+			bTurnCarriesCamera = true;
+			return false;
+		}
+		return true;
 	}
 	default:
 		return false;
@@ -1268,6 +1287,7 @@ bool UParkourComponent::BeginMove(EHawkeyeParkourMove Move, const FVector& End, 
 	LastMove = Move;
 	LastRoute = EHawkeyeParkourRoute::Procedural;
 	bHanging = false;
+	BeginLedgeMove(Move);
 
 	PlayMoveClip(Move, Clip, Seconds);
 	FHawkeyeTraversalMove Traversal;
@@ -1295,6 +1315,13 @@ bool UParkourComponent::BeginMove(EHawkeyeParkourMove Move, const FVector& End, 
 
 void UParkourComponent::PlayMoveClip(EHawkeyeParkourMove Move, const FHawkeyeParkourClip& Clip, float Seconds)
 {
+	// Our own ledge clips first (a drop to hang, a catch, the climb up): in place, over the path. The sample's clips are
+	// what is left when the set has none.
+	if (PlayAuthoredMoveClip(Move, Seconds))
+	{
+		bMoveByRootMotion = false;
+		return;
+	}
 	bMoveByRootMotion = IsClipDriven(Move) && SetWarpTargets(Move, LastObstacle) && PlayClip(Clip, Seconds, /*bDriveCapsule=*/true);
 	if (!bMoveByRootMotion)
 	{
@@ -1447,9 +1474,11 @@ void UParkourComponent::FinishMove()
 	const bool bOntoParapet = bGuardMantle && Move == EHawkeyeParkourMove::Mantle;
 	bGuardMantle = false;
 	bMoveTurns = false;
+	MoveTurnEnd = 1.f;
+	bTurnCarriesCamera = true;
 	if (Move == EHawkeyeParkourMove::LedgeGrab || Move == EHawkeyeParkourMove::DropToHang || IsHangTransfer(Move))
 	{
-		EnterHang();
+		EnterHang(Move);
 		return;
 	}
 	StopClip(HawkeyeParkour::ClipBlendOut);
@@ -1486,17 +1515,20 @@ void UParkourComponent::AbandonTraversal()
 	bGuardMantle = false;
 	bGuardLeap = false;
 	bMoveTurns = false;
+	MoveTurnEnd = 1.f;
+	bTurnCarriesCamera = true;
 	EndHangState();
 	StopClip(HawkeyeParkour::ClipBlendOut);
 	OnParkourFinished.Broadcast(Move);
 }
 
-void UParkourComponent::EnterHang()
+void UParkourComponent::EnterHang(EHawkeyeParkourMove FromMove)
 {
 	bHanging = true;
 	const ACharacter* Character = GetCharacter();
 	UAnimInstance* Anim = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
-	if (Anim && ActiveMontage)
+	// The authored hang loops from where the move's clip ended; without one the move's clip is held on its last frame.
+	if (!PlayLedgeRole(ECombatAnimRole::LedgeHangIdle, 0.f) && Anim && ActiveMontage)
 	{
 		Anim->Montage_Pause(ActiveMontage);
 	}
@@ -1504,6 +1536,7 @@ void UParkourComponent::EnterHang()
 		GetOwner() ? *GetOwner()->GetActorLocation().ToCompactString() : TEXT("?"), HangObstacle.LedgePoint.Z,
 		HangObstacle.bStandingSurface ? 1 : 0);
 	BeginHangState();
+	BeginLedgeHang(FromMove);
 }
 
 bool UParkourComponent::ClimbFromHang()
@@ -1540,6 +1573,9 @@ bool UParkourComponent::DropFromHang()
 	bHanging = false;
 	EndHangState();
 	StopClip(HawkeyeParkour::ClipBlendOut);
+	// The hands let go over a moment (the IK fades on the pose she hung in) and the body pushes off and gets its legs ready.
+	BeginLedgeRelease();
+	PlayLedgeRole(ECombatAnimRole::LedgeHangDrop, 0.f);
 	// Falling from still, a step off the wall first so the capsule does not scrape down it.
 	Movement->ReleaseTraversal(FVector::ZeroVector, HangObstacle.WallNormal.GetSafeNormal2D() * 15.f);
 	RegrabCooldown = DropRegrabSeconds;
@@ -1764,17 +1800,20 @@ void UParkourComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	{
 		// The movement runs the move; the camera follows a turning one.
 		TickMoveTurnCamera();
+		UpdateLedgeBody(DeltaTime);
 		return;
 	}
 	if (bHanging)
 	{
 		AdvanceHang(DeltaTime);
+		UpdateLedgeBody(DeltaTime);
 		return;
 	}
 	if (!TryCatchLedge())
 	{
 		TryAutoParkour();
 	}
+	UpdateLedgeBody(DeltaTime);
 }
 
 void UParkourComponent::TickSampleExit()
