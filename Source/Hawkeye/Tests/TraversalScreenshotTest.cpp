@@ -34,6 +34,7 @@
 #include "Tests/AutomationCommon.h"
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
+#include "Traversal/LedgeBodyRules.h"
 #include "Traversal/TraversalPoseRules.h"
 #include "World/GrappleAnchor.h"
 #include "World/ThugAIController.h"
@@ -800,6 +801,23 @@ namespace HawkeyeTraversalShots
 			}
 		}
 		{
+			// Let go the moment the hang starts (the catch's last frames): the hands must come off cleanly, not spread.
+			FScenario S;
+			S.Name = TEXT("hang_drop_instant");
+			S.Reference = 0.3;
+			S.Times = Frames60(-4.f / 60.f, 8, 4);
+			S.bLedge = true;
+			S.Start = FallPastTheEdge;
+			S.Events.Add({0.3, [](FStage& Stage, UWorld&)
+				{
+					if (AHawkeyeCharacter* Kate = Stage.Kate.Get())
+					{
+						Kate->GetParkourComponent()->DropFromHang();
+					}
+				}});
+			Out.Add(S);
+		}
+		{
 			// The hands at the hang, close up, once the swing has settled: where the fingers lie on the edge.
 			FScenario S;
 			S.Name = TEXT("hang_hands");
@@ -1298,6 +1316,24 @@ namespace HawkeyeTraversalShots
 				if (Pose.HandAlpha[Side] < 0.95f || !Body->DoesSocketExist(Socket))
 				{
 					continue;
+				}
+				{
+					// A target out of the arm's reach is the clip's to hold (the IK lets go of it), so it is not checked: the hand
+					// is only on the edge once the edge is within reach.
+					const FName UpperName(Side == 0 ? TEXT("upperarm_l") : TEXT("upperarm_r"));
+					const FName LowerName(Side == 0 ? TEXT("lowerarm_l") : TEXT("lowerarm_r"));
+					if (Body->DoesSocketExist(UpperName) && Body->DoesSocketExist(LowerName))
+					{
+						const FVector Up = Body->GetSocketLocation(UpperName);
+						const FVector Lo = Body->GetSocketLocation(LowerName);
+						const FVector Ha = Body->GetSocketLocation(Socket);
+						const float ArmLength = static_cast<float>(FVector::Dist(Up, Lo) + FVector::Dist(Lo, Ha));
+						const float ToTarget = static_cast<float>(FVector::Dist(Up, Pose.Hand[Side]));
+						if (HawkeyeLedge::ReachWeight(ToTarget, ArmLength, FHawkeyeLedgeBodySettings()) < 0.99f)
+						{
+							continue;
+						}
+					}
 				}
 				const float Off = static_cast<float>(FVector::Dist(Body->GetSocketLocation(Socket), Pose.Hand[Side]));
 				if (Off > Scenario.HandTolerance * 0.5f)

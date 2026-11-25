@@ -708,7 +708,8 @@ void FHawkeyeDemoRunner::DescentLeg(UWorld* World, APlayerController* PC, AHawke
 	{
 		if (Parkour->IsHanging())
 		{
-			if (DescentFrame > Fps * 3 / 10)
+			// Held for 0.6 s before letting go, so the footage shows the hang (hands on the lip, the swing settling).
+			if (DescentFrame > Fps * 6 / 10)
 			{
 				Tap(PC, CrouchPath);
 				DescentPhase = 4;

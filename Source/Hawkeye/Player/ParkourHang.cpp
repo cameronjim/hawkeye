@@ -1436,7 +1436,8 @@ bool UParkourComponent::GetLedgeFraming(FVector& OutNormal) const
 		OutNormal = HangLine.Normal;
 		return true;
 	}
-	if (ActiveMove == EHawkeyeParkourMove::DropToHang || ActiveMove == EHawkeyeParkourMove::LedgeGrab)
+	if (ActiveMove == EHawkeyeParkourMove::DropToHang || ActiveMove == EHawkeyeParkourMove::LedgeGrab
+		|| (ActiveMove == EHawkeyeParkourMove::Climb && !HangObstacle.WallNormal.IsNearlyZero()))
 	{
 		OutNormal = HangObstacle.WallNormal;
 		return !OutNormal.IsNearlyZero();
