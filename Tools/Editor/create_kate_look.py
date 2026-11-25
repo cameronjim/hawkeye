@@ -251,16 +251,18 @@ def _dynamics_chains(dynamics, skeleton):
     return chains, ";".join(names)
 
 
-def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None, body_pose=False):
+def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None, body_pose=False, ledge_ik=False):
     """The body look's AnimBP: Retarget Pose From Mesh, then (dynamics: a list of FHawkeyeDynamicsChain field dicts,
     e.g. a ponytail's bones) one AnimDynamics node per chain whose bones the mesh's skeleton has. The skeleton's
     graph is rebuilt once the simulation bones are imported. ``body_pose``: the Hawkeye Body Pose node after the retarget (the
-    thugs' own hands and rest arms, BodyPose.h) and UHawkeyeBodyAnimInstance as the parent class."""
+    thugs' own hands and rest arms, BodyPose.h) and UHawkeyeBodyAnimInstance as the parent class. ``ledge_ik``: the Hawkeye Ledge IK
+    node after the dynamics (Kate's hands on the edge she hangs from, the body hung from them, LedgeIKNode.h) and
+    UHawkeyeKateBodyAnimInstance as the parent class."""
     skeleton = ica.mesh_skeleton(mesh)
     chains, chain_text = _dynamics_chains(dynamics, skeleton)
     settings = repr(sorted((k, str(v)) for spec in dynamics or [] for k, v in spec.items()))
     # A look with no chains keeps the stamp it always had, so nobody else is rebuilt.
-    stamp = _stamp("abp", ica.tag_of(rtg), *([chain_text, settings] if dynamics else []), *(["body-pose-3"] if body_pose else []))
+    stamp = _stamp("abp", ica.tag_of(rtg), *([chain_text, settings] if dynamics else []), *(["body-pose-3"] if body_pose else []), *(["ledge-ik-1"] if ledge_ik else []))
     existing = c.load_or_none(path)
     if existing is not None and ica.tag_of(existing) == stamp:
         c.log("exists", path)
@@ -269,7 +271,9 @@ def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None, body_pose=False):
     if builder is None:
         c.log("FAILED", path, "UHawkeyeRetargetGraphBuilder not exposed; build the module")
         return None
-    if body_pose:
+    if ledge_ik:
+        abp = builder.build_retarget_with_ledge_ik(path, skeleton, rtg, chains)
+    elif body_pose:
         abp = builder.build_retarget_with_body_pose(path, skeleton, rtg)
     else:
         abp = (builder.build_retarget_with_dynamics(path, skeleton, rtg, chains) if chains
@@ -279,8 +283,8 @@ def ensure_anim_bp(mesh, rtg, path=ABP, dynamics=None, body_pose=False):
         return None
     ica.set_tag(abp, stamp)
     c.save(abp)
-    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with {0}, {1} Kawaii Physics node(s), {2} body pose node(s)".format(
-        rtg.get_name(), builder.count_dynamics_nodes(abp), builder.count_body_pose_nodes(abp)))
+    c.log("created" if existing is None else "updated", path, "retarget from the parent mesh with {0}, {1} Kawaii Physics node(s), {2} body pose node(s), {3} ledge IK node(s)".format(
+        rtg.get_name(), builder.count_dynamics_nodes(abp), builder.count_body_pose_nodes(abp), builder.count_ledge_ik_nodes(abp)))
     return abp
 
 

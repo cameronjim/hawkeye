@@ -4,6 +4,7 @@
 #include "Animation/AnimInstance.h"
 #include "Hawkeye.h"
 #include "Player/BodyPoseNode.h"
+#include "Player/LedgeIKNode.h"
 
 #if WITH_EDITOR
 #include "AnimGraphNode_Base.h"
@@ -238,6 +239,23 @@ namespace HawkeyeRetargetGraph
 		return Node;
 	}
 
+	/** The Hawkeye Ledge IK graph node (a class of the HawkeyeAnimEditor module, found by path), or null when it is not loaded. */
+	static UEdGraphNode* AddLedgeIKNode(UEdGraph& Graph, int32 X)
+	{
+		UClass* NodeClass = FindObject<UClass>(nullptr, TEXT("/Script/HawkeyeAnimEditor.AnimGraphNode_HawkeyeLedgeIK"));
+		if (!NodeClass)
+		{
+			return nullptr;
+		}
+		UEdGraphNode* Node = NewObject<UEdGraphNode>(&Graph, NodeClass, NAME_None, RF_Transactional);
+		Graph.AddNode(Node, /*bFromUI=*/false, /*bSelectNewNode=*/false);
+		Node->CreateNewGuid();
+		Node->PostPlacedNewNode();
+		Node->AllocateDefaultPins();
+		Node->NodePosX = X;
+		return Node;
+	}
+
 	/** The retarget node, its settings written through reflection (the node's struct is private). */
 	static UAnimGraphNode_RetargetPoseFromMesh* AddRetargetNode(UEdGraph& Graph, UIKRetargeter* Retargeter)
 	{
@@ -286,6 +304,31 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithBodyPose(
 	return BuildGraph(PackageName, Skeleton, Retargeter, TArray<FHawkeyeDynamicsChain>(), /*bBodyPose=*/true);
 }
 
+UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithLedgeIK(const FString& PackageName, USkeleton* Skeleton,
+	UIKRetargeter* Retargeter, const TArray<FHawkeyeDynamicsChain>& Chains)
+{
+	return BuildGraph(PackageName, Skeleton, Retargeter, Chains, /*bBodyPose=*/false, /*bLedgeIK=*/true);
+}
+
+int32 UHawkeyeRetargetGraphBuilder::CountLedgeIKNodes(UAnimBlueprint* Blueprint)
+{
+#if WITH_EDITOR
+	const UEdGraph* Graph = Blueprint ? HawkeyeRetargetGraph::FindAnimGraph(*Blueprint) : nullptr;
+	if (!Graph)
+	{
+		return -1;
+	}
+	int32 Count = 0;
+	for (const UEdGraphNode* Node : Graph->Nodes)
+	{
+		Count += Node && Node->GetClass()->GetName() == TEXT("AnimGraphNode_HawkeyeLedgeIK") ? 1 : 0;
+	}
+	return Count;
+#else
+	return -1;
+#endif
+}
+
 int32 UHawkeyeRetargetGraphBuilder::CountBodyPoseNodes(UAnimBlueprint* Blueprint)
 {
 #if WITH_EDITOR
@@ -331,7 +374,7 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildRetargetWithDynamics(const FS
 }
 
 UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageName, USkeleton* Skeleton,
-	UIKRetargeter* Retargeter, const TArray<FHawkeyeDynamicsChain>& Chains, bool bBodyPose)
+	UIKRetargeter* Retargeter, const TArray<FHawkeyeDynamicsChain>& Chains, bool bBodyPose, bool bLedgeIK)
 {
 #if WITH_EDITOR
 	using namespace HawkeyeRetargetGraph;
@@ -341,8 +384,16 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageN
 			*PackageName, *GetNameSafe(Skeleton), *GetNameSafe(Retargeter));
 		return nullptr;
 	}
-	UAnimBlueprint* Blueprint = LoadOrCreate(
-		PackageName, Skeleton, bBodyPose ? UHawkeyeBodyAnimInstance::StaticClass() : UAnimInstance::StaticClass());
+	UClass* ParentClass = UAnimInstance::StaticClass();
+	if (bLedgeIK)
+	{
+		ParentClass = UHawkeyeKateBodyAnimInstance::StaticClass();
+	}
+	else if (bBodyPose)
+	{
+		ParentClass = UHawkeyeBodyAnimInstance::StaticClass();
+	}
+	UAnimBlueprint* Blueprint = LoadOrCreate(PackageName, Skeleton, ParentClass);
 	UEdGraph* Graph = Blueprint ? FindAnimGraph(*Blueprint) : nullptr;
 	if (!Graph || Blueprint->TargetSkeleton != Skeleton)
 	{
@@ -394,7 +445,7 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageN
 		}
 	}
 	UEdGraphNode* Last = Retarget;
-	if (Usable.Num() > 0 || bBodyPose)
+	if (Usable.Num() > 0 || bBodyPose || bLedgeIK)
 	{
 		// Local pose to component space, one Kawaii Physics node a chain, back to local.
 		FGraphNodeCreator<UAnimGraphNode_LocalToComponentSpace> ToComponentCreator(*Graph);
@@ -444,6 +495,22 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageN
 				Failure = TEXT("the Hawkeye Body Pose graph node is not loaded (the HawkeyeAnimEditor module)");
 			}
 		}
+		if (bLedgeIK)
+		{
+			// Kate's hands on the edge, the body hung from them, the feet on the wall: after the dynamics, so the ponytail
+			// and quiver ride the body as it is moved.
+			UEdGraphNode* LedgeNode = AddLedgeIKNode(*Graph, X);
+			if (LedgeNode)
+			{
+				Link(Last, LedgeNode, TEXT("the ledge IK"));
+				Last = LedgeNode;
+				X += 60;
+			}
+			else if (Failure.IsEmpty())
+			{
+				Failure = TEXT("the Hawkeye Ledge IK graph node is not loaded (the HawkeyeAnimEditor module)");
+			}
+		}
 		FGraphNodeCreator<UAnimGraphNode_ComponentToLocalSpace> ToLocalCreator(*Graph);
 		UAnimGraphNode_ComponentToLocalSpace* ToLocal = ToLocalCreator.CreateNode(/*bSelectNewNode=*/false);
 		ToLocal->NodePosX = -100;
@@ -470,7 +537,8 @@ UAnimBlueprint* UHawkeyeRetargetGraphBuilder::BuildGraph(const FString& PackageN
 	Blueprint->MarkPackageDirty();
 	UE_LOG(LogHawkeye, Log,
 		TEXT("BuildRetargetFromParent: %s built, %s from the parent mesh onto %s, %d dynamics chain(s)%s."), *PackageName,
-		*GetNameSafe(Retargeter), *GetNameSafe(Skeleton), Usable.Num(), bBodyPose ? TEXT(", with the body pose node") : TEXT(""));
+		*GetNameSafe(Retargeter), *GetNameSafe(Skeleton), Usable.Num(),
+		bLedgeIK ? TEXT(", with the ledge IK node") : (bBodyPose ? TEXT(", with the body pose node") : TEXT("")));
 	return Blueprint;
 #else
 	UE_LOG(LogHawkeye, Error, TEXT("BuildRetargetFromParent(%s): editor builds only."), *PackageName);

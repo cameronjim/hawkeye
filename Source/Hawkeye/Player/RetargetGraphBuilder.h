@@ -49,6 +49,19 @@ public:
 	static UAnimBlueprint* BuildRetargetWithBodyPose(
 		const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter);
 
+	/**
+	 * BuildRetargetWithDynamics with the Hawkeye Ledge IK node (Player/LedgeIKNode.h) after the dynamics, and
+	 * UHawkeyeKateBodyAnimInstance as the AnimBP's parent class: Kate's hands on the edge she hangs from, the body hung
+	 * from them, the feet on the wall. With no usable chains it is the retarget, then the ledge IK.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
+	static UAnimBlueprint* BuildRetargetWithLedgeIK(const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter,
+		const TArray<FHawkeyeDynamicsChain>& Chains);
+
+	/** How many Hawkeye Ledge IK nodes Blueprint's anim graph holds, for verify scripts. -1 without a graph. */
+	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
+	static int32 CountLedgeIKNodes(UAnimBlueprint* Blueprint);
+
 	/** How many Hawkeye Body Pose nodes Blueprint's anim graph holds, for verify scripts. -1 without a graph. */
 	UFUNCTION(BlueprintCallable, Category = "Hawkeye|Animation")
 	static int32 CountBodyPoseNodes(UAnimBlueprint* Blueprint);
@@ -59,5 +72,5 @@ public:
 
 private:
 	static UAnimBlueprint* BuildGraph(const FString& PackageName, USkeleton* Skeleton, UIKRetargeter* Retargeter,
-		const TArray<FHawkeyeDynamicsChain>& Chains, bool bBodyPose);
+		const TArray<FHawkeyeDynamicsChain>& Chains, bool bBodyPose, bool bLedgeIK = false);
 };
