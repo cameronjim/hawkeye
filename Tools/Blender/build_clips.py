@@ -1162,35 +1162,120 @@ def ledge_catch(rig):
                    extra={"floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 34.0})
 
 
+FALL_SECONDS = 1.0
+
+
+def _fall_pose(rig, ph):
+    """The fall after a let-go at phase ph (turns, 0..1 loops), in the capsule's frame: standing height with the knees soft,
+    the torso a little forward and the head down at the landing, the arms forward and up for balance (hands in front of the
+    shoulders, elbows down, not out to the side), small continuous motion: the arms circling a few cm against each other, the
+    legs pedalling, the torso breathing with it."""
+    w = 2.0 * math.pi * ph
+    ip = tuple(rig.idle_pelvis)
+    sh = tuple(rig.idle_pos["upperarm_l"] - rig.idle_pelvis)
+    reach = rig.upper_arm + rig.fore_arm
+    lean = 3.0 + 1.0 * math.sin(w)
+    chest_lean = 5.0 + 1.2 * math.sin(w + 1.0)
+    total = math.radians(lean + chest_lean)
+    pelvis = V(0.0, ip[1] + 1.5 + 0.8 * math.sin(w + 0.5), ip[2] - _r(1.6) + 0.5 * math.sin(2.0 * w))
+    out = {"pelvis_pos": pelvis, "pelvis_rot": V(lean, 0.0, 4.0 * math.sin(w)),
+           "chest": V(5.0 + 1.5 * math.sin(w + 1.0), 2.5 * math.sin(w + 0.4), 3.0 * math.sin(w + 2.0)),
+           "neck": V(9.0 + 1.5 * math.sin(w + 2.0), 0.0, 0.0)}
+    for side, s_, phase in (("l", 1.0, 0.0), ("r", -1.0, math.pi)):
+        shoulder = (pelvis[0] + s_ * abs(sh[0]), pelvis[1] + sh[1] - sh[2] * math.sin(total), pelvis[2] + sh[2] * math.cos(total))
+        ring = w + phase
+        out["hand_" + side] = V(shoulder[0] + s_ * (9.0 + 7.0 * math.cos(ring)), shoulder[1] - 0.80 * reach + 6.0 * math.sin(ring),
+                                shoulder[2] - 0.10 * reach + 8.0 * math.sin(ring + 1.2))
+        out["pole_hand_" + side] = V(s_ * 0.45, 0.25, -1.0)
+        idle = tuple(rig.idle_foot(side))
+        stride = math.sin(w + phase)
+        out["foot_" + side] = V(idle[0] * 0.80 + 3.0 * s_ * stride, idle[1] + 2.0 - 8.0 * stride, idle[2] + 0.5 + 2.5 * max(0.0, -stride))
+        out["foot_%s_rot" % side] = V(18.0 + 6.0 * stride, 0.0, 0.0)
+    return out
+
+
+def _brace_pose(rig):
+    """The last 0.2 s before the ground: the hips drop, the knees come up and forward, the arms come down and out a little
+    for the landing, the head still on the ground."""
+    ip = tuple(rig.idle_pelvis)
+    sh = tuple(rig.idle_pos["upperarm_l"] - rig.idle_pelvis)
+    reach = rig.upper_arm + rig.fore_arm
+    pelvis = V(0.0, ip[1] + 4.0, ip[2] - _r(16.0))
+    total = math.radians(12.0 + 16.0)
+    out = {"pelvis_pos": pelvis, "pelvis_rot": V(12.0, 0.0, 0.0), "chest": V(16.0, 0.0, 0.0), "neck": V(12.0, 0.0, 0.0)}
+    for side, s_ in (("l", 1.0), ("r", -1.0)):
+        shoulder = (pelvis[0] + s_ * abs(sh[0]), pelvis[1] + sh[1] - sh[2] * math.sin(total), pelvis[2] + sh[2] * math.cos(total))
+        out["hand_" + side] = V(shoulder[0] + s_ * 14.0, shoulder[1] - 0.55 * reach, shoulder[2] - 0.40 * reach)
+        out["pole_hand_" + side] = V(s_ * 0.7, 0.2, -1.0)
+        idle = tuple(rig.idle_foot(side))
+        out["foot_" + side] = V(idle[0] * 0.85, idle[1] - _r(20.0), idle[2] + _r(13.0))
+        out["foot_%s_rot" % side] = V(8.0, 0.0, 0.0)
+    return out
+
+
+def _as_tracks(pose_fn, t0, t1):
+    """Tracks for every key of pose_fn(t) from t0 to t1 at the frame rate."""
+    out = {}
+    for t, pose in dense(pose_fn, t0, t1):
+        for k, v in pose.items():
+            out.setdefault(k, []).append((t, v))
+    return out
+
+
+def ledge_fall_loop(rig):
+    """The loop after the let-go (and an instant drop): see _fall_pose. First and last frames are the same pose."""
+    tracks = dict((k, T(v)) for k, v in _as_tracks(lambda t: _fall_pose(rig, t / FALL_SECONDS), 0.0, FALL_SECONDS).items())
+    tracks["fingers_l"] = 0.9
+    tracks["fingers_r"] = 0.9
+    return ck.Clip("Ledge_FallLoop", FALL_SECONDS, tracks, strip_times=[0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875],
+                   torso_clear=False, extra={"loop": True, "floor_cm": -5.0, "span": (-120.0, 120.0), "pop_degrees": 20.0})
+
+
+def ledge_fall_brace(rig):
+    """From the fall (whatever its phase: the montage blends in over 0.1 s) to the brace, then held for the landing's clip."""
+    start = _fall_pose(rig, 0.0)
+    end = _brace_pose(rig)
+    t = 0.5
+    ramp = 0.22
+    tracks = {}
+    for k in end:
+        a, b = start[k], end[k]
+        tracks[k] = T([(0.0, a), (ramp, b), (t, b)])
+    tracks["fingers_l"] = 0.9
+    tracks["fingers_r"] = 0.9
+    return ck.Clip("Ledge_FallBrace", t, tracks, strip_times=[0.0, 0.07, 0.14, 0.22, 0.4], torso_clear=False,
+                   extra={"floor_cm": -5.0, "span": (-120.0, 120.0), "pop_degrees": 30.0})
+
+
 def ledge_hang_drop(rig):
-    """From the hang: a small pull in, the hands let go and come off the edge, the body pushes off the wall, the arms swing
-    out and down and the knees bend for the landing (the fall loop takes it from there)."""
+    """From the hang: a small pull in, the hands let go and come off the edge, the body pushes off the wall, the arms come
+    forward and up and the legs straighten under her, ending exactly on the fall loop's first frame (the loop takes it from
+    there). The fall is not this clip's tail: held, a pose reads as a statue sliding down the wall."""
     hp = hang_pose(rig)
     P, hl, hr, fl, fr = hp["pelvis"], hp["hand_l"], hp["hand_r"], hp["foot_l"], hp["foot_r"]
-    idle_l = tuple(rig.idle_hand("l"))
-    idle_r = tuple(rig.idle_hand("r"))
-    ifl = tuple(rig.idle_foot("l"))
-    ifr = tuple(rig.idle_foot("r"))
-    t = 1.6   # the push-off takes 0.35 s; the rest is her falling feet first, arms down and a little out, knees soft
+    fp = _fall_pose(rig, 0.0)
+    t = 0.5
+    mid = lambda a, b, f: _lerp(a, b, f)  # noqa: E731
+    push = add(P, V(0, 10, 6))
     tracks = {
-        "pelvis_pos": T([(0.0, P), (0.06, add(P, V(0, 1, 3))), (0.14, add(P, V(0, 9, 4))), (0.24, add(P, V(0, 14, -4))),
-                         (0.35, add(P, V(0, 16, -10))), (0.8, add(P, V(0, 16, -8))), (t, add(P, V(0, 16, -10)))]),
-        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.14, V(-6, 0, 0)), (0.35, V(10, 0, 0)), (0.9, V(8, 0, 0)), (t, V(10, 0, 0))]),
-        "chest": T([(0.0, V(-4, 0, 0)), (0.14, V(-10, 0, 0)), (0.35, V(6, 0, 0)), (0.9, V(4, 0, 0)), (t, V(6, 0, 0))]),
-        "neck": T([(0.0, V(-18, 0, 0)), (0.14, V(-16, 0, 0)), (0.35, V(-4, 0, 0)), (t, V(-4, 0, 0))]),
-        "hand_l": T([(0.0, hl), (0.06, hl), (0.14, add(hl, V(8, 4, 8))), (0.24, add(idle_l, V(8, -8, 34))),
-                     (0.35, add(idle_l, V(12, -10, 22))), (0.9, add(idle_l, V(14, -8, 18))), (t, add(idle_l, V(12, -10, 22)))]),
-        "hand_r": T([(0.0, hr), (0.06, hr), (0.14, add(hr, V(-8, 4, 8))), (0.24, add(idle_r, V(-8, -8, 34))),
-                     (0.35, add(idle_r, V(-12, -10, 22))), (0.9, add(idle_r, V(-14, -8, 18))), (t, add(idle_r, V(-12, -10, 22)))]),
+        "pelvis_pos": T([(0.0, P), (0.07, add(P, V(0, 1, 3))), (0.15, push), (0.30, mid(push, fp["pelvis_pos"], 0.7)),
+                         (t, fp["pelvis_pos"])]),
+        "pelvis_rot": T([(0.0, V(0, 0, 0)), (0.12, V(-6, 0, 0)), (0.30, V(3, 0, 0)), (t, fp["pelvis_rot"])]),
+        "chest": T([(0.0, V(-4, 0, 0)), (0.12, V(-10, 0, 0)), (0.30, V(2, 0, 0)), (t, fp["chest"])]),
+        "neck": T([(0.0, V(-18, 0, 0)), (0.12, V(-14, 0, 0)), (0.30, V(4, 0, 0)), (t, fp["neck"])]),
+        "hand_l": T([(0.0, hl), (0.07, hl), (0.15, add(hl, V(5, 5, 9))), (0.30, add(fp["hand_l"], V(4, 6, -6))), (t, fp["hand_l"])]),
+        "hand_r": T([(0.0, hr), (0.07, hr), (0.15, add(hr, V(-5, 5, 9))), (0.30, add(fp["hand_r"], V(-4, 6, -6))), (t, fp["hand_r"])]),
         "pole_hand_l": _arm_pole("l"), "pole_hand_r": _arm_pole("r"),
-        "foot_l": T([(0.0, fl), (0.10, fl), (0.20, add(fl, V(0, 10, 3))), (0.35, add(ifl, V(8, -2, 14))), (t, add(ifl, V(8, -2, 14)))]),
-        "foot_r": T([(0.0, fr), (0.10, fr), (0.20, add(fr, V(0, 10, 3))), (0.35, add(ifr, V(-8, -2, 14))), (t, add(ifr, V(-8, -2, 14)))]),
-        "fingers_l": T([(0.0, 1.35), (0.10, 1.35), (0.20, 1.0), (t, 1.0)]),
-        "fingers_r": T([(0.0, 1.35), (0.10, 1.35), (0.20, 1.0), (t, 1.0)]),
+        "foot_l": T([(0.0, fl), (0.10, fl), (0.20, add(fl, V(0, 8, 3))), (0.34, mid(add(fl, V(0, 8, 3)), fp["foot_l"], 0.8)), (t, fp["foot_l"])]),
+        "foot_r": T([(0.0, fr), (0.10, fr), (0.20, add(fr, V(0, 8, 3))), (0.34, mid(add(fr, V(0, 8, 3)), fp["foot_r"], 0.8)), (t, fp["foot_r"])]),
+        "foot_l_rot": T([(0.0, V(0, 0, 0)), (0.2, V(0, 0, 0)), (t, fp["foot_l_rot"])]),
+        "foot_r_rot": T([(0.0, V(0, 0, 0)), (0.2, V(0, 0, 0)), (t, fp["foot_r_rot"])]),
+        "fingers_l": T([(0.0, 1.35), (0.10, 1.35), (0.22, 0.9), (t, 0.9)]),
+        "fingers_r": T([(0.0, 1.35), (0.10, 1.35), (0.22, 0.9), (t, 0.9)]),
     }
     return ck.Clip("Ledge_HangDrop", t, tracks, planted=[("l", 0.0, 0.10, "flat"), ("r", 0.0, 0.10, "flat")],
-                   strip_times=[0.0, 0.06, 0.12, 0.24, 0.35, 0.7, 1.1, t], torso_clear=False,
-                   extra={"floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 55.0})
+                   strip_times=[0.0, 0.07, 0.15, 0.22, 0.30, 0.38, 0.45, t], torso_clear=False,
+                   extra={"floor_cm": LEDGE_FLOOR, "span": (-120.0, 120.0), "pop_degrees": 55.0, "pelvis_cm": 14.0})
 
 
 def _dismount_edge_local(a, side):
@@ -1351,62 +1436,137 @@ def ledge_climb_up(rig):
                    torso_clear=False, extra={"floor_cm": -90.0, "span": (-130.0, 130.0), "pop_degrees": 55.0, "pelvis_cm": 14.0})
 
 
-def ledge_vault_plant(rig):
-    """A vault over a 90 cm top at a run (not wired to a move by default: the vault is the sample's hurdle): the right hand
-    plants on the top in front, the hips arc over it and the legs swing to the left, the hand lets go and she lands running.
-    Keyed in the capsule's frame with the capsule travelling 110 cm forward (smoothstep) over 0.6 s."""
+VAULT_LIP_AHEAD = 110.0   # the lip's front edge ahead of where a vault starts, game cm (a probe's reach)
+VAULT_RUN = 170.0         # the capsule's travel start to end
+VAULT_TOP = 90.0          # the top's height over the floor at the start
+VAULT_ABOVE = 25.0        # how far over the top her hips go (the game's arc for the authored vault: Rise = Height - 65)
+
+
+def vault_rise(height):
+    """The capsule's rise over the vault's path with the authored clip (game cm; ParkourComponent mirrors it): the hips pass
+    VAULT_ABOVE over the top, a hurdle's body low over it with the legs swung beside, instead of a leap that hands cannot reach."""
+    return max(10.0, height + VAULT_ABOVE - 90.0)
+
+
+def _vault(rig, name, crouch):
+    """A speed vault over a 90 cm top (claude-docs/animation.md, "Ledge clips"): she runs at it, the right hand plants on the
+    top ahead while the torso leans over it, the legs swing together to the left beside the hips, the hand lets go and she
+    lands running (the stride's lead foot first) or, at a slow entry, in a crouch. Keyed in the capsule's frame with the
+    capsule's path the game's: forward linearly VAULT_RUN, up VAULT_RISE * sin(pi a)."""
+    t = 0.6
     reach = 0.97 * (rig.upper_arm + rig.fore_arm)
     sh = tuple(rig.idle_pos["upperarm_r"] - rig.idle_pelvis)
-    t = 0.6
-    run = 110.0
     P = tuple(rig.idle_pelvis)
     ifl = tuple(rig.idle_foot("l"))
     ifr = tuple(rig.idle_foot("r"))
     ihl = tuple(rig.idle_hand("l"))
     ihr = tuple(rig.idle_hand("r"))
+    rise = vault_rise(VAULT_TOP)
+    ss = ck.smoothstep
+    times = [i / ck.FPS for i in range(int(round(t * ck.FPS)) + 1)]
+
+    def clip_a(time):
+        return time / t
+
+    def pitch(a):
+        # (chest + pelvis) forward: running lean, over the top, back up (a crouch keeps some)
+        v = 12.0 + 30.0 * ss((a - 0.1) / 0.3) - 30.0 * ss((a - 0.55) / 0.3)
+        if crouch:
+            v = max(v, 12.0 + 18.0 * ss((a - 0.7) / 0.3))
+        return v
 
     def pelvis(time):
-        a = time / t
-        arc = math.sin(math.pi * a)
-        return (P[0] + 6.0 * arc, P[1], P[2] + _r(34.0) * arc)
+        a = clip_a(time)
+        dip = ss((a - 0.1) / 0.3) * (1.0 - ss((a - 0.5) / 0.25))
+        land = ss((a - 0.75) / 0.25)
+        z = P[2] - 4.0 - _r(10.0) * dip
+        if crouch:
+            z -= _r(26.0) * land
+        return (6.0 * dip, P[1] - _r(9.0) * dip, z)
+
+    def body_rot(time):
+        x = time
+        return (V(0.4 * pitch(x / t), 0.0, 22.0 * ss((x / t - 0.15) / 0.25) * (1.0 - ss((x / t - 0.6) / 0.25))),
+                V(0.6 * pitch(x / t), 0.0, 0.0))
+
+    def shoulder(time, side="r"):
+        """Her shoulder joint where the torso really is (the rig solved without its arms)."""
+        pr, ch = body_rot(time)
+        solved = rig.solve({"pelvis_pos": pelvis(time), "pelvis_rot": pr, "chest": ch})
+        return tuple(solved["upperarm_" + side].translation)
 
     def hand_r(time):
-        a = time / t
-        y_c = -_r(run) * ck.smoothstep(a)
-        top = (-_r(8.0), -_r(50.0) - y_c, _r(PARAPET + WRIST_UP))
-        p = pelvis(time)
-        shoulder = (p[0] + sh[0], p[1] + sh[1], p[2] + sh[2])
-        held = _reach_limited(shoulder, top, reach)
-        free = _lerp(ihr, add(ihr, V(-4, -20, 20)), math.sin(math.pi * min(a / 0.4, 1.0)))
-        w = ck.smoothstep(a / 0.25) * (1.0 - ck.smoothstep((a - 0.55) / 0.2))
+        a = clip_a(time)
+        y_c = -_r(VAULT_RUN) * a
+        z_c = _r(rise) * math.sin(math.pi * a)
+        top = (-_r(10.0), -_r(VAULT_LIP_AHEAD + 15.0) - y_c, _r(VAULT_TOP + 2.0) - z_c)
+        held = _reach_limited(shoulder(time), top, reach)
+        run_swing = _lerp(ihr, add(ihr, V(-4, -24, 16)), 1.0 - ss(a / 0.25))
+        end = add(shoulder(time), V(-12.0, -0.55 * reach, -0.45 * reach)) if crouch else add(ihr, V(-2, 18, 10))
+        free = _lerp(run_swing, end, ss((a - 0.55) / 0.3))
+        w = ss((a - 0.12) / 0.13) * (1.0 - ss((a - 0.5) / 0.14))
         return _lerp(free, held, w)
 
-    def feet(side, base):
+    def hand_l(time):
+        a = clip_a(time)
+        sl = shoulder(time, "l")
+        start = (sl[0] + 4.0, sl[1] + 0.15 * reach, sl[2] - 0.85 * reach)
+        out = (sl[0] + 0.5 * reach, sl[1] + 0.05 * reach, sl[2] - 0.6 * reach)   # out and back for balance over the top
+        v = _lerp(start, out, ss((a - 0.04) / 0.4))
+        if crouch:
+            end = (sl[0] + 12.0, sl[1] - 0.55 * reach, sl[2] - 0.45 * reach)
+        else:
+            end = (sl[0] + 0.1 * reach, sl[1] - 0.45 * reach, sl[2] - 0.7 * reach)
+        return _lerp(v, end, ss((a - 0.5) / 0.35))
+
+    def foot(side):
+        base = ifl if side == "l" else ifr
+
         def at(time):
-            a = time / t
-            arc = math.sin(math.pi * a)
-            p = pelvis(time)
-            swing = (_r(30.0) if side == "l" else _r(10.0)) * arc
-            return add(base, V(swing, -_r(12.0) * arc, p[2] - P[2] + _r(10.0) * arc))
+            a = clip_a(time)
+            lead = (side == "l")
+            # the stride into the vault: the left foot the trailing one off the floor, the right (the plant hand's side) leads
+            run0 = V(base[0] * 0.8, base[1] + (-14.0 if not lead else 16.0), base[2] + (0.0 if not lead else 10.0))
+            swing = V(_r(34.0 if lead else 24.0), base[1] + (4.0 if lead else 14.0), base[2] + _r(66.0 if lead else 60.0))
+            if crouch:
+                land = V(base[0] * 0.85, base[1] + (-8.0 if not lead else -2.0), base[2])
+            else:
+                land = V(base[0] * 0.8, base[1] + (-18.0 if not lead else 16.0), base[2] + (0.0 if not lead else 6.0))
+            tuck = ss((a - 0.08) / 0.3) * (1.0 - ss((a - 0.58) / 0.3))
+            v = _lerp(run0, swing, tuck)
+            return _lerp(v, land, ss((a - 0.7) / 0.3))
         return at
 
     tracks = {
         "pelvis_pos": T(dense(pelvis, 0.0, t)),
-        "pelvis_rot": T([(0.0, V(8, 0, 0)), (0.2, V(22, 0, 8)), (0.32, V(14, 0, 30)), (0.45, V(6, 0, 18)), (t, V(0, 0, 0))]),
-        "chest": T([(0.0, V(6, 0, 0)), (0.25, V(24, 0, 4)), (0.4, V(10, 0, 0)), (t, V(0, 0, 0))]),
-        "neck": T([(0.0, V(0, 0, 0)), (0.25, V(-12, 0, 0)), (t, V(0, 0, 0))]),
+        "pelvis_rot": T([(x, body_rot(x)[0]) for x in times]),
+        "chest": T([(x, body_rot(x)[1]) for x in times]),
+        "neck": T([(0.0, V(0, 0, 0)), (0.2, V(-14, 0, 0)), (0.42, V(-18, 0, 0)), (t, V(-4, 0, 0))]),
         "hand_r": T(_smoothed(dense(hand_r, 0.0, t))),
-        "hand_l": T([(0.0, ihl), (0.2, add(ihl, V(6, -26, 12))), (0.45, add(ihl, V(10, -10, 22))), (t, ihl)]),
-        "pole_hand_r": _arm_pole("r", -0.2), "pole_hand_l": _arm_pole("l", -0.2),
-        "foot_l": T(dense(feet("l", ifl), 0.0, t)),
-        "foot_r": T(dense(feet("r", ifr), 0.0, t)),
-        "fingers_r": T([(0.0, 1.0), (0.2, 1.3), (0.55, 1.3), (t, 1.0)]),
+        "hand_l": T(_smoothed(dense(hand_l, 0.0, t))),
+        "pole_hand_r": V(-0.5, 1.0, 0.0),
+        "pole_hand_l": V(0.5, 1.0, 0.0),
+        "foot_l": T(dense(foot("l"), 0.0, t)),
+        "foot_r": T(dense(foot("r"), 0.0, t)),
+        "foot_l_rot": T([(0.0, V(0, 0, 0)), (0.2, V(25, 0, 0)), (0.4, V(25, 0, 0)), (t, V(0, 0, 0))]),
+        "foot_r_rot": T([(0.0, V(0, 0, 0)), (0.2, V(25, 0, 0)), (0.4, V(25, 0, 0)), (t, V(0, 0, 0))]),
+        "fingers_r": T([(0.0, 1.0), (0.12, 1.0), (0.25, 0.7), (0.5, 0.7), (0.6, 1.0)]),
     }
-    return ck.Clip("Vault_Plant", t, tracks, fade_in=0.05, fade_out=0.15, strip_times=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, t],
-                   torso_clear=False, extra={"floor_cm": -10.0, "span": (-140.0, 140.0), "pop_degrees": 56.0})
+    return ck.Clip(name, t, tracks, fade_in=0.05, fade_out=0.15, strip_times=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, t],
+                   torso_clear=False, extra={"floor_cm": -10.0, "span": (-140.0, 140.0), "pop_degrees": 75.0, "pelvis_cm": 14.0})
 
 
-LEDGE = [ledge_hang_idle, ledge_catch, ledge_hang_drop, ledge_drop_to_hang, ledge_climb_up, ledge_vault_plant]
+def ledge_vault_plant(rig):
+    """The vault at a run: see _vault."""
+    return _vault(rig, "Vault_Plant", False)
+
+
+def ledge_vault_crouch(rig):
+    """The vault at a slow entry: the same plant and swing, landing in a crouch with both hands ready."""
+    return _vault(rig, "Vault_Crouch", True)
+
+
+LEDGE = [ledge_hang_idle, ledge_catch, ledge_hang_drop, ledge_fall_loop, ledge_fall_brace, ledge_drop_to_hang, ledge_climb_up, ledge_vault_plant, ledge_vault_crouch]
 
 TAKEDOWN_BONES = ("clavicle_l", "clavicle_r", "neck_01", "spine_02", "spine_03", "pelvis", "head")
 
