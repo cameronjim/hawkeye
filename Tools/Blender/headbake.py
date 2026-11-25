@@ -19,7 +19,7 @@ import numpy as np
 import headtex as ht
 import looks
 
-LIP_HUE = np.array([0.84, 0.62, 0.60])        # multiplies the skin on the lips
+LIP_HUE = np.array([0.80, 0.66, 0.64])        # multiplies the skin on the lips
 SOCKET_HUE = np.array([0.80, 0.60, 0.55])     # what the inside of the lids and the pockets take on
 
 
@@ -118,7 +118,7 @@ def beard_mask(face, lx, lz, lyf, nz):
     front = smoothstep(-3.0, 3.0, lyf + 1.5 - 0.4 * ax)     # to the ears, not the back of the head
     mouth = np.exp(-0.5 * ((ax / 2.6) ** 2 + ((lz - 4.1) / 0.55) ** 2))     # the lips themselves are bare
     if face.facial_hair in ("stubble", "beard"):
-        top = (5.7 if face.facial_hair == "beard" else 5.3) + 4.4 * smoothstep(1.2, 6.6, ax)             + 0.35 * np.sin(lx * 2.1 + lyf * 0.9)                                  # the cheek line, rising to the ear
+        top = (5.7 if face.facial_hair == "beard" else 5.3) + 4.4 * smoothstep(2.2, 7.0, ax)             + 0.35 * np.sin(lx * 2.1 + lyf * 0.9)                                  # the cheek line, rising to the ear
         m = smoothstep(top + 0.9, top - 0.9, lz) * smoothstep(-3.6, -0.6, lz)
         m *= 0.85 if face.facial_hair == "stubble" else 1.0
         # a clean upper lip edge below the nose for stubble; a moustache joins a beard
@@ -181,10 +181,10 @@ def skin_maps(face, parts, chin_z, size=1024, hairline_t=None):
     albedo += (face.skin_ruddy * (0.55 + 0.45 * face.age) * 0.06 * np.clip(flush, 0, 1.5))[..., None] \
         * np.array([0.95, -0.40, -0.30])
     # the cage's own occlusion shades the sockets, the lip line, under the nose, the fold beside the mouth
-    shade = 1.0 - 0.92 * (1.0 - np.clip(ao, 0.0, 1.0)) ** 1.1
+    shade = 1.0 - 0.80 * (1.0 - np.clip(ao, 0.0, 1.0)) ** 1.1
     albedo *= shade[..., None] * np.array([1.0, 0.94, 0.92]) + (1.0 - shade[..., None]) * 0.0
     # creases (cavity, from the mesh's own curvature): the fold beside the nose and mouth, a lid's corner, under the lip
-    albedo *= (1.0 - 0.38 * np.clip(cavity, 0, 1) ** 0.8)[..., None] * np.array([1.0, 0.97, 0.96]) + 0.0
+    albedo *= (1.0 - 0.30 * np.clip(cavity, 0, 1) ** 0.8)[..., None] * np.array([1.0, 0.97, 0.96]) + 0.0
     # lids' margins: a faint dark lash line; the inside of the lids, the mouth's pocket and the nostrils: dark red
     albedo *= 1.0 - 0.45 * np.clip(lash, 0, 1)[..., None]
     albedo = lerp(albedo, albedo * SOCKET_HUE * 0.16, np.clip(inner * 1.5, 0, 1)[..., None])

@@ -70,7 +70,8 @@ class CageTests(unittest.TestCase):
             head = v[v[:, 2] > hc.CHIN_Z - 0.005]
             self.assertAlmostEqual(v[:, 2].max() - hc.CHIN_Z, 0.225, places=3)
             width = head[:, 0].max() - head[:, 0].min()
-            depth = head[:, 1].max() - head[:, 1].min()
+            top = v[v[:, 2] > hc.CHIN_Z + 0.125]            # glabella to occiput (the nose does not count)
+            depth = top[:, 1].max() - top[:, 1].min()
             self.assertTrue(0.14 < width < 0.175, "{0} width {1}".format(look_id, width))
             self.assertTrue(0.17 < depth < 0.24, "{0} depth {1}".format(look_id, depth))
             # The nose is the most forward thing on the face.
