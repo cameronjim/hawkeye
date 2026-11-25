@@ -850,6 +850,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Look")
 	FHawkeyeBodyLook BodyLook;
 
+	/**
+	 * Other faces and builds this thug may wear (Tools/Blender/looks.py rows on the same skeleton and AnimBP, written by
+	 * Tools/Editor/import_bodies.py). Empty: BodyLook only. Otherwise each thug takes one of {BodyLook, these} when he is
+	 * made, by his actor's name, so a placed thug keeps his face between runs. A variant whose content is not on disk
+	 * falls back to BodyLook. Ignored when BodyLook itself is empty (the mannequin children).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Thug|Look")
+	TArray<FHawkeyeBodyLook> BodyLookVariants;
+
 	/** The mesh people see: the look's while BodyLook is on, else GetMesh(). His materials (hit flash, telegraph) are on it. */
 	UFUNCTION(BlueprintPure, Category = "Thug|Look")
 	USkeletalMeshComponent* GetBodyMesh() const;

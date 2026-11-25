@@ -74,6 +74,32 @@ bool FHawkeyeBodyLookNoneDrawsDriver::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyLookPickVariant, "Hawkeye.BodyLook.PickVariantIsStableAndInRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeBodyLookPickVariant::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("None: the Blueprint's own"), HawkeyeBodyLook::PickVariantIndex(0, 12345u), 0);
+	TestEqual(TEXT("One: the Blueprint's own"), HawkeyeBodyLook::PickVariantIndex(1, 12345u), 0);
+	TArray<int32> Seen;
+	Seen.Init(0, 4);
+	for (uint32 Seed = 0; Seed < 400u; ++Seed)
+	{
+		const int32 Pick = HawkeyeBodyLook::PickVariantIndex(4, Seed * 2654435761u);
+		if (!TestTrue(TEXT("In range"), Pick >= 0 && Pick < 4))
+		{
+			return false;
+		}
+		TestEqual(TEXT("Stable for a seed"), Pick, HawkeyeBodyLook::PickVariantIndex(4, Seed * 2654435761u));
+		++Seen[Pick];
+	}
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		TestTrue(*FString::Printf(TEXT("Look %d is picked"), Index), Seen[Index] > 40);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeBodyLookMissingKeepsDriver, "Hawkeye.BodyLook.MissingContentKeepsTheDriver",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

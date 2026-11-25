@@ -65,6 +65,13 @@ namespace HawkeyeBodyLook
 	HAWKEYE_API bool Resolve(const FHawkeyeBodyLook& Look, USkeletalMesh*& OutMesh, UClass*& OutAnimClass);
 
 	/**
+	 * Which of Count looks a character takes when it has several (index 0 is its own BodyLook, 1.. its variants):
+	 * Seed modulo Count, and 0 when there is one or none. A pure function of the seed, so a placed thug keeps his face
+	 * between runs when the seed is his actor's name.
+	 */
+	HAWKEYE_API int32 PickVariantIndex(int32 Count, uint32 Seed);
+
+	/**
 	 * Creates, registers and returns the look component under Driver, and hides the driver. Null (and the
 	 * driver left as it was, with one log line) when the look does not resolve.
 	 */
