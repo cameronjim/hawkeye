@@ -185,6 +185,25 @@ the next `generate-city.ps1` or `create-content.ps1`, and a run with nothing edi
   lines, the parking lanes packed and dirty, the plowed ridge at the kerb; the sidewalk has a path shovelled down the
   middle (75 to 255 cm from the kerb, a ragged edge) with banks either side that fall away into it in the normal.
 
+## Character light rig (2026-11-25, from "Kate is a black silhouette in every night shot")
+
+Why she was black: Kate's costume is near-black cloth on purpose (`kate.slots.json`: trousers, belt, boots, gloves, panels 0.008
+to 0.014 linear albedo; the purple top 0.05, 0.0055, 0.125), the moon is 0.6 lux, and exposure is pinned (EV100 1, bias +2 at
+night), so a 1 % albedo under 0.6 lux comes out at about 0.004 of display white. The thugs' and Clint's costumes are dark
+the same way. `UCharacterLightRigSubsystem` (`World/CharacterLightRig.h`) lights characters only:
+- Three unshadowed directional lights in lighting channel 1 only, turned with the camera each frame (`FCharacterLightRules::
+  LightRotation`): a warm key from the upper left (3.0 lux, 30 degrees yaw, 35 down), a cool fill from the right (0.8), a cool rim
+  from behind toward the lens (5.0). Every pawn's mesh components (meshes only, rescanned twice a second) are put in channels 0 and
+  1, so the street, walls and sky are lit as before and the rig reaches nothing but characters and what they carry (the bow).
+  Indirect lighting and volumetric scattering are 0 on the three lights (Lumen would otherwise light the whole street from them).
+- Lux follows the exposure in force: `ExposureScale(bias) = 2^(2 - bias)` times the day's share (`DayRelative`, 0.12) blended in
+  as the bias goes from the night's 2 to the day's 0, so the picture's brightness of a character is the same under any bias and
+  the day (bias 0, sun 7 lux plus sky 13) gets under half of the night's lux. `UTimeOfDaySubsystem::GetExposureBiasInForce` is the
+  bias.
+- `hawkeye.CharLight.Enable`, `.Key`, `.Fill`, `.Rim`, `.DayScale` (lux at the night's exposure; the day's share), `.Debug 1`.
+- Tests: `Hawkeye.CharLight.Rules`, `Hawkeye.CharLight.PawnsAreInChannelOne`. The strips: `Hawkeye.Screenshot.Traversal` with
+  `-HawkeyeTraversalOnly=shot+shot_player` (night, the stage lamp off).
+
 ## Shots and numbers
 
 `Hawkeye.Screenshot.Block` (`Source/Hawkeye/Tests/BlockScreenshotTest.cpp`) writes

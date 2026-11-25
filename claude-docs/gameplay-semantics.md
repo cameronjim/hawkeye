@@ -581,6 +581,52 @@ point at the same velocity). `hawkeye.ZipPose 0` switches the whole layer off fo
   `.Arrive`, `.LoadAndBrace`; on the character, `.InputFollowsTheZip`, `.NeverMovesHer`, `.LandingOutcomesKept`, `.LandingRoles`,
   `.AppliedToTheGraph`. The strips: `Hawkeye.Screenshot.Traversal` (`testing.md`).
 
+### Grapple shot and rope (written 2026-11-25, from "no animation for her shooting a grapple and the grapple is neon green")
+
+Rules in `Source/Hawkeye/Traversal/GrappleShotRules.h` and `GrappleRopeRules.h` (pure; `Hawkeye.Grapple.Shot.*`,
+`Hawkeye.Grapple.Rope.*`), played by `UGrappleComponent` and `UBowComponent`, drawn by `UGrappleRopeComponent`. The reach
+maths, the target pick, the zip sweeps and the movement are untouched (the traversal audit's anchors and pairs do not move).
+Before this, `Input_Grapple` called `TryFire`, which spawned the arrow at the press: no raise, no draw, an arrow that flew
+for a few frames unseen (no trail, `LaunchWithVelocity` is off for it), and the zip drawn as an additive HDR Niagara beam
+(`NS_ZipLine`, colour (0.9, 0.75, 1.6) times the emissive factor: a laser).
+- `FHawkeyeGrappleShotSettings` (`UGrappleComponent::Shot`, off in C++, on in `BP_HawkeyeCharacter` by
+  `create_grapple_rope.py`). On a press that `TryFire` accepts: the state is `ArrowInFlight` from the press (a second press is
+  refused, the body pose's Load crouch starts), the bow comes up on the anchor line (`UBowComponent::BeginScriptedShot`: the
+  draw pose with no input held, the owner keeps running, not `IsDrawing`), the string comes back over the draw, and the arrow
+  leaves the bow hand at the release. Press-to-pull is the arrow's own flight time as before (distance over speed, plus
+  `ExtraLatencySeconds`, 0); the release takes `RaiseSeconds` + `DrawSeconds` (0.08 + 0.10) out of it, never more than
+  `ReleaseMaxShare` (0.6) of it nor less than `MinReleaseSeconds`, and the arrow flies the rest, fast enough to arrive on
+  time. A 6 m line releases at 0.06 s with the draw squeezed; a 24 m line at 0.18 s.
+- A chain (a press mid-zip): `ChainArrowSpeed` is 0, so the redirect used to start at the press. The shot is compressed into
+  `ChainTotalSeconds` (0.10 s; 0 keeps the redirect at the press and the shot plays over it). The old rope stays taut until the
+  new arrow bites, then whips back.
+- The bow stays raised and aimed at the anchor (`HasScriptedAim`) while the shot, the arrow or the pull needs it
+  (`bBowHeld`), and `BowHoldAfterZipSeconds` (0.15) after: the bow hand keeps the line through the jerk. The hands IK reads
+  `IsDrawPose` (a real or a scripted draw).
+- The arrow is the bow's (`InitArrow` gets the bow component, so it whistles and trails), dark steel vanes (they were bright
+  green), tied to the rope at its nock end (`GetTailLocation`). It sticks in the anchor with the sparks and `HitSound`, and stays
+  until the zip ends; after a let-go it is taken out `ArrowLingerSeconds` (0.25) later.
+- The rope (`FGrappleRope`, `FHawkeyeGrappleRopeSettings`), pure, drawn along her bow hand and the arrow's nock by
+  `UGrappleRopeComponent` (engine cylinders, `M_GrappleRope`: braided nylon grey, lit by the scene, not emissive, a faint
+  cool Fresnel rim, 1.4 cm). Flying: slack, sagging `SagFraction` (10 %) of its span, a small ripple. Taut: the sag goes out
+  over `SnapSeconds` (0.10, ease out) and a shiver of `VibrationCm` at `VibrationHz` dies over `VibrationDecaySeconds`; straight
+  from hand to arrow after that. Released (landing or a let-go): the near end comes away from her hand, the rope goes slack,
+  whips and is drawn back to the anchor over `ReleaseSeconds` (0.2), then Hidden. At most three ropes at once.
+- The Niagara beam is off while `Shot.bEnabled` (`hawkeye.Grapple.LegacyBeam 1` brings it back for a comparison). No debug line
+  is drawn by the game; the traversal strips' yellow line is the test's own.
+- The marker's colour (the HUD's bright green diamond, `GrappleMarkerColor`, the accessibility palette's green) is HUD, not the
+  line; the line and the arrow carry no state colour.
+- Tests: `Hawkeye.Grapple.Shot.Schedule`, `.DrawAndPhases`, `.PlaysBeforeTheArrowLeaves` (the whole press to the let-go in an
+  unticked world), `Hawkeye.Grapple.Rope.StateMachine`.
+
+### Motion blur on a trip
+
+`AHawkeyeCharacter::UpdateTraversalMotionBlur` (`HawkeyeCharacterTraversalPose.cpp`) steps a weight in over 0.1 s while the
+body pose is in any phase or the shot or the zip is up, and out over 0.35 s, and sets the follow camera's `MotionBlurAmount`
+to `hawkeye.Traversal.MotionBlur` (0.12; the engine default is 0.5) and `MotionBlurMax` to `.MotionBlurMax` (1 % of the screen;
+5). An explosion's `SuppressMotionBlur` wins while it runs. The speed sensation is the camera's speed FOV (`CameraRules`).
+Test: `Hawkeye.Traversal.MotionBlurWeight`.
+
 ## Bow and arrows (built 2026-09-26; the rules below hold, with these notes)
 - Data: `UBowDefinition` (DA_Bow_Kate 0.8 s draw, DA_Bow_Clint 1.0 s) and
   `UArrowDefinition` (DA_Arrow_Standard 40 damage, cap 30, recoverable; DA_Arrow_Grapple

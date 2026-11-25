@@ -157,6 +157,10 @@ Rules: `gameplay-semantics.md`, "Flashback".
 - The grapple arrow is not a bow projectile: release with it nocked calls
   `UGrappleComponent::TryFire` (Player, below). `AGrappleArrowProjectile` (World) is the
   arrow in flight.
+- `UGrappleComponent` also plays the grapple shot and owns the ropes (`GrappleShotRules.h`, `GrappleRopeRules.h`, both pure;
+  `UGrappleRopeComponent`, `Vfx/`, draws one rope as engine cylinders; `UBowComponent::BeginScriptedShot` raises and draws the bow
+  with no input). `UCharacterLightRigSubsystem` (`World/CharacterLightRig.h`) lights pawns by lighting channel 1. Rules:
+  "Grapple shot and rope" in `gameplay-semantics.md` and "Character light rig" in `city-look.md`.
 - `UMeleeComponent`: a swing as wind-up, one sweep and recovery, shared by Kate (light,
   heavy) and the thugs (fists, bat). The attack is data, an `FHawkeyeMeleeAttack`. With a
   clip, the montage's `ANS_HitWindow` and `ANS_ComboWindow` time the swing and motion warping
