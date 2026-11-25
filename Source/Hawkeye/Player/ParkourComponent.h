@@ -4,8 +4,10 @@
 #include "Animation/AnimEnums.h"
 #include "Components/ActorComponent.h"
 #include "Player/HawkeyeMovementTypes.h"
+#include "Traversal/LedgeBodyRules.h"
 #include "ParkourComponent.generated.h"
 
+enum class ECombatAnimRole : uint8;
 class ACharacter;
 struct FHawkeyeStrikePoseSample;
 class UAnimMontage;
@@ -273,6 +275,28 @@ public:
 
 	/** Where the hands are along the edge from the capsule, cm (left, right); for the log and the tests. */
 	FVector2D GetHangHandOffsets() const;
+
+	// --- The ledge body (2026-11-25; LedgeBody.cpp) ---------------------------------------------------
+	// What the visible body does on a ledge: the stage of the move or hang, the hands on the edge, the swing under them,
+	// the authored clips. The capsule's path and every timing are unchanged; the Hawkeye Ledge IK node reads the pose.
+
+	/** The ledge IK's pose for this frame (world space; LedgeBodyRules.h). False when nothing holds her to a ledge. */
+	bool GetLedgeBodyPose(FLedgeBodyPose& OutPose) const;
+
+	/** One tick of the ledge body: the stage, the hands on the edge, the swing. TickComponent calls it; a test calls it directly. */
+	void UpdateLedgeBody(float DeltaSeconds);
+
+	/** The stage she is in now (None when no ledge holds her). */
+	ELedgeStage GetLedgeStage() const { return CurrentLedgeStage; }
+
+	/** How far the swing has taken her feet from the wall, degrees. */
+	float GetLedgeSwingDegrees() const { return Swing.Angle; }
+
+	/** The ledge body is on: bLedgeBodyPose and the hawkeye.LedgePose console variable. */
+	bool IsLedgeBodyOn() const;
+
+	/** The stage's time and the weights are for one move: the stages Move goes through, as the component will run them. */
+	const FLedgeSequence& GetLedgeSequence() const { return MoveSequence; }
 
 	/** The hang camera: the shoulder offset goes to the open side of the wall. AHawkeyeCharacter::UpdateCamera calls it. */
 	void ApplyHangCamera(FHawkeyeCameraTargets& InOutTargets, float DeltaSeconds);
@@ -615,6 +639,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Clips")
 	FName ClipSlot = TEXT("DefaultSlot");
 
+	// --- The ledge body ---------------------------------------------------------------------------
+
+	/**
+	 * Her hands on the real edge, the body hung from them with a swing, a roof dismount that turns round: the visible body
+	 * does what the ledge says (the Hawkeye Ledge IK node on ABP_Kate_Body). Off: the sample's pose, as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Ledge Body")
+	bool bLedgeBodyPose = true;
+
+	/** The authored ledge clips (ECombatAnimRole::LedgeDropToHang .. LedgeClimbUp, from the combat anim set) play when the set has them. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Ledge Body")
+	bool bUseAuthoredLedgeClips = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Parkour|Ledge Body")
+	FHawkeyeLedgeBodySettings LedgeBody;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -695,7 +735,8 @@ protected:
 	void HandleTraversalEnded(EHawkeyeTraversalEnd End);
 
 	void FinishMove();
-	void EnterHang();
+	/** The hang begins, coming from FromMove (a catch swings in under the hands, a drop barely does). */
+	void EnterHang(EHawkeyeParkourMove FromMove = EHawkeyeParkourMove::None);
 	/** The movement mode was changed under a move or hang: drop the state that depended on it. */
 	void AbandonTraversal();
 	FVector HangLocationFor(const FHawkeyeParkourObstacle& Obstacle) const;
@@ -904,4 +945,48 @@ protected:
 	/** The lens's shoulder: +1 right, -1 left, eased between. */
 	float HangCameraSide = 1.f;
 	float HangCameraSideTarget = 1.f;
+
+	/** A turning move's turn is finished by this fraction of its time (a roof dismount's plant); 1 turns over all of it. */
+	float MoveTurnEnd = 1.f;
+	/** A turning move carries the camera round with her (a corner, the hop); the roof dismount's turn does not. */
+	bool bTurnCarriesCamera = true;
+
+	// The ledge body (LedgeBody.cpp).
+	/** Builds the edge of a probed obstacle: its face's normal, her right along it, a synthetic length either way. */
+	FLedgeEdge MakeEdgeFromObstacle(const FHawkeyeParkourObstacle& Obstacle) const;
+	/** The hang's edge as it is Along cm along the line: the point on it and how far it runs either way. */
+	FLedgeEdge MakeEdgeFromHang(float Along) const;
+	/** The pose's common fields from an edge, a stage and its weights. */
+	void FillLedgePose(FLedgeBodyPose& Out, const FLedgeEdge& Edge, ELedgeStage Stage, float StageAlpha, const FLedgeStageWeights& Weights) const;
+	/** A move starts: its stages, its edge, the speed it came in at. */
+	void BeginLedgeMove(EHawkeyeParkourMove Move);
+	/** The hang starts coming from FromMove. */
+	void BeginLedgeHang(EHawkeyeParkourMove FromMove);
+	/** The hands let go of the hang: the IK fades out over LedgeBody.ReleaseSeconds on the pose she hung in. */
+	void BeginLedgeRelease();
+	bool ComposeHangPose(float DeltaSeconds, FLedgeBodyPose& Out);
+	bool ComposeMovePose(float DeltaSeconds, FLedgeBodyPose& Out);
+	bool ComposeReleasePose(float DeltaSeconds, FLedgeBodyPose& Out);
+	/** Plays Role's montage from the character's combat anim set over the capsule's path, in place, fitted (within half and double speed) to FitSeconds when positive. False when the set has none. */
+	bool PlayLedgeRole(ECombatAnimRole Role, float FitSeconds);
+	/** The authored clip of a move, when the set has it. */
+	bool PlayAuthoredMoveClip(EHawkeyeParkourMove Move, float Seconds);
+
+	/** The pose handed out (the last wanted pose, scaled by the master weight), and the one wanted last. */
+	FLedgeBodyPose LedgePose;
+	FLedgeBodyPose LedgeLastPose;
+	/** The pose a let-go or a transfer starts from, held while its IK fades. */
+	FLedgeBodyPose HeldPose;
+	float LedgeMasterWeight = 0.f;
+	ELedgeStage CurrentLedgeStage = ELedgeStage::None;
+	FLedgeSequence MoveSequence;
+	FLedgeEdge MoveEdge;
+	FLedgePendulum Swing;
+	float LedgeMoveElapsed = 0.f;
+	float HangElapsed = 0.f;
+	bool bHangSettled = false;
+	float ReleaseElapsed = -1.f;
+	float MoveEntryDownSpeed = 0.f;
+	bool bMoveIsCatch = false;
+	bool bSwingKicked = false;
 };
