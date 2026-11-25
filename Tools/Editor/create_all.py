@@ -55,6 +55,7 @@
     4e. apply_audio_defaults      (create_blueprints) the sounds on BP_HawkeyeCharacter, BP_Thug,
                                   BP_HawkeyePlayerController and the trick arrows' data assets
     4f. apply_vfx_defaults        (create_blueprints) the effects on the same classes and data assets
+    4g. create_grapple_rope       M_GrappleRope (the rope's material) and the grapple shot switched on for BP_HawkeyeCharacter
     5. fixup_redirectors          resave past any redirector the GASP copy brought in, then
                                   delete it
     5b. create_narrative          DT_Messages, DT_DialogueSequences, L_Scene_Placeholder and its game
@@ -117,6 +118,7 @@ STEPS = [
     ("combat anims", "create_combat_anims"),
     ("audio defaults", "create_blueprints", "apply_audio_defaults"),
     ("vfx defaults", "create_blueprints", "apply_vfx_defaults"),
+    ("grapple rope", "create_grapple_rope"),
     ("fix up redirectors", "fixup_redirectors"),
     ("narrative", "create_narrative"),
     ("challenges", "create_challenges"),
