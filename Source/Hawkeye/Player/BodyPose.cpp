@@ -37,9 +37,9 @@ namespace HawkeyeBodyPose
 			Make(86.f, 100.f, 62.f), Make(88.f, 98.f, 60.f)};
 		static const FFingerAngles Grip[5] = {Make(10.f, 20.f, 15.f, 75.f), Make(58.f, 78.f, 42.f), Make(62.f, 82.f, 44.f),
 			Make(66.f, 80.f, 42.f), Make(70.f, 78.f, 40.f)};
-		// Laid on a ledge's top, palm down: the fingers press it and hook a little at the tips, the thumb alongside.
-		static const FFingerAngles Hang[5] = {Make(8.f, 10.f, 8.f, 20.f), Make(24.f, 34.f, 20.f), Make(28.f, 38.f, 22.f),
-			Make(32.f, 40.f, 24.f), Make(36.f, 42.f, 26.f)};
+		// Laid on a ledge's top, palm down: the fingers close side by side and wrap over the lip, the thumb alongside.
+		static const FFingerAngles Hang[5] = {Make(8.f, 10.f, 8.f, 8.f), Make(34.f, 52.f, 34.f), Make(38.f, 56.f, 36.f),
+			Make(40.f, 56.f, 36.f), Make(42.f, 54.f, 34.f)};
 		const int32 Row = FMath::Clamp(static_cast<int32>(Finger), 0, 4);
 		switch (Pose)
 		{

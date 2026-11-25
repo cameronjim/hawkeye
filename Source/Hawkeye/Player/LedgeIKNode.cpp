@@ -12,6 +12,9 @@ using namespace HawkeyeBodyPose;
 
 namespace
 {
+	/** How much of the bind pose's finger fan the hang's grip closes (1: parallel to the middle finger). */
+	constexpr double ClosedFingers = 0.95;
+
 	const TCHAR* LedgeFingerNames[5] = {TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky")};
 
 	/** The finger and joint (0..2) a bone name is, from `<finger>_0<n>_<side>`; false for anything else (the tip bone included). */
@@ -197,6 +200,29 @@ void FAnimNode_HawkeyeLedgeIK::InitializeBoneReferences(const FBoneContainer& Re
 					const FCompactPoseBoneIndex ParentCompact = RequiredBones.GetParentBoneIndex(Bones[Slot]);
 					const FQuat ParentBind = Bind[ParentCompact.GetInt()].GetRotation();
 					Joint.FlexAxis = ParentBind.UnrotateVector(FVector::CrossProduct(Dir, Palm).GetSafeNormal());
+					// The body's bind pose fans its fingers (a T-pose hand): the angle about the palm's normal from this joint's
+					// direction to the middle finger's same joint, which the grip takes out so the four close side by side.
+					if (Joint.Finger >= 1)
+					{
+						const int32 MiddleHere = FindCompact(FString::Printf(TEXT("middle_%02d_%s"), Joint.Joint + 1, *Suffix));
+						int32 MiddleChild = FindCompact(FString::Printf(TEXT("middle_%02d_%s"), Joint.Joint + 2, *Suffix));
+						if (MiddleChild == INDEX_NONE)
+						{
+							MiddleChild = FindCompact(FString::Printf(TEXT("middle_04_leaf_%s"), *Suffix));
+						}
+						if (MiddleHere != INDEX_NONE && MiddleChild != INDEX_NONE)
+						{
+							const FVector MiddleDir = (Bind[MiddleChild].GetLocation() - Bind[MiddleHere].GetLocation()).GetSafeNormal();
+							const FVector Mine = (Dir - Palm * FVector::DotProduct(Dir, Palm)).GetSafeNormal();
+							const FVector Theirs = (MiddleDir - Palm * FVector::DotProduct(MiddleDir, Palm)).GetSafeNormal();
+							if (!Mine.IsNearlyZero() && !Theirs.IsNearlyZero())
+							{
+								Joint.AdductAxis = ParentBind.UnrotateVector(Palm);
+								Joint.AdductRadians = static_cast<float>(FMath::Atan2(
+									FVector::DotProduct(FVector::CrossProduct(Mine, Theirs), Palm), FVector::DotProduct(Mine, Theirs)));
+							}
+						}
+					}
 				}
 				else
 				{
@@ -367,8 +393,12 @@ void FAnimNode_HawkeyeLedgeIK::SolveArm(int32 Side, TArray<FTransform>& Comp, co
 		if (Joint.Finger != INDEX_NONE && Grip > UE_KINDA_SMALL_NUMBER)
 		{
 			const FFingerAngles Angles = BlendHang(static_cast<EFinger>(Joint.Finger), 1.f);
+			// Closed up first (the fingers side by side), then curled about the finger's own flexion axis.
+			const FQuat Close = Joint.AdductAxis.IsNearlyZero()
+				? FQuat::Identity
+				: FQuat(Joint.AdductAxis, static_cast<double>(Joint.AdductRadians) * ClosedFingers);
 			const FQuat Authored =
-				FQuat(Joint.FlexAxis, FMath::DegreesToRadians(Angles.Curl[Joint.Joint])) * Joint.RefLocalRotation;
+				Close * FQuat(Joint.FlexAxis, FMath::DegreesToRadians(Angles.Curl[Joint.Joint])) * Joint.RefLocalRotation;
 			Own.SetRotation(FQuat::Slerp(Own.GetRotation(), Authored, static_cast<double>(Grip)).GetNormalized());
 		}
 		Comp[Joint.Slot] = Own * Comp[Joint.ParentSlot];

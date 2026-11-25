@@ -65,6 +65,9 @@ private:
 		FQuat RefLocalRotation = FQuat::Identity;
 		/** In the parent's frame at the reference pose: the way the joint curls toward the palm. */
 		FVector FlexAxis = FVector::ZeroVector;
+		/** In the parent's frame: the palm's normal, and the turn about it (radians) that brings this joint parallel to the middle finger's. */
+		FVector AdductAxis = FVector::ZeroVector;
+		float AdductRadians = 0.f;
 	};
 
 	struct FArm
