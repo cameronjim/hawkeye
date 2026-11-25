@@ -1439,37 +1439,41 @@ def ledge_climb_up(rig):
 VAULT_LIP_AHEAD = 110.0   # the lip's front edge ahead of where a vault starts, game cm (a probe's reach)
 VAULT_RUN = 170.0         # the capsule's travel start to end
 VAULT_TOP = 90.0          # the top's height over the floor at the start
-VAULT_ABOVE = 25.0        # how far over the top her hips go (the game's arc for the authored vault: Rise = Height - 65)
-
-
-def vault_rise(height):
-    """The capsule's rise over the vault's path with the authored clip (game cm; ParkourComponent mirrors it): the hips pass
-    VAULT_ABOVE over the top, a hurdle's body low over it with the legs swung beside, instead of a leap that hands cannot reach."""
-    return max(10.0, height + VAULT_ABOVE - 90.0)
+VAULT_RISE = VAULT_TOP + 10.0   # the game's path (ComputeMoveShape: Rise = Height + 10): the capsule's bottom just clears the top
+VAULT_LAND_UP = 50.0      # the floor beyond is about this much higher than where she started (the path's left-over rise)
+VAULT_ABOVE = 27.0        # how far over the top her hips go: the body is lower than the capsule, which passes the parapet at VAULT_RISE
 
 
 def _vault(rig, name, crouch):
     """A speed vault over a 90 cm top (claude-docs/animation.md, "Ledge clips"): she runs at it, the right hand plants on the
     top ahead while the torso leans over it, the legs swing together to the left beside the hips, the hand lets go and she
-    lands running (the stride's lead foot first) or, at a slow entry, in a crouch. Keyed in the capsule's frame with the
-    capsule's path the game's: forward linearly VAULT_RUN, up VAULT_RISE * sin(pi a)."""
+    lands running (the stride's lead foot first) or, at a slow entry, in a crouch. Keyed in the capsule's frame, with the capsule
+    on the game's path (forward linearly VAULT_RUN, up VAULT_RISE * sin(pi a) plus the left-over rise): the capsule's bottom
+    clears the parapet, the body is far under the capsule over the top (hips VAULT_ABOVE over the top, hands on it), so the keys
+    are made in world heights and taken back into the frame by the capsule's height."""
     t = 0.6
     reach = 0.97 * (rig.upper_arm + rig.fore_arm)
-    sh = tuple(rig.idle_pos["upperarm_r"] - rig.idle_pelvis)
     P = tuple(rig.idle_pelvis)
     ifl = tuple(rig.idle_foot("l"))
     ifr = tuple(rig.idle_foot("r"))
     ihl = tuple(rig.idle_hand("l"))
     ihr = tuple(rig.idle_hand("r"))
-    rise = vault_rise(VAULT_TOP)
     ss = ck.smoothstep
     times = [i / ck.FPS for i in range(int(round(t * ck.FPS)) + 1)]
+    top_z = _r(VAULT_TOP)
 
     def clip_a(time):
         return time / t
 
+    def zb(a):
+        """The capsule's bottom over its start floor at a (rig cm)."""
+        return _r(VAULT_RISE) * math.sin(math.pi * a) + _r(VAULT_LAND_UP) * a
+
+    def floor_under(a):
+        """The floor she is over: the start's until the lip, the roof's beyond."""
+        return _r(VAULT_LAND_UP) * ss((a - 0.55) / 0.45)
+
     def pitch(a):
-        # (chest + pelvis) forward: running lean, over the top, back up (a crouch keeps some)
         v = 12.0 + 30.0 * ss((a - 0.1) / 0.3) - 30.0 * ss((a - 0.55) / 0.3)
         if crouch:
             v = max(v, 12.0 + 18.0 * ss((a - 0.7) / 0.3))
@@ -1477,12 +1481,12 @@ def _vault(rig, name, crouch):
 
     def pelvis(time):
         a = clip_a(time)
-        dip = ss((a - 0.1) / 0.3) * (1.0 - ss((a - 0.5) / 0.25))
+        bump = ss((a - 0.04) / 0.36) * (1.0 - ss((a - 0.58) / 0.34))
         land = ss((a - 0.75) / 0.25)
-        z = P[2] - 4.0 - _r(10.0) * dip
+        world = floor_under(a) + P[2] - 4.0 + (top_z + _r(VAULT_ABOVE) - (P[2] - 4.0)) * bump
         if crouch:
-            z -= _r(26.0) * land
-        return (6.0 * dip, P[1] - _r(9.0) * dip, z)
+            world -= _r(26.0) * land
+        return (6.0 * bump, P[1] - _r(9.0) * bump, world - zb(a))
 
     def body_rot(time):
         x = time
@@ -1498,12 +1502,13 @@ def _vault(rig, name, crouch):
     def hand_r(time):
         a = clip_a(time)
         y_c = -_r(VAULT_RUN) * a
-        z_c = _r(rise) * math.sin(math.pi * a)
-        top = (-_r(10.0), -_r(VAULT_LIP_AHEAD + 15.0) - y_c, _r(VAULT_TOP + 2.0) - z_c)
+        top = (-_r(10.0), -_r(VAULT_LIP_AHEAD + 15.0) - y_c, top_z + _r(2.0) - zb(a))
         held = _reach_limited(shoulder(time), top, reach)
-        run_swing = _lerp(ihr, add(ihr, V(-4, -24, 16)), 1.0 - ss(a / 0.25))
-        end = add(shoulder(time), V(-12.0, -0.55 * reach, -0.45 * reach)) if crouch else add(ihr, V(-2, 18, 10))
-        free = _lerp(run_swing, end, ss((a - 0.55) / 0.3))
+        sr = shoulder(time)
+        start_off = (-4.0, -0.3 * reach, -0.8 * reach)
+        end_off = (-12.0, -0.55 * reach, -0.45 * reach) if crouch else (-0.1 * reach, 0.2 * reach, -0.8 * reach)
+        off = _lerp(start_off, end_off, ss((a - 0.55) / 0.3))
+        free = (sr[0] + off[0], sr[1] + off[1], sr[2] + off[2])
         w = ss((a - 0.12) / 0.13) * (1.0 - ss((a - 0.5) / 0.14))
         return _lerp(free, held, w)
 
@@ -1511,7 +1516,7 @@ def _vault(rig, name, crouch):
         a = clip_a(time)
         sl = shoulder(time, "l")
         start = (sl[0] + 4.0, sl[1] + 0.15 * reach, sl[2] - 0.85 * reach)
-        out = (sl[0] + 0.5 * reach, sl[1] + 0.05 * reach, sl[2] - 0.6 * reach)   # out and back for balance over the top
+        out = (sl[0] + 0.18 * reach, sl[1] - 0.3 * reach, sl[2] - 0.6 * reach)   # tucked in front: an arm out to the side read as flung
         v = _lerp(start, out, ss((a - 0.04) / 0.4))
         if crouch:
             end = (sl[0] + 12.0, sl[1] - 0.55 * reach, sl[2] - 0.45 * reach)
@@ -1525,9 +1530,10 @@ def _vault(rig, name, crouch):
         def at(time):
             a = clip_a(time)
             lead = (side == "l")
-            # the stride into the vault: the left foot the trailing one off the floor, the right (the plant hand's side) leads
+            # the stride into the vault; then the legs swing together to the left, the feet over the top at hip height
             run0 = V(base[0] * 0.8, base[1] + (-14.0 if not lead else 16.0), base[2] + (0.0 if not lead else 10.0))
-            swing = V(_r(34.0 if lead else 24.0), base[1] + (4.0 if lead else 14.0), base[2] + _r(66.0 if lead else 60.0))
+            swing_z = top_z + _r(18.0 if lead else 12.0) - zb(a)
+            swing = V(_r(34.0 if lead else 24.0), base[1] + (4.0 if lead else 14.0), swing_z)
             if crouch:
                 land = V(base[0] * 0.85, base[1] + (-8.0 if not lead else -2.0), base[2])
             else:
@@ -1553,7 +1559,7 @@ def _vault(rig, name, crouch):
         "fingers_r": T([(0.0, 1.0), (0.12, 1.0), (0.25, 0.7), (0.5, 0.7), (0.6, 1.0)]),
     }
     return ck.Clip(name, t, tracks, fade_in=0.05, fade_out=0.15, strip_times=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, t],
-                   torso_clear=False, extra={"floor_cm": -10.0, "span": (-140.0, 140.0), "pop_degrees": 75.0, "pelvis_cm": 14.0})
+                   torso_clear=False, extra={"floor_cm": -110.0, "span": (-140.0, 140.0), "pop_degrees": 75.0, "pelvis_cm": 32.0})
 
 
 def ledge_vault_plant(rig):
