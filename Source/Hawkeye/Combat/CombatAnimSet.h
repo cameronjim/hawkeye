@@ -78,11 +78,23 @@ enum class ECombatAnimRole : uint8
 	LandRoll,
 	LandStumble,
 	/** Should loop: the fall after a release. */
-	FallLoop
+	FallLoop,
+	/**
+	 * The ledge set (Tools/Blender/build_clips.py, "Ledge clips"; UParkourComponent plays them): turning and lowering over a
+	 * roof edge to the hang, the catch of a ledge while falling or jumping, the hang itself (loops), the let-go, the climb up
+	 * from a hang, and a vault's one-hand plant. Appended: assets store the value.
+	 */
+	LedgeDropToHang,
+	LedgeCatch,
+	/** Should loop: a hang on both hands. */
+	LedgeHangIdle,
+	LedgeHangDrop,
+	LedgeClimbUp,
+	LedgeVaultPlant
 };
 
 /** The last role: loops over every slot run to here. */
-constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::FallLoop;
+constexpr ECombatAnimRole LastCombatAnimRole = ECombatAnimRole::LedgeVaultPlant;
 
 /**
  * More clips for one role, after the role's own slot: the slot is variant 0, these are 1, 2, ...
@@ -357,6 +369,30 @@ public:
 	/** Should loop (the montage's one section loops). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Landing")
 	TSoftObjectPtr<UAnimMontage> FallLoop;
+
+	/** Turning round at a roof edge and lowering over it to the hang (it takes the drop to hang's time). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeDropToHang;
+
+	/** Reaching up, the hands taking the edge, the body swinging in under them. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeCatch;
+
+	/** Should loop (the import script makes its one section loop): hanging on both hands, a small sway. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeHangIdle;
+
+	/** Letting go: a push off the wall, the legs ready for the landing. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeHangDrop;
+
+	/** From the hang to standing on top: pull, chest over, knee up, stand (it takes the climb's time). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeClimbUp;
+
+	/** A vault with one hand planted on the top and the legs swung to the side. Not wired to a move by default. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Ledge")
+	TSoftObjectPtr<UAnimMontage> LedgeVaultPlant;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat Anim|Finisher")
 	TSoftObjectPtr<UAnimMontage> FinisherAttacker;
