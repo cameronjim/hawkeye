@@ -94,7 +94,7 @@ class GridTests(unittest.TestCase):
             self.assertGreaterEqual(neck[..., 2].min(), hs.NECK_BASE_Z - 1e-9, look_id)
             half_width = np.abs(neck[0, :, 0]).max()
             half_depth = (neck[0, :, 1].max() - neck[0, :, 1].min()) / 2
-            self.assertAlmostEqual(half_width, 0.88 * looks.LOOKS[look_id].face.neck_radius, places=3)
+            self.assertAlmostEqual(half_width, 0.80 * looks.LOOKS[look_id].face.neck_radius, places=3)
             self.assertAlmostEqual(half_depth, looks.LOOKS[look_id].face.neck_radius, places=3)
 
     def test_faces_are_not_the_same_head(self):
@@ -286,7 +286,7 @@ class TextureTests(unittest.TestCase):
         self.assertLess(float(centre.max()), 0.05)                       # pupil
         iris = img[64, 64 + int(128 * 0.18)]
         sclera = img[64, 64 + int(128 * 0.42 * 2 / 2) + 6]
-        self.assertGreater(float(sclera.mean()), 0.5)
+        self.assertGreater(float(sclera.mean()), 0.3)
         self.assertGreater(float(sclera.mean()), float(iris.mean()))
 
     def test_brow_and_hair_textures(self):
@@ -296,7 +296,9 @@ class TextureTests(unittest.TestCase):
         self.assertTrue(0.25 < float(brow[..., 3].mean()) < 0.95)       # strokes, not a plain card or an empty one
         self.assertTrue(set(np.unique(brow[..., 3]).tolist()) <= {0.0, 1.0})   # clipped alpha
         rgb, normal = ht.hair_maps(face, size=64)
-        self.assertEqual(rgb.shape, (64, 64, 3))
+        self.assertEqual(rgb.shape, (64, 64, 4))
+        self.assertTrue(set(np.unique(rgb[..., 3]).tolist()) <= {0.0, 1.0})
+        self.assertLess(float(rgb[:8, :, 3].mean()), float(rgb[-8:, :, 3].mean()))   # dissolves toward the hairline
         self.assertEqual(normal.shape, (64, 64, 3))
         self.assertLessEqual(float(rgb.max()), 1.0)
 

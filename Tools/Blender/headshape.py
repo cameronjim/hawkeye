@@ -32,8 +32,8 @@ T_DENSE = 0.64
 T_TOP = 0.992
 T_CAP = 0.74            # above this the rings close like a dome
 NECK_Y = 0.030          # where the neck's centre is, absent a measurement
-SOCKET_DEPTH = 0.0045    # the eye socket's dip below the face plane at eye_sink 1 (metres)
-EYE_SET_BACK = 0.0006   # how far the eyeball's front stands in front of the socket's floor (metres)
+SOCKET_DEPTH = 0.0055    # the eye socket's dip below the face plane at eye_sink 1 (metres)
+EYE_SET_BACK = -0.0035  # how far the eyeball's front stands in front of the socket's floor (metres)
 
 
 def smoothstep(e0, e1, x):
@@ -117,21 +117,24 @@ def profile(face, z, neck_y=NECK_Y):
     z = np.asarray(z, np.float64)
     t = t_of(z)
     nr = face.neck_radius
-    nrx = 0.88 * nr         # a neck is narrower side to side than front to back
+    nrx = 0.80 * nr         # a neck is narrower side to side than front to back
     hw, hd, jw = face.head_width, face.head_depth, face.jaw_width
     sq = face.jaw_square
     gj = 0.056 * jw
     ts = [-0.70, -0.10, 0.02, 0.10, 0.20, 0.32, 0.45, 0.60, T_CAP]
-    W = pchip(t, ts, [nrx, nrx, max(nrx * 0.97, gj * 0.95), max(nrx, gj), 0.062 * (1.0 + 0.6 * (jw - 1.0)),
-                      0.067 * hw, 0.0705 * hw * (1.0 + 0.03 * (face.cheek - 1.0)), 0.0735 * hw, 0.0765 * hw])
+    W = pchip(t, ts, [nrx, nrx, max(nrx * 1.05, 0.050 * jw), max(nrx * 1.10, 0.057 * jw), 0.0640 * (1.0 + 0.7 * (jw - 1.0)),
+                      0.0705 * hw, 0.0735 * hw * (1.0 + 0.03 * (face.cheek - 1.0)), 0.0750 * hw, 0.0765 * hw])
     chin_y = -(0.079 + 0.007 * (face.chin - 1.0))
     neck_front = neck_y - nr
+    # The face's plane from the chin to the brow: monotone, so no ring carries a groove across its whole width (an
+    # earlier profile dipped 8 mm at the mouth and read as a band across every cheek); the mouth is in `displacement`.
     ts_f = [-0.70, -0.14, -0.05, 0.0, 0.05, 0.12, 0.22, 0.30, 0.40, 0.50, 0.60, 0.70, T_CAP]
     yf = pchip(t, ts_f, [neck_front, neck_front, neck_front + 0.45 * (chin_y - neck_front), 0.82 * chin_y, chin_y,
-                         chin_y + 0.004, -0.071, -0.076, -0.080, -0.082, -0.086, -0.090, -0.090])
+                         min(chin_y + 0.0020, -0.0765), -0.0788, -0.0806, -0.0829, -0.0852, -0.0875, -0.0899,
+                         -0.0899])
     neck_back = neck_y + nr
     ts_b = [-0.70, -0.14, 0.0, 0.10, 0.25, 0.40, 0.55, T_CAP]
-    yb = pchip(t, ts_b, [neck_back, neck_back, neck_back + 0.002, max(neck_back + 0.002, 0.090), 0.097, 0.103, 0.106,
+    yb = pchip(t, ts_b, [neck_back, neck_back, neck_back + 0.002, max(neck_back + 0.002, 0.084), 0.097, 0.103, 0.106,
                          0.106])
     depth = 1.0 + (hd - 1.0) * smoothstep(-0.10, 0.05, t)     # head_depth scales the head, not the neck
     mid = 0.5 * (yf + yb)
@@ -140,7 +143,7 @@ def profile(face, z, neck_y=NECK_Y):
     cap = np.where(t > T_CAP, np.sqrt(np.clip(1.0 - ((t - T_CAP) / (1.0 - T_CAP)) ** 2, 0.0, 1.0)), 1.0)
     yc = 0.5 * (yf + yb)
     p = pchip(t, [-0.70, -0.10, 0.0, 0.08, 0.22, 0.40, 0.60, T_CAP],
-              [2.0, 2.0, 2.3, 2.3 + 0.5 * sq, 2.3 + 0.3 * sq, 2.2, 2.1, 2.0])
+              [2.0, 2.0, 1.8, 1.8 + 0.40 * sq, 1.85 + 0.30 * sq, 2.0, 2.0, 2.0])
     return {"t": t, "z": z, "W": W * cap, "yc": yc, "F": (yc - yf) * cap, "B": (yb - yc) * cap, "p": p}
 
 
@@ -188,9 +191,11 @@ class Landmarks:
         self.ul = self.mouth + 0.0055
         self.ll = self.mouth - 0.0070
         self.corner = 0.0205 * face.mouth_width
-        self.eye_w = 0.0125 * face.eye_size      # half width of the lid opening
-        self.eye_h = 0.0058 * face.eye_size      # half height
-        self.ball_r = 0.0120 * face.eye_size
+        self.eye_w = 0.0132 * face.eye_size      # half width of the lid opening
+        self.eye_h = 0.0050 * face.eye_size      # half height
+        self.eye_h_top = 0.0040 * face.eye_size  # the upper lid covers the top of the iris
+        self.eye_h_bot = 0.0053 * face.eye_size
+        self.ball_r = 0.0132 * face.eye_size
 
 
 def aperture(face, ax, z):
@@ -198,7 +203,8 @@ def aperture(face, ax, z):
     lm = Landmarks(face)
     u = (ax - lm.eye_x) / lm.eye_w
     zc = lm.eye + 0.0022 * np.clip(u, -1.0, 1.0)      # the outer corner sits higher
-    v = (z - zc) / lm.eye_h
+    dz = z - zc
+    v = dz / np.where(dz > 0, lm.eye_h_top, lm.eye_h_bot)
     r = np.sqrt(u * u + v * v)
     return 1.0 - smoothstep(0.80, 1.0, r), r
 
@@ -230,25 +236,29 @@ def displacement(face, ax, z):
     front -= SOCKET_DEPTH * f.eye_sink * gauss(ax - ex, z - ze, 0.0205, 0.0135)
     ap, r = aperture(f, ax, z)
     front -= 0.0140 * ap
-    front += 0.0022 * np.exp(-(((r - 1.05) / 0.20) ** 2))
-    front -= 0.0016 * gauss(ax - ex, z - (ze + 0.0105), 0.013, 0.0025)
+    front += 0.0032 * np.exp(-(((r - 1.05) / 0.20) ** 2))
+    front += 0.0030 * gauss(ax - ex, z - (ze + 0.0075), 0.0135, 0.0040)       # the upper lid's fold
+    front -= 0.0026 * gauss(ax - ex, z - (ze + 0.0120), 0.013, 0.0025)
     front -= (0.0010 + 0.0030 * age) * gauss(ax - ex * 0.92, z - (ze - 0.0150), 0.013, 0.0035)
     front += (0.0012 + 0.0028 * age) * gauss(ax - ex * 1.02, z - (ze - 0.0225), 0.014, 0.0045)
+    # cheek fullness: rounds the step from the cheekbone's width down to the jaw's (flesh over the masseter)
+    side += 0.0030 * (0.6 + 0.4 * f.cheek) * (1.0 - 0.7 * f.cheek_hollow) * gauss(ax - 0.062, z - Z(0.32), 0.022, 0.060)
     # cheekbone, the hollow under it, the temple
-    side += 0.0055 * f.cheek * gauss(ax - 0.0545, z - Z(0.425), 0.015, 0.014)
-    front += 0.0030 * f.cheek * gauss(ax - 0.040, z - Z(0.42), 0.016, 0.013)
-    front -= 0.0045 * f.cheek_hollow * (0.6 + 0.8 * age) * gauss(ax - 0.044, z - Z(0.275), 0.016, 0.020)
+    side += 0.0040 * f.cheek * gauss(ax - 0.0545, z - Z(0.40), 0.018, 0.022)
+    front += 0.0022 * f.cheek * gauss(ax - 0.042, z - (Z(0.41) + 0.35 * (ax - 0.040)), 0.018, 0.020)
+    front -= 0.0045 * f.cheek_hollow * (0.6 + 0.8 * age) * gauss(ax - 0.044, z - (Z(0.275) + 0.30 * (ax - 0.040)), 0.018, 0.022)
     side -= 0.0030 * f.cheek_hollow * gauss(ax - 0.060, z - Z(0.30), 0.010, 0.018)
     side -= 0.0020 * gauss(ax - 0.0735, z - Z(0.58), 0.008, 0.022)
     # nose: dorsum from the nasion to the tip, wings, nostrils, a hump or a dip along the bridge
     proj = 0.027 * f.nose_proj
     rise = smoothstep(lm.nasion + 0.004, lm.tip, z)
     fall = smoothstep(lm.sub - 0.0035, lm.tip - 0.0015, z)
-    width = 0.0055 + (0.0115 * nw - 0.0055) * smoothstep(lm.nasion - 0.010, lm.tip + 0.004, z)
+    width = 0.0038 + (0.0068 * nw - 0.0038) * smoothstep(lm.nasion - 0.010, lm.tip + 0.004, z)
     dorsum = proj * rise ** 1.15 * fall + 0.0035 * f.nose_bridge * gauss(0.0, z - 0.5 * (lm.nasion + lm.tip), 1.0,
                                                                           0.012)
     front += dorsum * np.exp(-0.5 * (ax / width) ** 2)
-    front += 0.0095 * f.nose_proj * gauss(ax - 0.0145 * nw, z - (lm.sub + 0.0050), 0.0070 * nw, 0.0060)
+    front += 0.0045 * f.nose_proj * gauss(ax, z - (lm.tip - 0.0020), 0.0058 * nw, 0.0065)           # the tip's ball
+    front += 0.0100 * f.nose_proj * gauss(ax - 0.0115 * nw, z - (lm.sub + 0.0055), 0.0048 * nw, 0.0055)
     front -= 0.0028 * gauss(ax - 0.0082 * nw, z - (lm.sub + 0.0015), 0.0040, 0.0032)
     # nasolabial fold, philtrum
     dist, tt = _segment_distance(ax, z, (0.0185 * nw + 0.004, lm.sub + 0.004), (lm.corner + 0.006, lm.mouth - 0.006))
@@ -256,13 +266,15 @@ def displacement(face, ax, z):
         * smoothstep(1.05, 0.8, tt)
     front -= 0.0016 * gauss(ax, z - (lm.sub - 0.0085), 0.0042, 0.0070)
     front += 0.0010 * gauss(ax - 0.0075, z - (lm.sub - 0.009), 0.0022, 0.0060)
+    # the muzzle: mouth and the cheeks beside it stand forward of the plane of the face, so the front is round
+    front += 0.0035 * gauss(ax, z - Z(0.27), 0.036, 0.045)
     # lips, the line between them, the corners, the groove under the lower lip, the chin
-    front += 0.0050 * f.lips * gauss(ax, z - lm.ul, 0.0150 * mw, 0.0048)
-    front += 0.0062 * f.lips * gauss(ax, z - lm.ll, 0.0145 * mw, 0.0056)
+    front += 0.0058 * f.lips * gauss(ax, z - lm.ul, 0.0135 * mw, 0.0045)
+    front += 0.0075 * f.lips * gauss(ax, z - lm.ll, 0.0130 * mw, 0.0052)
     front -= 0.0050 * gauss(ax, z - lm.mouth, lm.corner, 0.0022)
     front -= 0.0030 * gauss(ax - lm.corner, z - lm.mouth, 0.0045, 0.0045)
     front -= 0.0022 * gauss(ax, z - (lm.ll - 0.0105), 0.0140, 0.0036)
-    front += 0.0085 * f.chin * gauss(ax, z - Z(0.065), 0.0175, 0.0130)
+    front += 0.0130 * f.chin * gauss(ax, z - Z(0.075), 0.0185, 0.0140)
     # jaw angle and the masseter
     side += 0.0050 * (f.jaw_width - 1.0 + 0.2 * f.jaw_square) * gauss(ax - 0.0585, z - Z(0.115), 0.011, 0.020)
     side += 0.0025 * f.jaw_square * gauss(ax - 0.0655, z - Z(0.22), 0.010, 0.030)
@@ -375,7 +387,7 @@ class HeadGrid:
             prof = profile(self.face, zz, self.neck_y)
             inside = 1.0 - (ax / prof["W"]) ** prof["p"]
             y_face = prof["yc"] - prof["F"] * np.maximum(inside, 0.0) ** (1.0 / prof["p"])
-            floor = float(y_face[0] + SOCKET_DEPTH * self.face.eye_sink * 0.95)
+            floor = float(y_face[0])
             out.append((np.array([sx * lm.eye_x, floor - EYE_SET_BACK + lm.ball_r, lm.eye]), lm.ball_r))
         return out
 
@@ -428,7 +440,7 @@ def ear_arrays(face, grid, side):
     s = np.linspace(0.03, 0.97, EAR_RINGS)
     a = 0.0165 * es * np.sqrt(np.clip(1.0 - ((s - 0.55) / 0.52) ** 2, 0.0, 1.0)) \
         * (0.78 + 0.22 * smoothstep(0.0, 0.4, s))
-    b = 0.0036 * es * (0.7 + 0.3 * (1.0 - s))
+    b = 0.0052 * es * (0.7 + 0.3 * (1.0 - s))
     th = np.linspace(0.0, 2.0 * math.pi, EAR_SEG, endpoint=False)
     verts = []
     for i in range(EAR_RINGS):
@@ -436,8 +448,8 @@ def ear_arrays(face, grid, side):
             ct, st = math.cos(th[j]), math.sin(th[j])
             lateral = 0.0
             if st > 0.0:
-                concha = -0.0030 * math.exp(-0.5 * (((ct + 0.1) / 0.45) ** 2 + ((s[i] - 0.5) / 0.17) ** 2))
-                helix = 0.0028 * float(smoothstep(0.70, 0.95, abs(ct)))
+                concha = -0.0045 * math.exp(-0.5 * (((ct + 0.1) / 0.45) ** 2 + ((s[i] - 0.5) / 0.17) ** 2))
+                helix = 0.0036 * float(smoothstep(0.70, 0.95, abs(ct)))
                 lateral = (concha + helix) * st
             centre_xy = np.array([side * x_h, y_front]) + u * a[i]
             p_xy = centre_xy + u * a[i] * ct + n * (b[i] * st + lateral)
@@ -471,7 +483,7 @@ def brow_arrays(face, grid, side):
     lm = Landmarks(face)
     ax = np.linspace(0.009, 0.0545, BROW_ROWS) * face.eye_spacing ** 0.5
     arch = lm.brow + 0.0015 - 0.0040 * np.clip((ax - 0.030) / 0.025, 0.0, 1.0) ** 1.5 + 0.0012 * (ax < 0.018)
-    thick = (0.0105 + 0.0040 * face.brow) * (1.0 - 0.55 * smoothstep(0.02, 0.054, ax))
+    thick = (0.0080 + 0.0030 * face.brow) * (1.0 - 0.55 * smoothstep(0.02, 0.054, ax))
     cols = np.linspace(-0.5, 0.5, BROW_COLS)
     P = np.zeros((BROW_ROWS, BROW_COLS, 3))
     N = np.zeros_like(P)

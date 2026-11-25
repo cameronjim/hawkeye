@@ -19,7 +19,7 @@ import numpy as np
 import headshape as hs
 import looks
 
-MOUTH_COLOUR = (0.93, 0.64, 0.62)    # multiplies the skin on the lips
+MOUTH_COLOUR = (0.95, 0.76, 0.72)    # multiplies the skin on the lips
 
 
 def tileable_noise(h, w, seed, blur):
@@ -111,11 +111,16 @@ def skin_maps(face, grid, size=1024):
     albedo[:, :, 0] *= 1.0 + 0.020 * drift2
     albedo[:, :, 2] *= 1.0 - 0.030 * drift2
     # Flush: the cheeks, the nose, the ears' neighbourhood; more with age and the row's skin_ruddy.
-    flush = hs.gauss(ax - 0.045, z - hs.Z(0.38), 0.026, 0.026) * front
+    flush = hs.gauss(ax - 0.048, z - hs.Z(0.37), 0.014, 0.017) * front
     flush += 1.1 * hs.gauss(ax, z - (lm.sub + 0.008), 0.017, 0.022) * front
-    flush += 0.5 * hs.gauss(ax - 0.073, z - hs.Z(0.47), 0.012, 0.030)
+    flush += 1.6 * hs.gauss(ax - 0.073, z - hs.Z(0.47), 0.016, 0.034)
     albedo += (face.skin_ruddy * (0.55 + 0.45 * face.age) * 0.12 * np.clip(flush, 0, 1.4))[:, :, None] \
         * np.array([0.95, -0.40, -0.30])
+    # The ears' patch (the ear meshes sample the skin round their anchor): a shade darker and redder than the cheek.
+    ear_patch = hs.gauss(ax - 0.0745, z - hs.Z(0.47), 0.022, 0.036)
+    albedo *= 1.0 - (0.20 * ear_patch)[:, :, None] * np.array([0.55, 0.95, 0.95])
+    # Under the chin: the throat falls into shadow.
+    albedo *= 1.0 - (0.30 * hs.smoothstep(hs.Z(0.03), hs.Z(-0.10), z) * hs.smoothstep(-0.2, 0.4, fr.cos))[:, :, None]
     # Eye sockets and under-eye shadow.
     socket = hs.gauss(ax - lm.eye_x, z - lm.eye, 0.023, 0.016) * front
     bag = hs.gauss(ax - lm.eye_x, z - (lm.eye - 0.016), 0.016, 0.006) * front
@@ -124,12 +129,22 @@ def skin_maps(face, grid, size=1024):
     # Lips: the skin tinted toward red between a soft edge, a darker line where they meet, a lighter lower lip.
     lip_u = hs.gauss(ax, z - (lm.ul - 0.0005), lm.corner * 0.82, 0.0058)
     lip_l = hs.gauss(ax, z - (lm.ll + 0.0005), lm.corner * 0.80, 0.0070)
-    lips = hs.smoothstep(0.30, 0.65, np.maximum(lip_u, lip_l)) * front
+    lips = hs.smoothstep(0.12, 0.85, np.maximum(lip_u, lip_l)) * front
     albedo = lerp(albedo, albedo * np.array(MOUTH_COLOUR) * (0.92 + 0.08 * face.skin_ruddy), lips[:, :, None])
     albedo *= 1.0 - 0.40 * (hs.gauss(ax, z - lm.mouth, lm.corner, 0.0013) * front)[:, :, None]
+    # The nose's own shading, the front view's only cue: nostrils, the shadow under the tip, the creases at the wings.
+    nw = face.nose_width
+    nostril = hs.gauss(ax - 0.0082 * nw, z - (lm.sub + 0.0040), 0.0036, 0.0024) * front
+    under = hs.gauss(ax, z - (lm.sub - 0.0030), 0.0125 * nw, 0.0028) * front
+    alar = hs.gauss(ax - 0.0185 * nw, z - (lm.sub + 0.0070), 0.0024, 0.0070) * front
+    albedo *= 1.0 - np.clip(0.42 * nostril + 0.10 * under + 0.16 * alar, 0, 0.7)[:, :, None] * np.array([0.9, 1.0, 0.8])
+    # Lash lines on the lid margins (the rim of the opening the eyeball shows through).
+    ap, rr = hs.aperture(face, ax, z)
+    lash = np.exp(-(((rr - 1.0) / 0.13) ** 2)) * front
+    albedo *= 1.0 - np.clip(0.50 * lash, 0, 0.6)[:, :, None]
     # Skin under the hair: roots darken it, and a shaved head shows a faint shadow.
     ht = hs.hairline_t(face, fr.theta)
-    above = hs.smoothstep(hs.Z(ht)[None, :] - 0.006, hs.Z(ht)[None, :] + 0.006, z)
+    above = hs.smoothstep(hs.Z(ht)[None, :] - 0.014, hs.Z(ht)[None, :] + 0.010, z)
     if face.hair_style == "bald":
         albedo = lerp(albedo, albedo * 0.88 + hair * 0.12, 0.55 * above[:, :, None])
     else:
@@ -158,7 +173,7 @@ def skin_maps(face, grid, size=1024):
     # Height: pores, lines of age, the lips' fine vertical lines.
     pores = 0.55 * tileable_noise(h, w, seed + 7, 0.6) + 0.35 * tileable_noise(h, w, seed + 8, 1.6) \
         + 0.35 * tileable_noise(h, w, seed + 9, 6.0)
-    ht_map = 0.012 * pores
+    ht_map = 0.0065 * pores
     lines = np.zeros((h, w))
     wr = 0.15 + 0.85 * face.age
     wave = 0.0016 * np.sin(fr.x * 160.0 + 3.0 * np.sin(fr.x * 61.0 + seed))
@@ -197,7 +212,7 @@ def eye_image(face, size=256):
     phi = np.arctan2(dz, dx)
     seed = face.seed * 31
     inner, outer = (np.array(c) for c in looks.EYE_COLOURS[face.eye_colour])
-    sclera = np.array([0.88, 0.85, 0.81])
+    sclera = np.array([0.80, 0.76, 0.71])
     rng = np.random.default_rng(seed)
     out = np.ones((h, w, 3)) * sclera
     veins = np.zeros((h, w))
@@ -207,7 +222,7 @@ def eye_image(face, size=256):
         d = np.abs(((phi - a0 + math.pi) % (2 * math.pi)) - math.pi)
         veins += np.exp(-0.5 * (d / 0.035) ** 2) * hs.smoothstep(r_start, 0.99, rho) * rng.uniform(0.4, 1.0)
     out = lerp(out, out * np.array([0.95, 0.55, 0.52]), np.clip(0.30 * veins * (0.4 + face.age), 0, 0.5)[:, :, None])
-    out *= (1.0 - 0.30 * hs.smoothstep(0.80, 1.05, rho))[:, :, None]
+    out *= (1.0 - 0.50 * hs.smoothstep(0.62, 1.0, rho))[:, :, None]
     fib = tileable_noise(h, w, seed, 0.9)
     fibres = 0.5 + 0.5 * np.sin(phi * 38.0 + 2.0 * fib)
     t = np.clip(rho / 0.5, 0.0, 1.0)
@@ -228,15 +243,15 @@ def brow_image(face, width=256, height=64):
     hair = np.array(looks.HAIR_COLOURS[face.hair_colour])
     rgb = np.ones((height, width, 3)) * hair
     alpha = np.zeros((height, width))
-    strokes = int(520 + 520 * face.brow)
+    strokes = int(330 + 330 * face.brow)
     for _ in range(strokes):
         u0 = rng.uniform(0.0, 1.0)
-        half = 0.5 * (1.0 - 0.55 * hs.smoothstep(0.35, 1.0, u0))
+        half = 0.5 * (0.55 + 0.45 * hs.smoothstep(0.0, 0.18, u0)) * (1.0 - 0.60 * hs.smoothstep(0.35, 1.0, u0))
         v0 = 0.5 + rng.uniform(-half, half) * 0.9
         # Hairs grow up and out at the inner end, flat along the body, down and out at the tail.
         angle = lerp(0.55, -0.35, float(hs.smoothstep(0.0, 1.0, u0))) + rng.normal(0, 0.12)
         length = rng.uniform(0.10, 0.26)
-        shade = rng.uniform(0.7, 1.25)
+        shade = rng.uniform(0.9, 1.9)
         for s in np.linspace(0.0, 1.0, 36):
             u = u0 + math.cos(angle) * length * s
             v = v0 + math.sin(angle) * length * s * 0.5
@@ -265,7 +280,12 @@ def hair_maps(face, size=512):
     strands = (strands - strands.min()) / (strands.max() - strands.min())
     tone = 0.62 + 0.62 * strands[None, :] + 0.10 * tileable_noise(h, w, seed + 1, 3.0)
     if face.hair_style == "buzz":
-        tone = 0.55 + 0.35 * strands[None, :] + 0.25 * tileable_noise(h, w, seed + 2, 0.7)
+        tone = 0.70 + 0.10 * strands[None, :] + 0.22 * tileable_noise(h, w, seed + 2, 0.5)
     rgb = np.clip(tone[:, :, None] * colour[None, None, :], 0, 1)
     height = np.broadcast_to(strands[None, :], (h, w)) + 0.15 * tileable_noise(h, w, seed + 3, 1.2)
-    return rgb, normal_from_height(height, 3.0 if face.hair_style != "buzz" else 1.2)
+    # Alpha: solid up on the head, dissolving into stipple toward the hairline (v 0) so no hard edge reads as a wig.
+    v = ((np.arange(h) + 0.5) / h)[:, None]
+    dens = 0.10 + 0.90 * hs.smoothstep(0.0, 0.34 if face.hair_style in ("buzz", "bald") else 0.22, v)
+    u01 = 0.5 * (1.0 + np.tanh(0.8 * tileable_noise(h, w, seed + 9, 0.55)))
+    alpha = (u01 < dens).astype(np.float64)
+    return np.concatenate([rgb, alpha[:, :, None]], axis=2), normal_from_height(height, 3.0 if face.hair_style != "buzz" else 1.2)

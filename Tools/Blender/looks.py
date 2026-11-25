@@ -281,7 +281,7 @@ LOOKS = {look.id: look for look in (
     # a square jaw, stubble, a buzz cut. Mid-thirties.
     _row("thug", "thug", "stocky", head_width=1.04, jaw_width=1.10, jaw_square=0.75, chin=1.05, brow=1.2,
          eye_spacing=0.97, eye_size=0.94, eye_sink=1.3, cheek=0.9, cheek_hollow=0.15, nose_proj=0.9, nose_width=1.1,
-         nose_bridge=-0.1, lips=0.85, mouth_width=1.02, ear_size=1.0, ear_flare=26.0, age=0.5, neck_radius=0.064,
+         nose_bridge=-0.1, lips=0.85, mouth_width=1.02, ear_size=1.0, ear_flare=26.0, age=0.5, neck_radius=0.058,
          skin="olive", skin_ruddy=0.35, eye_colour="dark_brown", hair_style="buzz", hair_colour="black", hairline=0.79,
          hair_fade=0.6, facial_hair="stubble", stubble=0.55, seed=11),
     # thug_b: long and narrow, a hooked nose, high cheekbones, close-set eyes, a charcoal beanie low over the brow.

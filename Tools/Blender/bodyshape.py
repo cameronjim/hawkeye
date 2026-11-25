@@ -21,6 +21,40 @@ import pieces
 PROFILE_Z = looks.PROFILE_Z
 
 
+def welded_taubin(obj, iters, mask=None):
+    """cs.taubin over the mesh with coincident vertices treated as one. The glTF body's vertices are split at the UV
+    seams; smoothing each copy on its own tears the seams open and the voxel remesh then fills only crumbs."""
+    co = cs.get_co(obj)
+    key = np.round(co * 1e5).astype(np.int64)
+    _u, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    inv = inv.reshape(-1)
+    edges = inv[cs.get_edges(obj)]
+    edges = edges[edges[:, 0] != edges[:, 1]]
+    wmask = None
+    if mask is not None:
+        wmask = np.zeros(len(first), bool)
+        np.logical_or.at(wmask, inv, np.asarray(mask, bool))
+    wco = smooth_welded(co[first], edges, iters, wmask)
+    cs.set_co(obj, wco[inv])
+
+
+def weld_normals(co, normals):
+    """Normals averaged over vertices at the same place. The glTF's seam vertices are duplicates with their own normals;
+    offset along those they part, the offset shell has cracks, and the voxel remesh (which needs a closed surface)
+    sometimes fills only a crust of it (thug_d: 5.6k vertices instead of 90k at one voxel size, then no feet)."""
+    key = np.round(co * 1e5).astype(np.int64)
+    _u, inv = np.unique(key, axis=0, return_inverse=True)
+    inv = inv.reshape(-1)
+    acc = np.zeros((inv.max() + 1, 3))
+    np.add.at(acc, inv, normals)
+    acc /= np.maximum(np.linalg.norm(acc, axis=1), 1e-9)[:, None]
+    return acc[inv]
+
+
+def smooth_welded(wco, edges, iters, wmask):
+    return cs.smooth_values(wco, edges, iters * 2, factor=(0.5, -0.53), mask=wmask)
+
+
 def reshape_body(body, build):
     """Move body.reference to the build's shape (and refresh body.co, normals and surface). Returns the mask of the
     vertices that moved."""
@@ -73,9 +107,9 @@ def reshape_body(body, build):
     moved = np.linalg.norm(co - ref, axis=1) > 1e-5
     cs.set_co(body.reference, co)
     # Blend the seams between regions (volume-keeping), only where something moved or is next to it.
-    cs.taubin(body.reference, 3, mask=moved)
+    welded_taubin(body.reference, 3, mask=moved)
     body.co = cs.get_co(body.reference)
-    body.normals = cs.get_vnormals(body.reference)
+    body.normals = weld_normals(body.co, cs.get_vnormals(body.reference))
     body.surface = cs.Surface(body.reference)
     cs.log("body reshaped to", build.id, "-", int(moved.sum()), "verts moved")
     return moved

@@ -145,7 +145,7 @@ def head_materials(look, grid, out, search_dirs):
         hair_img = colour_image("T_{0}_hair".format(who), albedo, os.path.join(out, "hair.png"))
         hair_n = data_image("T_{0}_hair_n".format(who), normal, os.path.join(out, "hair_n.png"))
         mats["hair"] = m("M_{0}_Hair".format(who), hair_rgb, 0.62, base_image=hair_img, normal=hair_n,
-                         normal_strength=0.6, glow=True)
+                         normal_strength=0.6, alpha_clip=True, glow=True)
     if face.headwear != "none":
         weave = "rib" if face.headwear == "beanie" else "twill"
         normal = cs.weave_normal(weave, out, strength=2.0)
