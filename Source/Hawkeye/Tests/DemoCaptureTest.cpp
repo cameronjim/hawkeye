@@ -72,7 +72,7 @@
  * waits for a frame to be saved. The game thread sleeps when the writers are more than MaxInFlight frames behind.
  * Every shot is HUD-free (a capture with bShowUI false). A frame the engine did not draw is counted as dropped and fails
  * the test: a hole in the sequence would be a hitch in the video. Knobs on the command line: -DemoFrames=<n> (the cap),
- * -DemoPanHeight=<cm>, -DemoPanRadius=<cm>, -DemoPanRate=<deg/s>.
+ * -DemoPanHeight=<cm>, -DemoPanRadius=<cm>, -DemoPanRate=<deg/s>, -DemoDescentOut=<cm> (the descent's lens distance, 400).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeDemoGrappleRun, "Hawkeye.Demo.GrappleRun",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
@@ -893,7 +893,11 @@ void FHawkeyeDemoRunner::StepChase(UWorld* World, AHawkeyeCharacter* Kate)
 		// The fire escape is seen from the street: out in front of the wall and a little to one side, her height followed.
 		const FVector Out = DescentOut.GetSafeNormal2D();
 		const FVector Across = FVector::CrossProduct(FVector::UpVector, Out).GetSafeNormal();
-		const FVector Wanted = Pivot + Out * 400.f + Across * 130.f + FVector(0.f, 0.f, 80.f);
+		// -DemoDescentOut=<cm> brings the lens in for a close look at the hands on the rail (a check, not the shot).
+		float OutDistance = 400.f;
+		FParse::Value(FCommandLine::Get(), TEXT("DemoDescentOut="), OutDistance);
+		const float Scale = OutDistance / 400.f;
+		const FVector Wanted = Pivot + Out * OutDistance + Across * 130.f * Scale + FVector(0.f, 0.f, 80.f * Scale);
 		ChaseOffset = bChaseStarted ? FMath::Lerp(ChaseOffset, Wanted - Pivot, 1.f - FMath::Exp(-6.f * StepSeconds)) : Wanted - Pivot;
 		bChaseStarted = true;
 		const FVector Lens = Pivot + ChaseOffset;

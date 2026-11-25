@@ -23,6 +23,7 @@
 #include "ImageUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
+#include "Hawkeye.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -877,6 +878,10 @@ namespace HawkeyeTraversalShots
 		PlayerView(TEXT("hang_player"), 1.9, Frames60(0.f, 4, 20), FallPastTheEdge, false, 0.0, 0.0);
 		PlayerView(TEXT("hang_drop_player"), 1.5, Frames60(-6.f / 60.f, 8, 4), FallPastTheEdge, false, 0.0, 1.5);
 		PlayerView(TEXT("climb_up_player"), 1.5, Frames60(0.f, 8, 8), FallPastTheEdge, false, 1.5, 0.0);
+		// The fall after the let-go, a second of it: the push-off, the loop, and (letting go the moment the hang starts) the
+		// same fall from an instant drop. Read it for a static pose: the loop's arms and legs must keep moving.
+		PlayerView(TEXT("hang_fall_player"), 1.5, Frames60(0.05f, 8, 8), FallPastTheEdge, false, 0.0, 1.5);
+		PlayerView(TEXT("hang_fall_instant_player"), 0.3, Frames60(0.05f, 8, 8), FallPastTheEdge, false, 0.0, 0.3);
 		return Out;
 	}
 
@@ -1004,6 +1009,21 @@ namespace HawkeyeTraversalShots
 					if (FPlatformTime::Seconds() - Since >= HoldSettle)
 					{
 						Check(*Kate);
+						if (Scenario.bPlayerCamera)
+						{
+							// Where the lens is against her, for reading a strip that loses her (the lens is on the open side of the wall).
+							if (const APlayerController* PC = World->GetFirstPlayerController(); PC && PC->PlayerCameraManager)
+							{
+								UE_LOG(LogHawkeye, Log, TEXT("Traversal strip %s frame %d: lens %s looking %s, Kate %s, ledge frame %.2f climb lift %.2f"),
+									*Scenario.Name, Hold, *PC->PlayerCameraManager->GetCameraLocation().ToCompactString(),
+									*PC->PlayerCameraManager->GetCameraRotation().ToCompactString(), *Kate->GetActorLocation().ToCompactString(),
+									Kate->GetParkourComponent()->GetLedgeFrameAlpha(), Kate->GetParkourComponent()->GetLedgeClimbCameraAlpha());
+								const USkeletalMeshComponent* Body = Kate->GetBodyMesh();
+								UE_LOG(LogHawkeye, Log, TEXT("Traversal strip %s frame %d: ledge origin %s, pelvis %s head %s foot_l %s hand_l %s"), *Scenario.Name, Hold, *Stage->LedgeOrigin.ToCompactString(),
+									*Body->GetSocketLocation(TEXT("pelvis")).ToCompactString(), *Body->GetSocketLocation(TEXT("head")).ToCompactString(),
+									*Body->GetSocketLocation(TEXT("foot_l")).ToCompactString(), *Body->GetSocketLocation(TEXT("hand_l")).ToCompactString());
+							}
+						}
 						Shoot(Scenario.bPlayerCamera ? TEXT("player") : TEXT("side"));
 						Phase = EPhase::WaitSide;
 					}

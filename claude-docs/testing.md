@@ -246,7 +246,7 @@ owner's campaign: an unquoted `-ExecCmds`, and a console command before `Automat
 only `Automation RunTests <name>; Quit`; pass CVars with `-dpcvars=`.)
 
 The ledge strips (2026-11-25, read in phase 2; `_player` strips at night with her own camera: `roof_dismount_player`, `ledge_catch_player`,
-`hang_player`, `hang_drop_player`, `climb_up_player`; `hang_drop_instant` lets go as the hang starts): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`, `hang_hands`, each also
+`hang_player`, `hang_drop_player`, `climb_up_player`, and since phase 3 `hang_fall_player` / `hang_fall_instant_player`, a second of the fall after the let-go; `hang_drop_instant` lets go as the hang starts; every player strip logs the lens, Kate and her body's pelvis, head and hands to the log): `roof_dismount`, `ledge_catch`, `hang_drop`, `climb_up`, `vault`, `hang_hands`, each also
 `_wide`, shot on a stage the test builds 200 m over the district at a fixed 1/60 s a frame (`FApp::SetUseFixedTimeStep`), off
 (`hawkeye.LedgePose 0`) and on; with it on, every frame where a hand is held checks the drawn `hand_l` / `hand_r` is within 8 cm of its
 place on the edge (4 for `hang_hands`). Run just them with `-HawkeyeTraversalOnly=roof_dismount+ledge_catch+hang_drop+climb_up+vault+hang_hands`
@@ -263,6 +263,10 @@ push that regenerates the city. Roofs it does not fail on (no sidewalk spot in r
 listed in its JSON's `roofs_off_the_street` with how they are reached instead. It needs the engine, so it is not in CI.
 `-Probe` checks the generator's reach model against the game pair by pair (`tools-traversal-debugger.md`).
 
+Reading a ledge strip: crop and tile the frames in `Saved/Screenshots/Traversal/Frames/` on her (the strip image is too small to judge a pose) and read the
+`Traversal strip <name> frame N:` lines in the log (lens, her capsule, the visible body's pelvis, head and hand against the stage's ledge): a frame that loses her
+is either a lens problem or a body inside the geometry, and those numbers tell which (the climb's was the second).
+
 ## 2j. Demo shots (written 2026-11-25)
 
 `Hawkeye.Demo.GrappleRun`, `.Descent`, `.Lucky`, `.Establish` (`Tests/DemoCaptureTest.cpp`) play one shot of the portfolio video
@@ -274,6 +278,7 @@ process under an 8-minute timeout (a shot takes 50 to 75 s of wall time includin
 shots use a camera of their own (the player's boom folds in to nothing on a parapet), the Lucky shot a side camera.
 `Hawkeye.Editor.TraversalDebugger.Shot` draws the debugger tab off screen (editor, real renderer, `-HawkeyeDemo`). The cut is
 `Tools/Demo/cut.py` from `docs/demo/edl.json`; `Tools/Demo/make_terminal.py` makes the terminal shots' text from real run output.
+`.\Tools\demo-capture.ps1 -Shot descent -Frames 330 -Extra "-DemoDescentOut=130"` brings the descent's lens in to a close look at the hands on a fire escape's rail.
 The owner's own clips: `docs/demo/recording-guide.md` and `Tools\demo-record.ps1`, which backs up and restores his campaign save.
 
 ## 3. Playtest checklist (human)

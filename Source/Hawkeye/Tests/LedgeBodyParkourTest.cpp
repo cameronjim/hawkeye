@@ -2,6 +2,7 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/AutomationTest.h"
+#include "Player/CameraRules.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/HawkeyeMovementComponent.h"
 #include "Player/ParkourComponent.h"
@@ -346,6 +347,73 @@ bool FHawkeyeLedgeClimbHands::RunTest(const FString& Parameters)
 	StepFor(Parkour, 0.5f);
 	FLedgeBodyPose After;
 	TestFalse(TEXT("A moment after the climb nothing holds her to the ledge"), Parkour->GetLedgeBodyPose(After));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLedgeVaultRise, "Hawkeye.Ledge.AuthoredVaultKeepsTheHipsOverTheTop",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeLedgeVaultRise::RunTest(const FString& Parameters)
+{
+	// The authored vault is a hurdle: the hips pass 25 cm over the top (the capsule's centre starts 90 up), never under 10 cm of rise.
+	TestEqual(TEXT("A 90 cm top"), UParkourComponent::GetAuthoredVaultRise(90.f), 25.f);
+	TestEqual(TEXT("A 110 cm top"), UParkourComponent::GetAuthoredVaultRise(110.f), 45.f);
+	TestEqual(TEXT("A low top has the minimum"), UParkourComponent::GetAuthoredVaultRise(60.f), 10.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeLedgeCamera, "Hawkeye.Ledge.CameraClosesInAndLiftsForTheClimb",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeLedgeCamera::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeLedgeParkourTest;
+	const FHawkeyeTestWorld TestWorld;
+	SpawnBox(TestWorld, FVector(-3000.f, -3000.f, -100.f), FVector(3000.f, 3000.f, 0.f));
+	SpawnBox(TestWorld, FVector(100.f, -400.f, 0.f), FVector(600.f, 400.f, Top));
+	AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(
+		TestWorld.SpawnActor(AHawkeyeAimTestCharacter::StaticClass(), FVector(-500.f, 0.f, HalfHeight), FRotator::ZeroRotator));
+	UParkourComponent* Parkour = Kate->GetParkourComponent();
+	if (!TestTrue(TEXT("Hanging"), CatchLedge(Kate, 100.f, 0.f)))
+	{
+		return false;
+	}
+	FHawkeyeCameraTargets Free;
+	Free.ArmLength = 340.f;
+	for (int32 StepIndex = 0; StepIndex < 100 && (Parkour->IsPerformingMove() || StepIndex < 60); ++StepIndex)
+	{
+		Step(Parkour);
+		FHawkeyeCameraTargets Wanted = Free;
+		Parkour->ApplyHangCamera(Wanted, Tick);
+	}
+	FHawkeyeCameraTargets Hang = Free;
+	Parkour->ApplyHangCamera(Hang, Tick);
+	TestTrue(*FString::Printf(TEXT("Hanging the boom is shorter (%.0f of 340)"), Hang.ArmLength),
+		Hang.ArmLength < 340.f * 0.9f && Hang.ArmLength > 340.f * 0.6f);
+	TestTrue(TEXT("and the pivot is lifted"), Hang.PivotLift >= Parkour->LedgeCameraLift - 1.f);
+	TestFalse(TEXT("The climb's lift is not in yet"), Parkour->GetLedgeClimbCameraAlpha() > 0.f);
+	if (!TestTrue(TEXT("The climb starts"), Parkour->ClimbFromHang()))
+	{
+		return false;
+	}
+	float AlphaAtHalfClimb = 0.f;
+	FHawkeyeCameraTargets Climb = Free;
+	for (int32 StepIndex = 0; StepIndex < 10; ++StepIndex)
+	{
+		Step(Parkour);
+		Climb = Free;
+		Parkour->ApplyHangCamera(Climb, Tick);
+		AlphaAtHalfClimb = Parkour->GetLedgeClimbCameraAlpha();
+	}
+	TestTrue(*FString::Printf(TEXT("Half a second into the climb the lens is up with her (alpha %.2f, lift %.0f over the hang's %.0f)"),
+		AlphaAtHalfClimb, Climb.PivotLift, Hang.PivotLift), AlphaAtHalfClimb > 0.99f && Climb.PivotLift > Hang.PivotLift + Parkour->LedgeClimbCameraLift - 1.f);
+	StepFor(Parkour, 1.5f);
+	for (int32 StepIndex = 0; StepIndex < 40; ++StepIndex)
+	{
+		FHawkeyeCameraTargets Wanted = Free;
+		Parkour->ApplyHangCamera(Wanted, Tick);
+	}
+	TestTrue(TEXT("Standing on top it all eases away"), Parkour->GetLedgeClimbCameraAlpha() < 0.01f && Parkour->GetLedgeFrameAlpha() < 0.01f);
 	return true;
 }
 

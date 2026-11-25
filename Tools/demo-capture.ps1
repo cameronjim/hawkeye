@@ -30,6 +30,8 @@ param(
     [int]$Seconds = 30,
     # Stop after this many frames (the test's own cap otherwise).
     [int]$Frames = 0,
+    # More command-line arguments for the game, e.g. -Extra "-DemoDescentOut=120" for a close look at the hands on the rail.
+    [string[]]$Extra = @(),
     [int]$ResX = 1920,
     [int]$ResY = 1080,
     [int]$TimeoutMinutes = 8,
@@ -84,6 +86,7 @@ function Invoke-Shot {
         "-benchmark", "-fps=60", "-HawkeyeDemo", "-unattended", "-nosplash", "-log", "-abslog=`"$log`"",
         "-ReportExportPath=`"$report`"", "-ExecCmds=`"Automation RunTests $test; Quit`"")
     if ($Frames -gt 0) { $argList += "-DemoFrames=$Frames" }
+    if ($Extra.Count -gt 0) { $argList += $Extra }
 
     Write-Host "[$Name] $test, ${ResX}x${ResY} at 60 fps, timeout $TimeoutMinutes min ..."
     $start = Get-Date

@@ -687,8 +687,8 @@ parts, all in the files named:
   `LedgeClimbUp`, `LedgeVaultPlant`; `Tools/Blender/build_clips.py`, "Ledge clips"; animation.md), played in place over the capsule's
   path (`PlayLedgeRole`: rate fitted to the move's time within half and double). The drop to hang, the catch, the climb and a hop or leap play theirs; the hang
   loops `LedgeHangIdle` where the move's clip ended (without it the move's clip is held on its last frame, as before); the let-go
-  plays `LedgeHangDrop`. A set without a role plays the sample's clip, as before. The vault plant clip is in the manifest
-  `in_set: false`: the vault stays the sample's hurdle (root motion warped to the probed top), its plant made by the IK.
+  plays `LedgeHangDrop` and then `LedgeFallLoop` (below). A set without a role plays the sample's clip, as before. Since phase 3 the
+  vault plays `LedgeVaultPlant` (or `LedgeVaultCrouch` for a vault of 0.45 s or more) in place over the path, not the sample's hurdle.
 - **Release.** `DropFromHang` (and the hop with nothing behind) lets the capsule go at once, as before; the IK fades out over
   `ReleaseSeconds` 0.16 on the pose she hung in (the hand targets stay where they were). Anything that leaves no pose
   (a corner, a ledge move that is over) is let go of over about a tenth of a second, never dropped.
@@ -707,6 +707,20 @@ parts, all in the files named:
   open side of the wall from the first frame (not only once hanging), adds `LedgeCameraLift` (90 cm) to the pivot and tips the lens down
   `LedgeCameraTipDegrees` (14) by the same ease (`LedgeCameraSeconds` 0.35); the arm keeps its length. Before it, the lens stayed on the
   roof side of the parapet while she went over, and the player strips showed an empty frame for half a second.
+- Phase 3 (2026-11-25, from the player-camera night footage):
+  - **The fall after a let-go** (`BeginLedgeFall` / `TickLedgeFall` / `EndLedgeFall`, `LedgeBody.cpp`): `LedgeHangDrop` is the 0.5 s push-off;
+    `LedgeFallLoop` (loops, blend in 0.15 s) starts when its last 0.15 s begin; `LedgeFallBrace` plays once when a line trace from the feet
+    down `FallBraceSeconds` 0.22 x the fall speed + 10 cm hits ground and the fall is over 250 cm/s. The fall ends (clips blended out over
+    0.1 s) when she is no longer falling, hangs, performs a move (a late catch) or lands. The same for the hop-back drop with nothing behind.
+  - **The vault** with the authored clips: the move's rise is `GetAuthoredVaultRise(Height)` = max(10, Height + 25 - 90) cm (hips 25 cm
+    over the top) instead of Height + 10; the guard's leap (`bGuardLeap`) keeps the sample's clip and the old rise.
+    Test `Hawkeye.Ledge.AuthoredVaultKeepsTheHipsOverTheTop`.
+  - **The climb out of a hang rises as far as the top** (`ClimbFromHang`): over a parapet the stand point is the roof behind it, lower than
+    the top, and the path rose only to that: the body, keyed for a rise to the top's level, sank into the parapet and the player camera lost
+    her for a frame or two. The path's rise is now max(stand point, ledge top) over the start and the floor blends it back down.
+  - **The ledge camera**: the boom is `LedgeCameraArmScale` 0.82 of its length on a ledge move (blended with the framing); the climb out adds
+    `LedgeClimbCameraLift` 110 cm of pivot lift over `LedgeClimbCameraRiseSeconds` 0.2 s and tips the lens `LedgeClimbCameraTipDegrees` 20
+    (both ease away after). Test `Hawkeye.Ledge.CameraClosesInAndLiftsForTheClimb`.
 - Known limits, written before it was run (the hop is now 12 cm, so read 30 as 12): the roof dismount's capsule path is a hop 30 cm over the parapet, so her feet pass
   the lip and the hands can only touch it at the start and from about 0.3 s on the way down (the reach weight leaves the middle to
   the clip); a hand on the lip through the whole move wants a path that hugs the lip, which is a path change and so not made.
