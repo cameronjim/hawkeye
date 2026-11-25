@@ -782,6 +782,12 @@ private:
 				}
 			}
 			Frame(PC, Feet + FVector(0.f, 0.f, 95.f), 760.f, 50.f);
+			if (Camera)
+			{
+				// From a little higher: the snowbank by the kerb hid the heavy's feet from the usual eye height.
+				const FVector Eye = Camera->GetActorLocation() + FVector(0.f, 0.f, 150.f);
+				Camera->SetActorLocationAndRotation(Eye, (Feet + FVector(0.f, 0.f, 95.f) - Eye).Rotation());
+			}
 			break;
 		case ThugShot:
 			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);

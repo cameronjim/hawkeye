@@ -120,7 +120,7 @@ def skin_maps(face, grid, size=1024):
     ear_patch = hs.gauss(ax - 0.0745, z - hs.Z(0.47), 0.022, 0.036)
     albedo *= 1.0 - (0.12 * ear_patch)[:, :, None] * np.array([0.55, 0.95, 0.95])
     # Under the chin: the throat falls into shadow.
-    albedo *= 1.0 - (0.26 * hs.smoothstep(hs.Z(0.04), hs.Z(-0.14), z) * hs.smoothstep(-0.6, 0.6, fr.cos))[:, :, None]
+    albedo *= 1.0 - (0.15 * hs.smoothstep(hs.Z(0.04), hs.Z(-0.14), z) * hs.smoothstep(-0.6, 0.6, fr.cos))[:, :, None]
     # Eye sockets and under-eye shadow.
     socket = hs.gauss(ax - lm.eye_x, z - lm.eye, 0.023, 0.016) * front
     bag = hs.gauss(ax - lm.eye_x, z - (lm.eye - 0.016), 0.016, 0.006) * front
