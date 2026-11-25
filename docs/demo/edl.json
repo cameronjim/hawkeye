@@ -15,7 +15,10 @@
         "Hawkeye: Kate Bishop",
         "Solo project. Work in progress.",
         "C++ and Unreal Engine 5",
-        {"text": "Non-commercial fan project. Not affiliated with Marvel, Disney or Insomniac Games.", "size": 28}
+        {
+          "text": "Non-commercial fan project. Not affiliated with Marvel, Disney or Insomniac Games.",
+          "size": 28
+        }
       ]
     },
     {
@@ -28,18 +31,17 @@
     },
     {
       "id": "city_generation",
-      "type": "clip",
-      "source": "Saved/Demo/screen/city_generation.mp4",
-      "start": 0,
-      "speed": 4,
+      "type": "terminal",
+      "source": "Saved/Demo/terminal/city_generation.txt",
       "duration": 5,
-      "caption": "City generation: footprints and heights in, buildings, ledges and grapple anchors out"
+      "caption": "City generation: a rerun on the same data changes nothing, and the verifier checks 526 buildings and 2457 anchors",
+      "prompt": "PS> .\\Tools\\generate-city.ps1 -Verify"
     },
     {
       "id": "zip_one",
       "type": "frames",
       "source": "Saved/Demo/grapple_run",
-      "start": 0,
+      "start": 2.8,
       "duration": 5,
       "caption": "Grapple traversal: real movement, you keep your speed into the zip"
     },
@@ -47,24 +49,24 @@
       "id": "zip_two",
       "type": "frames",
       "source": "Saved/Demo/grapple_run",
-      "start": 6,
-      "duration": 5,
+      "start": 5.1,
+      "duration": 3.6,
       "caption": "The body leans into the pull and brakes on arrival"
     },
     {
       "id": "mantle_landing",
       "type": "frames",
       "source": "Saved/Demo/grapple_run",
-      "start": 12,
-      "duration": 4,
+      "start": 8.7,
+      "duration": 3.5,
       "caption": "Mantles fitted to the measured ledge, and a heavy landing"
     },
     {
       "id": "descent",
       "type": "frames",
       "source": "Saved/Demo/descent",
-      "start": 0,
-      "duration": 5,
+      "start": 0.2,
+      "duration": 6,
       "caption": "Fire escape descent: hang, drop, catch"
     },
     {
@@ -73,13 +75,13 @@
       "source": "Saved/Demo/screen/traversal_debugger.mp4",
       "start": 0,
       "duration": 6,
-      "caption": "Traversal Debugger: an editor tab that checks every grapple anchor and says why one fails"
+      "caption": "Traversal Debugger: the editor tab, with the district's real audit: 2457 anchors, 24272 reachable pairs, and why a roof fails"
     },
     {
       "id": "lucky",
       "type": "frames",
       "source": "Saved/Demo/lucky",
-      "start": 1,
+      "start": 5.4,
       "duration": 5,
       "caption": "Lucky follows, trots and sits. The rules are tested pure functions"
     },
@@ -112,20 +114,19 @@
     },
     {
       "id": "tests_run",
-      "type": "clip",
-      "source": "Saved/Demo/screen/tests_run.mp4",
-      "start": 0,
-      "speed": 8,
+      "type": "terminal",
+      "source": "Saved/Demo/terminal/tests_run.txt",
       "duration": 5,
-      "caption": "641 automation tests, run headless"
+      "caption": "655 automation tests, run headless (60 of them check themselves only in the standalone game)",
+      "prompt": "PS> .\\Tools\\run-tests.ps1"
     },
     {
       "id": "lap_bot",
-      "type": "clip",
-      "source": "Saved/Demo/screen/lap_bot.mp4",
-      "start": 0,
+      "type": "terminal",
+      "source": "Saved/Demo/terminal/lap_bot.txt",
       "duration": 4,
-      "caption": "Lap bots play the chapter from the menu"
+      "caption": "Lap bots play the chapter from the menu: the log of a real run",
+      "prompt": "PS> UnrealEditor-Cmd ... -ExecCmds=\"Automation RunTests Hawkeye.Lap.Campaign\""
     },
     {
       "id": "end",
@@ -133,9 +134,18 @@
       "duration": 4,
       "lines": [
         "Hawkeye: Kate Bishop",
-        {"text": "Built with Claude Code as a pair.", "size": 40},
-        {"text": "I set the design and the story, play the build and decide what changes.", "size": 36},
-        {"text": "The agent writes much of the code. Characters are stand-ins.", "size": 36}
+        {
+          "text": "Built with Claude Code as a pair.",
+          "size": 40
+        },
+        {
+          "text": "I set the design and the story, play the build and decide what changes.",
+          "size": 36
+        },
+        {
+          "text": "The agent writes much of the code under the rules in CLAUDE.md.",
+          "size": 36
+        }
       ]
     }
   ]
