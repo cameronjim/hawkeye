@@ -168,6 +168,13 @@ public:
 	static float GetGlowScale(const UObject* WorldContext);
 
 	/**
+	 * PP_Global's exposure bias as the time of day in force leaves it (exposure is pinned, so the bias is the picture's
+	 * brightness): the day's preset by day, the level's own by night (the generator's +2 before anything has been captured).
+	 * The character light rig scales its lux by it.
+	 */
+	static float GetExposureBiasInForce(const UObject* WorldContext);
+
+	/**
 	 * Sets Parameter on Material to NightValue times the glow scale in force, and keeps it there: every later
 	 * Apply rescales it. Calling it again for the same material and parameter replaces the night value. Without
 	 * a time of day subsystem (the editor, a test with no world) it just sets NightValue.
