@@ -20,7 +20,7 @@ import math
 
 import numpy as np
 
-CHIN_Z = 1.585          # chin's lowest point (the pack's head box starts at 1.58)
+CHIN_Z = 1.563          # chin's lowest point (the pack's head box starts at 1.58)
 HEAD_H = 0.225          # chin to crown
 CROWN_Z = CHIN_Z + HEAD_H
 NECK_BASE_Z = 1.44      # the neck tube starts here, inside the collar
@@ -124,6 +124,7 @@ def profile(face, z, neck_y=NECK_Y):
     ts = [-0.70, -0.10, 0.02, 0.10, 0.20, 0.32, 0.45, 0.60, T_CAP]
     W = pchip(t, ts, [nrx, nrx, max(nrx * 1.05, 0.050 * jw), max(nrx * 1.10, 0.057 * jw), 0.0640 * (1.0 + 0.7 * (jw - 1.0)),
                       0.0705 * hw, 0.0735 * hw * (1.0 + 0.03 * (face.cheek - 1.0)), 0.0750 * hw, 0.0765 * hw])
+    W = W * (1.0 + 0.045 * smoothstep(0.0, 0.25, t))     # a head 16 cm across: 15 read small on the body's shoulders
     chin_y = -(0.079 + 0.007 * (face.chin - 1.0))
     neck_front = neck_y - nr
     # The face's plane from the chin to the brow: monotone, so no ring carries a groove across its whole width (an

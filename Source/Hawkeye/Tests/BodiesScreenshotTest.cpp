@@ -239,8 +239,22 @@ namespace HawkeyeBodyShots
 		Test->TestTrue(*FString::Printf(TEXT("%s: head %.0f cm from the driver's"), *Who, HeadOff), bHeads && HeadOff < 25.f);
 		const float Feet = Character->GetActorLocation().Z - Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 		const float Top = bHeads ? Head.Z - Feet : 0.f;
-		return FString::Printf(TEXT("%s on %s: head bone %.0f cm up, hands %.0f cm below the shoulders, toes %.2f along his facing, head %.0f cm from the driver's, farthest bone %.0f cm"),
-			*GetNameSafe(Seen->GetSkeletalMeshAsset()), *GetNameSafe(Driver->GetSkeletalMeshAsset()), Top, Drop, Facing, HeadOff, Farthest);
+		// The stance: the visible feet's distance apart across his body, against his hips'.
+		FVector FootL(0.f), FootR(0.f), ThighL(0.f), ThighR(0.f);
+		float FeetApart = -1.f, HipsApart = -1.f;
+		if (Bone(Seen, TEXT("foot_l"), FootL) && Bone(Seen, TEXT("foot_r"), FootR) && Bone(Seen, TEXT("thigh_l"), ThighL) && Bone(Seen, TEXT("thigh_r"), ThighR))
+		{
+			const FVector Across = Character->GetActorRightVector().GetSafeNormal2D();
+			FeetApart = FMath::Abs(FVector::DotProduct(FootL - FootR, Across));
+			HipsApart = FMath::Abs(FVector::DotProduct(ThighL - ThighR, Across));
+			if (Cast<AThugCharacter>(Character))    // the thugs' stance is ours (the Hawkeye Body Pose node's legs); Kate's and Clint's are the retarget's
+			{
+				Test->TestTrue(*FString::Printf(TEXT("%s: his feet stand under his hips, not in a straddle (feet %.0f cm apart, hips %.0f)"), *Who, FeetApart, HipsApart),
+					FeetApart < HipsApart * 1.35f);
+			}
+		}
+		return FString::Printf(TEXT("%s on %s: head bone %.0f cm up, hands %.0f cm below the shoulders, toes %.2f along his facing, head %.0f cm from the driver's, feet %.0f cm apart (hips %.0f), farthest bone %.0f cm"),
+			*GetNameSafe(Seen->GetSkeletalMeshAsset()), *GetNameSafe(Driver->GetSkeletalMeshAsset()), Top, Drop, Facing, HeadOff, FeetApart, HipsApart, Farthest);
 	}
 }
 

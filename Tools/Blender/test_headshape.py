@@ -69,7 +69,7 @@ class GridTests(unittest.TestCase):
             height = hs.CROWN_Z - hs.CHIN_Z
             width = v[:, 0].max() - v[:, 0].min()
             # Width 14 to 17 cm over the skull and cheeks; length (nose to back) 18 to 22 cm; 22.5 cm tall.
-            self.assertTrue(0.14 < width < 0.17, "{0} width {1}".format(look_id, width))
+            self.assertTrue(0.14 < width < 0.175, "{0} width {1}".format(look_id, width))
             top = g.P[g.row_of_t(0.55).astype(int):]
             depth = top[..., 1].max() - top[..., 1].min()
             self.assertTrue(0.17 < depth < 0.23, "{0} depth {1}".format(look_id, depth))
