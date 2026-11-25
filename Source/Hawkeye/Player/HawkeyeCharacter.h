@@ -1251,6 +1251,13 @@ protected:
 	/** Plays the fall loop clip while the body pose says she is falling after a release, and ends it with the fall. */
 	void UpdateTraversalClips(float DeltaSeconds);
 
+	/**
+	 * Cuts the follow camera's motion blur to hawkeye.Traversal.MotionBlur (and its cap to .MotionBlurMax) while she is on
+	 * a grapple trip, the shot and the landing after it included, and gives it back after (HawkeyeCharacterTraversalPose.cpp).
+	 * An explosion's SuppressMotionBlur wins while it runs.
+	 */
+	void UpdateTraversalMotionBlur(float DeltaSeconds);
+
 	/** Blends the fall loop out. */
 	void StopFallLoop(float BlendOutSeconds);
 
@@ -2248,6 +2255,14 @@ protected:
 	float MotionBlurOffRemaining = 0.f;
 	bool bSavedMotionBlurOverride = false;
 	float SavedMotionBlurAmount = 0.f;
+
+	/** UpdateTraversalMotionBlur: how far into the trip's blur (0..1), whether it holds the camera's override, and what to put back. */
+	float TraversalBlurWeight = 0.f;
+	bool bTraversalBlurHeld = false;
+	bool bTraversalBlurSavedAmountOverride = false;
+	float TraversalBlurSavedAmount = 0.f;
+	bool bTraversalBlurSavedMaxOverride = false;
+	float TraversalBlurSavedMax = 0.f;
 
 	/** Length and throw of the shake now running: a hit's, or a blast's from PlayImpactShake. */
 	UPROPERTY(Transient)
