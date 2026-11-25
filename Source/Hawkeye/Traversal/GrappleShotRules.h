@@ -55,10 +55,12 @@ struct HAWKEYE_API FHawkeyeGrappleShotSettings
 
 	/**
 	 * Press to pull of a mid-air chain, s. ChainArrowSpeed 0 means the redirect used to start at the press; this is the
-	 * compressed shot's own time (the arrow still flies it). 0 keeps the redirect at the press with the shot playing over it.
+	 * compressed shot's own time (the arrow still flies it). 0 (the default since 2026-11-25) keeps the redirect at the press, as
+	 * before the shot existed: 0.10 delayed it by 180 cm of travel at 1800 cm/s and the East Village lap's roof-to-roof chain hit a
+	 * wall (Hawkeye.Lap.EastVillage).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Shot", meta = (ClampMin = "0.0"))
-	float ChainTotalSeconds = 0.10f;
+	float ChainTotalSeconds = 0.f;
 
 	/** Added to press-to-pull on top of the arrow's own flight, s. 0: the shot costs no latency (the default). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Shot", meta = (ClampMin = "0.0"))

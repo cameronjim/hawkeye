@@ -90,11 +90,13 @@ bool FHawkeyeGrappleShotSchedule::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Extra latency adds to the total"), FGrappleShotRules::MakeSchedule(2400.f, 6000.f, false, Slower).TotalSeconds, 0.5f, 1e-4f);
 
 	// A chain at speed 0 used to start at the press: its shot takes ChainTotalSeconds, or none.
-	const FGrappleShotSchedule Chain = FGrappleShotRules::MakeSchedule(1800.f, 0.f, true, Settings);
+	FHawkeyeGrappleShotSettings Timed = Settings;
+	Timed.ChainTotalSeconds = 0.1f;
+	const FGrappleShotSchedule Chain = FGrappleShotRules::MakeSchedule(1800.f, 0.f, true, Timed);
 	TestEqual(TEXT("A chain's compressed shot takes 0.1 s"), Chain.TotalSeconds, 0.1f, 1e-4f);
 	TestTrue(TEXT("It still flies after the release"), Chain.FlightSeconds > 0.f && Chain.ReleaseSeconds < Chain.TotalSeconds);
 	FHawkeyeGrappleShotSettings Instant = Settings;
-	Instant.ChainTotalSeconds = 0.f;
+	TestEqual(TEXT("The default chain keeps the redirect at the press"), Instant.ChainTotalSeconds, 0.f);
 	const FGrappleShotSchedule Now = FGrappleShotRules::MakeSchedule(1800.f, 0.f, true, Instant);
 	TestEqual(TEXT("With no chain time the redirect is at the press"), Now.TotalSeconds, 0.f);
 	TestTrue(TEXT("And the release is the press"), Now.HasReleased(0.f));

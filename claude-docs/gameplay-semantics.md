@@ -598,7 +598,8 @@ for a few frames unseen (no trail, `LaunchWithVelocity` is off for it), and the 
   `ReleaseMaxShare` (0.6) of it nor less than `MinReleaseSeconds`, and the arrow flies the rest, fast enough to arrive on
   time. A 6 m line releases at 0.06 s with the draw squeezed; a 24 m line at 0.18 s.
 - A chain (a press mid-zip): `ChainArrowSpeed` is 0, so the redirect used to start at the press. The shot is compressed into
-  `ChainTotalSeconds` (0.10 s; 0 keeps the redirect at the press and the shot plays over it). The old rope stays taut until the
+  `ChainTotalSeconds` (default 0 since 2026-11-25: the redirect starts at the press, as before; 0.10 delayed it 180 cm along the old line
+  and the East Village lap's roof-to-roof chain then hit a wall, so a chain is the follow-through and the rope only). The old rope stays taut until the
   new arrow bites, then whips back.
 - The bow stays raised and aimed at the anchor (`HasScriptedAim`) while the shot, the arrow or the pull needs it
   (`bBowHeld`), and `BowHoldAfterZipSeconds` (0.15) after: the bow hand keeps the line through the jerk. The hands IK reads
