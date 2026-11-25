@@ -265,6 +265,23 @@ float UTimeOfDaySubsystem::GetGlowScale(const UObject* WorldContextObject)
 	return Subsystem ? Subsystem->AppliedPreset.GlowScale : 1.f;
 }
 
+float UTimeOfDaySubsystem::GetExposureBiasInForce(const UObject* WorldContextObject)
+{
+	// Generate_city's EXPOSURE_BIAS: what the level carries at night until a day has captured it.
+	static constexpr float GeneratedNightBias = 2.f;
+	const UTimeOfDaySubsystem* Subsystem = Get(WorldContextObject);
+	if (!Subsystem)
+	{
+		return GeneratedNightBias;
+	}
+	if (Subsystem->AppliedPreset.bUseAuthored || Subsystem->Applied == EHawkeyeTimeOfDay::Night)
+	{
+		return (Subsystem->bCaptured && Subsystem->Authored.bOverrideExposureBias) ? Subsystem->Authored.ExposureBias
+																					: GeneratedNightBias;
+	}
+	return Subsystem->AppliedPreset.ExposureBias;
+}
+
 void UTimeOfDaySubsystem::SetGlow(const UObject* WorldContextObject, UMaterialInstanceDynamic* Material, float NightValue,
 	FName Parameter)
 {
