@@ -9,14 +9,34 @@
 #include "Combat/BowIKAnimInstance.h"
 #include "Combat/CombatAnimSet.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Camera/CameraComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "Hawkeye.h"
 #include "Player/GrappleComponent.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Player/HawkeyeMovementComponent.h"
+#include "Traversal/GrappleShotRules.h"
 #include "World/GrappleAnchor.h"
+
+static TAutoConsoleVariable<float> CVarTraversalMotionBlur(TEXT("hawkeye.Traversal.MotionBlur"), 0.12f,
+	TEXT("The follow camera's motion blur amount while she is on a grapple trip (the engine's default is 0.5): a light blur, so a zip "
+		 "does not smear the whole frame. 0.5 leaves it as it was."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarTraversalMotionBlurMax(TEXT("hawkeye.Traversal.MotionBlurMax"), 1.0f,
+	TEXT("The longest blur streak, in percent of the screen's width, on a grapple trip (the engine's default is 5)."),
+	ECVF_Default);
 
 namespace HawkeyeTraversalPoseDriver
 {
+	/** Seconds the trip's blur takes to come in and to go out. */
+	static constexpr float BlurInSeconds = 0.10f;
+	static constexpr float BlurOutSeconds = 0.35f;
+
+	/** The engine's motion blur defaults, for when the camera has no override of its own to go back to. */
+	static constexpr float EngineBlurAmount = 0.5f;
+	static constexpr float EngineBlurMax = 5.f;
+
 	/** Where the rope is taken to leave her from, up from the capsule centre (the shoulder's height), cm. */
 	static constexpr float RopeOriginHeight = 55.f;
 }
@@ -83,8 +103,58 @@ void AHawkeyeCharacter::StopFallLoop(float BlendOutSeconds)
 	}
 }
 
-void AHawkeyeCharacter::UpdateTraversalClips(float /*DeltaSeconds*/)
+void AHawkeyeCharacter::UpdateTraversalMotionBlur(float DeltaSeconds)
 {
+	if (!FollowCamera)
+	{
+		return;
+	}
+	// A trip: the shot, the hop and the pull, the fall after a let-go and the arrival (whatever phase the body pose is in).
+	const bool bTraversing = TraversalPoseState.GetPhase() != ETraversalPhase::None ||
+		(GrappleComponent && (GrappleComponent->IsZipping() || GrappleComponent->IsArrowInFlight()));
+	TraversalBlurWeight = FGrappleShotRules::StepBlurWeight(TraversalBlurWeight, bTraversing, DeltaSeconds,
+		HawkeyeTraversalPoseDriver::BlurInSeconds, HawkeyeTraversalPoseDriver::BlurOutSeconds);
+	if (MotionBlurOffRemaining > 0.f)
+	{
+		// A blast has the camera's blur off; it puts back what it found when it ends.
+		return;
+	}
+	FPostProcessSettings& Settings = FollowCamera->PostProcessSettings;
+	if (!bTraversalBlurHeld)
+	{
+		if (TraversalBlurWeight <= 0.f)
+		{
+			return;
+		}
+		bTraversalBlurHeld = true;
+		bTraversalBlurSavedAmountOverride = Settings.bOverride_MotionBlurAmount != 0;
+		TraversalBlurSavedAmount = Settings.MotionBlurAmount;
+		bTraversalBlurSavedMaxOverride = Settings.bOverride_MotionBlurMax != 0;
+		TraversalBlurSavedMax = Settings.MotionBlurMax;
+	}
+	const float BaseAmount = bTraversalBlurSavedAmountOverride ? TraversalBlurSavedAmount : HawkeyeTraversalPoseDriver::EngineBlurAmount;
+	const float BaseMax = bTraversalBlurSavedMaxOverride ? TraversalBlurSavedMax : HawkeyeTraversalPoseDriver::EngineBlurMax;
+	Settings.bOverride_MotionBlurAmount = true;
+	Settings.MotionBlurAmount =
+		FGrappleShotRules::BlurAmount(BaseAmount, FMath::Max(0.f, CVarTraversalMotionBlur.GetValueOnGameThread()), TraversalBlurWeight);
+	Settings.bOverride_MotionBlurMax = true;
+	Settings.MotionBlurMax =
+		FGrappleShotRules::BlurAmount(BaseMax, FMath::Max(0.f, CVarTraversalMotionBlurMax.GetValueOnGameThread()), TraversalBlurWeight);
+	if (TraversalBlurWeight <= 0.f)
+	{
+		// Gone: the camera's own values (or none) back.
+		bTraversalBlurHeld = false;
+		Settings.bOverride_MotionBlurAmount = bTraversalBlurSavedAmountOverride;
+		Settings.MotionBlurAmount = TraversalBlurSavedAmount;
+		Settings.bOverride_MotionBlurMax = bTraversalBlurSavedMaxOverride;
+		Settings.MotionBlurMax = TraversalBlurSavedMax;
+	}
+}
+
+void AHawkeyeCharacter::UpdateTraversalClips(float DeltaSeconds)
+{
+	UpdateTraversalMotionBlur(DeltaSeconds);
+
 	// The fall after letting go of the line plays the sample's fall loop under the body pose's reaction to how fast she
 	// drops.
 	const bool bWantsLoop = TraversalPoseState.GetPhase() == ETraversalPhase::Fall && !IsRolling() &&
