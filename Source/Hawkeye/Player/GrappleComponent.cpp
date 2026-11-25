@@ -144,6 +144,11 @@ FIntPoint UGrappleComponent::CellOf(const FVector& Location) const
 	return FIntPoint(FMath::FloorToInt(Location.X / GridCellSize), FMath::FloorToInt(Location.Y / GridCellSize));
 }
 
+void UGrappleComponent::SetTargetForTest(AGrappleAnchor* Anchor)
+{
+	TargetAnchor = Anchor;
+}
+
 void UGrappleComponent::BuildGrid() const
 {
 	AnchorGrid.Reset();

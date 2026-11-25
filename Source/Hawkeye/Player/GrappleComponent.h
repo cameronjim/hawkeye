@@ -175,10 +175,7 @@ public:
 	 * Makes Anchor the marked target now (tests and the shot strips, which put an anchor where they want it and fire at it
 	 * without a camera). TryFire still checks the state.
 	 */
-	void SetTargetForTest(AGrappleAnchor* Anchor)
-	{
-		TargetAnchor = Anchor;
-	}
+	void SetTargetForTest(AGrappleAnchor* Anchor);
 
 	/**
 	 * Drops everything the shot has up: a pending shot, every rope, the bow's scripted aim and the arrow waiting to be taken out.

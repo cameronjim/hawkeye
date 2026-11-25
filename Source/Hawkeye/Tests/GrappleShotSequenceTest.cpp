@@ -269,8 +269,8 @@ bool FHawkeyeCharLightRules::RunTest(const FString& Parameters)
 	// The lights turn with the camera: the same offsets from a camera turned 90 degrees are turned 90 degrees.
 	const FRotator A = FCharacterLightRules::LightRotation(FRotator(0.f, 0.f, 0.f), S.KeyYaw, S.KeyPitch);
 	const FRotator B = FCharacterLightRules::LightRotation(FRotator(0.f, 90.f, 0.f), S.KeyYaw, S.KeyPitch);
-	TestEqual(TEXT("Same pitch"), B.Pitch, A.Pitch, 0.01f);
-	TestEqual(TEXT("Yaw follows the camera"), FRotator::NormalizeAxis(B.Yaw - A.Yaw), 90.f, 0.01f);
+	TestEqual(TEXT("Same pitch"), (float)B.Pitch, (float)A.Pitch, 0.01f);
+	TestEqual(TEXT("Yaw follows the camera"), (float)FRotator::NormalizeAxis(B.Yaw - A.Yaw), 90.f, 0.01f);
 	TestTrue(TEXT("The key shines down"), A.Pitch < -10.f);
 	TestTrue(TEXT("The key comes from the left: it travels to the right of the view"), A.Yaw > 10.f);
 	TestTrue(TEXT("The rim travels toward the camera"),
