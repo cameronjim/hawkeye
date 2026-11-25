@@ -31,6 +31,7 @@
 #include "Tests/HawkeyeShots.h"
 #include "Tests/PartnerScreenshots.h"
 #include "Traversal/TraversalPoseRules.h"
+#include "World/GrappleAnchor.h"
 #include "World/ThugAIController.h"
 #include "World/ThugCharacter.h"
 
@@ -49,6 +50,10 @@
  * view; the frames are laid side by side into Saved/Screenshots/Traversal/<scenario>_<side|three_quarter>_<off|on>.png,
  * the single frames in Saved/Screenshots/Traversal/Frames/. A yellow line is drawn from her rope hand to the anchor.
  *
+ * The shot strips (shot, shot_player; at night, the stage's lamp off, so the character light rig is what lights her, pose on only)
+ * fire a real grapple at an anchor 18 m ahead and 8 m up and hold the world at the press, the raise, the draw, the release
+ * (0.165 / 0.18 / 0.197 s: 60 fps spacing around it), the arrow in the air, the bite and the rope going taut. Run with
+ * -benchmark -fps=60 for the spacing to be exact; the logged line of each frame names the shot's phase and the rope's state.
  * Scenarios: launch (the crouch-load while the arrow is in the air, then the hop and the jerk), pull (the line),
  * redirect (a chain's turn), tail_run (a sprint, then stopped dead: the ponytail's swing) and cut (a teleport mid-run), release (let go into the fall and the landing after), brace (the last 0.3 s of a long
  * climb), arrive_brake, arrive_slide and arrive_step (the three arrival classes), land_light, land_heavy and land_roll.
@@ -70,6 +75,7 @@ namespace HawkeyeTraversalShots
 		TWeakObjectPtr<AHawkeyeCharacter> Kate;
 		TWeakObjectPtr<ACameraActor> Camera;
 		TWeakObjectPtr<APointLight> Light;
+		TWeakObjectPtr<AGrappleAnchor> Anchor;
 		FVector Feet = FVector::ZeroVector;
 		FVector Along = FVector::ForwardVector;
 		float DefaultZipSpeed = 1800.f;
@@ -113,6 +119,10 @@ namespace HawkeyeTraversalShots
 		bool bReferenceIsBrace = false;
 		/** The shot is from the player's own camera behind her (no stage camera), one view. */
 		bool bPlayerCamera = false;
+		/** Under hawkeye.TimeOfDay Night with the stage's lamp off (put back after). */
+		bool bNight = false;
+		/** Only the pose-on mode runs (the scenario is about the bow and the rope, not the body pose layer). */
+		bool bPoseOnOnly = false;
 	};
 
 	static UWorld* FindWorld()
@@ -243,6 +253,10 @@ namespace HawkeyeTraversalShots
 		if (Movement->IsZipping())
 		{
 			Movement->ReleaseZip(false);
+		}
+		if (UGrappleComponent* Grapple = Kate->GetGrappleComponent())
+		{
+			Grapple->ClearShot();
 		}
 		Movement->ZipSpeed = Stage.DefaultZipSpeed;
 		Kate->ClearTraversalRopeTarget();
@@ -518,6 +532,50 @@ namespace HawkeyeTraversalShots
 				}});
 			Out.Add(S);
 		}
+		// A real grapple shot at night: the press at 0, the release at about 0.18 s, the arrow in the anchor at about
+		// 0.33 s. An anchor in the air 18 m ahead and 8 m up; the target is set on it and the press goes through TryFire,
+		// so the bow, the arrow, the rope and the pull are the game's own.
+		const auto FireShot = [](FStage& Stage, UWorld& World)
+		{
+			AHawkeyeCharacter* Kate = Stage.Kate.Get();
+			UGrappleComponent* Grapple = Kate ? Kate->GetGrappleComponent() : nullptr;
+			if (!Kate || !Grapple)
+			{
+				return;
+			}
+			StandKate(Stage, World);
+			if (AGrappleAnchor* Old = Stage.Anchor.Get())
+			{
+				Old->Destroy();
+			}
+			const FVector Where = Stage.Feet + Stage.Along * 1800.f + FVector(0.f, 0.f, 800.f);
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			AGrappleAnchor* Anchor = World.SpawnActor<AGrappleAnchor>(AGrappleAnchor::StaticClass(), FTransform(Stage.Along.Rotation(), Where), Params);
+			Stage.Anchor = Anchor;
+			Grapple->Shot.bEnabled = true;
+			Grapple->SetTargetForTest(Anchor);
+			Grapple->TryFire();
+		};
+		{
+			FScenario S;
+			S.Name = TEXT("shot");
+			S.Times = {0.f, 0.06f, 0.12f, 0.165f, 0.18f, 0.197f, 0.23f, 0.27f, 0.32f, 0.36f, 0.42f, 0.55f};
+			S.bNight = true;
+			S.bPoseOnOnly = true;
+			S.Start = FireShot;
+			Out.Add(S);
+		}
+		{
+			FScenario S;
+			S.Name = TEXT("shot_player");
+			S.Times = {0.f, 0.09f, 0.165f, 0.197f, 0.25f, 0.32f, 0.4f, 0.6f};
+			S.bNight = true;
+			S.bPoseOnOnly = true;
+			S.bPlayerCamera = true;
+			S.Start = FireShot;
+			Out.Add(S);
+		}
 		return Out;
 	}
 
@@ -592,6 +650,19 @@ namespace HawkeyeTraversalShots
 			{
 				case EPhase::Setup:
 					SetPoseEnabled(bPoseOn);
+					if (Scenario.bNight)
+					{
+						// The district's night, and the stage's own lamp off: the character light rig is all that lights her.
+						GEngine->Exec(World, TEXT("hawkeye.TimeOfDay Night"));
+						bNightSet = true;
+					}
+					if (APointLight* Lamp = Stage->Light.Get())
+					{
+						if (ULightComponent* LampLight = Lamp->GetLightComponent())
+						{
+							LampLight->SetVisibility(!Scenario.bNight);
+						}
+					}
 					Scenario.Start(*Stage, *World);
 					if (Scenario.bPlayerCamera)
 					{
@@ -657,6 +728,22 @@ namespace HawkeyeTraversalShots
 				case EPhase::Cleanup:
 					UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
 					StandKate(*Stage, *World);
+					if (AGrappleAnchor* Anchor = Stage->Anchor.Get())
+					{
+						Anchor->Destroy();
+					}
+					if (bNightSet)
+					{
+						GEngine->Exec(World, TEXT("hawkeye.TimeOfDay Saved"));
+						bNightSet = false;
+					}
+					if (APointLight* Lamp = Stage->Light.Get())
+					{
+						if (ULightComponent* LampLight = Lamp->GetLightComponent())
+						{
+							LampLight->SetVisibility(true);
+						}
+					}
 					Phase = EPhase::Done;
 					return true;
 				default:
@@ -800,6 +887,45 @@ namespace HawkeyeTraversalShots
 			HawkeyeShots::Request(Test, File, /*bShowUI=*/false);
 		}
 
+		/**
+		 * The shot strips' checks: what the shot, the bow and the rope are doing at this hold, logged; and, with a frame of
+		 * tolerance on every moment, that the bow is up and drawing before the release, the arrow is not in the world
+		 * before it, and a rope is up after it.
+		 */
+		void CheckShot(const AHawkeyeCharacter& Kate, const UHawkeyeBowIKAnimInstance& Hands)
+		{
+			const UGrappleComponent* Grapple = Kate.GetGrappleComponent();
+			const UBowComponent* Bow = Kate.GetBowComponent();
+			if (!Grapple || !Bow)
+			{
+				return;
+			}
+			const FGrappleShotSchedule& Schedule = Grapple->GetShotSchedule();
+			const float Frame = 1.f / 30.f;
+			Test->AddInfo(FString::Printf(
+				TEXT("%s frame %d (%+.3f s): shot %s, bow draw %.2f raised %d clip %.2f ik bow %.2f string %.2f, rope %s x%d, arrow in flight %d, zipping %d (release at %.3f s, pull at %.3f s)"),
+				*Scenario.Name, Hold, HeldAt, *UEnum::GetValueAsString(Grapple->GetShotPhase()), Bow->GetDrawFraction(),
+				Bow->IsBowRaised() ? 1 : 0, Hands.GetClipAlpha(), Hands.GetBowAlpha(), Hands.GetDrawAlpha(),
+				*UEnum::GetValueAsString(Grapple->GetNewestRopeState()), Grapple->GetVisibleRopeCount(),
+				Grapple->IsArrowInFlight() ? 1 : 0, Grapple->IsZipping() ? 1 : 0, Schedule.ReleaseSeconds, Schedule.TotalSeconds));
+			if (HeldAt > 0.03 && HeldAt < Schedule.ReleaseSeconds - Frame)
+			{
+				Test->TestTrue(*FString::Printf(TEXT("%s frame %d: the bow is up before the release"), *Scenario.Name, Hold), Bow->IsBowRaised());
+				Test->TestTrue(*FString::Printf(TEXT("%s frame %d: the string hand is on before the release"), *Scenario.Name, Hold),
+					Bow->IsDrawPose());
+			}
+			if (HeldAt > Schedule.ReleaseSeconds + Frame && HeldAt < Schedule.TotalSeconds - Frame)
+			{
+				Test->TestTrue(*FString::Printf(TEXT("%s frame %d: a rope pays out while the arrow flies"), *Scenario.Name, Hold),
+					Grapple->GetVisibleRopeCount() >= 1);
+			}
+			if (HeldAt > Schedule.TotalSeconds + Frame && HeldAt < Schedule.TotalSeconds + 0.25)
+			{
+				Test->TestTrue(*FString::Printf(TEXT("%s frame %d: the rope is up after the bite"), *Scenario.Name, Hold),
+					Grapple->GetVisibleRopeCount() >= 1);
+			}
+		}
+
 		/** What the pose is doing at this hold, logged; with the pose on, the checks that mean it is working. */
 		void Check(const AHawkeyeCharacter& Kate)
 		{
@@ -815,6 +941,10 @@ namespace HawkeyeTraversalShots
 				return;
 			}
 			const FTraversalPoseOutput& Pose = Hands->GetTraversalPose();
+			if (Scenario.Name.StartsWith(TEXT("shot")))
+			{
+				CheckShot(Kate, *Hands);
+			}
 			Test->AddInfo(FString::Printf(
 				TEXT("%s pose %s frame %d (%+.2f s): phase %s weight %.2f tilt (%.1f, %.1f) arrival %s speed %.0f"),
 				*Scenario.Name, bPoseOn ? TEXT("on") : TEXT("off"), Hold, HeldAt, *UEnum::GetValueAsString(Pose.Phase),
@@ -892,6 +1022,7 @@ namespace HawkeyeTraversalShots
 		double BraceAt = -1.0;
 		bool bTouchedDown = false;
 		bool bWasZipping = false;
+		bool bNightSet = false;
 		TSet<int32> FiredEvents;
 	};
 }
@@ -984,7 +1115,7 @@ bool FHawkeyeScreenshotTraversal::RunTest(const FString& Parameters)
 		}
 		for (const bool bPoseOn : {false, true})
 		{
-			if (bPoseOnlyOn && !bPoseOn)
+			if ((bPoseOnlyOn || Scenario.bPoseOnOnly) && !bPoseOn)
 			{
 				continue;
 			}
