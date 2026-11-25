@@ -297,6 +297,52 @@ combat idle has them, 35 cm apart under hips 22.8 cm apart. It is fixed after th
 at the hip, in the frontal plane, until the foot is `FeetUnderHipsRatio` (0.92) of the hip's distance out, never more than 24 degrees; the
 foot is turned back so it stays flat. The Bodies shot checks it (`feet N cm apart (hips M)`, a failure past 1.35 times).
 
+## Enemy heads, second pass (2026-11-25)
+
+The ring-grid head above could not be tuned into a face: a feature was a Gaussian bump on a ring's normal, so there was
+no nose bridge or nostril, no lip line, no lids, ears were plates and the cheeks carried horizontal ridges. The face is now
+**a hand-authored control cage, subdivided**, and the grid survives only as a sampling structure for the hair and headwear.
+
+* **`headcage.py`** (numpy, tested by `test_headcage.py`): about 420 vertices, quad-dominant, closed (the neck's base is
+  capped; the balaclava's voxel shell needs a closed head), mirrored on X. A lattice of 20 rings (neck base to crown) of
+  16 vertices whose rows pass through the landmarks (`ROW_TABLE`: menton, chin, mouth, nose base, nose tip, the eyes'
+  lower, middle and upper lines, brow, forehead, dome) and whose columns run front midline to back midline. Where a feature
+  needs loops the lattice's cells are replaced: **round each eye** the orbit (lattice nodes), the lid fold and the lid
+  margin (on a sphere 1.1 mm proud of the eyeball) and a sealed inner pocket, so the lids have thickness; **round the
+  mouth** the outer ring, the lips' border and the lip line, with a sealed pocket behind the line (a real slit between two
+  lips, creased); **the nose** with a bridge, tip, wings, a columella and two nostril cavities (an inset on the underside
+  quad and a pocket). Positions are the row table, per-row column x (`ROW_X`), and `RELIEF`, an explicit (dx, dy, dz) per
+  named node in centimetres. Proportions are named constants (eyes at half the head's height, nose base halfway chin to brow,
+  mouth a third from nose base to chin, ears brow to nose base, 22.5 cm menton to vertex, 6.2 cm between the irises).
+* **Variation is landmark-driven** (`deform`): each `FaceSpec` number moves a neighbourhood of cage vertices about a named
+  landmark (jaw width, squareness, chin, brow, eye spacing/size/depth, cheekbone and hollow, nose projection/width/bridge,
+  lips, mouth width, age's eye bags, neck radius, skull width and depth). `looks.py` is unchanged; every row still works.
+* **Ears** (`ear_cage`): their own cage, a plate with a helix, scapha, antihelix and its fork, concha, tragus, antitragus and
+  lobe as relief over a thickened plate (front and back sheets joined by a rim wall), rooted on the skull's side at each
+  row's own x, flared by `ear_flare`, leaning back at the top.
+* **`headmesh.py`** (bpy): Catmull-Clark twice (`LEVELS`), the cage's creases at the lip line, lid margins and nostrils, vertex
+  groups (`lips`, `lash`, `inner`, `ridge`) carried through the subdivision; ambient occlusion by 48 rays per vertex on the
+  mesh itself (0.035 m), a per-vertex cavity (the Laplacian along the normal); `SurfaceGrid`, the head resampled onto the old ring grid by
+  rays from the skull's axis so `headshape.cap_grid` (hair, beanie, cap) and `brim_arrays` run unchanged; `brow_arrays`, brow
+  cards sampled off the ridge. 6.5k vertices for the head, 13k triangles.
+* **`headbake.py`** (numpy): UVs are the cage's own (u round the head, front midline at 0.5, the back the seam; v up it; the
+  eye, mouth and nostril loops mapped through their surrounding loop; the ears in a strip above, v over 0.86). The mesh is
+  rasterised into its UV space and the skin painted from what each texel is: tone drift on 3D positions (no seam), flush at the
+  cheeks, nose and ears, the baked occlusion and cavity (the sockets, the lip line, under the nose and lip and the folds are
+  dark because the mesh shades itself; **nothing is painted as a shadow**), lids' lash line, dark inner pockets, lips from the
+  `lips` weight, stubble and beards from the jaw's own coordinates (cheek line rising to the ear, a bare lip), a feathered
+  hairline from `hairline_t`, pores and stubble pits in the normal map. `headtex.py` still makes the eyes, brows and hair.
+* **`head_preview.py`**: the head alone (no body, 5 s without the bake, 12 s with), eyes, brows, hair and ears included:
+  `blender --background --factory-startup --python Tools/Blender/head_preview.py -- --look thug --views face_front,face_34,nose,mouth,ear --lights all --textured --out <abs dir>`
+  renders under the studio light, a harsh top light and a low side light (the engine's sun showed ridges the studio's key
+  did not). Give an absolute `--out`.
+
+Old (`headshape.HeadGrid`, `displacement`, `headtex.skin_maps`) stays in the repo, tested, but `headbuild` no longer calls it.
+
+**Rest arms.** `HawkeyeBodyPose::ArmRestDirections` hangs the arm `OutwardDegrees` from vertical: 10 degrees on the slimmer
+bodies (it was 20, raised from 10 to stop the fingertips sinking into the bodybuilder's trousers; with the reshaped thighs that
+read as a gunslinger). The test asks the upper arm's Z below -0.97 (under about 14 degrees).
+
 ## Known limits
 
 - No cloth simulation: Clint's skirt is skinned. It swings in a stride, but in a deep crouch the front panels fold
