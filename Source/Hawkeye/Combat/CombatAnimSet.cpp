@@ -51,6 +51,12 @@ const TSoftObjectPtr<UAnimMontage>* UCombatAnimSet::FindSlot(ECombatAnimRole Rol
 	case ECombatAnimRole::LandRoll: return &LandRoll;
 	case ECombatAnimRole::LandStumble: return &LandStumble;
 	case ECombatAnimRole::FallLoop: return &FallLoop;
+	case ECombatAnimRole::LedgeDropToHang: return &LedgeDropToHang;
+	case ECombatAnimRole::LedgeCatch: return &LedgeCatch;
+	case ECombatAnimRole::LedgeHangIdle: return &LedgeHangIdle;
+	case ECombatAnimRole::LedgeHangDrop: return &LedgeHangDrop;
+	case ECombatAnimRole::LedgeClimbUp: return &LedgeClimbUp;
+	case ECombatAnimRole::LedgeVaultPlant: return &LedgeVaultPlant;
 	default: return nullptr;
 	}
 }
