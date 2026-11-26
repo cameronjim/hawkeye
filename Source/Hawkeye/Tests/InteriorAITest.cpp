@@ -1,7 +1,9 @@
 #include "Combat/HealthComponent.h"
 #include "Combat/TakedownComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Hawkeye.h"
 #include "Misc/AutomationTest.h"
+#include "UObject/UObjectGlobals.h"
 #include "NavAreas/NavArea_Default.h"
 #include "NavAreas/NavArea_Null.h"
 #include "Navigation/NavLinkProxy.h"
@@ -55,6 +57,12 @@ namespace HawkeyeInteriorAITest
 	static void AddOpenSample(FAutomationTestBase* Test)
 	{
 		using namespace HawkeyeInteriorKit;
+		// Collect first, here in our own frame: opening a map ends the editor's PIE session, which collects garbage
+		// inside UnrealEd, and a crash there (the 2026-11-25 Fatal error in EnemiesInPlace) has no frame of ours
+		// above it but this line. With the collection done here, a bad leftover object from an earlier test's world
+		// crashes at the CollectGarbage line instead, and the log names it.
+		UE_LOG(LogHawkeye, Log, TEXT("AddOpenSample: collecting garbage before opening %s."), HawkeyeInteriorKit::MapPath);
+		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 		// Always a fresh copy: the tests before this one leave bodies and open doors behind.
 		AutomationOpenMap(MapPath, /*bForceReload=*/true);
 		ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([]()
