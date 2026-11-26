@@ -1519,7 +1519,13 @@ bool FHawkeyeCampaignLapRunner::Update()
 			{
 				const float FromStart = FVector::Dist(Feet(Kate), Route->PlayerStart);
 				Expect(FString::Printf(TEXT("Kate is on the route's start (%.0f cm off)"), FromStart), FromStart < 400.f);
-				Expect(FString::Printf(TEXT("Kate opens at a run (%.0f cm/s)"), Kate->GetVelocity().Size2D()), Kate->GetVelocity().Size2D() > 400.f);
+				// She is put on the route at a sprint with no input held, so the walk's braking eats her speed over the frame this
+				// is read in: a 140 ms start frame (the first save, the thief's body) left 410 cm/s, a 160 ms one 370. The check is
+				// the speed she began the frame with, not the frame's length.
+				const UCharacterMovementComponent* Movement = Kate->GetCharacterMovement();
+				const float Speed = Kate->GetVelocity().Size2D();
+				const float Opening = Speed + (Movement ? Movement->GetMaxBrakingDeceleration() : 0.f) * World->GetDeltaSeconds();
+				Expect(FString::Printf(TEXT("Kate opens at a run (%.0f cm/s, %.0f at the frame's start)"), Speed, Opening), Opening > 500.f);
 				Mark(FString::Printf(TEXT("playing: mid-chase on %s, the thief %.0f cm ahead"), *Route->GetName(), Chase->GetLead()));
 				PlanChase(Route);
 			}
