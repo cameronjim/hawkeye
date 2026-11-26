@@ -331,6 +331,9 @@ known to flake (`flakyLaps` in the rules: `Grotto`, `SeenGrotto`, `CrimeRooftop`
 So is the automation step when the editor dies with an access violation while it tears down the PIE world `Hawkeye.Smoke.LoadEastVillage`
 opened, after every test passed and the report was written (about one run in three on 2026-11-25, in `UnrealEditor-CoreUObject`, no
 symbols, cause not found; it ends the process only, the results are complete); a crash anywhere else fails the step.
+With the test world ending play before it is destroyed (`FHawkeyeTestWorld`), six runs in a row of the smoke, interior, door, Lucky and map
+filters (33 tests, headless) did not crash (2026-11-25; it was 3 in 8 before), so the cause is probably that; the single retry stays until
+more runs agree.
 
 **Full tier**, `.\Tools\gate.ps1 -Tier full` (about 50 minutes): python and ruff, both builds (`HawkeyeEditor` and the `Hawkeye` game
 target), the whole suite, `create-content` twice with no changed tracked file after either, `verify_content`, the city generate and
