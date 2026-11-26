@@ -217,7 +217,7 @@ def main(argv=None):
     timings = {}
     if args.timings and os.path.exists(args.timings):
         try:
-            with open(args.timings, encoding="utf-8") as handle:
+            with open(args.timings, encoding="utf-8-sig") as handle:
                 timings = json.load(handle)
         except (OSError, ValueError):
             timings = {}
