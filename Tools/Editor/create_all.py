@@ -132,6 +132,11 @@ STEPS = [
 SKIP_STEPS = set(
     name.strip() for name in os.environ.get("HAWKEYE_SKIP_STEPS", "").split(",") if name.strip())
 
+# Step titles to run, comma separated, and nothing else (Tools\create-content.ps1 -Only; the gate uses it to redo just
+# the steps a changed script feeds). Every step is idempotent, so a subset leaves the rest as it was.
+ONLY_STEPS = set(
+    name.strip().lower() for name in os.environ.get("HAWKEYE_ONLY_STEPS", "").split(",") if name.strip())
+
 # Steps that need downloaded data: skipped (not failed) until the file exists.
 _OSM_RECORDS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "Data", "osm", "east_village.buildings.json")
@@ -149,9 +154,15 @@ def main():
     unreal.log("[Hawkeye] ==== creating starter content ====")
 
     failures = []
+    unknown = ONLY_STEPS - set(step[0].lower() for step in STEPS)
+    if unknown:
+        unreal.log_error("[Hawkeye] FAILED   HAWKEYE_ONLY_STEPS names no step: " + ", ".join(sorted(unknown)))
+        failures.append("HAWKEYE_ONLY_STEPS")
     for step in STEPS:
         title, module_name = step[0], step[1]
         function_name = step[2] if len(step) > 2 else "run"
+        if ONLY_STEPS and title.lower() not in ONLY_STEPS:
+            continue
         unreal.log("[Hawkeye] ---- {0} ----".format(title))
         if module_name in SKIP_STEPS:
             c.log("skipped", title, "HAWKEYE_SKIP_STEPS")

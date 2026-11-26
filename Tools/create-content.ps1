@@ -7,12 +7,15 @@
 #
 #   .\Tools\create-content.ps1
 #   .\Tools\create-content.ps1 -Bright   # brighter interior exposure, for playtesting layout and AI
+#   .\Tools\create-content.ps1 -Only "vfx,vfx defaults"   # just those create_all.py steps (titles), nothing else
 
 [CmdletBinding()]
 param(
     [string]$Engine = "",
     [string]$Project = "",
-    [switch]$Bright
+    [switch]$Bright,
+    # create_all.py step titles, comma separated (HAWKEYE_ONLY_STEPS): run only those. The gate's quick tier uses it.
+    [string]$Only = ""
 )
 
 # Engine root: -Engine, HAWKEYE_UE_ROOT, Tools\local.json, registry, launcher, default (hawkeye.env.ps1).
@@ -47,6 +50,7 @@ $env:HAWKEYE_GASP_CONTENT = Join-Path $GaspRoot "Content"
 $env:HAWKEYE_ASSETS_ROOT = Resolve-HawkeyeAssetsRoot
 
 if ($Bright) { $env:HAWKEYE_BRIGHT = "1" }
+if ($Only) { $env:HAWKEYE_ONLY_STEPS = $Only; Write-Host "Only these steps: $Only" -ForegroundColor Yellow }
 try {
     & $EditorCmd $Project `
         -run=pythonscript `
@@ -63,6 +67,7 @@ try {
     $editorExit = $LASTEXITCODE
 } finally {
     if ($Bright) { Remove-Item Env:\HAWKEYE_BRIGHT -ErrorAction SilentlyContinue }
+    if ($Only) { Remove-Item Env:\HAWKEYE_ONLY_STEPS -ErrorAction SilentlyContinue }
 }
 
 if (-not (Test-Path $LogFile)) {
