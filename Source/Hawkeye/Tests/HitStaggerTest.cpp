@@ -18,6 +18,12 @@ namespace HawkeyeHitStaggerTest
 {
 	static constexpr EAutomationTestFlags Flags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
 
+	/** FVector components are doubles; TestEqual's float and double overloads are ambiguous for a mix, so compare as floats. */
+	static float F(double Value)
+	{
+		return static_cast<float>(Value);
+	}
+
 	/** Runs a spring from a kick and returns its largest displacement along the kick and when that was. */
 	static void MeasurePeak(float PeakDegrees, float Hz, float Damping, float& OutPeak, float& OutPeakAt, float& OutRestAt)
 	{
@@ -33,7 +39,7 @@ namespace HawkeyeHitStaggerTest
 			const float Time = Step * static_cast<float>(Frame);
 			if (Spring.Offset.X > OutPeak)
 			{
-				OutPeak = Spring.Offset.X;
+				OutPeak = F(Spring.Offset.X);
 				OutPeakAt = Time;
 			}
 			if (OutRestAt < 0.f && Spring.IsAtRest(0.15f))
@@ -97,18 +103,18 @@ bool FHawkeyeStaggerDirection::RunTest(const FString& Parameters)
 	const FVector Victim(100.f, 100.f, 50.f);
 	const FVector Attacker(0.f, 0.f, 0.f);
 	const FVector Away = UHawkeyeHitContactRules::ComputeKnockbackDirection(&Attacker, Victim, FVector::ForwardVector);
-	TestEqual(TEXT("Along the line from the attacker through the victim: X"), Away.X, FMath::Sqrt(0.5f), 0.001f);
-	TestEqual(TEXT("Y"), Away.Y, FMath::Sqrt(0.5f), 0.001f);
-	TestEqual(TEXT("Flat, whatever the heights"), Away.Z, 0.f);
+	TestEqual(TEXT("Along the line from the attacker through the victim: X"), HawkeyeHitStaggerTest::F(Away.X), FMath::Sqrt(0.5f), 0.001f);
+	TestEqual(TEXT("Y"), HawkeyeHitStaggerTest::F(Away.Y), FMath::Sqrt(0.5f), 0.001f);
+	TestEqual(TEXT("Flat, whatever the heights"), HawkeyeHitStaggerTest::F(Away.Z), 0.f);
 
 	const FVector Behind(300.f, 0.f, 0.f);
 	const FVector FromBehind = UHawkeyeHitContactRules::ComputeKnockbackDirection(&Behind, FVector(100.f, 0.f, 0.f), FVector::ForwardVector);
-	TestEqual(TEXT("From the other side the shove flips with him"), FromBehind.X, -1.f, 0.001f);
+	TestEqual(TEXT("From the other side the shove flips with him"), HawkeyeHitStaggerTest::F(FromBehind.X), -1.f, 0.001f);
 
 	const FVector Fallback = UHawkeyeHitContactRules::ComputeKnockbackDirection(nullptr, Victim, FVector(0.f, -5.f, 9.f));
-	TestEqual(TEXT("No attacker: the fallback, flattened and normalised"), Fallback.Y, -1.f, 0.001f);
+	TestEqual(TEXT("No attacker: the fallback, flattened and normalised"), HawkeyeHitStaggerTest::F(Fallback.Y), -1.f, 0.001f);
 	const FVector Same = UHawkeyeHitContactRules::ComputeKnockbackDirection(&Victim, Victim, FVector::ZeroVector);
-	TestEqual(TEXT("Standing on him with no fallback: straight back along X, never a zero vector"), Same.X, -1.f, 0.001f);
+	TestEqual(TEXT("Standing on him with no fallback: straight back along X, never a zero vector"), HawkeyeHitStaggerTest::F(Same.X), -1.f, 0.001f);
 	return true;
 }
 
@@ -204,15 +210,15 @@ bool FHawkeyeRecoilSpringShape::RunTest(const FString& Parameters)
 	{
 		Fine.Advance(0.2f / 120.f, Tuning.SpineHz, Tuning.SpineDamping);
 	}
-	TestEqual(TEXT("One 0.2 s step equals 120 small ones"), Coarse.Offset.Y, Fine.Offset.Y, 0.01f);
-	TestEqual(TEXT("and the other axis stays put"), Coarse.Offset.X, 0.f, 0.001f);
+	TestEqual(TEXT("One 0.2 s step equals 120 small ones"), F(Coarse.Offset.Y), F(Fine.Offset.Y), 0.01f);
+	TestEqual(TEXT("and the other axis stays put"), F(Coarse.Offset.X), 0.f, 0.001f);
 
 	// A second blow adds to the first, and the scale switches it off.
 	FHawkeyeHitRecoil Recoil;
 	Recoil.Kick(FVector::ForwardVector, false, Tuning);
-	const float OneRate = Recoil.Spine.Rate.X;
+	const float OneRate = F(Recoil.Spine.Rate.X);
 	Recoil.Kick(FVector::ForwardVector, false, Tuning);
-	TestEqual(TEXT("Two blows in a row: twice the kick"), Recoil.Spine.Rate.X, OneRate * 2.f, 0.01f);
+	TestEqual(TEXT("Two blows in a row: twice the kick"), F(Recoil.Spine.Rate.X), OneRate * 2.f, 0.01f);
 	FHawkeyeHitRecoil Off;
 	Off.Kick(FVector::ForwardVector, true, Tuning, 0.f);
 	TestFalse(TEXT("A scale of 0: no recoil at all"), Off.IsActive(Tuning));
@@ -229,7 +235,7 @@ bool FHawkeyeRecoilSpringShape::RunTest(const FString& Parameters)
 		Ends.Advance(1.f / 60.f, Tuning);
 	}
 	TestFalse(TEXT("Two seconds on: at rest and switched off"), Ends.IsActive(Tuning));
-	TestEqual(TEXT("with the offsets zeroed, not left a hair off"), Ends.GetHeadOffset().Size(), 0.f);
+	TestEqual(TEXT("with the offsets zeroed, not left a hair off"), F(Ends.GetHeadOffset().Size()), 0.f);
 	return true;
 }
 
@@ -237,11 +243,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeRecoilRotations, "Hawkeye.HitStagger.Re
 
 bool FHawkeyeRecoilRotations::RunTest(const FString& Parameters)
 {
+	using namespace HawkeyeHitStaggerTest;
 	TestTrue(TEXT("No offset: no rotation"), FHawkeyeHitRecoil::MakeTipRotation(FVector::ZeroVector).IsNearlyZero());
 
 	// The body's up tips toward the push (+X): the upper body leans away from the attacker.
 	const FVector Tipped = FHawkeyeHitRecoil::MakeTipRotation(FVector(10.f, 0.f, 0.f)).RotateVector(FVector::UpVector);
-	TestEqual(TEXT("10 degrees toward +X: up leans by sin(10)"), Tipped.X, FMath::Sin(FMath::DegreesToRadians(10.f)), 0.005f);
+	TestEqual(TEXT("10 degrees toward +X: up leans by sin(10)"), F(Tipped.X), FMath::Sin(FMath::DegreesToRadians(10.f)), 0.005f);
 	const FVector Sideways = FHawkeyeHitRecoil::MakeTipRotation(FVector(0.f, -10.f, 0.f)).RotateVector(FVector::UpVector);
 	TestTrue(TEXT("A push to -Y leans him to -Y"), Sideways.Y < -0.15f);
 
@@ -252,9 +259,9 @@ bool FHawkeyeRecoilRotations::RunTest(const FString& Parameters)
 	const FVector FaceFromLeft = FHawkeyeHitRecoil::MakeHeadRotation(FVector(0.f, 10.f, 0.f), Right, 0.6f).RotateVector(FVector::ForwardVector);
 	TestTrue(TEXT("Hit from the left: it turns right"), FaceFromLeft.Y > 0.05f);
 	const FVector FaceNod = FHawkeyeHitRecoil::MakeHeadRotation(FVector(-10.f, 0.f, 0.f), Right, 0.6f).RotateVector(FVector::ForwardVector);
-	TestEqual(TEXT("A blow straight on only nods (no yaw)"), FaceNod.Y, 0.f, 0.001f);
+	TestEqual(TEXT("A blow straight on only nods (no yaw)"), F(FaceNod.Y), 0.f, 0.001f);
 	const FVector FaceNoYaw = FHawkeyeHitRecoil::MakeHeadRotation(FVector(0.f, -10.f, 0.f), Right, 0.f).RotateVector(FVector::ForwardVector);
-	TestEqual(TEXT("A yaw share of 0 keeps a sideways blow a pure tilt"), FaceNoYaw.Y, 0.f, 0.001f);
+	TestEqual(TEXT("A yaw share of 0 keeps a sideways blow a pure tilt"), F(FaceNoYaw.Y), 0.f, 0.001f);
 	return true;
 }
 
