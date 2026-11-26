@@ -334,6 +334,20 @@ function Step-Build([string]$Target) {
 }
 
 function Step-Tests([string[]]$Filters) {
+    $first = Invoke-TestsOnce $Filters
+    # The editor sometimes dies with an access violation in CoreUObject while it tears down the PIE world that
+    # Hawkeye.Smoke.LoadEastVillage opened, after every test has passed and the report is written (seen about one run in
+    # three on 2026-11-25; unsymbolised, cause not found). That one case is run again, once; a crash anywhere else is a failure.
+    if (-not $first.Ok -and $first.CrashedAfterReport) {
+        Write-Host "  the editor crashed at PIE teardown after every test had passed and the report was written; running the tests once more"
+        $second = Invoke-TestsOnce $Filters
+        if ($second.Ok) { return (New-Ok ($second.Detail + " (passed on the re-run after a PIE-teardown crash)")) }
+        return (New-Bad ("failed twice. second: " + $second.Detail))
+    }
+    return $first
+}
+
+function Invoke-TestsOnce([string[]]$Filters) {
     Wait-MachineFree
     $log = Join-Path $LogDir "tests.log"
     $out = Join-Path $LogDir "tests.console.txt"
@@ -342,7 +356,13 @@ function Step-Tests([string[]]$Filters) {
     $code = Invoke-ToLog "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'run-tests.ps1')`" -Filter `"$filter`" -LogFile `"$log`" -Report `"$report`" -Engine `"$(Get-EngineRoot)`"" $out
     $fatal = Test-FatalLog @($log)
     $summary = Get-FirstMatch $out "^Hawkeye tests \("
-    if ($fatal) { return (New-Bad $fatal) }
+    if ($fatal) {
+        $bad = New-Bad $fatal
+        $failedTests = @(Select-String -Path $log -Pattern "Test Completed\. Result=\{(Fail|Failed)\}" -ErrorAction SilentlyContinue).Count
+        $reportDone = (Get-FirstMatch $log "Successfully wrote json results file") -ne ""
+        $bad | Add-Member -NotePropertyName CrashedAfterReport -NotePropertyValue ($reportDone -and $failedTests -eq 0)
+        return $bad
+    }
     if ($code -ne 0) { return (New-Bad ("exit $code. " + $(if ($summary) { $summary } else { Get-LogTail $out 8 }) + "  ($out)")) }
     return (New-Ok ($summary -replace "^Hawkeye tests \(.*\): ", ""))
 }

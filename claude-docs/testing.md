@@ -287,8 +287,8 @@ The per-change check is `.\Tools\gate.ps1`, the quick tier. It reads what change
 tracked changes; Base is the commit in `Saved\Gate\last-pass.json` when it is an ancestor of HEAD, else `origin/main`; `-Base <rev>`
 overrides), asks `Tools/Gate/select.py` which steps those paths need, and runs only those. The rules are data, `Tools/Gate/rules.json`: an
 ordered list of `{match, build, tests, python, content, contentSteps, contentVerify, cityVerify, audit, laps, strips, risky, broad}`,
-and the plan is the union over every rule that matches a changed path. A `base` rule always applies (every Tools file adds the python
-tests and ruff); a `fallback` rule applies only to a path nothing more specific matched; a path no rule matches is unknown, and unknown
+and the plan is the union over every rule that matches a changed path. A `base` rule always applies (every Tools file adds ruff and the
+gate's own python tests; `Tools/Editor`, `Tools/Data` and `Tools/Interiors` add the Editor python tests, `Tools/Demo` the demo cutter's); a `fallback` rule applies only to a path nothing more specific matched; a path no rule matches is unknown, and unknown
 means broad: build, the whole suite, python, no laps unless a risky rule also matched. `Tools/Gate/test_select.py` checks the selector,
 that every filter in the file matches a test in `Source`, that every lap exists, and that no source file goes unmatched (a new source
 folder needs a rule).
@@ -296,7 +296,7 @@ folder needs a rule).
 | Change | Quick plan |
 |--------|------------|
 | docs, `claude-docs`, `*.md`, `.claude`, committed `Content/` | nothing (the pass still moves the base) |
-| `Tools/**` | python tests and ruff, always, alongside whatever else matches |
+| `Tools/**` | ruff and the gate's own python tests, always; the Editor python tests (about 2 minutes, one process a file in parallel) only when `Tools/Editor`, `Tools/Data` or `Tools/Interiors` changed |
 | `Tools/Blender/build_clips.py`, the animation import scripts | `create-content -Only` the clip steps once, the animation, ledge, traversal-pose and smoke filters, no laps |
 | `_materials.py`, `create_vfx.py`, `create_audio.py` | `create-content -Only` their steps, the matching filters, no laps |
 | `Source/Hawkeye/Traversal/**`, `Player/Parkour*`, `Grapple*`, `Ledge*`, `BodyPose*`, the anchors, fire escapes | editor build, traversal, ledge, grapple, parkour filters, the audit, laps `EastVillage` and `CrimeRooftop` |
@@ -312,7 +312,7 @@ folder needs a rule).
 replace the file's estimates). `-Status` prints the last pass and the last full, the commits since the full, and whether a `risky` rule
 matched since it. A quick run prints one PASS or FAIL line a step with its seconds, then the total; it exits non-zero on any failure or any
 `Fatal error!` in a step's log, and on a pass writes `Saved\Gate\last-pass.json` (commit, tier, time, steps, seconds). The steps, in
-order: python and ruff; an incremental `HawkeyeEditor` build only when the plan says build (the quick tier never builds the game target);
+order: the python suites the change needs and ruff; an incremental `HawkeyeEditor` build only when the plan says build (the quick tier never builds the game target);
 the selected automation filters joined with `+` in one engine process (`Automation RunTests A+B+C` splits on the `+`, and a filter matches as
 a substring of the test's path, so `Hawkeye.Ledge` also runs `Hawkeye.Ledge.Sequences`); `create-content.ps1` once, with `-Only "<step titles>"`
 when the plan names steps (`HAWKEYE_ONLY_STEPS`, the titles in `create_all.py`), failing when it leaves a changed tracked file under
@@ -320,6 +320,9 @@ when the plan names steps (`HAWKEYE_ONLY_STEPS`, the titles in `create_all.py`),
 the city generate and verify; the audit; the traversal strips (`Hawkeye.Screenshot.Traversal` with `-HawkeyeTraversalOnly=a+b`, one launch);
 then each lap in a standalone `-game` process of its own, `Hawkeye.Lap.<Name>` at 1280x720 with `-Difficulty=Normal`. A lap that is
 known to flake (`flakyLaps` in the rules: `Grotto`, `SeenGrotto`, `CrimeRooftop`, `SocialClub`) is run once more and the line says so.
+So is the automation step when the editor dies with an access violation while it tears down the PIE world `Hawkeye.Smoke.LoadEastVillage`
+opened, after every test passed and the report was written (about one run in three on 2026-11-25, in `UnrealEditor-CoreUObject`, no
+symbols, cause not found; it ends the process only, the results are complete); a crash anywhere else fails the step.
 
 **Full tier**, `.\Tools\gate.ps1 -Tier full` (about 50 minutes): python and ruff, both builds (`HawkeyeEditor` and the `Hawkeye` game
 target), the whole suite, `create-content` twice with no changed tracked file after either, `verify_content`, the city generate and
