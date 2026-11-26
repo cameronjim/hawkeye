@@ -750,6 +750,13 @@ def hit_zone(rig, zone, heavy):
         body["chest"] = T([(0.0, V(26 * k, 0, 0)), (0.1, V(32 * k, 0, 0)), (0.25, V(22 * k, 0, 0)), (mid + 0.05, V(8 * k, 0, 0)),
                            (t * 0.85, V(-1.5, 0, 0)), (t, V(0, 0, 0))])
         body["neck"] = T([(0.0, V(14 * k, 0, 0)), (0.12, V(18 * k, 0, 0)), (0.3, V(8 * k, 0, 0)), (t * 0.85, V(-2, 0, 0)), (t, V(0, 0, 0))])
+        if not heavy:
+            # A flinch away from the fist: the chest hollows about 10 degrees over it and is already coming back by 0.2 s, the
+            # head dips (7 degrees) and snaps back up past upright (-8) as he sets his feet, and the hips go well back (kb 2.0).
+            # Nothing travels toward her past where it was at contact (strip log: head and chest never forward of the start).
+            kb = 2.0
+            body["chest"] = T([(0.0, V(9, 0, 0)), (0.08, V(11, 0, 0)), (0.2, V(5, 0, 0)), (0.32, V(-3, 0, 0)), (0.45, V(1, 0, 0)), (t, V(0, 0, 0))])
+            body["neck"] = T([(0.0, V(7, 0, 0)), (0.07, V(8, 0, 0)), (0.18, V(-8, 0, 0)), (0.3, V(-4, 0, 0)), (0.45, V(1, 0, 0)), (t, V(0, 0, 0))])
         body["pelvis_rot"] = T([(0.0, V(8 * k, 0, 0)), (0.12, V(10 * k, 0, 0)), (0.3, V(4 * k, 0, 0)), (t, V(0, 0, 0))])
         # Hips driven back and down: the weight goes behind the feet.
         body["pelvis_pos"] = T([(0.0, add(P, V(0, 5 * kb, -4 * k))), (0.12, add(P, V(0, 7 * kb, -5 * k))), (0.3, add(P, V(0, 3 * kb, -2 * k))),
