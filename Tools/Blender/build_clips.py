@@ -201,11 +201,13 @@ def getup_front(rig):
 # hit reactions (both rigs)
 # --------------------------------------------------------------------------------------------------
 
-# The game shoves whoever is hit (250 cm/s on the capsule: about 10 cm; a heavy blow 500 cm/s, about 28 cm). A clip is
+# The game shoves whoever is hit along the eased knock-back of the weld tuning (FHawkeyeWeldTuning in
+# Source/Hawkeye/Combat/HitContactRules.h; keep these equal to its KnockbackLightCm and KnockbackHeavyCm): a light blow
+# 18 cm over 0.15 s, a heavy 52 cm over 0.3 s (were 10 and 28 cm over 0.3 s, which read as nothing, 2026-11-25). A clip is
 # in place, so each starts with the whole body that far toward the blow and steps back onto the capsule: in the world
-# the feet stay where they were while the capsule slides under them.
-LIGHT_SHOVE = 10.0
-HEAVY_SHOVE = 28.0
+# the feet stay where they were while the capsule slides under them. Re-run the clip build and import after changing.
+LIGHT_SHOVE = 18.0
+HEAVY_SHOVE = 52.0
 
 
 def _step(start, end, t0, t1, lift):
@@ -640,17 +642,20 @@ RIG_SCALE = {"ue4": 1.0, "uefn": KATE_SCALE}
 # bone the warp aims at (his ribs, his skull's centre): the clip's contact distance is the bone's flat reach plus both.
 REACH = {"hand": 9.0, "foot": 14.0}
 BODY_DEPTH = 16.0
-# The knock-back the game gives a reaction (UHitReactionComponent's weld tuning): a light 10 cm, a heavy 28, over 0.3 s
-# eased like (1 - t) ^ 2 in speed: a distance of 1 - (1 - t / 0.3) ^ 3 of it by t.
-KNOCK_SECONDS = 0.3
+# The knock-back the game gives a reaction (UHitReactionComponent's weld tuning): a light 18 cm over 0.15 s, a heavy 52 cm
+# over 0.3 s (KnockbackLightSeconds and KnockbackSeconds), eased like (1 - t) ^ 2 in speed: a distance of
+# 1 - (1 - t / total) ^ 3 of it by t.
+KNOCK_SECONDS_LIGHT = 0.15
+KNOCK_SECONDS_HEAVY = 0.3
+KNOCK_SECONDS = KNOCK_SECONDS_HEAVY
 # The share of the slide a planted foot holds in the world. All of it overstretches the leg (the slide is fastest at the
 # start: a heavy's 28 cm goes at 280 cm/s), so a planted foot skids with the capsule for the rest: 45% of the slide.
 PLANT_HOLD = 0.55
 
 
-def knock_share(t):
-    """The share of the knock-back done by t seconds: the integral of the eased speed."""
-    u = min(max(t / KNOCK_SECONDS, 0.0), 1.0)
+def knock_share(t, total=KNOCK_SECONDS):
+    """The share of the knock-back done by t seconds (of `total`): the integral of the eased speed."""
+    u = min(max(t / total, 0.0), 1.0)
     return 1.0 - (1.0 - u) ** 3
 
 
@@ -660,14 +665,14 @@ def dense(fn, t0, t1):
     return [(f / ck.FPS, fn(f / ck.FPS)) for f in range(n0, n1 + 1)]
 
 
-def foot_with_knock(base, shove, steps, seconds, lift=6.0):
+def foot_with_knock(base, shove, steps, seconds, lift=6.0, knock_total=KNOCK_SECONDS):
     """A foot's keys in the capsule's frame for a body the capsule slides back by `shove` cm (eased). Planted, it drifts
     toward the blow as the capsule leaves it (its place in the world holds); a step [(t0, t1)] lifts it, swings it back and
     sets it down on `base`, where it holds again against what is left of the slide. Ends on base at `seconds`."""
     toward = V(0, -1, 0)
 
     def planted(t, since):
-        k = (knock_share(t) - knock_share(since)) * PLANT_HOLD
+        k = (knock_share(t, knock_total) - knock_share(since, knock_total)) * PLANT_HOLD
         return add(base, tuple(c * shove * k for c in toward))
 
     keys = []
@@ -761,8 +766,9 @@ def hit_zone(rig, zone, heavy):
         hand_r = [(0.0, add(hr, V(-10, -10, 6))), (0.2, add(hr, V(-8, -6, 8))), (0.4, add(hr, V(-2, -2, 2))), (t, hr)]
     body["hand_l"] = T(hand_l)
     body["hand_r"] = T(hand_r)
-    body["foot_r"] = T(foot_with_knock(fr, shove, steps_r, t, lift=7.0 if heavy else 5.0))
-    body["foot_l"] = T(foot_with_knock(fl, shove, steps_l, t, lift=6.0 if heavy else 4.0))
+    knock_total = KNOCK_SECONDS_HEAVY if heavy else KNOCK_SECONDS_LIGHT
+    body["foot_r"] = T(foot_with_knock(fr, shove, steps_r, t, lift=7.0 if heavy else 5.0, knock_total=knock_total))
+    body["foot_l"] = T(foot_with_knock(fl, shove, steps_l, t, lift=6.0 if heavy else 4.0, knock_total=knock_total))
     body["foot_r_rot"] = T(foot_turn(steps_r, t))
     body["foot_l_rot"] = T(foot_turn(steps_l, t))
     name = "Hit{0}_{1}".format(zone, "Heavy" if heavy else "Light")
