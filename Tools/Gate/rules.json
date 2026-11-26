@@ -1,0 +1,290 @@
+{
+  "_about": "Data for Tools/Gate/select.py: which gate steps a change needs. Read claude-docs/testing.md, 'The gate'. The plan is the union over every rule that matches a changed path. 'base' rules always apply to what they match; 'fallback' rules apply to a path only when no other non-base rule matched it; a path no rule matches at all is 'broad' (build, the whole suite, python). Rule fields: name, match (globs, ** crosses folders), exclude (globs), build, tests (automation filters, substring match as the engine does), testsFromFile (read the changed test file's own test names), python, content, contentSteps (create_all step titles; 'all' for every step), contentVerify, cityVerify, audit, laps, strips (Hawkeye.Screenshot.Traversal scenarios, one launch), risky, broad, base, fallback.",
+
+  "fullLaps": [
+    "Campaign", "ChaseFallBehind", "ReindeerGames", "Grotto", "SeenGrotto", "SocialClub",
+    "EastVillage", "InteriorStealth", "InteriorLoud",
+    "CrimeAmbush", "CrimeMugging", "CrimeRobbery", "CrimeRooftop"
+  ],
+  "flakyLaps": ["Grotto", "SeenGrotto", "CrimeRooftop", "SocialClub"],
+  "standaloneTestPrefixes": ["Hawkeye.Lap.", "Hawkeye.Screenshot.", "Hawkeye.Perf.", "Hawkeye.Demo.", "Hawkeye.Audit."],
+  "expectedAudit": { "anchors": 2457, "pairs": 24272 },
+
+  "estimates": {
+    "build": 90,
+    "buildGame": 120,
+    "testsProcess": 60,
+    "testsPerFilter": 6,
+    "suite": 330,
+    "python": 25,
+    "content": 150,
+    "contentStep": 15,
+    "contentVerify": 70,
+    "cityVerify": 150,
+    "audit": 60,
+    "lap": 150,
+    "strips": 240
+  },
+
+  "rules": [
+    {
+      "name": "docs and notes",
+      "match": ["docs/**", "claude-docs/**", "**/*.md", ".claude/**", ".github/**", ".gitignore", ".gitattributes", "LICENSE*", ".mcp.json"]
+    },
+    {
+      "name": "committed assets (the scripts that make them are what the gate follows)",
+      "match": ["Content/**"]
+    },
+    {
+      "name": "any Tools file: python tests and ruff",
+      "base": true,
+      "match": ["Tools/**", "ruff.toml"],
+      "python": true
+    },
+
+    {
+      "name": "traversal C++",
+      "match": [
+        "Source/Hawkeye/Traversal/**",
+        "Source/Hawkeye/Player/Parkour*", "Source/Hawkeye/Player/Grapple*", "Source/Hawkeye/Player/Ledge*",
+        "Source/Hawkeye/Player/BodyPose*", "Source/Hawkeye/Player/GaspTraversal*",
+        "Source/Hawkeye/Player/HawkeyeCharacterTraversalPose.cpp",
+        "Source/Hawkeye/World/GrappleAnchor*", "Source/Hawkeye/World/GrappleArrow*", "Source/Hawkeye/World/FireEscape*",
+        "Source/Hawkeye/World/CityLedge*", "Source/Hawkeye/Vfx/GrappleRope*"
+      ],
+      "build": true,
+      "tests": ["Hawkeye.Traversal", "Hawkeye.Ledge", "Hawkeye.Grapple", "Hawkeye.Parkour", "Hawkeye.BodyPose", "Hawkeye.FireEscape"],
+      "audit": true,
+      "laps": ["EastVillage", "CrimeRooftop"]
+    },
+    {
+      "name": "player C++ (movement, camera, character)",
+      "fallback": true,
+      "match": ["Source/Hawkeye/Player/**"],
+      "build": true,
+      "tests": ["Hawkeye.Movement", "Hawkeye.Sprint", "Hawkeye.Crouch", "Hawkeye.Camera", "Hawkeye.Character", "Hawkeye.BodyLook",
+                "Hawkeye.Inventory", "Hawkeye.SecondaryMotion", "Hawkeye.Gasp", "Hawkeye.Animation"],
+      "laps": ["EastVillage"]
+    },
+    {
+      "name": "combat C++",
+      "match": ["Source/Hawkeye/Combat/**"],
+      "build": true,
+      "tests": ["Hawkeye.Melee", "Hawkeye.Takedown", "Hawkeye.Dodge", "Hawkeye.Fight", "Hawkeye.Tokens", "Hawkeye.Bow", "Hawkeye.Arrow",
+                "Hawkeye.ReturnFlight", "Hawkeye.AimAssist", "Hawkeye.Weapon", "Hawkeye.CombatAnim", "Hawkeye.HitContact",
+                "Hawkeye.Health", "Hawkeye.Death", "Hawkeye.BossPhase"],
+      "laps": ["CrimeMugging", "ReindeerGames"]
+    },
+    {
+      "name": "thug and partner AI C++",
+      "match": ["Source/Hawkeye/World/Thug*", "Source/Hawkeye/Partner/**"],
+      "build": true,
+      "tests": ["Hawkeye.Thug", "Hawkeye.Gunner", "Hawkeye.Archer", "Hawkeye.Heavy", "Hawkeye.Partner", "Hawkeye.Tokens", "Hawkeye.Fight"],
+      "risky": true,
+      "laps": ["Campaign", "CrimeAmbush"]
+    },
+    {
+      "name": "mission C++",
+      "match": ["Source/Hawkeye/Mission/**"],
+      "build": true,
+      "tests": ["Hawkeye.Mission", "Hawkeye.Objective", "Hawkeye.Campaign", "Hawkeye.ChapterEvents", "Hawkeye.ChapterMaps",
+                "Hawkeye.ChapterSite", "Hawkeye.ChapterTitle", "Hawkeye.Flashback"],
+      "risky": true,
+      "laps": ["Campaign", "ReindeerGames"]
+    },
+    {
+      "name": "flashback C++",
+      "match": ["Source/Hawkeye/Flashback/**"],
+      "build": true,
+      "tests": ["Hawkeye.Flashback", "Hawkeye.Mission"],
+      "risky": true,
+      "laps": ["Campaign"]
+    },
+    {
+      "name": "save and settings C++",
+      "match": ["Source/Hawkeye/Save/**", "Source/Hawkeye/Settings/**"],
+      "build": true,
+      "tests": ["Hawkeye.Save", "Hawkeye.Load", "Hawkeye.Settings", "Hawkeye.Difficulty", "Hawkeye.Accessibility", "Hawkeye.Campaign"],
+      "risky": true,
+      "laps": ["Campaign"]
+    },
+    {
+      "name": "game mode and player controller C++",
+      "match": ["Source/Hawkeye/HawkeyeGameMode.*", "Source/Hawkeye/HawkeyePlayerController.*"],
+      "build": true,
+      "tests": ["Hawkeye.Mission", "Hawkeye.Campaign", "Hawkeye.Input", "Hawkeye.Pause", "Hawkeye.Hud", "Hawkeye.Save", "Hawkeye.Settings",
+                "Hawkeye.Character", "Hawkeye.Boss"],
+      "risky": true,
+      "laps": ["Campaign", "EastVillage"]
+    },
+    {
+      "name": "boss and chase C++",
+      "match": ["Source/Hawkeye/Boss/**", "Source/Hawkeye/Chase/**"],
+      "build": true,
+      "tests": ["Hawkeye.Boss", "Hawkeye.BossPhase", "Hawkeye.Chase"],
+      "risky": true,
+      "laps": ["Campaign", "ChaseFallBehind", "SocialClub"]
+    },
+    {
+      "name": "crime and challenge C++",
+      "match": ["Source/Hawkeye/Crime/**", "Source/Hawkeye/Challenge/**"],
+      "build": true,
+      "tests": ["Hawkeye.Crime", "Hawkeye.Challenge"],
+      "laps": ["CrimeMugging", "CrimeRobbery", "CrimeAmbush", "CrimeRooftop"]
+    },
+    {
+      "name": "vfx and character light C++",
+      "match": ["Source/Hawkeye/Vfx/**", "Source/Hawkeye/World/CharacterLightRig*"],
+      "build": true,
+      "tests": ["Hawkeye.Vfx", "Hawkeye.CharLight"]
+    },
+    {
+      "name": "ui, audio, dialogue, phone, playtest C++",
+      "match": ["Source/Hawkeye/UI/**", "Source/Hawkeye/Audio/**", "Source/Hawkeye/Dialogue/**", "Source/Hawkeye/Phone/**",
+                "Source/Hawkeye/Playtest/**"],
+      "build": true,
+      "tests": ["Hawkeye.Hud", "Hawkeye.Pause", "Hawkeye.Map", "Hawkeye.Hints", "Hawkeye.ChapterTitle", "Hawkeye.Inventory",
+                "Hawkeye.Input", "Hawkeye.Accessibility", "Hawkeye.Challenge", "Hawkeye.Audio", "Hawkeye.Music", "Hawkeye.Dialogue",
+                "Hawkeye.Phone", "Hawkeye.Playtest"]
+    },
+    {
+      "name": "world C++ (doors, interiors, pickups, time of day, Lucky)",
+      "fallback": true,
+      "match": ["Source/Hawkeye/World/**"],
+      "build": true,
+      "tests": ["Hawkeye.Door", "Hawkeye.Pickup", "Hawkeye.Interior", "Hawkeye.FastTravel", "Hawkeye.TimeOfDay", "Hawkeye.Lucky",
+                "Hawkeye.Map", "Hawkeye.Smoke.LoadEastVillage"]
+    },
+    {
+      "name": "test files: the changed file's own tests",
+      "match": ["Source/Hawkeye/Tests/*.cpp", "Source/HawkeyeEditor/Tests/*.cpp"],
+      "build": true,
+      "testsFromFile": true
+    },
+    {
+      "name": "test helper headers: broad",
+      "match": ["Source/Hawkeye/Tests/*.h", "Source/Hawkeye/Hawkeye.h", "Source/Hawkeye/Hawkeye.cpp"],
+      "build": true,
+      "broad": true
+    },
+    {
+      "name": "editor module (traversal debugger, audit commandlet)",
+      "match": ["Source/HawkeyeEditor/**"],
+      "exclude": ["Source/HawkeyeEditor/Tests/**"],
+      "build": true,
+      "tests": ["Hawkeye.Editor"],
+      "audit": true
+    },
+    {
+      "name": "anim editor module (graph nodes)",
+      "match": ["Source/HawkeyeAnimEditor/**"],
+      "build": true,
+      "tests": ["Hawkeye.BodyPose", "Hawkeye.Ledge", "Hawkeye.BowIK"]
+    },
+    {
+      "name": "project, config, build files, plugins: broad",
+      "match": ["*.uproject", "Config/**", "**/*.Build.cs", "**/*.Target.cs", "Plugins/**"],
+      "build": true,
+      "broad": true
+    },
+
+    {
+      "name": "clip build and animation import",
+      "match": ["Tools/Blender/build_clips.py", "Tools/Blender/clipkit.py", "Tools/Editor/import_authored_clips.py",
+                "Tools/Editor/import_combat_anims.py", "Tools/Editor/create_combat_anims.py", "Tools/Editor/create_traversal_anims.py",
+                "Tools/Editor/create_bow_ik.py", "Tools/Editor/export_clip_rigs.py", "Tools/import-anims.ps1", "Tools/Data/Anims/**"],
+      "content": true,
+      "contentSteps": ["authored clips", "traversal anims", "combat anims", "bow ik"],
+      "tests": ["Hawkeye.Animation", "Hawkeye.AuthoredClips", "Hawkeye.CombatAnim", "Hawkeye.Ledge", "Hawkeye.Traversal.Pose",
+                "Hawkeye.BodyPose", "Hawkeye.Smoke.CombatClipsPlay", "Hawkeye.Smoke.ThugClipsStrikeOnTheTelegraph"]
+    },
+    {
+      "name": "character body builds",
+      "match": ["Tools/Blender/build_kate.py", "Tools/Blender/build_thug.py", "Tools/Blender/build_heavy.py", "Tools/Blender/build_clint.py",
+                "Tools/Editor/import_bodies.py", "Tools/Editor/create_kate_look.py", "Tools/Editor/_handpose.py",
+                "Tools/Editor/probe_handpose.py"],
+      "content": true,
+      "contentSteps": ["kate look", "bodies"],
+      "contentVerify": true,
+      "tests": ["Hawkeye.BodyLook", "Hawkeye.BodyPose", "Hawkeye.Character"]
+    },
+    {
+      "name": "content driver (create_all, create-content): one cheap step proves it still runs and honours -Only",
+      "match": ["Tools/Editor/create_all.py", "Tools/create-content.ps1"],
+      "content": true,
+      "contentSteps": ["materials"]
+    },
+    {
+      "name": "materials script",
+      "match": ["Tools/Editor/_materials.py", "Tools/Editor/_look.py"],
+      "content": true,
+      "contentSteps": ["materials"],
+      "tests": ["Hawkeye.Smoke.LoadEastVillage"]
+    },
+    {
+      "name": "vfx script",
+      "match": ["Tools/Editor/create_vfx.py"],
+      "content": true,
+      "contentSteps": ["vfx", "vfx defaults"],
+      "tests": ["Hawkeye.Vfx"]
+    },
+    {
+      "name": "audio script",
+      "match": ["Tools/Editor/create_audio.py"],
+      "content": true,
+      "contentSteps": ["audio", "audio defaults"],
+      "tests": ["Hawkeye.Audio", "Hawkeye.Music"]
+    },
+    {
+      "name": "city generation, anchors, building geometry",
+      "match": ["Tools/Editor/generate_city.py", "Tools/Editor/_reach.py", "Tools/Editor/_district.py", "Tools/Editor/_facade_plan.py",
+                "Tools/Editor/_fire_escapes.py", "Tools/Editor/_ledges.py", "Tools/Editor/_geo.py", "Tools/Editor/_geomutil.py",
+                "Tools/Editor/parse_osm.py", "Tools/Editor/verify_city.py", "Tools/Data/osm/**", "Tools/generate-city.ps1"],
+      "cityVerify": true,
+      "tests": ["Hawkeye.Parkour.District", "Hawkeye.Grapple.Audit", "Hawkeye.FireEscape", "Hawkeye.Smoke.LoadEastVillage"],
+      "audit": true,
+      "laps": ["EastVillage", "CrimeRooftop"]
+    },
+    {
+      "name": "dressing and street look scripts",
+      "match": ["Tools/Editor/_dressing*.py", "Tools/Editor/_street_look*.py", "Tools/Editor/write_dressing_plan.py",
+                "Tools/Editor/_sign_font.py", "Tools/Editor/bake_sign_atlas.py", "Tools/Data/dressing/**"],
+      "cityVerify": true,
+      "tests": ["Hawkeye.Smoke.LoadEastVillage"]
+    },
+    {
+      "name": "interior scripts",
+      "match": ["Tools/Editor/_interior.py", "Tools/Editor/generate_interior.py", "Tools/Editor/verify_interiors.py", "Tools/Interiors/**",
+                "Tools/Editor/_grotto.py", "Tools/Editor/create_grotto.py"],
+      "content": true,
+      "contentSteps": ["interiors", "grotto", "grotto maps", "city"],
+      "tests": ["Hawkeye.Interior", "Hawkeye.Door"],
+      "laps": ["InteriorStealth"]
+    },
+    {
+      "name": "chapter planning scripts (chase, boss, site, missions)",
+      "match": ["Tools/Editor/_arena.py", "Tools/Editor/_chase.py", "Tools/Editor/_site.py", "Tools/Editor/create_chase.py",
+                "Tools/Editor/create_boss.py", "Tools/Editor/create_site.py", "Tools/Editor/create_mission_data.py",
+                "Tools/Editor/create_challenges.py", "Tools/Editor/create_crimes.py", "Tools/Editor/create_narrative.py"],
+      "content": true,
+      "contentSteps": ["chase", "boss", "site", "grotto", "mission data", "challenges", "crimes", "narrative"],
+      "contentVerify": true,
+      "tests": ["Hawkeye.Chase", "Hawkeye.Boss", "Hawkeye.ChapterSite", "Hawkeye.Mission", "Hawkeye.Campaign", "Hawkeye.Challenge", "Hawkeye.Crime"]
+    },
+    {
+      "name": "any other editor content script: the whole content step once",
+      "fallback": true,
+      "match": ["Tools/Editor/*.py"],
+      "exclude": ["Tools/Editor/test_*.py", "Tools/Editor/verify_*.py"],
+      "content": true,
+      "contentSteps": ["all"],
+      "contentVerify": true,
+      "tests": ["Hawkeye.Smoke", "Hawkeye.Gasp", "Hawkeye.Character"]
+    },
+    {
+      "name": "verify scripts",
+      "match": ["Tools/Editor/verify_content.py", "Tools/Editor/verify_gasp.py", "Tools/Editor/verify_mannequin.py"],
+      "contentVerify": true
+    }
+  ]
+}

@@ -32,6 +32,9 @@ jobs:
       # The demo video's cutter (Tools/Demo/cut.py): list parsing, length maths, ffmpeg arguments. No ffmpeg needed.
       - name: demo cutter tests
         run: python -B -m unittest discover -s Tools/Demo -p "test_*.py" -v
+      # The gate's selector (Tools/Gate/select.py) and its rules: plans, filters against the tests in Source, lap names.
+      - name: gate selector tests
+        run: python -B -m unittest discover -s Tools/Gate -p "test_*.py" -v
 
   osm-determinism:
     runs-on: ubuntu-latest
