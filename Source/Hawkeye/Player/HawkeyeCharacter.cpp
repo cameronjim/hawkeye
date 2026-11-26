@@ -2683,6 +2683,13 @@ void AHawkeyeCharacter::UpdateArmPoses()
 	}
 	Hands->SetStrikePose(Pose, GetActorTransform());
 	Hands->SetHitLean(LeanDirection, LeanAlpha);
+	if (HitReactionComponent)
+	{
+		// The blow's recoil, spine and head, on top of the lean (zero offsets once it has settled).
+		const FHawkeyeHitRecoil& Recoil = HitReactionComponent->GetRecoil();
+		Hands->SetHitRecoil(Recoil.GetSpineOffset(), Recoil.GetHeadOffset(), GetActorRightVector(),
+			HitReactionComponent->RecoilTuning.HeadYawShare);
+	}
 }
 
 void AHawkeyeCharacter::HandleMeleeLanded(AActor* HitActor, float /*DamageDealt*/, FName /*AttackName*/)
@@ -3123,11 +3130,14 @@ void AHawkeyeCharacter::HandleStaggered(UHealthComponent* /*Health*/, AActor* Da
 	const FHawkeyeWeldTuning Weld = HitReactionComponent ? HitReactionComponent->Weld : FHawkeyeWeldTuning();
 	const HawkeyeCombatAnim::FReactionPlayed Played = HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side,
 		HeavyReactionWeight, Weld, UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away) == EHawkeyeHitDirection::Front);
+	if (HitReactionComponent)
+	{
+		HitReactionComponent->StartRecoil(Away, Played.bHeavy);
+	}
 	if (Blow && HitReactionComponent)
 	{
-		// One eased displacement of the clip's own distance (or the old shove's), from the freeze's release.
-		const float Cm = Played.KnockbackCm >= 0.f ? Played.KnockbackCm : (Played.bHeavy ? Weld.KnockbackHeavyCm : Weld.KnockbackLightCm);
-		HitReactionComponent->ApplyKnockback(Away, Cm);
+		// One eased displacement by weight, swept against walls, from the freeze's release.
+		HitReactionComponent->ApplyReactionKnockback(Away, Played.KnockbackCm, Played.bHeavy);
 	}
 	else
 	{

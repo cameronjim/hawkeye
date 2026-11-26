@@ -353,12 +353,15 @@ namespace HawkeyeBowIKGraph
 		Wiring.Pose(Lean, Spine, TEXT("spine twist"));
 		UEdGraphNode* Neck = AddTwist(Wiring, NeckBone, GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, NeckTwist), -900);
 		Wiring.Pose(Spine, Neck, TEXT("neck twist"));
+		// The head's snap from a blow's recoil (the spine's share is in HitLean above).
+		UEdGraphNode* Head = AddTwist(Wiring, NeckBone, GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, HeadRecoil), -850);
+		Wiring.Pose(Neck, Head, TEXT("head recoil"));
 
 		// The head toward the anchor with the body's tip taken back, then the hips and knees: the legs trailing the
 		// rope.
 		UEdGraphNode* TraversalNeck = AddTraversalBone(Wiring, NeckBone,
 			GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalNeckRotation), NAME_None, -800);
-		Wiring.Pose(Neck, TraversalNeck, TEXT("traversal neck"));
+		Wiring.Pose(Head, TraversalNeck, TEXT("traversal neck"));
 		const TPair<FName, FName> TraversalLegs[] = {
 			{TEXT("thigh_l"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalThighLRotation)},
 			{TEXT("thigh_r"), GET_MEMBER_NAME_CHECKED(UHawkeyeBowIKAnimInstance, TraversalThighRRotation)},

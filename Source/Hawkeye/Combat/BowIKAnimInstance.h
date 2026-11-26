@@ -228,9 +228,29 @@ public:
 	UPROPERTY(Transient, BlueprintReadWrite, Category = "Bow IK|Hit Lean")
 	float HitLeanAlpha = 0.f;
 
+	/** The recoil springs' offsets and the body's right, component space (SetHitRecoil). */
+	FVector RecoilSpineOffset = FVector::ZeroVector;
+	FVector RecoilHeadOffset = FVector::ZeroVector;
+	FVector RecoilRight = FVector::ZeroVector;
+	float RecoilHeadYawShare = 0.f;
+
 	/** The lean at full alpha, degrees. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bow IK|Hit Lean")
 	float HitLeanDegrees = 5.f;
+
+	/**
+	 * Added to the neck (head) bone, component space: the head's snap from a blow's recoil (UHitReactionComponent's springs,
+	 * SetHitRecoil). The graph's HeadRecoil node reads it; the spine's share is folded into HitLean.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Bow IK|Hit Recoil")
+	FRotator HeadRecoil = FRotator::ZeroRotator;
+
+	/**
+	 * Hands the instance the recoil springs' offsets (world, degrees, flat: the way each part is tipped and how far), the
+	 * body's right (world) and the head's yaw share. Kept in component space; folded into HitLean and HeadRecoil by the next
+	 * update. Zero offsets switch it off.
+	 */
+	void SetHitRecoil(const FVector& WorldSpineOffset, const FVector& WorldHeadOffset, const FVector& WorldRight, float HeadYawShare);
 
 	/** A strike's right hand target, component space; wins over the string hand while its alpha is above 0. */
 	UPROPERTY(Transient, BlueprintReadWrite, Category = "Bow IK|Strike")

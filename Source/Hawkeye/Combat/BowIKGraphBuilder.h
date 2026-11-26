@@ -22,6 +22,7 @@ class USkeleton;
  *      spine turns), each at Alpha TraversalAlpha so they are skipped off a grapple trip
  *   -> ModifyBone spine_01 (add HitLean) -> ModifyBone SpineBone (add SpineTwist)
  *   -> ModifyBone NeckBone (add NeckTwist)
+ *   -> ModifyBone NeckBone (add HeadRecoil: the head's snap from a blow)
  *   -> ModifyBone NeckBone (add TraversalNeckRotation), thigh_l, thigh_r, calf_l, calf_r (the traversal leg turns)
  *   -> TwoBoneIK hand_l to LeftHandTarget, elbow to LeftElbowTarget, alpha LeftArmAlpha
  *   -> TwoBoneIK hand_r to RightHandTarget, elbow to RightElbowTarget, alpha RightArmAlpha

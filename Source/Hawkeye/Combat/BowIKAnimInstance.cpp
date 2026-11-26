@@ -1,4 +1,5 @@
 #include "Combat/BowIKAnimInstance.h"
+#include "Combat/HitRecoil.h"
 
 #include "Animation/BlendSpace.h"
 #include "Combat/BowComponent.h"
@@ -257,6 +258,13 @@ void UHawkeyeBowIKAnimInstance::ComposeOutputs()
 		RightArmAlpha = TraversalRightAlpha;
 	}
 	HitLean = UHawkeyeMeleeRules::ComputeHitLeanRotation(HitLeanDirection, HitLeanAlpha, HitLeanDegrees);
+	// The blow's recoil on top: the spine's tip folds into the lean, the head gets its own node (HeadRecoil).
+	const FRotator SpineTip = FHawkeyeHitRecoil::MakeTipRotation(RecoilSpineOffset);
+	if (!SpineTip.IsNearlyZero())
+	{
+		HitLean = (SpineTip.Quaternion() * HitLean.Quaternion()).Rotator();
+	}
+	HeadRecoil = FHawkeyeHitRecoil::MakeHeadRotation(RecoilHeadOffset, RecoilRight, RecoilHeadYawShare);
 }
 
 void UHawkeyeBowIKAnimInstance::SetStrikePose(const FHawkeyeStrikePoseSample& Sample, const FTransform& ActorFrame)
@@ -280,6 +288,21 @@ void UHawkeyeBowIKAnimInstance::SetStrikePose(const FHawkeyeStrikePoseSample& Sa
 		StrikeLeftHandTarget = ToComponent(Sample.LeftHand);
 		StrikeLeftElbowTarget = ToComponent(Sample.LeftElbow);
 	}
+}
+
+void UHawkeyeBowIKAnimInstance::SetHitRecoil(const FVector& WorldSpineOffset, const FVector& WorldHeadOffset, const FVector& WorldRight,
+	float HeadYawShare)
+{
+	const USkeletalMeshComponent* Mesh = GetSkelMeshComponent();
+	auto ToComponent = [Mesh](const FVector& World)
+	{
+		const FVector Flat(World.X, World.Y, 0.f);
+		return Mesh ? Mesh->GetComponentTransform().InverseTransformVectorNoScale(Flat) : Flat;
+	};
+	RecoilSpineOffset = ToComponent(WorldSpineOffset);
+	RecoilHeadOffset = ToComponent(WorldHeadOffset);
+	RecoilRight = ToComponent(WorldRight.GetSafeNormal2D());
+	RecoilHeadYawShare = HeadYawShare;
 }
 
 void UHawkeyeBowIKAnimInstance::SetHitLean(const FVector& WorldDirection, float Alpha)
