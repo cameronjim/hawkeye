@@ -357,6 +357,8 @@ private:
 		ThugShot, HeavyShot, ClintShot, LuckyShot, RagdollShot, PunchShot, DrawShot, LuckyKateShot, FistsShot,
 		/** Each look's face from 85 cm (the thugs' four, then the heavy), and all five side by side. */
 		FaceThugShot, FaceThugBShot, FaceThugCShot, FaceThugDShot, FaceHeavyShot, LineupShot,
+		/** The gunner at gameplay distance: idle from his right, aiming from his right, aiming seen from where he aims (his target's eye). */
+		GunnerSideShot, GunnerAimSideShot, GunnerAimFrontShot,
 		FirstKateShot
 	};
 	/** Kate's shots, taken once by day and once by night after the others. */
@@ -391,7 +393,8 @@ private:
 	{
 		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
 			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate"), TEXT("body_thug_empty"),
-			TEXT("face_thug"), TEXT("face_thug_b"), TEXT("face_thug_c"), TEXT("face_thug_d"), TEXT("face_heavy"), TEXT("body_lineup")};
+			TEXT("face_thug"), TEXT("face_thug_b"), TEXT("face_thug_c"), TEXT("face_thug_d"), TEXT("face_heavy"), TEXT("body_lineup"),
+			TEXT("body_gunner_side"), TEXT("body_gunner_aim_side"), TEXT("body_gunner_aim_front")};
 		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
 			TEXT("draw"), TEXT("trio")};
 		if (!IsKate(Subject))
@@ -806,6 +809,29 @@ private:
 			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
 			Frame(PC, Chest - FVector(0.f, 0.f, 25.f), 430.f, 50.f);
 			break;
+		case GunnerSideShot:
+		case GunnerAimSideShot:
+		case GunnerAimFrontShot:
+		{
+			// The gunner (his pistol is the default weapon) from his right at gameplay distance, idle or raised and aimed along
+			// the way he faces; the front shot is what his target sees.
+			AThugCharacter* Gunner = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
+			Current = Gunner;
+			const FVector Aimed = Chest + Along * 700.f;
+			if (Gunner && Subject != GunnerSideShot)
+			{
+				Gunner->SetWeaponRaised(true, Aimed);
+			}
+			const FVector Look = Chest - FVector(0.f, 0.f, 15.f);
+			const FVector Eye = Subject == GunnerAimFrontShot ? Look + Along * 330.f + Side * 40.f + FVector(0.f, 0.f, 10.f)
+				: Look + Side * 330.f + Along * 60.f + FVector(0.f, 0.f, 15.f);
+			Frame(PC, Look, 330.f, 45.f);
+			if (Camera)
+			{
+				Camera->SetActorLocationAndRotation(Eye, (Look - Eye).Rotation());
+			}
+			break;
+		}
 		case PunchShot:
 			// From his left, so the swing's arm reads against the street. Unarmed: both hands are fists.
 			Current = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
@@ -1243,8 +1269,8 @@ private:
 		}
 		const FQuat Rotation = Pistol->GetComponentQuat();
 		const FVector GripCentre = Pistol->GetComponentLocation() + Rotation.RotateVector(Thug->PistolGripCenterCm);
-		const FVector Tip = Pistol->GetComponentTransform().TransformPosition(FVector(50.f, 0.f, 0.f));
-		const FVector Rear = Pistol->GetComponentTransform().TransformPosition(FVector(-50.f, 0.f, 0.f));
+		const FVector Tip = Pistol->GetComponentTransform().TransformPosition(Thug->GetPistolMuzzleLocal());
+		const FVector Rear = Pistol->GetComponentTransform().TransformPosition(Thug->GetPistolRearLocal());
 		double TipClear = TNumericLimits<double>::Max();
 		double SlideClear = TNumericLimits<double>::Max();
 		for (const FVector& Bone : AllBones)

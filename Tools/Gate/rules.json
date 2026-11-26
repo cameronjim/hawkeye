@@ -226,6 +226,13 @@
       "tests": ["Hawkeye.BodyLook", "Hawkeye.BodyPose", "Hawkeye.Character"]
     },
     {
+      "name": "the gunner's pistol model: Blender build and import",
+      "match": ["Tools/Blender/build_pistol.py", "Tools/Editor/import_pistol.py"],
+      "content": true,
+      "contentSteps": ["pistol"],
+      "tests": ["Hawkeye.PropGrip"]
+    },
+    {
       "name": "content driver (create_all, create-content): one cheap step proves it still runs and honours -Only",
       "match": ["Tools/Editor/create_all.py", "Tools/create-content.ps1"],
       "content": true,

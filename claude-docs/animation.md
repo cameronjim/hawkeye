@@ -659,6 +659,54 @@ already at 68 before it landed). The heavy fold is 1.3 (was 1.8): head up to 54 
 (`contact_heavy_after3.png`), no overlap with her torso; his capsule ends 3.2 cm back (the game's heavy knock-back of 28 cm is not
 what this strip measures).
 
+**The light punch crowded Kate (2026-11-26).** The picture was wrong in two ways, neither of them the flinch clip.
+1. *The strip's thug had no controller.* `Hawkeye.Screenshot.Clips` spawns him without one, and a pawn with no controller is not
+   moved by its movement component (`bRunPhysicsWithNoController` is off), so the knock-back, a root motion source, never moved
+   him (`rms 1` for the rest of the strip, 1.5 s on). The clip starts with the whole body 18 cm toward the blow and assumes the
+   capsule slides back under it, so with no slide the feet were left behind and he folded forward over them with his head at
+   Kate's chest: the "doubles over toward her". The strip's "capsule 11.5 cm back" was the absolute distance moved by the align
+   nudge alone, toward her. The test thug now has `bRunPhysicsWithNoController` and the log says where he is along the line.
+2. *The rule netted the step-in off the shove.* Kate lunges to 63 cm from him; the align nudge moves him to the clip's contact
+   spacing (he was pulled 7-12 cm toward her, over the 0.06 s freeze), and the shove had that taken off. Now the whole 18 cm
+   follows the nudge (`bNetOutAlignNudge` false).
+Numbers (strip log, `contact_light_*`, the authored jab): his capsule ends 19.5 cm past where it was when she threw it (the
+nudge is about 0 for the jab), he is 101 cm from her root 1.5 s on (63 at contact in the old Cross strip), his head and chest
+never go forward of where they were over his capsule (the log's `head`/`chest` columns never go below -0.8 cm, the idle's noise)
+and drop 7-12 cm back at the flinch. `HitGut_Light` itself is now: chest 9 to 11 degrees over the fist, back to upright by 0.2 s and
+past it (-3), the head 7 degrees down then up past upright (-8) at 0.18 s, the hips 10 cm back (`kb` 2.0). Kate's side: the Cross
+clip (a lunge, upright at the end) is fine; "Punching" (the Mixamo boxing stance) sank her into a deep lunge with her hips
+low, so it is out of the Light1 set and `Strike_Jab` (ours: upright, a step and a straight arm, back to guard) is in
+(`manifest.json`). After contact she moves 1 to 2 cm on in the light strips, so there was no advance to stop. Strips:
+`Saved/Screenshots/CombatFeel2/light_jab_grid.png`, `chain_k8_grid.png` (and `light_k6_grid.png`, `chain_base_grid.png` for
+the Cross and the old Punching).
+
+**The gunner's pistol is a model (2026-11-26).** `Tools/Blender/build_pistol.py` builds a generic full-size semi-automatic of our
+own (no markings; 19.6 cm, 3,650 triangles): a slide with rear serrations, an ejection port (a boolean cut, the chamber visible),
+the barrel at the muzzle with its bore, front and rear sights, a hammer spur, a dust cover with a rail slot, a trigger guard and
+trigger, a beavertail, a grip leaned back 12 degrees with ridged panels and straps, a base plate and a mag release. Two
+slots, Slide (gunmetal 0.05, roughness 0.36, metallic 0.9) and Frame (black polymer 0.012, roughness 0.64). It writes
+`<assets root>uilt\props\SM_Pistol.glb` and `pistol.json`; renders in `Saved/Screenshots/Blender/pistol_*.png`.
+`Tools/Editor/import_pistol.py` (create-content step "pistol") imports it as `/Game/Characters/Bodies/Built/Props/SM_Pistol` with
+`M_PistolBuilt` and two instances, idempotent by a file-stamp tag, git-ignored like the built bodies. `AThugCharacter::UsePistolModel`
+loads it at `PostInitializeComponents` (quietly: a clone without the asset keeps the slab of engine cubes). The mesh's frame is
+the game's: X the muzzle, Z up, the middle of the slide at the origin; the handle's middle is at (-5.3, 0, -6.2) cm, now
+`PistolGripCenterCm`; `GetPistolMuzzleLocal`/`GetPistolRearLocal` give the ends for the glint and the Bodies check.
+- *The pistol was hanging down his thigh, edge on, or floating at his chest when he aimed with both hands at his sides.* Now
+  `AThugCharacter::UpdateGunArms` reaches his right hand with the bow-IK graph's strike pose (`SetStrikePose`, the same route
+  as Kate's punch): at the **low ready** (hand 34 cm ahead, 24 right, 4 above the capsule's centre, the muzzle 25 degrees down,
+  forward) and, when `SetWeaponRaised`, out along the line from the right shoulder to the target (reach 50 cm, 9 in and 5 down
+  from the shoulder line) with the left hand under the grip. The pistol follows the visible fist (`GetBodyHandGrip`), turned to
+  `ComputeGunAim` (blended from the ready to the aim over 0.18 s), so it is always in the hand and points at the target.
+  Data on the thug (`GunReadyHand`, `GunReadyPitchDegrees`, `GunReachCm`, `GunLeftHandAcrossCm`, `GunArmBlendSeconds`, `GunRaiseSeconds`).
+- *Re-tune.* The old `hawkeye.Thug.PistolGrip` numbers still pass the Bodies check with the model (grip centre 0.0 cm from the fist,
+  muzzle 10.8 and slide 4.3 cm clear of the finger bones) and the pictures, so the defaults stay as they are (palm 3.2, along -1.3);
+  only the grip centre in the pistol's frame moved. `MuzzleOutDegrees` no longer shows at the ready, the aim sets the direction.
+- *Seen* (`Saved/Screenshots/CombatFeel2/`): `hands_pistol_outside.png` (80 cm, 28 degree lens: the fist around the handle, the slide
+  and the bore forward of it), `hands_pistol_front.png`, `body_gunner_side.png` (the low ready, 3.3 m), `body_gunner_aim_side.png`,
+  `body_gunner_aim_front.png` (what his target sees), `gunner_aim_crops.png`.
+- *Still off:* the hand is a closed fist, not a trigger finger along the frame, and from the front the left forearm crosses
+  the right under the pistol, a stiff two-hand grip. The thumbs do not lie along the frame.
+
 ## The weld clips (written 2026-11-23; not yet built or seen)
 
 `build_clips.py` also makes, per rig, six hit reactions by where the blow landed and how hard (`HitHead_`, `HitGut_`, `HitLegs_` x

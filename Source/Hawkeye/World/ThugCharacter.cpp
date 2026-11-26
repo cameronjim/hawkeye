@@ -261,9 +261,40 @@ AThugCharacter::AThugCharacter()
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 }
 
+void AThugCharacter::UsePistolModel()
+{
+	// The modelled pistol (Tools/Blender/build_pistol.py, imported by Tools/Editor/import_pistol.py; a clone without the built
+	// assets keeps the slab of cubes): a static mesh in centimetres with its own materials, at scale 1. Loaded quietly here, not
+	// by a constructor finder, which logs an error for an asset a clone does not have.
+	if (bPistolModel || !PistolComponent)
+	{
+		return;
+	}
+	UStaticMesh* Model = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Characters/Bodies/Built/Props/SM_Pistol.SM_Pistol"), nullptr,
+		LOAD_Quiet | LOAD_NoWarn);
+	if (!Model)
+	{
+		return;
+	}
+	bPistolModel = true;
+	PistolComponent->SetStaticMesh(Model);
+	for (int32 Slot = 0; Slot < PistolComponent->GetNumMaterials(); ++Slot)
+	{
+		// The mesh's own slot materials (slide, frame), not the engine shape material the slab was given.
+		PistolComponent->SetMaterial(Slot, Model->GetMaterial(Slot));
+	}
+	PistolComponent->SetWorldScale3D(FVector::OneVector);
+	if (PistolGrip)
+	{
+		PistolGrip->SetStaticMesh(nullptr);
+		PistolGrip->SetRelativeScale3D(FVector::OneVector);
+	}
+}
+
 void AThugCharacter::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
+	UsePistolModel();
 	// Before BeginPlay, so the body materials are made on the mesh people see.
 	ApplyBodyLook();
 	TintProps();
@@ -330,6 +361,7 @@ void AThugCharacter::Tick(float DeltaSeconds)
 	{
 		return;
 	}
+	UpdateGunArms(DeltaSeconds);
 	UpdatePistolPose();
 	UpdateTelegraphGlint();
 	UpdateShieldPose();
@@ -461,8 +493,11 @@ void AThugCharacter::TintProps()
 			Instance->SetVectorParameterValue(TEXT("Color"), Color);
 		}
 	};
-	Tint(PistolComponent, PistolColor);
-	Tint(PistolGrip, PistolColor);
+	if (!bPistolModel)
+	{
+		Tint(PistolComponent, PistolColor);
+		Tint(PistolGrip, PistolColor);
+	}
 	Tint(HeldWeaponComponent, BatColor);
 }
 
@@ -563,7 +598,7 @@ HawkeyeBodyPose::FWish AThugCharacter::GetBodyPoseWish() const
 		Wish.PropAxis[HawkeyeBodyPose::HandRight] = ComputeBatDirection();
 		Wish.WristTurnDegrees[HawkeyeBodyPose::HandRight] = ResolveGrip(/*bBat=*/true).WristTurnDegrees;
 	}
-	else if (bPistol && bWeaponRaised)
+	else if (bPistol && GunArmAlpha > 0.5f)
 	{
 		Wish.PropAxis[HawkeyeBodyPose::HandRight] = PistolComponent->GetUpVector();
 		Wish.WristTurnDegrees[HawkeyeBodyPose::HandRight] = ResolveGrip(/*bBat=*/false).WristTurnDegrees;
@@ -665,11 +700,56 @@ FVector AThugCharacter::GetGlintLocation() const
 	}
 	if (PistolComponent)
 	{
-		// The slide's front face: the engine cube is 100 cm about its centre.
+		// The muzzle (the slab's front face is a little past the cube's 100 cm about its centre).
 		const FTransform Pistol = PistolComponent->GetComponentTransform();
-		return Pistol.TransformPosition(FVector(56.f, 0.f, 0.f));
+		return Pistol.TransformPosition(bPistolModel ? GetPistolMuzzleLocal() + FVector(0.5f, 0.f, 0.f) : FVector(56.f, 0.f, 0.f));
 	}
 	return GetActorLocation();
+}
+
+FRotator AThugCharacter::ComputeGunAim() const
+{
+	const FVector Shoulder = GetActorTransform().TransformPosition(FVector(0.f, 20.f, 50.f));
+	const FRotator Raised = bWeaponRaised ? (WeaponAimPoint - Shoulder).Rotation() : FRotator::ZeroRotator;
+	const FRotator Ready(-GunReadyPitchDegrees, GetActorRotation().Yaw, 0.f);
+	// Blended with the raise so the muzzle swings up as the arm does.
+	FRotator Out = FMath::Lerp(Ready, FRotator(Raised.Pitch, Raised.Yaw, 0.f), GunRaiseBlend);
+	Out.Roll = 0.f;
+	return Out;
+}
+
+void AThugCharacter::UpdateGunArms(float DeltaSeconds)
+{
+	const USkeletalMeshComponent* Body = GetMesh();
+	const bool bWant = IsGunner() && PistolComponent && PistolComponent->IsVisible() && !bLimp && !bCollapsing && !bKnockedDown
+		&& !(Body && Body->IsSimulatingPhysics()) && !(MeleeComponent && MeleeComponent->IsAttacking());
+	const float Before = GunArmAlpha;
+	GunArmAlpha = FMath::FInterpConstantTo(GunArmAlpha, bWant ? 1.f : 0.f, DeltaSeconds, 1.f / FMath::Max(GunArmBlendSeconds, 0.02f));
+	GunRaiseBlend = FMath::FInterpConstantTo(GunRaiseBlend, bWeaponRaised ? 1.f : 0.f, DeltaSeconds, 1.f / FMath::Max(GunRaiseSeconds, 0.02f));
+	UHawkeyeBowIKAnimInstance* Hands = BowComponent ? BowComponent->GetHandsIKInstance() : nullptr;
+	if (!Hands || (GunArmAlpha <= 0.f && Before <= 0.f))
+	{
+		return;
+	}
+	const FTransform Frame = GetActorTransform();
+	const FVector Shoulder(0.f, 20.f, 50.f);
+	FVector Dir = FVector::ForwardVector;
+	if (bWeaponRaised || GunRaiseBlend > 0.f)
+	{
+		Dir = (Frame.InverseTransformPosition(WeaponAimPoint) - Shoulder).GetSafeNormal();
+	}
+	const FVector Ready = GunReadyHand;
+	// In front of the face, a little in from the shoulder line and down (the sights' line runs from the eye): the arm angles in.
+	const FVector Raised = Shoulder + Dir * GunReachCm + FVector(0.f, -9.f, -5.f);
+	FHawkeyeStrikePoseSample Pose;
+	Pose.RightAlpha = GunArmAlpha;
+	Pose.RightHand = FMath::Lerp(Ready, Raised, GunRaiseBlend);
+	Pose.RightElbow = FMath::Lerp(FVector(-5.f, 38.f, -12.f), Shoulder + FVector(14.f, 26.f, -24.f), GunRaiseBlend);
+	// The left hand comes up under the grip's front when raised.
+	Pose.LeftAlpha = GunArmAlpha * GunRaiseBlend;
+	Pose.LeftHand = Pose.RightHand + Dir * 2.f + FVector(0.f, -GunLeftHandAcrossCm, -3.f);
+	Pose.LeftElbow = Shoulder * FVector(1.f, -1.f, 1.f) + FVector(14.f, -26.f, -24.f);
+	Hands->SetStrikePose(Pose, Frame);
 }
 
 void AThugCharacter::UpdatePistolPose()
@@ -692,6 +772,17 @@ void AThugCharacter::UpdatePistolPose()
 	const FName Shoulder(TEXT("upperarm_r"));
 	const bool bHasBones = Body && Body->DoesSocketExist(Hand) && Body->DoesSocketExist(Shoulder);
 	const FVector HandPoint = bHasBones ? Body->GetSocketLocation(Hand) : GetActorTransform().TransformPosition(FVector(20.f, 25.f, -5.f));
+	// The arm is on the pistol (UpdateGunArms): in the visible hand, muzzle at the target when raised, forward and down at the
+	// low ready otherwise. The pistol follows the hand's fist, so it is always in it; the muzzle's line is the aim's.
+	FVector Center, Along, Across, Palm;
+	const FHawkeyePropGrip Grip = ResolveGrip(/*bBat=*/false);
+	const bool bHandHolds = GunArmAlpha > 0.5f && GetBodyHandGrip(HawkeyeBodyPose::HandRight, Grip, Center, Along, Across, Palm);
+	if (bHandHolds)
+	{
+		const FQuat Rotation = ComputeGunAim().Quaternion();
+		PistolComponent->SetWorldLocationAndRotation(HawkeyePropGrip::ComputePistolLocation(Center, Rotation, PistolGripCenterCm), Rotation);
+		return;
+	}
 	if (bWeaponRaised)
 	{
 		const FVector ShoulderPoint = bHasBones ? Body->GetSocketLocation(Shoulder) : GetActorTransform().TransformPosition(FVector(0.f, 20.f, 50.f));
@@ -702,8 +793,6 @@ void AThugCharacter::UpdatePistolPose()
 	}
 	// At his side: through the visible hand's fist when there is one. The handle runs across the knuckles (up toward the
 	// index finger), the muzzle along the fingers and a little away from the thigh.
-	FVector Center, Along, Across, Palm;
-	const FHawkeyePropGrip Grip = ResolveGrip(/*bBat=*/false);
 	if (GetBodyHandGrip(HawkeyeBodyPose::HandRight, Grip, Center, Along, Across, Palm))
 	{
 		const FQuat Rotation = HawkeyePropGrip::ComputePistolRotation(Along, Across, Palm, Grip);

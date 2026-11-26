@@ -42,6 +42,9 @@
                                   the mannequins, BodyLook on BP_Thug, BP_Thug_Heavy and BP_Clint, Kate's built suit on
                                   the female body and BP_Kate (Sparrow back on her if it fails) (skipped, one line,
                                   when the packs are not there; after the enemies, whose children it keeps on theirs)
+    4d1b2. import_pistol          the gunner's pistol model (SM_Pistol, two material instances) from
+                                  HAWKEYE_ASSETS_ROOT/built/props, built by Tools/Blender/build_pistol.py (skipped, one
+                                  line, when not built: AThugCharacter keeps its slab of engine cubes)
     4d1c. import_authored_clips   the get-ups and hit reactions Tools/Blender/build_clips.py keys on the drivers'
                                   skeletons, from outside the repo (HAWKEYE_ASSETS_ROOT/built/clips): FBX import, retarget,
                                   AM_ montages, through import_combat_anims (skipped, one line each, when not built)
@@ -113,6 +116,7 @@ STEPS = [
     ("bow ik", "create_bow_ik"),
     ("kate look", "create_kate_look"),
     ("bodies", "import_bodies"),
+    ("pistol", "import_pistol"),
     ("authored clips", "import_authored_clips"),
     ("traversal anims", "create_traversal_anims"),
     ("combat anims", "create_combat_anims"),

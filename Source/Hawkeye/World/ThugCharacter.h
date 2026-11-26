@@ -257,9 +257,31 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Shield")
 	FLinearColor ShieldColor = FLinearColor(0.06f, 0.07f, 0.08f);
 
+	/** The low ready: the right hand in the actor's frame (X forward, Y right, Z up from the capsule's centre), cm, and the muzzle's pitch down, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	FVector GunReadyHand = FVector(34.f, 24.f, 4.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float GunReadyPitchDegrees = 25.f;
+
+	/** How far the aiming hand reaches from the right shoulder along the aim, cm (the arm is about 60 cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float GunReachCm = 50.f;
+
+	/** How far the supporting left hand sits across from the right, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float GunLeftHandAcrossCm = 7.f;
+
+	/** The arms' time to settle onto the pistol, and to come up from the ready to the aim, s. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float GunArmBlendSeconds = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	float GunRaiseSeconds = 0.18f;
+
 	/** The pistol's grip block's centre in the pistol's own frame, cm: the point that sits in the fist. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
-	FVector PistolGripCenterCm = FVector(-4.5f, 0.f, -7.f);
+	FVector PistolGripCenterCm = FVector(-5.3f, 0.f, -6.2f);
 
 	/**
 	 * Where the bat's handle passes through his closed right hand, and how far the wrist turns toward its axis (per-prop data:
@@ -275,6 +297,13 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
 	FHawkeyePropGrip PistolHandGrip;
+
+	/** True when the pistol is the modelled mesh (SM_Pistol, built by Tools/Blender/build_pistol.py), false for the slab of engine cubes. */
+	bool HasPistolModel() const { return bPistolModel; }
+
+	/** The pistol's muzzle and rear end in its own frame, local units (the model's centimetres, or the slab's cube units). */
+	FVector GetPistolMuzzleLocal() const { return bPistolModel ? FVector(9.6f, 0.f, 0.3f) : FVector(50.f, 0.f, 0.f); }
+	FVector GetPistolRearLocal() const { return bPistolModel ? FVector(-10.f, 0.f, 0.3f) : FVector(-50.f, 0.f, 0.f); }
 
 	/** The grip in force for the bat or the pistol: the data above, with the console override applied when one is set. */
 	FHawkeyePropGrip ResolveGrip(bool bBat) const;
@@ -896,6 +925,9 @@ public:
 
 protected:
 	virtual void PostInitializeComponents() override;
+
+	/** Swaps the slab of cubes for SM_Pistol when it is on disk (PostInitializeComponents). */
+	void UsePistolModel();
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -910,6 +942,12 @@ protected:
 
 	/** Places the pistol (raised or lowered) and hides it for anyone but the gunner. Called from Tick. */
 	void UpdatePistolPose();
+
+	/** The pistol's aim in the world: the muzzle at the target when raised, the low ready's forward and down otherwise (blended). */
+	FRotator ComputeGunAim() const;
+
+	/** Reaches the gunner's right hand to the pistol (low ready, or out at the aim when raised) and his left to support it. */
+	void UpdateGunArms(float DeltaSeconds);
 
 	/** The look's bones were just written: the pistol and the bat follow its hand, not last frame's. */
 	void OnLookBonesFinalized();
@@ -1004,6 +1042,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug|Components")
 	TObjectPtr<UStaticMeshComponent> PistolGrip;
 
+	/** The modelled pistol is on the component (it is not in a clone without the built assets). */
+	bool bPistolModel = false;
+
 	/** The telegraph glint: a small glowing bead plus a point light, off until a shot is coming. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Thug|Components")
 	TObjectPtr<UStaticMeshComponent> GlintMesh;
@@ -1093,6 +1134,13 @@ private:
 	double LastDamagedSeconds = -1000.0;
 
 	bool bWeaponRaised = false;
+
+	/**
+	 * The gunner's arms (UpdateGunArms): how far the right arm is on the pistol (0 at rest or down, 1 holding it), and how far
+	 * that hold is the aim rather than the low ready. The bow-IK graph reaches the hands (the strike pose samples).
+	 */
+	float GunArmAlpha = 0.f;
+	float GunRaiseBlend = 0.f;
 	FVector WeaponAimPoint = FVector::ZeroVector;
 	bool bGlintOn = false;
 	bool bGlintTinted = false;
