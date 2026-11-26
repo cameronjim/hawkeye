@@ -613,7 +613,7 @@ eases it into alphas over 0.12 s. Kate and Clint have no such node. Since 2026-1
   the front); `*_before2.png` are the second pass's shots. Still off: the pistol shows only its grip block and a stub of slide beside
   the fist; the bat is held in front of the fingers, not woven through them; the thumbs and fingers have no finger-to-finger contact.
 
-**Props in the hand (written 2026-11-25, code only; not yet seen).** The heavy's bat sat in front of his fingers and the gunner's hand
+**Props in the hand (written 2026-11-25; seen 2026-11-25, see the end of this item).** The heavy's bat sat in front of his fingers and the gunner's hand
 hid the pistol. Cause, from the code: the handle's centre was `knuckle line + 2.4 cm into the palm + 0.8 cm out along the fingers`
 (`FistPalmCm`, `FistAlongCm`), but a closed fist is a loop (the fingers leave the knuckle line, curl palm-ward and return toward the
 wrist), so its hollow is deeper in the palm and back from the knuckles, not forward of them; one offset served both props; and the
@@ -634,6 +634,22 @@ wrist could turn only 50 degrees whatever it held.
   the four middle finger joints within 5.5 cm of its line; the pistol's grip block within 1.5 cm of the fist's centre, the muzzle 3 cm
   and the slide 1 cm clear of every finger bone. If the numbers pass and the picture does not, move the prop with the console
   variables above and put the winning numbers in the defaults.
+
+  *Seen (2026-11-25, `Hawkeye.Screenshot.Bodies`, the close-ups taken at 80 cm with `hawkeye.Bodies.PropShotCm 80` and `PropShotFov 28`, copies in
+  `Saved/Screenshots/CombatFeel/`).* The defaults above pass their checks and the pictures: the bat's axis is 0.0 cm from the fist's
+  centre and the middle finger joints are within 3.5 cm of it (the outside shot shows the four fingers closed round the handle, the
+  handle running through the fist and out both ends); the gunner's grip block is 0.0 cm from the fist's centre, the slide 3.8 cm and the
+  muzzle 9.9 cm from the nearest finger bone. The pistol hangs at his side, so "along the forearm" is down: its slide runs down by the
+  thigh, clear of the fingers. It is still a box (a grip block and a slide), not a modelled pistol. No tuning was needed; the CVars stay
+  for later.
+
+**Hit clips and the longer knock-back (2026-11-25).** At 18 and 52 cm the old planted-foot windows of `HitFront/Left/Right_Light` and
+`HitHeavy_Stagger` made the leg solver stretch (a leg reaches about 15 cm from a planted foot; the clip checks failed at 1 to 4 cm of
+slide). The feet now step earlier (light: the left-behind foot at 0.14 s; heavy: front foot at 0.10 s, rear foot lands at 0.20 s) and the
+hips follow the capsule more closely (`build_clips.py`, `hit_light`, `hit_heavy`). Light blows now cover 18 cm in 0.15 s: the strips
+(`contact_light_after.png`) show the head snapping back and the capsule 11.5 cm behind (the rest of the tuned 18 is the aligned step-in the
+rule subtracts); a heavy stagger is the `thug_hit_heavy.png` strip: head thrown back, two steps. A heavy blow from Kate's roundhouse is a
+knockdown, which has no knock-back, so `contact_heavy_after.png` shows no slide.
 
 **Gut reactions, 2026-11-24.** `HitGut_Light` folded the chest 32 degrees, so on a light punch the head went 34 cm toward Kate (head
 overlapping hers, `contact_light_after2.png`) with the capsule only 1.9 cm back. It is now a flinch (`build_clips.hit_zone`, Gut: fold
