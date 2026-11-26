@@ -2592,6 +2592,41 @@ component, `bLightAttackOnPress` on Kate. On the hit frame, in this order:
   the hit frame; they are in the manifest as `in_set: false` until their strips beat the clips they would replace
   (claude-docs/animation.md, "The weld clips").
 
+## Hit stagger and recoil (written 2026-11-25, from "a punch lands and the thug barely shifts")
+The weld's knock-back was right in shape and wrong in size: 10 cm light and 28 cm heavy, and a reaction clip's own baked
+`KnockbackCm` (the same 10 and 28) won over the tuning, so changing the tuning would have changed nothing. Rules in
+`UHawkeyeHitContactRules` (`ResolveKnockbackCm`, `ResolveKnockbackSeconds`, `ComputeKnockbackDirection`,
+`ClampKnockbackToClearance`) and `Combat/HitRecoil.h` (`FHawkeyeRecoilSpring`, `FHawkeyeHitRecoil`), tested by
+`Hawkeye.HitStagger.*`. Numbers are data: `FHawkeyeWeldTuning` (`Weld`) and `FHawkeyeHitRecoilTuning` (`RecoilTuning`) on each
+hit reaction component; the console variables `hawkeye.Combat.KnockbackScale` and `hawkeye.Combat.RecoilScale` multiply them
+live (1 = as authored, 0 = off).
+- **Distance and time by weight.** A light reaction moves the victim 18 cm over 0.15 s (`KnockbackLightCm`,
+  `KnockbackLightSeconds`), a heavy one 52 cm over 0.3 s (`KnockbackHeavyCm`, `KnockbackSeconds`), eased like the weld's
+  profile ((1 - t) ^ 2 in speed) so the displacement is exactly the distance. The tuning decides: a clip's baked `KnockbackCm`
+  is used only when `bClipKnockbackWins` (default false). `LIGHT_SHOVE` and `HEAVY_SHOVE` in `Tools/Blender/build_clips.py` are
+  set to the same 18 and 52 (the planted feet slide with the capsule over the matching time) and the clips need rebuilding.
+  The align nudge is still netted out (`ComputeNetKnockbackCm`), so the net displacement from where the blow found him is the
+  tuned distance. A heavy's step is the clip's (two steps, `HitHeavy`).
+- **Direction** is attacker to victim, flat (`ComputeKnockbackDirection`; the callers pass the line from the attacker's actor
+  to the victim's; with no attacker, behind the victim; never a zero vector).
+- **No knock-back through walls.** When the shove starts (the freeze's release) the victim's capsule is swept along it
+  (`UHitReactionComponent::ComputeClearanceAhead`, `ECC_Pawn`, the owner ignored; a start inside something is not a wall, the
+  movement depenetrates it), and the distance is clamped to the free distance less `KnockbackSkinCm` (3 cm), never below 0
+  (`ClampKnockbackToClearance`). A blocked shove is a stagger in place; the profile's speed is recomputed for the shorter
+  distance over the same time.
+- **Recoil.** Every blow that staggers a body (`AThugCharacter::HitReaction`, `AHawkeyeCharacter::HandleHealthChanged`'s
+  stagger), clip or no clip, impact or no impact, kicks two springs along the way the blow pushes him
+  (`UHitReactionComponent::StartRecoil`): the spine (9 degrees light, 18 heavy, 4 Hz, damping 0.5) and the head (16 and 30
+  degrees, 6 Hz, damping 0.4, so it snaps further and first; `HeadYawShare` 0.6 turns the face away from a sideways blow).
+  Each kick is sized so the spring's peak is the tuned degrees (`PeakPerRate`) and the spring returns in about 0.4 s; a second
+  blow adds to the first. The springs advance on the world's clock from the freeze's release (not while `IsFrozen`), and the
+  body holds its hit pose through the freeze as before. The springs' offsets reach the mesh through
+  `UHawkeyeBowIKAnimInstance::SetHitRecoil` (the thug's `UpdateHitLean`, Kate's `UpdateArmPoses`): the spine's tip is folded into
+  `HitLean` (spine_01) and the head's goes to a new `HeadRecoil` node on the neck bone, added to the post-process graph by
+  `UHawkeyeBowIKGraphBuilder` (a stale `ABP_BowIK_Post` has no such node: the spine recoil works, the head's is ignored until
+  `create_bow_ik.py` is re-run). Additive, so every body with the bow-IK post-process (every thug and Kate) reacts even when no
+  reaction clip played.
+
 ## Authored clips (built 2026-11-13; pipeline in claude-docs/animation.md, "Authored clips")
 Rules in `UHawkeyeHitContactRules` (`IsLyingOnBack`, `ComputeGetUpAlignment`, `ResolveHitDuringGetUp`) and
 `UCombatAnimSet` (`GetUpRoleFor`, `HitRoleForBlow`), tested by `Hawkeye.AuthoredClips.*`; seen in `Hawkeye.Screenshot.Clips`.
