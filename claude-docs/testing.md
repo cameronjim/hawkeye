@@ -82,6 +82,14 @@ World->DestroyWorld(false);
 Put that in a small RAII helper (`FHawkeyeTestWorld`) in `Tests/HawkeyeTestUtils.h` so
 every test doesn't repeat it.
 
+`FHawkeyeTestWorld` ends play on every actor before it destroys its world (2026-11-25). Without that, a world built by hand and
+dropped with begun-play actors ("CleanupWorld called on a world that has begun play, missing call to EndPlay") left thugs,
+controllers and state trees alive over a dead world, and the editor's next garbage collection, run when a later map test ends its
+PIE session inside `AutomationOpenMap`, crashed on them once in a while: `Hawkeye.Interior.EnemiesInPlace` hit an
+EXCEPTION_ACCESS_VIOLATION at 0x120 inside UnrealEd on 2026-11-25 14:09 (logs in `Saved/Logs/HawkeyeTests-backup-2026.11.25-14.09.50.log`;
+the same run passed at 14:12). That cause is the leading hypothesis, not a proven one (the callstack had no symbols past
+`AddOpenSample`); `AddOpenSample` now collects garbage and logs first, in its own frame, so a repeat names itself.
+
 Dynamic multicast delegates can't take lambdas. Tests bind to a `UHawkeyeTestListener`
 UObject with `UFUNCTION()` counters (`HealthChangedCount`, `LastNewHealth`, ...), also
 in `HawkeyeTestUtils.h`.
