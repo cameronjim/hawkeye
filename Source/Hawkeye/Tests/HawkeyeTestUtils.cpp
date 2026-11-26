@@ -6,6 +6,7 @@
 #include "Components/BoxComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/Level.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameModeBase.h"
@@ -45,6 +46,32 @@ FHawkeyeTestWorld::~FHawkeyeTestWorld()
 	if (!World)
 	{
 		return;
+	}
+
+	// End play on everything first. A world destroyed with begun-play actors (the engine warns "CleanupWorld called
+	// on a world that has begun play, missing call to EndPlay") leaves thugs, controllers and state trees alive
+	// with delegates and a world pointer into a world that is gone; the next garbage collection, which the editor
+	// runs when a later map test ends its PIE session, then finalises them. That is the leading cause of the
+	// Fatal error in Hawkeye.Interior.EnemiesInPlace (EXCEPTION_ACCESS_VIOLATION at 0x120, inside UnrealEd, on
+	// AutomationOpenMap). See claude-docs/testing.md.
+	if (World->HasBegunPlay())
+	{
+		TArray<AActor*> Actors;
+		for (ULevel* Level : World->GetLevels())
+		{
+			if (Level)
+			{
+				Actors.Append(Level->Actors);
+			}
+		}
+		for (AActor* Actor : Actors)
+		{
+			if (IsValid(Actor) && Actor->HasActorBegunPlay())
+			{
+				Actor->RouteEndPlay(EEndPlayReason::RemovedFromWorld);
+			}
+		}
+		World->SetBegunPlay(false);
 	}
 
 	if (GEngine)
