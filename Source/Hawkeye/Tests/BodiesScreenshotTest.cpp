@@ -24,7 +24,9 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Partner/HawkeyePartnerController.h"
+#include "Hawkeye.h"
 #include "Player/BodyPose.h"
+#include "Player/PropGrip.h"
 #include "Player/HawkeyeCharacter.h"
 #include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
@@ -353,20 +355,24 @@ private:
 	/** Kate's shots, taken once by day and once by night after the others. */
 	enum EKateShot : int32 { KFront, KBack, KRun, KCrouch, KPunch, KDraw, KTrio, NumKateShots };
 	static constexpr int32 NumSubjects = FirstKateShot + NumKateShots * 2;
-	static constexpr int32 NumHandShots = 9;
+	static constexpr int32 NumHandShots = 13;
+	/** The first of the four prop close-ups: the gunner's pistol hand from outside and from the front, the heavy's bat hand the same. */
+	static constexpr int32 FirstPropShot = 9;
 	static constexpr int32 TotalSubjects = NumSubjects + NumHandShots;
 
 	/** The hand close-ups, in order: each is a full shot's subject seen from the hands. */
 	static int32 HandBase(int32 Round)
 	{
 		static const int32 Bases[NumHandShots] = {ThugShot, PunchShot, HeavyShot, ClintShot, DrawShot,
-			FirstKateShot + KFront, FirstKateShot + KPunch, FirstKateShot + KDraw, FistsShot};
+			FirstKateShot + KFront, FirstKateShot + KPunch, FirstKateShot + KDraw, FistsShot,
+			ThugShot, ThugShot, HeavyShot, HeavyShot};
 		return Bases[Round - NumSubjects];
 	}
 	static const TCHAR* HandName(int32 Round)
 	{
 		static const TCHAR* Names[NumHandShots] = {TEXT("hands_thug_rest"), TEXT("hands_thug_fist"), TEXT("hands_heavy_rest"),
-			TEXT("hands_clint_rest"), TEXT("hands_clint_bow"), TEXT("hands_kate_rest"), TEXT("hands_kate_fist"), TEXT("hands_kate_bow"), TEXT("hands_thug_empty")};
+			TEXT("hands_clint_rest"), TEXT("hands_clint_bow"), TEXT("hands_kate_rest"), TEXT("hands_kate_fist"), TEXT("hands_kate_bow"), TEXT("hands_thug_empty"),
+			TEXT("hands_pistol_outside"), TEXT("hands_pistol_front"), TEXT("hands_bat_outside"), TEXT("hands_bat_front")};
 		return Names[Round - NumSubjects];
 	}
 
@@ -985,6 +991,7 @@ private:
 			{
 				FrameHands(PC);
 			}
+			CheckProps(Step / 2 - 1 - NumSubjects);
 			HawkeyeShots::Request(Test, ShotPath(HandName(Step / 2 - 1)), /*bShowUI=*/false);
 			return;
 		}
@@ -1096,9 +1103,162 @@ private:
 		}
 	}
 
+	/** Which hand shot this is, counted from the first of them (0 to NumHandShots - 1); -1 outside the hand pass. */
+	int32 HandIndex() const
+	{
+		const int32 Round = (Step - 1) / 2;
+		return bHandPass && Round >= NumSubjects ? Round - NumSubjects : -1;
+	}
+
+	/**
+	 * A prop close-up (the last four hand shots): the camera 38 cm from the right hand's grip centre, level-ish, looking at it,
+	 * with the 30 degree lens. "Outside" looks at the back of the hand from his right (the hand covering the handle, the muzzle
+	 * or the bat's near end past it); "front" from the knuckle line's side, forward of him (the fingers' curl round the handle).
+	 * False for the other shots, which keep the pair framing.
+	 */
+	bool FrameProp(APlayerController* PC)
+	{
+		const int32 Hand = HandIndex();
+		const AThugCharacter* Thug = Cast<AThugCharacter>(Current.Get());
+		if (Hand < FirstPropShot || !Thug || !Camera || !Thug->HasBodyLook())
+		{
+			return false;
+		}
+		const bool bBat = Hand >= FirstPropShot + 2;
+		const bool bFront = ((Hand - FirstPropShot) % 2) == 1;
+		FVector Center(0.f), Along(0.f), Across(0.f), Palm(0.f);
+		if (!Thug->GetBodyHandGrip(HawkeyeBodyPose::HandRight, Thug->ResolveGrip(bBat), Center, Along, Across, Palm))
+		{
+			return false;
+		}
+		FVector Dir = (bFront ? Across : -Palm).GetSafeNormal() + FVector(0.f, 0.f, 0.3f);
+		Dir = Dir.GetSafeNormal();
+		FVector Eye = Center + Dir * 38.f;
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(BodyShotProp), false, Current.Get());
+		FHitResult Blocked;
+		if (Camera->GetWorld()->LineTraceSingleByChannel(Blocked, Center + Dir * 12.f, Eye, ECC_Visibility, Query))
+		{
+			// The thigh, the shield or a wall is in the way: from the other side of the hand.
+			Eye = Center + FVector(-Dir.X, -Dir.Y, Dir.Z) * 38.f;
+		}
+		Camera->SetActorLocationAndRotation(Eye, (Center - Eye).Rotation());
+		Camera->GetCameraComponent()->SetFieldOfView(30.f);
+		PC->SetViewTarget(Camera);
+		if (Light)
+		{
+			Light->SetActorLocation(Eye + FVector(0.f, 0.f, 30.f));
+			if (UPointLightComponent* Lamp = Light->PointLightComponent.Get())
+			{
+				Lamp->SetIntensity(90.f);
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * The numbers behind a prop close-up (the last four hand shots), checked and logged so the shot has a verdict besides how it looks:
+	 * the bat's line through the fist's hollow and the four fingers' middle joints within 5.5 cm of it (wrapped, not in front);
+	 * the pistol's grip block at the fist's centre, its muzzle 3 cm or more clear of every finger bone of the hand, and the slide
+	 * 1 cm or more clear of them. Needs the visible body (a clone without the Quaternius pack skips).
+	 */
+	void CheckProps(int32 Hand)
+	{
+		if (Hand < FirstPropShot)
+		{
+			return;
+		}
+		const AThugCharacter* Thug = Cast<AThugCharacter>(Current.Get());
+		const bool bBat = Hand >= FirstPropShot + 2;
+		const FString Who = bBat ? TEXT("heavy's bat") : TEXT("gunner's pistol");
+		FVector Center(0.f), Along(0.f), Across(0.f), Palm(0.f);
+		const USkeletalMeshComponent* Seen = Thug ? Thug->GetBodyMesh() : nullptr;
+		if (!Thug || !Seen || !Thug->HasBodyLook()
+			|| !Thug->GetBodyHandGrip(HawkeyeBodyPose::HandRight, Thug->ResolveGrip(bBat), Center, Along, Across, Palm))
+		{
+			Test->AddWarning(FString::Printf(TEXT("Skipped (no content): the %s hand check, no visible body."), *Who));
+			return;
+		}
+		static const TCHAR* Fingers[] = {TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky")};
+		TArray<FVector> Middle;
+		TArray<FVector> AllBones;
+		for (const TCHAR* Finger : Fingers)
+		{
+			for (int32 Joint = 1; Joint <= 3; ++Joint)
+			{
+				FVector At(0.f);
+				if (HawkeyeBodyShots::Bone(Seen, *FString::Printf(TEXT("%s_%02d_r"), Finger, Joint), At))
+				{
+					AllBones.Add(At);
+					if (Joint == 2)
+					{
+						Middle.Add(At);
+					}
+				}
+			}
+		}
+		FVector Thumb(0.f);
+		if (HawkeyeBodyShots::Bone(Seen, TEXT("thumb_03_r"), Thumb))
+		{
+			AllBones.Add(Thumb);
+		}
+		if (Middle.Num() < 4)
+		{
+			Test->AddWarning(FString::Printf(TEXT("Skipped (no content): the %s hand check, the body has no finger bones."), *Who));
+			return;
+		}
+		if (bBat)
+		{
+			const UStaticMeshComponent* Bat = Thug->GetHeldWeaponComponent();
+			if (!Test->TestTrue(TEXT("The heavy holds a visible bat"), Bat && Bat->IsVisible()))
+			{
+				return;
+			}
+			const FVector Axis = Bat->GetUpVector();
+			const FVector At = Bat->GetComponentLocation();
+			const double Through = HawkeyePropGrip::DistanceToLine(Center, At, Axis);
+			double Worst = 0.0;
+			for (const FVector& Joint : Middle)
+			{
+				Worst = FMath::Max(Worst, HawkeyePropGrip::DistanceToLine(Joint, At, Axis));
+			}
+			UE_LOG(LogHawkeye, Log, TEXT("Bodies: the heavy's bat axis passes %.1f cm from his fist's centre; his fingers' middle joints are at most %.1f cm from it."),
+				Through, Worst);
+			Test->TestTrue(FString::Printf(TEXT("The bat's handle passes through the closed palm (%.1f cm from the fist's centre)"), Through), Through < 1.0);
+			Test->TestTrue(FString::Printf(TEXT("and the fingers wrap it (worst middle joint %.1f cm off its line, limit 5.5)"), Worst),
+				HawkeyePropGrip::FingersWrapHandle(Middle, At, Axis, 5.5));
+			return;
+		}
+		const UStaticMeshComponent* Pistol = Thug->GetPistolComponent();
+		if (!Test->TestTrue(TEXT("The gunner holds a visible pistol"), Pistol && Pistol->IsVisible()))
+		{
+			return;
+		}
+		const FQuat Rotation = Pistol->GetComponentQuat();
+		const FVector GripCentre = Pistol->GetComponentLocation() + Rotation.RotateVector(Thug->PistolGripCenterCm);
+		const FVector Tip = Pistol->GetComponentTransform().TransformPosition(FVector(50.f, 0.f, 0.f));
+		const FVector Rear = Pistol->GetComponentTransform().TransformPosition(FVector(-50.f, 0.f, 0.f));
+		double TipClear = TNumericLimits<double>::Max();
+		double SlideClear = TNumericLimits<double>::Max();
+		for (const FVector& Bone : AllBones)
+		{
+			TipClear = FMath::Min(TipClear, FVector::Dist(Tip, Bone));
+			SlideClear = FMath::Min(SlideClear, HawkeyePropGrip::DistanceToSegment(Bone, Rear, Tip));
+		}
+		const double Seated = FVector::Dist(GripCentre, Center);
+		UE_LOG(LogHawkeye, Log, TEXT("Bodies: the gunner's pistol grip block is %.1f cm from his fist's centre; the muzzle is %.1f cm and the slide %.1f cm from the nearest finger bone."),
+			Seated, TipClear, SlideClear);
+		Test->TestTrue(FString::Printf(TEXT("The pistol's grip block sits in the fist (%.1f cm from its centre)"), Seated), Seated < 1.5);
+		Test->TestTrue(FString::Printf(TEXT("The muzzle is clear of the fingers (%.1f cm from the nearest finger bone, limit 3)"), TipClear), TipClear >= 3.0);
+		Test->TestTrue(FString::Printf(TEXT("The slide is clear of them (%.1f cm, limit 1)"), SlideClear), SlideClear >= 1.0);
+	}
+
 	/** The camera onto the subject's hands (both, whatever they are doing), from where the full shot's camera is. */
 	void FrameHands(APlayerController* PC)
 	{
+		if (FrameProp(PC))
+		{
+			return;
+		}
 		const ACharacter* Character = Cast<ACharacter>(Current.Get());
 		const USkeletalMeshComponent* Seen = nullptr;
 		if (const AThugCharacter* Thug = Cast<AThugCharacter>(Character))
