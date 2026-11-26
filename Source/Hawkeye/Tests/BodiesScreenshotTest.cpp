@@ -286,6 +286,14 @@ public:
 		}
 		if (HawkeyeShots::GetOutstanding(Test) > 0)
 		{
+			if (const AThugCharacter* Gunner = Cast<AThugCharacter>(Current.Get()); Gunner && Camera && Gunner->GetPistolComponent() && FParse::Param(FCommandLine::Get(), TEXT("HawkeyeBodiesGunnerOnly")))
+			{
+				// While a capture is pending: the pistol's bore in the camera's frame, every frame (it must not turn between the log and the picture).
+				const FTransform PistolT = Gunner->GetPistolComponent()->GetComponentTransform();
+				const FVector Bore = Camera->GetActorTransform().InverseTransformVectorNoScale(PistolT.TransformVectorNoScale(FVector::ForwardVector));
+				UE_LOG(LogHawkeye, Display, TEXT("Gunner capture pending (step %d): bore in camera space %s, pistol at %s, camera view target %d"), Step, *Bore.ToCompactString(),
+					*PistolT.GetLocation().ToCompactString(), PC->GetViewTarget() == Camera ? 1 : 0);
+			}
 			return false;
 		}
 		const double Now = FPlatformTime::Seconds();
@@ -297,7 +305,7 @@ public:
 		}
 		// -HawkeyeBodiesGunnerOnly: only the gunner's four shots (one launch, a few poses), no hand close-ups.
 		const bool bGunnerOnly = FParse::Param(FCommandLine::Get(), TEXT("HawkeyeBodiesGunnerOnly"));
-		const int32 RoundCount = bGunnerOnly ? 4 : TotalSubjects;
+		const int32 RoundCount = bGunnerOnly ? 9 : TotalSubjects;
 		if (Step > RoundCount * 2)
 		{
 			Cleanup();
@@ -363,7 +371,9 @@ private:
 		/** The gunner at gameplay distance: idle from his right, aiming from his right, aiming seen from where he aims (his target's eye). */
 		GunnerSideShot, GunnerAimSideShot, GunnerAimFrontShot,
 		/** The same aim from 6.5 m in front and a little right, the distance and angle the player camera sees him at. */
-		GunnerAimFarShot,
+		GunnerAimFarShot, GunnerAimOnBoreShot,
+		/** The same gunner aimed at Kate: 6 m and 30 degrees left, 8 m and 30 degrees right, 7 m and 1.5 m above, 7 m and 1.5 m below (he turns to face her). */
+		GunnerCaseLeftShot, GunnerCaseRightShot, GunnerCaseHighShot, GunnerCaseLowShot,
 		FirstKateShot
 	};
 	/** Kate's shots, taken once by day and once by night after the others. */
@@ -399,7 +409,8 @@ private:
 		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
 			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate"), TEXT("body_thug_empty"),
 			TEXT("face_thug"), TEXT("face_thug_b"), TEXT("face_thug_c"), TEXT("face_thug_d"), TEXT("face_heavy"), TEXT("body_lineup"),
-			TEXT("body_gunner_side"), TEXT("body_gunner_aim_side"), TEXT("body_gunner_aim_front"), TEXT("body_gunner_aim_far")};
+			TEXT("body_gunner_side"), TEXT("body_gunner_aim_side"), TEXT("body_gunner_aim_front"), TEXT("body_gunner_aim_far"), TEXT("body_gunner_aim_bore"),
+			TEXT("body_gunner_case_left"), TEXT("body_gunner_case_right"), TEXT("body_gunner_case_high"), TEXT("body_gunner_case_low")};
 		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
 			TEXT("draw"), TEXT("trio")};
 		if (!IsKate(Subject))
@@ -818,6 +829,7 @@ private:
 		case GunnerAimSideShot:
 		case GunnerAimFrontShot:
 		case GunnerAimFarShot:
+		case GunnerAimOnBoreShot:
 		{
 			// The gunner (his pistol is the default weapon) from his right at gameplay distance, idle or raised and aimed along
 			// the way he faces; the front shot is what his target sees.
@@ -829,9 +841,38 @@ private:
 				Gunner->SetWeaponRaised(true, Aimed);
 			}
 			const FVector Look = Chest - FVector(0.f, 0.f, 15.f);
-			const FVector Eye = Subject == GunnerAimFarShot ? Look + Along * 650.f + Side * 90.f + FVector(0.f, 0.f, 45.f)
+			const FVector Eye = Subject == GunnerAimOnBoreShot ? Look + Along * 220.f + Side * 14.f + FVector(0.f, 0.f, 20.f)
+				: Subject == GunnerAimFarShot ? Look + Along * 650.f + Side * 90.f + FVector(0.f, 0.f, 45.f)
 				: Subject == GunnerAimFrontShot ? Look + Along * 330.f + Side * 40.f + FVector(0.f, 0.f, 10.f)
 				: Look + Side * 330.f + Along * 60.f + FVector(0.f, 0.f, 15.f);
+			Frame(PC, Look, 330.f, 45.f);
+			if (Camera)
+			{
+				Camera->SetActorLocationAndRotation(Eye, (Look + (Subject == GunnerAimOnBoreShot ? FVector(0.f, 0.f, 45.f) : FVector::ZeroVector) - Eye).Rotation());
+			}
+			break;
+		}
+		case GunnerCaseLeftShot:
+		case GunnerCaseRightShot:
+		case GunnerCaseHighShot:
+		case GunnerCaseLowShot:
+		{
+			// The gunner aimed at where Kate would stand: he turns to face her (the AI does the same once he stops to shoot), the
+			// pistol aims at her chest, and the camera is where she would see him from, 3.3 m in front of him.
+			const float Yaw = Subject == GunnerCaseLeftShot ? -30.f : Subject == GunnerCaseRightShot ? 30.f : 0.f;
+			const float Range = Subject == GunnerCaseLeftShot ? 600.f : Subject == GunnerCaseRightShot ? 800.f : 700.f;
+			const float Rise = Subject == GunnerCaseHighShot ? 150.f : Subject == GunnerCaseLowShot ? -150.f : 0.f;
+			const FVector Face = Along.RotateAngleAxis(Yaw, FVector::UpVector);
+			const FVector FaceSide = FVector::CrossProduct(FVector::UpVector, Face);
+			AThugCharacter* Gunner = SpawnThug(World, HawkeyeBodyShots::ThugClassPath);
+			Current = Gunner;
+			if (Gunner)
+			{
+				Gunner->SetActorRotation(Face.Rotation());
+				Gunner->SetWeaponRaised(true, Chest + Face * Range + FVector(0.f, 0.f, Rise));
+			}
+			const FVector Look = Chest - FVector(0.f, 0.f, 15.f);
+			const FVector Eye = Look + Face * 330.f + FaceSide * 40.f + FVector(0.f, 0.f, 10.f);
 			Frame(PC, Look, 330.f, 45.f);
 			if (Camera)
 			{
@@ -1045,6 +1086,60 @@ private:
 			return;
 		}
 		ACharacter* Character = Cast<ACharacter>(Current.Get());
+		if (const AThugCharacter* Gunner = Subject >= GunnerSideShot && Subject <= GunnerCaseLowShot ? Cast<AThugCharacter>(Current.Get()) : nullptr)
+		{
+			// Where the muzzle points against where it is aimed, and how he stands against the way the shot was built.
+			const UStaticMeshComponent* Pistol = Gunner->GetPistolComponent();
+			const FVector Muzzle = Gunner->GetGlintLocation();
+			const FVector MuzzleDir = Pistol ? Pistol->GetComponentTransform().TransformVectorNoScale(FVector::ForwardVector) : FVector::ForwardVector;
+			const FVector ToTarget = (Gunner->GetWeaponAimPoint() - Muzzle).GetSafeNormal();
+			const float Degrees = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(static_cast<float>(FVector::DotProduct(MuzzleDir, ToTarget)), -1.f, 1.f)));
+			const USkeletalMeshComponent* Body = Gunner->GetBodyMesh();
+			const FVector HandR = Body ? Body->GetSocketLocation(TEXT("hand_r")) : FVector::ZeroVector;
+			const FVector HandL = Body ? Body->GetSocketLocation(TEXT("hand_l")) : FVector::ZeroVector;
+			if (Pistol && Pistol->GetStaticMesh())
+			{
+				const FBox Bounds = Pistol->GetStaticMesh()->GetBoundingBox();
+				const FTransform PT = Pistol->GetComponentTransform();
+				UE_LOG(LogHawkeye, Display, TEXT("Gunner shot %s: pistol mesh bounds %s to %s, scale %s, component up %s right %s, visible %d hidden-in-game %d, owner-no-see %d"), *ShotFile,
+					*Bounds.Min.ToCompactString(), *Bounds.Max.ToCompactString(), *PT.GetScale3D().ToCompactString(), *PT.TransformVectorNoScale(FVector::UpVector).ToCompactString(),
+					*PT.TransformVectorNoScale(FVector::RightVector).ToCompactString(), Pistol->IsVisible() ? 1 : 0, Pistol->bHiddenInGame ? 1 : 0, Pistol->bOwnerNoSee ? 1 : 0);
+			}
+			if (Camera && Pistol)
+			{
+				const FTransform CameraT = Camera->GetActorTransform();
+				const FVector Rear = Pistol->GetComponentTransform().TransformPosition(Gunner->GetPistolRearLocal());
+				const FVector Bore = CameraT.InverseTransformVectorNoScale(Muzzle - Rear);
+				UE_LOG(LogHawkeye, Display, TEXT("Gunner shot %s: the slide seen from the camera is %.1f cm across, %.1f up and %.1f toward it (the muzzle at %s in camera space), camera at %.0f cm from him"),
+					*ShotFile, Bore.Y, Bore.Z, -Bore.X, *CameraT.InverseTransformPosition(Muzzle).ToCompactString(), FVector::Dist(Camera->GetActorLocation(), Gunner->GetActorLocation()));
+			}
+			UE_LOG(LogHawkeye, Display, TEXT("Gunner shot %s: raised %d, muzzle off the aim by %.1f deg (muzzle dir %s, to target %s), body yaw %.1f vs the shot's %.1f, hand_r %s, hand_l %s, camera %s, arm alpha %.2f"),
+				*ShotFile, Gunner->IsWeaponRaised() ? 1 : 0, Degrees, *MuzzleDir.ToCompactString(), *ToTarget.ToCompactString(), Gunner->GetActorRotation().Yaw,
+				Along.Rotation().Yaw, *Gunner->GetActorTransform().InverseTransformPosition(HandR).ToCompactString(),
+				*Gunner->GetActorTransform().InverseTransformPosition(HandL).ToCompactString(), Camera ? *Camera->GetActorLocation().ToCompactString() : TEXT("none"),
+				Gunner->GetGunArmAlphaForTest());
+			if (Gunner->IsWeaponRaised())
+			{
+				// The pistol points at what he aims at, his arms reach toward it (elbows only slightly bent), his body faces it.
+				Test->TestTrue(*FString::Printf(TEXT("%s: the muzzle points at the target within 5 degrees (%.1f)"), *ShotFile, Degrees), Degrees < 5.f);
+				const FVector ToAim = (Gunner->GetWeaponAimPoint() - Gunner->GetActorLocation()).GetSafeNormal2D();
+				const float FacingOff = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(static_cast<float>(FVector::DotProduct(Gunner->GetActorForwardVector().GetSafeNormal2D(), ToAim)), -1.f, 1.f)));
+				Test->TestTrue(*FString::Printf(TEXT("%s: his body faces the target within 10 degrees (%.1f)"), *ShotFile, FacingOff), FacingOff < 10.f);
+				for (const TCHAR* Side : {TEXT("r"), TEXT("l")})
+				{
+					const FVector Shoulder = Body ? Body->GetSocketLocation(*FString::Printf(TEXT("upperarm_%s"), Side)) : FVector::ZeroVector;
+					const FVector Elbow = Body ? Body->GetSocketLocation(*FString::Printf(TEXT("lowerarm_%s"), Side)) : FVector::ZeroVector;
+					const FVector Wrist = Body ? Body->GetSocketLocation(*FString::Printf(TEXT("hand_%s"), Side)) : FVector::ZeroVector;
+					const float Reach = FVector::Dist(Shoulder, Wrist);
+					const float Length = FVector::Dist(Shoulder, Elbow) + FVector::Dist(Elbow, Wrist);
+					const float Straight = Length > 1.f ? Reach / Length : 0.f;
+					const float TowardTarget = FVector::DotProduct((Wrist - Shoulder).GetSafeNormal(), (Gunner->GetWeaponAimPoint() - Shoulder).GetSafeNormal());
+					UE_LOG(LogHawkeye, Display, TEXT("Gunner shot %s: %s arm reaches %.0f of %.0f cm (%.2f straight), %.2f toward the target"), *ShotFile, Side, Reach, Length, Straight, TowardTarget);
+					Test->TestTrue(*FString::Printf(TEXT("%s: the %s arm is extended toward the target (%.2f straight, %.2f toward)"), *ShotFile, Side, Straight, TowardTarget),
+						Straight > 0.75f && Straight < 0.99f && TowardTarget > 0.85f);
+				}
+			}
+		}
 		if (Subject == LuckyShot || Subject == LuckyKateShot)
 		{
 			CheckLucky(ShotFile + TEXT(".png"));

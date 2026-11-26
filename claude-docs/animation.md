@@ -699,6 +699,16 @@ the game's: X the muzzle, Z up, the middle of the slide at the origin; the handl
   `ComputeGunAim` (blended from the ready to the aim over 0.18 s), so it is always in the hand and points at the target.
   Data on the thug (`GunReadyHand`, `GunReadyPitchDegrees`, `GunReachCm`, `GunLeftHandOffsetCm`, `GunLeftElbowOffsetCm`, `GunArmBlendSeconds`, `GunRaiseSeconds`).
 - *The left hand hung open and limp below the gun, forearm crossing under the pistol* (seen in `CombatFeel2/gunner_aim_crops.png`). `GetBodyPoseWish` now gives the raised gunner's left hand the Grip pose and the pistol's up axis, and the left target moved from 7 cm across to (1, -5, -6) cm from the right wrist, the elbow bent down and in. Seen in `Saved/Screenshots/CombatFeel3/` (`-HawkeyeBodiesGunnerOnly` takes the four gunner shots in one launch): both fists closed, the left under and ahead of the right with its fingers round the grip's front. The gunner has no firing recoil of his own, so there is no recoil frame; a hit's recoil moves his spine and the hands follow their actor-frame targets.
+- *The pistol lay on its side (found 2026-11-26 from a front shot).* `build_pistol.py` exported the glTF with `export_yup=False`, and the
+  interchange importer reads glTF as Y-up, so the imported mesh had Y and Z swapped: bounds Y -13.3..2.3, Z -1.7..1.7, the grip
+  along -Y, rolled a quarter turn. The side shots hid it (the hand covers the grip) and read as right; from the front the slide
+  lay across the image with its muzzle ring facing the camera and the grip bar sticking out to the gunner's left. It now exports
+  Y-up like `costume.py`: bounds X -10..9.6, Y +-1.7, Z -13.3..2.3, and `Hawkeye.Gunner.MuzzlePointsAtTarget` asserts the model's
+  bounds. (The built props are git-ignored: run `Tools\create-content.ps1 -Only pistol` after the Blender build.) The aim itself was
+  right all along: Bodies logs the muzzle against the aim (1.0 to 1.3 degrees on every raised shot), and asserts it under 5 degrees.
+  The reach (`GunReachCm`) went from 50 to 40: the arm is 49 cm to the wrist, so 50 locked the elbows; now 0.94 (right) and 0.87
+  (left) of straight, and `-HawkeyeBodiesGunnerOnly` takes nine gunner shots (idle, aim side, front, far, on the bore, and him
+  aimed at 6 m 30 left, 8 m 30 right, 7 m 1.5 m above and below) with the arms asserted extended toward the target.
 - *Re-tune.* The old `hawkeye.Thug.PistolGrip` numbers still pass the Bodies check with the model (grip centre 0.0 cm from the fist,
   muzzle 10.8 and slide 4.3 cm clear of the finger bones) and the pictures, so the defaults stay as they are (palm 3.2, along -1.3);
   only the grip centre in the pistol's frame moved. `MuzzleOutDegrees` no longer shows at the ready, the aim sets the direction.

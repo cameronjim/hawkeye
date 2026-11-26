@@ -145,6 +145,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Thug|Combat")
 	bool IsWeaponRaised() const { return bWeaponRaised; }
 
+	/** Where the raised pistol is aimed (world), and how far the right arm is on the pistol (0..1). */
+	FVector GetWeaponAimPoint() const { return WeaponAimPoint; }
+	float GetGunArmAlphaForTest() const { return GunArmAlpha; }
+
+	/** Tests: the gunner's arms and pistol for one frame (what Tick does of them). */
+	void UpdateGunForTest(float DeltaSeconds)
+	{
+		UpdateGunArms(DeltaSeconds);
+		UpdatePistolPose();
+	}
+
 	/** The glint on the muzzle (gunner) or on the nocked arrow's tip (archer) that says a shot is coming. */
 	UFUNCTION(BlueprintCallable, Category = "Thug|Combat")
 	void SetTelegraphGlint(bool bOn);
@@ -266,7 +277,7 @@ public:
 
 	/** How far the aiming hand reaches from the right shoulder along the aim, cm (the arm is about 60 cm). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
-	float GunReachCm = 50.f;
+	float GunReachCm = 40.f;
 
 	/**
 	 * The supporting left hand (the wrist) relative to the right wrist when aiming, in the actor's frame (X forward, Y right, Z up),
