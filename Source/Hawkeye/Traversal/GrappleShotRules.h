@@ -62,6 +62,18 @@ struct HAWKEYE_API FHawkeyeGrappleShotSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Shot", meta = (ClampMin = "0.0"))
 	float ChainTotalSeconds = 0.f;
 
+	/**
+	 * The snap a mid-air chain plays when it has no shot time of its own (ChainTotalSeconds 0, the default): the pull is still
+	 * instant, at the press, but the bow comes up and draws over this long and looses at its end, so the shot is seen and not only
+	 * its follow-through. Upper body only (the bow clip and the hands IK; the legs and the pull go on). 0 turns it off.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Shot", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float ChainSnapSeconds = 0.12f;
+
+	/** The share of ChainSnapSeconds the arm takes to come up; the string comes back over the rest and the loose ends it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Shot", meta = (ClampMin = "0.05", ClampMax = "0.9"))
+	float ChainSnapRaiseShare = 0.4f;
+
 	/** Added to press-to-pull on top of the arrow's own flight, s. 0: the shot costs no latency (the default). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grapple Shot", meta = (ClampMin = "0.0"))
 	float ExtraLatencySeconds = 0.f;
@@ -112,6 +124,19 @@ struct HAWKEYE_API FGrappleShotRules
 	 */
 	static FGrappleShotSchedule MakeSchedule(
 		float Distance, float ArrowSpeed, bool bChain, const FHawkeyeGrappleShotSettings& Settings);
+
+	/**
+	 * Whether a chain plays the snap: shots on, a chain (bChain), and no shot time of its own (TotalSeconds, press to pull, is 0,
+	 * the instant redirect), and ChainSnapSeconds above 0. A chain with a ChainTotalSeconds plays the normal shot instead.
+	 */
+	static bool ShouldPlayChainSnap(float TotalSeconds, bool bChain, const FHawkeyeGrappleShotSettings& Settings);
+
+	/**
+	 * The chain snap's clock from the press: raise over ChainSnapRaiseShare of ChainSnapSeconds, the draw over the rest, the
+	 * release at the end (DrawFractionAt, RaiseFractionAt and PhaseAt read it like any shot's). TotalSeconds is 0: the pull is
+	 * not delayed and no arrow flies. An empty schedule (release at 0) when the snap is off.
+	 */
+	static FGrappleShotSchedule MakeChainSnapSchedule(const FHawkeyeGrappleShotSettings& Settings);
 
 	/** 0..1 how far the draw has come at Elapsed since the press: 0 through the raise's first moments, 1 at the release (eased). */
 	static float DrawFractionAt(float Elapsed, const FGrappleShotSchedule& Schedule);
