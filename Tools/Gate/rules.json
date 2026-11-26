@@ -80,7 +80,7 @@
       "match": ["Source/Hawkeye/Player/**"],
       "build": true,
       "tests": ["Hawkeye.Movement", "Hawkeye.Sprint", "Hawkeye.Crouch", "Hawkeye.Camera", "Hawkeye.Character", "Hawkeye.BodyLook",
-                "Hawkeye.Inventory", "Hawkeye.SecondaryMotion", "Hawkeye.Gasp", "Hawkeye.Animation"],
+                "Hawkeye.Inventory", "Hawkeye.SecondaryMotion", "Hawkeye.PropGrip", "Hawkeye.Gasp", "Hawkeye.Animation"],
       "laps": ["EastVillage"]
     },
     {
@@ -88,7 +88,7 @@
       "match": ["Source/Hawkeye/Combat/**"],
       "build": true,
       "tests": ["Hawkeye.Melee", "Hawkeye.Takedown", "Hawkeye.Dodge", "Hawkeye.Fight", "Hawkeye.Tokens", "Hawkeye.Bow", "Hawkeye.Arrow",
-                "Hawkeye.ReturnFlight", "Hawkeye.AimAssist", "Hawkeye.Weapon", "Hawkeye.CombatAnim", "Hawkeye.HitContact",
+                "Hawkeye.ReturnFlight", "Hawkeye.AimAssist", "Hawkeye.Weapon", "Hawkeye.CombatAnim", "Hawkeye.HitContact", "Hawkeye.HitStagger",
                 "Hawkeye.Health", "Hawkeye.Death", "Hawkeye.BossPhase"],
       "laps": ["CrimeMugging", "ReindeerGames"]
     },
@@ -96,7 +96,7 @@
       "name": "thug and partner AI C++",
       "match": ["Source/Hawkeye/World/Thug*", "Source/Hawkeye/Partner/**"],
       "build": true,
-      "tests": ["Hawkeye.Thug", "Hawkeye.Gunner", "Hawkeye.Archer", "Hawkeye.Heavy", "Hawkeye.Partner", "Hawkeye.Tokens", "Hawkeye.Fight"],
+      "tests": ["Hawkeye.Thug", "Hawkeye.Gunner", "Hawkeye.Archer", "Hawkeye.Heavy", "Hawkeye.Partner", "Hawkeye.Tokens", "Hawkeye.Fight", "Hawkeye.HitStagger", "Hawkeye.PropGrip"],
       "risky": true,
       "laps": ["Campaign", "CrimeAmbush"]
     },
@@ -212,7 +212,7 @@
                 "Tools/Editor/create_bow_ik.py", "Tools/Editor/export_clip_rigs.py", "Tools/import-anims.ps1", "Tools/Data/Anims/**"],
       "content": true,
       "contentSteps": ["authored clips", "traversal anims", "combat anims", "bow ik"],
-      "tests": ["Hawkeye.Animation", "Hawkeye.AuthoredClips", "Hawkeye.CombatAnim", "Hawkeye.Ledge", "Hawkeye.Traversal.Pose",
+      "tests": ["Hawkeye.Animation", "Hawkeye.AuthoredClips", "Hawkeye.CombatAnim", "Hawkeye.HitStagger", "Hawkeye.Ledge", "Hawkeye.Traversal.Pose",
                 "Hawkeye.BodyPose", "Hawkeye.Smoke.CombatClipsPlay", "Hawkeye.Smoke.ThugClipsStrikeOnTheTelegraph"]
     },
     {
