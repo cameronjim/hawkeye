@@ -247,6 +247,15 @@ struct HAWKEYE_API FHawkeyeWeldTuning
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld")
 	bool bClipKnockbackWins = false;
 
+	/**
+	 * True: the victim-align step-in (he is moved to the clip's contact distance over the freeze) is subtracted from the
+	 * knock-back, so the net move from where the blow found him is the tuned distance (the old rule). False: the knock-back is
+	 * the whole tuned distance after the step-in, so he ends that far past the contact spacing; the old rule left a light
+	 * blow's victim 11 cm back and the two bodies overlapping by the end of her punch (2026-11-26).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld")
+	bool bNetOutAlignNudge = false;
+
 	/** Air kept between the victim's capsule and a wall the knock-back would run into, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
 	float KnockbackSkinCm = 3.f;

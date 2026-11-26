@@ -403,10 +403,10 @@ void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float Di
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
 	const FVector Flat = Direction.GetSafeNormal2D();
-	// The victim-align nudge moved him over the freeze (toward the attacker, mostly, to the clip's contact distance), which
-	// ate the shove: the displacement he ends with, from where the blow found him, is the tuned distance.
+	// The victim-align nudge moved him over the freeze to the clip's contact distance. The shove is the whole tuned distance
+	// on top of it (bNetOutAlignNudge puts the old rule back: the net move from where the blow found him is the tuned distance).
 	const float TunedCm = DistanceCm;
-	DistanceCm = UHawkeyeHitContactRules::ComputeNetKnockbackCm(TunedCm, LastAlignNudge, Flat);
+	DistanceCm = Weld.bNetOutAlignNudge ? UHawkeyeHitContactRules::ComputeNetKnockbackCm(TunedCm, LastAlignNudge, Flat) : TunedCm;
 	LastAlignNudge = FVector::ZeroVector;
 	if (!Movement || Flat.IsNearlyZero() || DistanceCm <= 0.f)
 	{

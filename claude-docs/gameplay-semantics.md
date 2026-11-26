@@ -2616,8 +2616,11 @@ live (1 = as authored, 0 = off).
   profile ((1 - t) ^ 2 in speed) so the displacement is exactly the distance. The tuning decides: a clip's baked `KnockbackCm`
   is used only when `bClipKnockbackWins` (default false). `LIGHT_SHOVE` and `HEAVY_SHOVE` in `Tools/Blender/build_clips.py` are
   set to the same 18 and 52 (the planted feet slide with the capsule over the matching time) and the clips need rebuilding.
-  The align nudge is still netted out (`ComputeNetKnockbackCm`), so the net displacement from where the blow found him is the
-  tuned distance. A heavy's step is the clip's (two steps, `HitHeavy`).
+  The align nudge is no longer netted out (2026-11-26; `FHawkeyeWeldTuning::bNetOutAlignNudge`, default false, puts the old
+  rule back): the victim is first moved to the clip's contact spacing over the freeze (up to `MaxNudgeCm`, 15), then the whole
+  tuned distance follows, so a light blow leaves him 18 cm past the spacing (a forearm further than at contact). The old rule
+  took the nudge off the shove (`ComputeNetKnockbackCm`, still tested), so a victim Kate had lunged at was pulled in and shoved
+  back to where he stood and the pair ended overlapping. A heavy's step is the clip's (two steps, `HitHeavy`).
 - **Direction** is attacker to victim, flat (`ComputeKnockbackDirection`; the callers pass the line from the attacker's actor
   to the victim's; with no attacker, behind the victim; never a zero vector).
 - **No knock-back through walls.** When the shove starts (the freeze's release) the victim's capsule is swept along it

@@ -306,6 +306,7 @@ namespace HawkeyeClipShots
 			FVector HeadBefore = FVector::ZeroVector;
 			FVector ChestBefore = FVector::ZeroVector;
 			FVector ThugStart = FVector::ZeroVector;
+				FVector KateStart = FVector::ZeroVector;
 			/** A chain: lights pressed so far, and the seconds between its frames (0.1 s: three blows in 12 frames). */
 			int32 Presses = 1;
 			double Step = 1.0 / 30.0;
@@ -328,6 +329,9 @@ namespace HawkeyeClipShots
 				{
 					Movement->StopMovementImmediately();
 					Movement->SetMovementMode(MOVE_Walking);
+					// The test thug has no controller, and a pawn without one is not moved by its movement component (the knock-back
+					// is a root motion source): the strip showed no shove for that reason.
+					Movement->bRunPhysicsWithNoController = true;
 				}
 			}
 			Kate->TeleportTo(State->Feet + FVector(0.f, 0.f, KateHalf + 2.f), State->Along.Rotation(), false, true);
@@ -337,6 +341,7 @@ namespace HawkeyeClipShots
 			Run->HeadBefore = Thug->GetMesh()->GetBoneLocation(FName(TEXT("head")));
 			Run->ChestBefore = Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03")));
 			Run->ThugStart = Thug->GetActorLocation();
+				Run->KateStart = Kate->GetActorLocation();
 			UMeleeComponent* Melee = Kate->GetMeleeComponent();
 			Melee->SetNextAttackTarget(Thug);
 			const bool bStarted = bHeavy ? Kate->StartHeavyAttack() : Kate->StartLightAttack();
@@ -390,11 +395,12 @@ namespace HawkeyeClipShots
 					const float HeadMoved = FVector::Dist(Run->HeadBefore, Thug->GetMesh()->GetBoneLocation(FName(TEXT("head"))));
 					const float ChestMoved = FVector::Dist(Run->ChestBefore, Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03"))));
 					Test->AddInfo(FString::Printf(TEXT("%s frame %+d at %.3f s: frozen %d (%.3f s), his head %.1f cm and chest %.1f cm off where they were, "
-						"%d puffs asked for, he is %.0f cm from her and his capsule %.1f cm from where he stood."), *Name, Offset, Elapsed, React && React->IsFrozen() ? 1 : 0,
+						"%d puffs asked for, he is %.0f cm from her and his capsule %+.1f cm along the line (+ = away from her) from where he stood, she is %.1f cm on from where she stood."), *Name, Offset, Elapsed, React && React->IsFrozen() ? 1 : 0,
 						React ? React->GetFreezeSeconds() : 0.f, HeadMoved, ChestMoved,
 						UHawkeyeVfxSubsystem::Find(Thug) ? UHawkeyeVfxSubsystem::Find(Thug)->GetRequestCount(UHawkeyeVfxSubsystem::MeleePuffEvent) : -1,
 						Kate ? FVector::Dist2D(Kate->GetActorLocation(), Thug->GetActorLocation()) : 0.f,
-						FVector::Dist2D(Run->ThugStart, Thug->GetActorLocation())));
+						FVector::DotProduct(Thug->GetActorLocation() - Run->ThugStart, State->Along.GetSafeNormal2D()),
+						Kate ? FVector::Dist2D(Run->KateStart, Kate->GetActorLocation()) : 0.f));
 					// By the first frame after the hit he must be on his hit pose (the pose is evaluated on the next rendered frame; a
 					// capture that stops the world in the very tick of the blow catches the frame before it): the head or the chest
 					// off the idle's place.
@@ -414,7 +420,18 @@ namespace HawkeyeClipShots
 						}
 					}
 				}
-				AddShot(Test, State, Name, FString::Printf(TEXT("%s_%02d_%+d_%.3fs"), *Name, Offset + 2, Offset, Elapsed));
+				if (const AThugCharacter* Thug = State->Thug.Get())
+					{
+						const FVector Line = State->Along.GetSafeNormal2D();
+						const FVector Head = Thug->GetMesh()->GetBoneLocation(FName(TEXT("head")));
+						const FVector Chest = Thug->GetMesh()->GetBoneLocation(FName(TEXT("spine_03")));
+						UE_LOG(LogTemp, Log, TEXT("STRIPFRAME %s %+d t=%.3f head %+.1f chest %+.1f cm along the line from where they were over his capsule (+ = away from her), his head %.0f cm up, thug along %+.1f"), *Name, Offset, Elapsed,
+							FVector::DotProduct(Head - Thug->GetActorLocation(), Line) - FVector::DotProduct(Run->HeadBefore - Run->ThugStart, Line),
+							FVector::DotProduct(Chest - Thug->GetActorLocation(), Line) - FVector::DotProduct(Run->ChestBefore - Run->ThugStart, Line),
+							Head.Z - Run->HeadBefore.Z,
+							FVector::DotProduct(Thug->GetActorLocation() - Run->ThugStart, State->Along.GetSafeNormal2D()));
+					}
+					AddShot(Test, State, Name, FString::Printf(TEXT("%s_%02d_%+d_%.3fs"), *Name, Offset + 2, Offset, Elapsed));
 				return true;
 			}));
 			ADD_LATENT_AUTOMATION_COMMAND(FUntilCommand([Test]() { return ShotsDone(Test); }, []() { return true; }, 12.f));
@@ -428,6 +445,20 @@ namespace HawkeyeClipShots
 			}));
 		}
 		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.5f));
+
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, State, Run, Name]()
+		{
+			const AHawkeyeCharacter* Kate = State->Kate.Get();
+			const AThugCharacter* Thug = State->Thug.Get();
+			if (Kate && Thug && Thug->GetHealthComponent()->IsAlive())
+			{
+				Test->AddInfo(FString::Printf(TEXT("%s settled 1.5 s on: he is %.0f cm from her, his capsule %+.1f cm along the line (+ = away from her) from where he stood, she is %.1f cm on."),
+					*Name, FVector::Dist2D(Kate->GetActorLocation(), Thug->GetActorLocation()),
+					FVector::DotProduct(Thug->GetActorLocation() - Run->ThugStart, State->Along.GetSafeNormal2D()),
+					FVector::Dist2D(Run->KateStart, Kate->GetActorLocation())));
+			}
+			return true;
+		}));
 		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([State]()
 		{
 			if (AHawkeyeCharacter* Kate = State->Kate.Get())
