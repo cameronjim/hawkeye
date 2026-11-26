@@ -284,6 +284,42 @@ float UHawkeyeHitContactRules::ComputeNetKnockbackCm(float TunedCm, const FVecto
 	return FMath::Max(TunedCm - Moved, 0.f);
 }
 
+float UHawkeyeHitContactRules::ResolveKnockbackCm(float ClipCm, bool bHeavy, const FHawkeyeWeldTuning& Tuning, float Scale)
+{
+	const float Tuned = bHeavy ? Tuning.KnockbackHeavyCm : Tuning.KnockbackLightCm;
+	const float Base = Tuning.bClipKnockbackWins && ClipCm >= 0.f ? ClipCm : Tuned;
+	return FMath::Max(Base * FMath::Max(Scale, 0.f), 0.f);
+}
+
+float UHawkeyeHitContactRules::ResolveKnockbackSeconds(bool bHeavy, const FHawkeyeWeldTuning& Tuning)
+{
+	return FMath::Max(bHeavy ? Tuning.KnockbackSeconds : Tuning.KnockbackLightSeconds, 0.05f);
+}
+
+FVector UHawkeyeHitContactRules::ComputeKnockbackDirection(const FVector* AttackerLocation, const FVector& VictimLocation, const FVector& Fallback)
+{
+	if (AttackerLocation)
+	{
+		const FVector Away = (VictimLocation - *AttackerLocation).GetSafeNormal2D();
+		if (!Away.IsNearlyZero())
+		{
+			return Away;
+		}
+	}
+	const FVector Back = Fallback.GetSafeNormal2D();
+	return Back.IsNearlyZero() ? FVector(-1.f, 0.f, 0.f) : Back;
+}
+
+float UHawkeyeHitContactRules::ClampKnockbackToClearance(float DesiredCm, float ClearanceCm, float SkinCm)
+{
+	const float Desired = FMath::Max(DesiredCm, 0.f);
+	if (ClearanceCm < 0.f)
+	{
+		return Desired;
+	}
+	return FMath::Clamp(ClearanceCm - FMath::Max(SkinCm, 0.f), 0.f, Desired);
+}
+
 bool UHawkeyeHitContactRules::ShouldHitStop(bool bAlive, bool bWindingUp)
 {
 	return bAlive && !bWindingUp;
