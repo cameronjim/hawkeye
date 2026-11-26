@@ -292,7 +292,7 @@ function Step-Python([string[]]$Suites) {
         $abs = Join-Path $Root $dir
         foreach ($f in @(Get-ChildItem $abs -Filter "test_*.py")) {
             $mod = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-            $log = Join-Path $LogDir ("python_{0}_{1}.log" -f ($dir -replace "[/\]", "_"), $mod)
+            $log = Join-Path $LogDir ("python_{0}_{1}.log" -f ($dir -replace "/", "_"), $mod)
             $out = $log + ".out"
             $p = Start-Process -FilePath $py -ArgumentList @("-B", "-m", "unittest", $mod) -WorkingDirectory $abs -PassThru `
                 -WindowStyle Hidden -RedirectStandardError $log -RedirectStandardOutput $out
