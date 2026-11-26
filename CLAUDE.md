@@ -79,10 +79,10 @@ Exact commands are in `claude-docs/infrastructure.md`. The two you'll use consta
    square kilometres.
 3. **Every C++ change builds before it's committed.** Run the build command. If you
    changed a header, the editor must be closed or use Live Coding; a stale editor
-   silently runs old code.
+   silently runs old code. `Tools\gate.ps1` runs the build and every other check a change needs.
 4. **Tests for anything with rules.** Mission completion logic, health and damage,
    boss phase thresholds, weapon ammo math, save round-trip. See `claude-docs/testing.md`.
-   Pure visual or feel work (animation, materials, level layout) is not tested with code.
+   Pure visual or feel work (animation, materials, level layout) is not tested with code. The per-change run is `Tools\gate.ps1`, which picks only the tests the change touches.
 5. **Don't rename the project or the module.** Don't change the `ProjectID` GUID by hand.
    Don't reformat files you aren't otherwise changing.
 6. **Binary assets go through Git LFS.** `.gitattributes` handles it. If `git status`

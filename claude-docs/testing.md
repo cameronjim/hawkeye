@@ -281,6 +281,65 @@ shots use a camera of their own (the player's boom folds in to nothing on a para
 `.\Tools\demo-capture.ps1 -Shot descent -Frames 330 -Extra "-DemoDescentOut=130"` brings the descent's lens in to a close look at the hands on a fire escape's rail.
 The owner's own clips: `docs/demo/recording-guide.md` and `Tools\demo-record.ps1`, which backs up and restores his campaign save.
 
+## 2k. The gate (written 2026-11-25)
+
+The per-change check is `.\Tools\gate.ps1`, the quick tier. It reads what changed (`git diff --name-only <Base>..HEAD` plus uncommitted
+tracked changes; Base is the commit in `Saved\Gate\last-pass.json` when it is an ancestor of HEAD, else `origin/main`; `-Base <rev>`
+overrides), asks `Tools/Gate/select.py` which steps those paths need, and runs only those. The rules are data, `Tools/Gate/rules.json`: an
+ordered list of `{match, build, tests, python, content, contentSteps, contentVerify, cityVerify, audit, laps, strips, risky, broad}`,
+and the plan is the union over every rule that matches a changed path. A `base` rule always applies (every Tools file adds the python
+tests and ruff); a `fallback` rule applies only to a path nothing more specific matched; a path no rule matches is unknown, and unknown
+means broad: build, the whole suite, python, no laps unless a risky rule also matched. `Tools/Gate/test_select.py` checks the selector,
+that every filter in the file matches a test in `Source`, that every lap exists, and that no source file goes unmatched (a new source
+folder needs a rule).
+
+| Change | Quick plan |
+|--------|------------|
+| docs, `claude-docs`, `*.md`, `.claude`, committed `Content/` | nothing (the pass still moves the base) |
+| `Tools/**` | python tests and ruff, always, alongside whatever else matches |
+| `Tools/Blender/build_clips.py`, the animation import scripts | `create-content -Only` the clip steps once, the animation, ledge, traversal-pose and smoke filters, no laps |
+| `_materials.py`, `create_vfx.py`, `create_audio.py` | `create-content -Only` their steps, the matching filters, no laps |
+| `Source/Hawkeye/Traversal/**`, `Player/Parkour*`, `Grapple*`, `Ledge*`, `BodyPose*`, the anchors, fire escapes | editor build, traversal, ledge, grapple, parkour filters, the audit, laps `EastVillage` and `CrimeRooftop` |
+| `Source/Hawkeye/Combat/**` | build, combat filters, laps `CrimeMugging` and `ReindeerGames` |
+| Mission, Flashback, Save, Settings, Boss, Chase, GameMode, PlayerController, thug and partner AI | build, matching filters, `risky`, `Campaign` plus the laps of that area |
+| Vfx, `CharacterLightRig` | build, `Hawkeye.Vfx` and `CharLight`, no laps |
+| `generate_city.py`, the reach model, fire escapes, ledges, anchors | city generate and verify, the audit, laps `EastVillage` and `CrimeRooftop` |
+| the dressing and street-look scripts | city generate and verify only |
+| `Source/HawkeyeEditor/**`, `HawkeyeAnimEditor/**` | build, their filters (the editor module also runs the audit) |
+| `*.uproject`, `Config/**`, `*.Build.cs`, `*.Target.cs`, `Plugins/**`, any unknown path | broad |
+
+`.\Tools\gate.ps1 -Plan` prints the plan and an estimate without running (measured seconds from earlier runs, `Saved\Gate\timings.json`,
+replace the file's estimates). `-Status` prints the last pass and the last full, the commits since the full, and whether a `risky` rule
+matched since it. A quick run prints one PASS or FAIL line a step with its seconds, then the total; it exits non-zero on any failure or any
+`Fatal error!` in a step's log, and on a pass writes `Saved\Gate\last-pass.json` (commit, tier, time, steps, seconds). The steps, in
+order: python and ruff; an incremental `HawkeyeEditor` build only when the plan says build (the quick tier never builds the game target);
+the selected automation filters joined with `+` in one engine process (`Automation RunTests A+B+C` splits on the `+`, and a filter matches as
+a substring of the test's path, so `Hawkeye.Ledge` also runs `Hawkeye.Ledge.Sequences`); `create-content.ps1` once, with `-Only "<step titles>"`
+when the plan names steps (`HAWKEYE_ONLY_STEPS`, the titles in `create_all.py`), failing when it leaves a changed tracked file under
+`Content`, `Config`, `Plugins` or `Tools/Data` that was not there before (the committed assets and the scripts disagree); `verify_content`;
+the city generate and verify; the audit; the traversal strips (`Hawkeye.Screenshot.Traversal` with `-HawkeyeTraversalOnly=a+b`, one launch);
+then each lap in a standalone `-game` process of its own, `Hawkeye.Lap.<Name>` at 1280x720 with `-Difficulty=Normal`. A lap that is
+known to flake (`flakyLaps` in the rules: `Grotto`, `SeenGrotto`, `CrimeRooftop`, `SocialClub`) is run once more and the line says so.
+
+**Full tier**, `.\Tools\gate.ps1 -Tier full` (about 50 minutes): python and ruff, both builds (`HawkeyeEditor` and the `Hawkeye` game
+target), the whole suite, `create-content` twice with no changed tracked file after either, `verify_content`, the city generate and
+verify, the audit with the expected counts (`expectedAudit` in the rules: 2457 anchors, 24272 reachable pairs), and the 13 laps, one per
+process: `Hawkeye.Lap.Campaign`, `Hawkeye.Lap.ChaseFallBehind`, `Hawkeye.Lap.ReindeerGames`, `Hawkeye.Lap.Grotto`, `Hawkeye.Lap.SeenGrotto`,
+`Hawkeye.Lap.SocialClub`, `Hawkeye.Lap.EastVillage`, `Hawkeye.Lap.InteriorStealth`, `Hawkeye.Lap.InteriorLoud`, `Hawkeye.Lap.CrimeAmbush`,
+`Hawkeye.Lap.CrimeMugging`, `Hawkeye.Lap.CrimeRobbery`, `Hawkeye.Lap.CrimeRooftop`. It also writes `Saved\Gate\last-full.json`.
+
+Policy:
+
+- Every commit or small batch: `Tools\gate.ps1` (quick). That is the whole per-change requirement; an animation pose tweak does not pay for
+  laps, and a docs change pays nothing.
+- Full runs only before the owner records or a demo or milestone build is called ready, or when `-Status` shows risky changes since the
+  last full. Never per change.
+- Agents writing code do not sit waiting on the engine: code-only work goes in worktrees in parallel, and one engine lane at a time runs
+  the quick gates and the captures. A visual check captures several strips in one launch (`-HawkeyeTraversalOnly=a+b`), not one launch each.
+- The machine rules stay. One heavy process at a time; run `tasklist | findstr /i "Unreal Blender"` as its own command before each launch
+  (the script does it before every step); an Unreal you did not start means the owner is playing, so wait and never kill it; `-ExecCmds` is
+  quoted and holds only `Automation RunTests <name>; Quit`; never touch `Saved\SaveGames\HawkeyeCampaign.sav` or `HawkeyeSettings.sav`.
+
 ## 3. Playtest checklist (human)
 
 Before any commit that touches player feel, AI, or a level, play through this in
@@ -351,7 +410,7 @@ screenshot tests.
 `.github/workflows/ci.yml` runs on push and pull request to main, with no Unreal install
 (the engine is too big for a hosted runner, so the C++ build and automation tests stay local
 via `Tools\run-tests.ps1`). Jobs: `python-tests` (unittest discovery over
-`Tools/Editor/test_*.py`), `osm-determinism` (re-parse the committed Overpass data, fail if
+`Tools/Editor/test_*.py`, plus the demo cutter's and the gate selector's in `Tools/Demo` and `Tools/Gate`), `osm-determinism` (re-parse the committed Overpass data, fail if
 the parsed JSON changes), `lint-python` (ruff, rules in `ruff.toml`), and `format-cpp`
 (clang-format on C++ files changed under `Source/` only). Checkouts skip LFS. The traversal audit (2i)
 needs the engine and the LFS content, so it runs locally, not in CI.

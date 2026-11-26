@@ -171,6 +171,8 @@ for creating assets, `unreal.EditorAssetLibrary` for save/load/rename,
 (Blueprint graph nodes, widget trees) are not scriptable; do those by hand in the editor
 or in C++ instead.
 
+`Tools\create-content.ps1 -Only "vfx,vfx defaults"` runs just those `create_all.py` steps (titles; `HAWKEYE_ONLY_STEPS`); the gate uses it.
+
 Cook content (checks for broken references and packaging problems without a full package):
 
 ```powershell

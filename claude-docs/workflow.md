@@ -20,7 +20,9 @@ How to work in this repo, whether you're Cameron, Claude, or a subagent.
    `gameplay-semantics.md`, write the test, then make it pass. This is not ceremony:
    the semantics doc is what keeps eight missions consistent.
 4. **Build after every C++ change.** Fix warnings you introduced.
-5. **Run the tests** (`Tools\run-tests.ps1`) after touching any system that has them.
+5. **Run the gate**: `Tools\gate.ps1` (the quick tier) after every commit or small batch. It picks the build, tests,
+   content steps, audit and laps the change needs and runs only those; that is the whole per-change requirement
+   (`testing.md`, 2k). `Tools\run-tests.ps1 -Filter <name>` is still there for one group while you work.
 6. **Human checklist** (`testing.md`, section 3) after anything that affects feel.
 7. **Commit and push.** Small commits, often: each class, each test file, each script,
    each doc is its own commit. Message: lowercase imperative summary under 70 chars,
@@ -54,6 +56,17 @@ How to work in this repo, whether you're Cameron, Claude, or a subagent.
   Delegated agents get `opus` for hard work (compile-fixing, systems code, AI) and
   `sonnet` for easy work (file moves, running scripts, checks).
 
+## The gate, and not waiting on it
+- Per change: `Tools\gate.ps1`. Not the old list of two builds, the whole suite, content twice, city, audit and 13 laps. `-Plan`
+  shows what it would run; `-Status` shows when a full run is due.
+- Full tier (`Tools\gate.ps1 -Tier full`, about 50 minutes) only before the owner records or a demo or milestone build is called
+  ready, or when `-Status` shows risky changes since the last full. Never per change, and never in a brief for a single task.
+- Do not sit waiting on the engine. Code-only work goes in worktrees, in parallel; one "engine lane" at a time runs the quick gates and
+  the captures. A visual check captures several strips in one launch (`-HawkeyeTraversalOnly=a+b`).
+- Machine rules: one heavy process at a time; `tasklist | findstr /i "Unreal Blender"` as its own command before each launch (the gate
+  does it before every step and waits); an Unreal you did not start means the owner is playing, so wait, never kill it; `-ExecCmds`
+  quoted and holding only `Automation RunTests <name>; Quit`; never touch `Saved\SaveGames\HawkeyeCampaign.sav` or `HawkeyeSettings.sav`.
+
 ## When something breaks
 - Compile error: read the first error, not the last. UHT errors before compiler errors.
 - Editor crash on startup: check `Saved\Logs\Hawkeye.log` for the last `LogHawkeye` line and
@@ -68,7 +81,7 @@ How to work in this repo, whether you're Cameron, Claude, or a subagent.
 
 ## Definition of done, for a task
 - Builds clean.
-- Tests pass, and new rules have tests.
+- `Tools\gate.ps1` passes, and new rules have tests.
 - Docs updated if semantics, structure, or conventions changed.
 - Committed with a message that explains why.
 - Anything left undone or noticed along the way is written in the report or as a
