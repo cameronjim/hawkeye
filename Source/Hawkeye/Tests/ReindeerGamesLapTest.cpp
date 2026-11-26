@@ -261,6 +261,7 @@ private:
 	float DamageTaken = 0.f;
 	int32 Strikes = 0;
 	int32 Parries = 0;
+	int32 GameParries = 0;
 	int32 Finishers = 0;
 	int32 Dodges = 0;
 	int32 ArrowsLoosed = 0;
@@ -295,6 +296,10 @@ private:
 	FString RoundTrip;
 
 	double LastProgressLogAt = 0.0;
+	double LastRunToWall = 0.0;
+	double StuckSeconds = 0.0;
+	double SidestepUntil = 0.0;
+	float SidestepSide = 1.f;
 	double SitePauseAt = -1.0;
 	double SackPauseAt = -1.0;
 	bool bShotSite = false;
@@ -349,7 +354,34 @@ void FHawkeyeReindeerLap::Sprint(APlayerController* PC, bool bOn)
 void FHawkeyeReindeerLap::RunTo(UWorld* World, APlayerController* PC, AHawkeyeCharacter* Kate, const FVector& Goal, bool bSprint)
 {
 	Sprint(PC, bSprint);
-	const FVector To = HawkeyeReindeerLap::SteerTowards(World, Kate, Goal);
+	FVector To = HawkeyeReindeerLap::SteerTowards(World, Kate, Goal);
+	// Pushed against something (a patrolling thug or a prop in the way) the bot does what a player does: steps round it.
+	const double Wall = FPlatformTime::Seconds();
+	if (Wall - LastRunToWall > 0.25)
+	{
+		StuckSeconds = 0.0;
+	}
+	else if (Kate->GetVelocity().Size2D() < 80.f && !Kate->IsStaggered())
+	{
+		StuckSeconds += Wall - LastRunToWall;
+	}
+	else
+	{
+		StuckSeconds = 0.0;
+	}
+	LastRunToWall = Wall;
+	if (StuckSeconds > 1.2)
+	{
+		StuckSeconds = 0.0;
+		SidestepSide = -SidestepSide;
+		SidestepUntil = Wall + 0.9;
+		UE_LOG(LogHawkeye, Display, TEXT("Reindeer lap: Kate stuck at %s on the way to %s, stepping round to the %s"), *Kate->GetActorLocation().ToCompactString(),
+			*Goal.ToCompactString(), SidestepSide > 0.f ? TEXT("right") : TEXT("left"));
+	}
+	if (Wall < SidestepUntil)
+	{
+		To = To.RotateAngleAxis(75.f * SidestepSide, FVector::UpVector);
+	}
 	Move(PC, HawkeyeReindeerLap::MoveTowards(To, PC->GetControlRotation().Yaw));
 }
 
@@ -556,6 +588,9 @@ void FHawkeyeReindeerLap::FightStep(UWorld* World, APlayerController* PC, AHawke
 	using namespace HawkeyeReindeerLap;
 	const UChapterSiteSubsystem* Site = UChapterSiteSubsystem::Get(World);
 	const TArray<AThugCharacter*> Crew = Site ? Site->GetCrew() : TArray<AThugCharacter*>();
+	// The game's own count of Kate's parries (a light tap that lands in a wind-up is one too, so the bot's deliberate taps below
+	// are not the only way to parry); it restarts with the pawn, so the best of the chapter is kept.
+	GameParries = FMath::Max(GameParries, Kate->GetParryCount());
 	AThugCharacter* Target = nullptr;
 	AThugCharacter* Ranged = nullptr;
 	float Distance = BIG_NUMBER;
@@ -1193,7 +1228,7 @@ void FHawkeyeReindeerLap::Report(UWorld* World)
 	Test->TestTrue(TEXT("The flag is up at the end"), Campaign && Campaign->HasFlag(Flag));
 	Test->TestTrue(TEXT("The round trip happened and was checked"), bRoundTripChecked);
 	Test->TestTrue(TEXT("A foam arrow was loosed"), FoamLoosed > 0);
-	Test->TestTrue(TEXT("The first parry happened"), Parries > 0);
+	Test->TestTrue(TEXT("The first parry happened"), GameParries > 0);
 	Test->TestTrue(TEXT("The end card showed"), bShotEnd);
 	Test->TestTrue(TEXT("The Visiting hours slides played"), bFlashbackSeen);
 	const double FightSeconds = Marks.Contains(TEXT("crew_down")) ? Marks.FindRef(TEXT("crew_down")) - Marks.FindRef(TEXT("arrived")) : -1.0;
