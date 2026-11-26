@@ -102,7 +102,26 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan["tests"], [])
         self.assertEqual(plan["laps"], [])
         self.assertFalse(plan["broad"])
-        self.assertEqual([s["id"] for s in plan["steps"]], ["python"])
+        self.assertEqual([s["id"].split(":")[0] for s in plan["steps"]], ["python"])
+
+    def test_python_suites_follow_the_changed_folders(self):
+        self.assertEqual(plan_for("Tools/Gate/select.py")["pythonSuites"], ["Tools/Gate"])
+        self.assertEqual(plan_for("Tools/Blender/build_clips.py")["pythonSuites"], ["Tools/Gate"])
+        self.assertEqual(plan_for("Tools/Editor/_geo.py")["pythonSuites"], ["Tools/Gate", "Tools/Editor"])
+        self.assertEqual(plan_for("Tools/Data/osm/east_village.buildings.json")["pythonSuites"], ["Tools/Gate", "Tools/Editor"])
+        self.assertEqual(plan_for("Tools/Demo/cut.py")["pythonSuites"], ["Tools/Gate", "Tools/Demo"])
+        self.assertEqual(plan_for("Source/Hawkeye/Combat/MeleeComponent.cpp")["pythonSuites"], [])
+        self.assertEqual(plan_for("Config/DefaultGame.ini")["pythonSuites"], DATA["pythonSuites"])
+
+    def test_the_gate_only_python_step_is_cheap_and_the_editor_one_is_not(self):
+        cheap = plan_for("Tools/gate.ps1")["estimateSeconds"]
+        dear = plan_for("Tools/Editor/_geo.py")["estimateSeconds"]
+        self.assertLess(cheap, 30)
+        self.assertGreater(dear, 100)
+
+    def test_python_suite_folders_exist_and_hold_tests(self):
+        for suite in DATA["pythonSuites"]:
+            self.assertTrue(glob.glob(os.path.join(ROOT, suite, "test_*.py")), suite)
 
     def test_any_tools_file_runs_python_alongside_its_own_rule(self):
         plan = plan_for("Tools/Editor/create_vfx.py")

@@ -8,6 +8,7 @@
   ],
   "flakyLaps": ["Grotto", "SeenGrotto", "CrimeRooftop", "SocialClub"],
   "standaloneTestPrefixes": ["Hawkeye.Lap.", "Hawkeye.Screenshot.", "Hawkeye.Perf.", "Hawkeye.Demo.", "Hawkeye.Audit."],
+  "pythonSuites": ["Tools/Gate", "Tools/Demo", "Tools/Editor"],
   "expectedAudit": { "anchors": 2457, "pairs": 24272 },
 
   "estimates": {
@@ -16,7 +17,8 @@
     "testsProcess": 60,
     "testsPerFilter": 6,
     "suite": 330,
-    "python": 25,
+    "python": 10,
+    "pythonSuite:Tools/Editor": 130,
     "content": 150,
     "contentStep": 15,
     "contentVerify": 70,
@@ -36,10 +38,25 @@
       "match": ["Content/**"]
     },
     {
-      "name": "any Tools file: python tests and ruff",
+      "name": "any Tools file: ruff and the gate's own python tests",
       "base": true,
       "match": ["Tools/**", "ruff.toml"],
-      "python": true
+      "python": true,
+      "pythonSuites": ["Tools/Gate"]
+    },
+    {
+      "name": "editor scripts, their data and interiors: the Editor python tests (about 2 minutes, run in parallel)",
+      "base": true,
+      "match": ["Tools/Editor/**", "Tools/Data/**", "Tools/Interiors/**"],
+      "python": true,
+      "pythonSuites": ["Tools/Editor"]
+    },
+    {
+      "name": "demo cutter: the Demo python tests",
+      "base": true,
+      "match": ["Tools/Demo/**"],
+      "python": true,
+      "pythonSuites": ["Tools/Demo"]
     },
 
     {

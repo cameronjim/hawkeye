@@ -97,7 +97,7 @@ def select(paths, data, read_file=None):
     """The plan for these changed paths. read_file(path) -> text or None, for rules that read a test file."""
     paths = _unique([normalise(p) for p in paths if p.strip()])
     plan = {
-        "changed": paths, "matched": [], "build": False, "tests": [], "wholeSuite": False, "python": False,
+        "changed": paths, "matched": [], "build": False, "tests": [], "wholeSuite": False, "python": False, "pythonSuites": [],
         "content": False, "contentSteps": [], "contentVerify": False, "cityVerify": False, "audit": False,
         "laps": [], "strips": [], "risky": False, "broad": False, "empty": False, "riskyRules": [],
     }
@@ -111,6 +111,7 @@ def select(paths, data, read_file=None):
             plan["riskyRules"].append(rule["name"])
         if rule.get("broad"):
             plan["broad"] = True
+        plan["pythonSuites"].extend(rule.get("pythonSuites", []))
         plan["tests"].extend(rule.get("tests", []))
         plan["laps"].extend(rule.get("laps", []))
         plan["strips"].extend(rule.get("strips", []))
@@ -147,9 +148,11 @@ def select(paths, data, read_file=None):
         plan["wholeSuite"] = True
         plan["python"] = True
         plan["build"] = True
+        plan["pythonSuites"] = list(data.get("pythonSuites", []))
     plan["tests"] = drop_subsumed(_unique(plan["tests"]))
     plan["laps"] = _unique(plan["laps"])
     plan["strips"] = _unique(plan["strips"])
+    plan["pythonSuites"] = [d for d in data.get("pythonSuites", []) if d in plan["pythonSuites"]]
     plan["contentSteps"] = _unique(plan["contentSteps"])
     if plan["content"] and "all" in plan["contentSteps"]:
         plan["contentSteps"] = ["all"]
@@ -174,7 +177,9 @@ def plan_steps(plan, data, timings=None):
         steps.append({"id": step_id, "label": label, "seconds": int(timings.get(step_id, seconds))})
 
     if plan["python"]:
-        add("python", "python tests and ruff", est["python"])
+        suites = plan["pythonSuites"]
+        add("python:" + ",".join(suites), "python tests (" + ", ".join(suites) + ") and ruff" if suites else "ruff",
+            est["python"] + sum(est.get("pythonSuite:" + d, 0) for d in suites))
     if plan["build"]:
         add("build", "build HawkeyeEditor", est["build"])
     if plan["wholeSuite"]:

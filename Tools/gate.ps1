@@ -104,7 +104,7 @@ function Get-Selection([string[]]$Changed) {
 function Get-FullSteps {
     $est = $RulesData.estimates
     $steps = @()
-    $steps += [pscustomobject]@{ id = "python"; label = "python tests and ruff"; seconds = [int]$est.python }
+    $steps += [pscustomobject]@{ id = "python"; label = "python tests (all suites) and ruff"; seconds = [int]$est.python + [int]$est.'pythonSuite:Tools/Editor' }
     $steps += [pscustomobject]@{ id = "build"; label = "build HawkeyeEditor"; seconds = [int]$est.build }
     $steps += [pscustomobject]@{ id = "buildGame"; label = "build Hawkeye (game target)"; seconds = [int]$est.buildGame }
     $steps += [pscustomobject]@{ id = "suite"; label = "automation suite (whole)"; seconds = [int]$est.suite }
@@ -240,7 +240,8 @@ function Invoke-GateStep([string]$Id, [string]$Label, [scriptblock]$Body) {
     $word = if ($result.Ok) { "PASS" } else { "FAIL" }
     Write-Host ("{0}  {1}  {2}  {3}" -f $word, $Label, (Format-Seconds $sec), $result.Detail)
     $script:Results += [pscustomobject]@{ id = $Id; label = $Label; ok = [bool]$result.Ok; skipped = $false; seconds = [int]$sec; detail = $result.Detail }
-    if ($result.Ok) { $script:Timings[$Id] = [int]$sec }
+    # An incremental build that had nothing to compile takes 2 seconds and would make every later estimate a lie: not fed back.
+    if ($result.Ok -and $Id -notin @("build", "buildGame")) { $script:Timings[$Id] = [int]$sec }
     elseif ($FailFast) { $script:Halted = $true }
 }
 
@@ -282,16 +283,31 @@ function Compare-ContentStatus([string]$Before, [string]$After) {
 
 # ---- steps
 
-function Step-Python {
+function Step-Python([string[]]$Suites) {
     $py = Get-PythonExe
-    $total = 0
-    foreach ($dir in @("Tools/Editor", "Tools/Demo", "Tools/Gate")) {
-        $log = Join-Path $LogDir ("python_" + ($dir -replace "[/\\]", "_") + ".log")
-        $code = Invoke-ToLog "`"$py`" -B -m unittest discover -s $dir -p `"test_*.py`"" $log
-        $ran = Get-FirstMatch $log "^Ran \d+ tests?"
-        if ($code -ne 0) { return (New-Bad ("$dir failed: " + (Get-LogTail $log 8))) }
-        if ($ran -match "Ran (\d+)") { $total += [int]$Matches[1] }
+    $procs = @()
+    # One process a test file, all at once: this is pure CPU (no engine), and the five slow Editor files take about two
+    # minutes together instead of nine in a row.
+    foreach ($dir in $Suites) {
+        $abs = Join-Path $Root $dir
+        foreach ($f in @(Get-ChildItem $abs -Filter "test_*.py")) {
+            $mod = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
+            $log = Join-Path $LogDir ("python_{0}_{1}.log" -f ($dir -replace "[/\]", "_"), $mod)
+            $out = $log + ".out"
+            $p = Start-Process -FilePath $py -ArgumentList @("-B", "-m", "unittest", $mod) -WorkingDirectory $abs -PassThru `
+                -WindowStyle Hidden -RedirectStandardError $log -RedirectStandardOutput $out
+            $procs += [pscustomobject]@{ Proc = $p; Log = $log; Name = "$dir/$mod" }
+        }
     }
+    $total = 0
+    $bad = @()
+    foreach ($e in $procs) {
+        $e.Proc.WaitForExit()
+        $ran = Get-FirstMatch $e.Log "^Ran \d+ tests?"
+        if ($e.Proc.ExitCode -ne 0) { $bad += ($e.Name + ": " + (Get-LogTail $e.Log 6)) }
+        elseif ($ran -match "Ran (\d+)") { $total += [int]$Matches[1] }
+    }
+    if ($bad.Count -gt 0) { return (New-Bad ("python tests failed in " + ($bad -join " || "))) }
     $ruffLog = Join-Path $LogDir "ruff.log"
     $ruff = Get-Command ruff -ErrorAction SilentlyContinue | Select-Object -First 1
     $cmd = if ($ruff) { "`"$($ruff.Source)`" check Tools" } else { "`"$py`" -m ruff check Tools" }
@@ -326,7 +342,7 @@ function Step-Tests([string[]]$Filters) {
     $summary = Get-FirstMatch $out "^Hawkeye tests \("
     if ($fatal) { return (New-Bad $fatal) }
     if ($code -ne 0) { return (New-Bad ("exit $code. " + $(if ($summary) { $summary } else { Get-LogTail $out 8 }) + "  ($out)")) }
-    return (New-Ok ($summary -replace "^Hawkeye tests \(([^)]*)\): ", "`$1: " ))
+    return (New-Ok ($summary -replace "^Hawkeye tests \(.*\): ", ""))
 }
 
 function Step-Content([string[]]$Titles, [string]$Tag = "content") {
@@ -485,7 +501,7 @@ if ($Tier -eq "quick") {
     Write-Host ""
     foreach ($s in $sel.steps) {
         switch -Wildcard ($s.id) {
-            "python" { Invoke-GateStep $s.id $s.label { Step-Python } }
+            "python*" { Invoke-GateStep $s.id $s.label { Step-Python @($sel.pythonSuites) } }
             "build" { Invoke-GateStep $s.id $s.label { Step-Build "HawkeyeEditor" } }
             "suite" { Invoke-GateStep $s.id $s.label { Step-Tests @("Hawkeye") } }
             "tests" { Invoke-GateStep $s.id $s.label { Step-Tests @($sel.tests) } }
@@ -508,7 +524,7 @@ if ($Tier -eq "quick") {
 Show-Plan $null (Get-FullSteps) "everything" "full"
 Write-Host ""
 $fromLabel = "everything"
-Invoke-GateStep "python" "python tests and ruff" { Step-Python }
+Invoke-GateStep "python" "python tests (all suites) and ruff" { Step-Python @($RulesData.pythonSuites) }
 Invoke-GateStep "build" "build HawkeyeEditor" { Step-Build "HawkeyeEditor" }
 if (@($script:Results | Where-Object { $_.id -eq "build" -and -not $_.ok }).Count -gt 0) { $script:Halted = $true }
 Invoke-GateStep "buildGame" "build Hawkeye (game target)" { Step-Build "Hawkeye" }
