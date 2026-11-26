@@ -4,6 +4,7 @@
 #include "Combat/HealthComponent.h"
 #include "Combat/MeleeComponent.h"
 #include "Combat/MeleeRules.h"
+#include "Hawkeye.h"
 #include "Dialogue/DialogueQueue.h"
 #include "Dialogue/DialogueSubsystem.h"
 #include "Engine/Engine.h"
@@ -293,6 +294,7 @@ private:
 	bool bRoundTripChecked = false;
 	FString RoundTrip;
 
+	double LastProgressLogAt = 0.0;
 	double SitePauseAt = -1.0;
 	double SackPauseAt = -1.0;
 	bool bShotSite = false;
@@ -810,6 +812,15 @@ bool FHawkeyeReindeerLap::Update()
 		return true;
 	}
 
+	if (FPlatformTime::Seconds() - LastProgressLogAt > 5.0)
+	{
+		LastProgressLogAt = FPlatformTime::Seconds();
+		UE_LOG(LogHawkeye, Display, TEXT("Reindeer lap progress: step %d, T %.1f, Kate %s, speed %.0f, to table %.0f cm, to courier %.0f cm, yaw %.0f, sprint %d, staggered %d, closeup %d"),
+			(int32)Step, T, *Kate->GetActorLocation().ToCompactString(), Kate->GetVelocity().Size2D(),
+			Table.IsValid() ? FVector::Dist2D(Table->GetActorLocation(), Kate->GetActorLocation()) : -1.0,
+			Courier.IsValid() ? FVector::Dist2D(Courier->GetActorLocation(), Kate->GetActorLocation()) : -1.0,
+			PC->GetControlRotation().Yaw, bSprinting ? 1 : 0, Kate->IsStaggered() ? 1 : 0, (HawkeyePC && HawkeyePC->IsCloseUpActive()) ? 1 : 0);
+	}
 	switch (Step)
 	{
 	case EStep::ToCourier:
