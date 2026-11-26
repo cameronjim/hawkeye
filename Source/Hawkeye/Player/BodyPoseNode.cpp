@@ -50,6 +50,7 @@ void UHawkeyeBodyAnimInstance::StepToward(const FWish& Wish, float DeltaSeconds)
 		State.Fist[Side] = StepAlpha(State.Fist[Side], Wish.bFist[Side] ? 1.f : 0.f, DeltaSeconds);
 		State.Grip[Side] = StepAlpha(State.Grip[Side], Wish.bGrip[Side] ? 1.f : 0.f, DeltaSeconds);
 		State.PropAxis[Side] = Wish.PropAxis[Side];
+		State.WristTurnDegrees[Side] = Wish.WristTurnDegrees[Side];
 	}
 	State.ArmRest = StepAlpha(State.ArmRest, Wish.ArmRest, DeltaSeconds, 0.2f);
 }
@@ -321,9 +322,10 @@ void FAnimNode_HawkeyeBodyPose::EvaluateSide(const FSide& Side, int32 SideIndex,
 		const FVector Wanted = FVector::DotProduct(Across, Axis) >= 0.0 ? Axis : -Axis;
 		FQuat Turn = FQuat::FindBetweenNormals(Across, Wanted);
 		const float Angle = FMath::RadiansToDegrees(Turn.GetAngle());
-		if (Angle > MaxWristTurnDegrees)
+		const float MaxTurn = FMath::Max(State.WristTurnDegrees[SideIndex], 1.f);
+		if (Angle > MaxTurn)
 		{
-			Turn = FQuat::Slerp(FQuat::Identity, Turn, MaxWristTurnDegrees / Angle);
+			Turn = FQuat::Slerp(FQuat::Identity, Turn, MaxTurn / Angle);
 		}
 		Turn = FQuat::Slerp(FQuat::Identity, Turn, Grip);
 		RotateAbout(Comp, Slots(Side.HandSlot), HandT.GetLocation(), Turn);

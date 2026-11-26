@@ -14,6 +14,7 @@ struct FHawkeyeBodyPoseState
 	float Grip[2] = {0.f, 0.f};
 	float ArmRest = 0.f;
 	FVector PropAxis[2] = {FVector::ZeroVector, FVector::ZeroVector};
+	float WristTurnDegrees[2] = {50.f, 50.f};
 };
 
 /**

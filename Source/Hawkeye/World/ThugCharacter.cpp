@@ -21,6 +21,7 @@
 #include "Boss/BossRules.h"
 #include "Combat/MeleeRules.h"
 #include "Combat/WeaponComponent.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -37,11 +38,24 @@
 #include "Settings/DifficultySubsystem.h"
 #include "Vfx/HawkeyeVfxSubsystem.h"
 
+static TAutoConsoleVariable<FString> CVarThugBatGrip(TEXT("hawkeye.Thug.BatGrip"), TEXT(""),
+	TEXT("Live override of the thug's bat grip: \"palmCm alongCm acrossCm muzzleOutDeg wristTurnDeg\" (as many as given, in order). Empty: the data."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<FString> CVarThugPistolGrip(TEXT("hawkeye.Thug.PistolGrip"), TEXT(""),
+	TEXT("Live override of the gunner's pistol grip: \"palmCm alongCm acrossCm muzzleOutDeg wristTurnDeg\" (as many as given, in order). Empty: the data."),
+	ECVF_Default);
+
 AThugCharacter::AThugCharacter()
 {
 	// Ticks to swap between the idle and walk sequences; the mannequin pack's AnimBP does not
 	// compile headless, so the thugs drove no animation at all and stood in a T-pose.
 	PrimaryActorTick.bCanEverTick = true;
+
+	// The bat's handle sits a little further back in the hollow of the fist than the pistol's, and the wrist may turn further
+	// to meet its diagonal (FHawkeyePropGrip; claude-docs/animation.md, "Props in the hand").
+	BatGrip.AlongCm = -1.4f;
+	BatGrip.WristTurnDegrees = 60.f;
 
 	// UTakedownComponent finds candidates by tag, so it has to be set before BeginPlay.
 	Tags.Add(FName(TEXT("Thug")));
@@ -385,7 +399,7 @@ void AThugCharacter::UpdateHeldWeaponPose()
 	FVector Hand = SkeletalMesh->GetSocketLocation(HeldWeaponSocketName);
 	FVector Along, Across, Palm;
 	// The visible hand's fist when there is one: the bat goes through it.
-	GetBodyHandGrip(HawkeyeBodyPose::HandRight, Hand, Along, Across, Palm);
+	GetBodyHandGrip(HawkeyeBodyPose::HandRight, ResolveGrip(/*bBat=*/true), Hand, Along, Across, Palm);
 	HeldWeaponComponent->SetWorldLocationAndRotation(Hand + Direction * (Length * 0.5f - BatGripFromEnd),
 		FRotationMatrix::MakeFromZ(Direction).Rotator());
 }
@@ -491,7 +505,14 @@ void AThugCharacter::OnLookBonesFinalized()
 	}
 }
 
-bool AThugCharacter::GetBodyHandGrip(int32 Side, FVector& OutCenter, FVector& OutAlong, FVector& OutAcross, FVector& OutPalm) const
+FHawkeyePropGrip AThugCharacter::ResolveGrip(bool bBat) const
+{
+	FHawkeyePropGrip Grip = bBat ? BatGrip : PistolHandGrip;
+	HawkeyePropGrip::ParseOverride((bBat ? CVarThugBatGrip : CVarThugPistolGrip).GetValueOnGameThread(), Grip);
+	return Grip;
+}
+
+bool AThugCharacter::GetBodyHandGrip(int32 Side, const FHawkeyePropGrip& Grip, FVector& OutCenter, FVector& OutAlong, FVector& OutAcross, FVector& OutPalm) const
 {
 	if (!LookMesh || !LookMesh->GetSkeletalMeshAsset())
 	{
@@ -516,8 +537,10 @@ bool AThugCharacter::GetBodyHandGrip(int32 Side, FVector& OutCenter, FVector& Ou
 	OutAlong = Rotation.RotateVector(Frame.Along);
 	OutAcross = Rotation.RotateVector(Frame.Across);
 	OutPalm = Rotation.RotateVector(Frame.Palm);
-	// The knuckle line's middle, a little into the palm and out along the fingers: where a handle lies in a closed hand.
-	OutCenter = Bone.GetLocation() + Rotation.RotateVector(Frame.Knuckles) * Scale + (OutPalm * FistPalmCm + OutAlong * FistAlongCm) * Scale;
+	// The hollow of the closed hand, from the knuckle line's middle: where a handle lies (FHawkeyePropGrip).
+	OutAcross = Rotation.RotateVector(Frame.Across);
+	OutCenter = HawkeyePropGrip::ComputeHandleCenter(Bone.GetLocation() + Rotation.RotateVector(Frame.Knuckles) * Scale, OutAlong, OutAcross,
+		OutPalm, Grip, Scale);
 	return true;
 }
 
@@ -538,10 +561,12 @@ HawkeyeBodyPose::FWish AThugCharacter::GetBodyPoseWish() const
 	if (bBat)
 	{
 		Wish.PropAxis[HawkeyeBodyPose::HandRight] = ComputeBatDirection();
+		Wish.WristTurnDegrees[HawkeyeBodyPose::HandRight] = ResolveGrip(/*bBat=*/true).WristTurnDegrees;
 	}
 	else if (bPistol && bWeaponRaised)
 	{
 		Wish.PropAxis[HawkeyeBodyPose::HandRight] = PistolComponent->GetUpVector();
+		Wish.WristTurnDegrees[HawkeyeBodyPose::HandRight] = ResolveGrip(/*bBat=*/false).WristTurnDegrees;
 	}
 	return Wish;
 }
@@ -678,12 +703,11 @@ void AThugCharacter::UpdatePistolPose()
 	// At his side: through the visible hand's fist when there is one. The handle runs across the knuckles (up toward the
 	// index finger), the muzzle along the fingers and a little away from the thigh.
 	FVector Center, Along, Across, Palm;
-	if (GetBodyHandGrip(HawkeyeBodyPose::HandRight, Center, Along, Across, Palm))
+	const FHawkeyePropGrip Grip = ResolveGrip(/*bBat=*/false);
+	if (GetBodyHandGrip(HawkeyeBodyPose::HandRight, Grip, Center, Along, Across, Palm))
 	{
-		const float Out = FMath::DegreesToRadians(PistolMuzzleOutDegrees);
-		const FVector Muzzle = (Along * FMath::Cos(Out) - Palm * FMath::Sin(Out)).GetSafeNormal();
-		const FQuat Rotation = FRotationMatrix::MakeFromXZ(Muzzle, Across).ToQuat();
-		PistolComponent->SetWorldLocationAndRotation(Center - Rotation.RotateVector(PistolGripCenterCm), Rotation);
+		const FQuat Rotation = HawkeyePropGrip::ComputePistolRotation(Along, Across, Palm, Grip);
+		PistolComponent->SetWorldLocationAndRotation(HawkeyePropGrip::ComputePistolLocation(Center, Rotation, PistolGripCenterCm), Rotation);
 		return;
 	}
 	PistolComponent->SetWorldLocationAndRotation(HandPoint, FRotator(-60.f, GetActorRotation().Yaw, 0.f));

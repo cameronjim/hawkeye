@@ -109,6 +109,8 @@ namespace HawkeyeBodyPose
 		float ArmRest = 0.f;
 		/** The held prop's axis in the world per hand (its handle line, zero for none): the wrist turns toward it. */
 		FVector PropAxis[2] = {FVector::ZeroVector, FVector::ZeroVector};
+		/** How far each wrist may turn toward its prop's axis, degrees (the prop's FHawkeyePropGrip; MaxWristTurnDegrees by default). */
+		float WristTurnDegrees[2] = {50.f, 50.f};
 	};
 
 	/**

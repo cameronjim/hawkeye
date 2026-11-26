@@ -8,6 +8,7 @@
 #include "ISpudObject.h"
 #include "Player/BodyLook.h"
 #include "Player/BodyPose.h"
+#include "Player/PropGrip.h"
 #include "World/ThugTypes.h"
 #include "ThugCharacter.generated.h"
 
@@ -260,16 +261,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
 	FVector PistolGripCenterCm = FVector(-4.5f, 0.f, -7.f);
 
-	/** How far the muzzle turns from the fingers' line away from the thigh, degrees. */
+	/**
+	 * Where the bat's handle passes through his closed right hand, and how far the wrist turns toward its axis (per-prop data:
+	 * FHawkeyePropGrip). The handle's line goes through the hollow of the fist, palm-ward of the knuckles and back toward the
+	 * wrist, so the fingers wrap it. The live override is the console variable hawkeye.Thug.BatGrip.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
-	float PistolMuzzleOutDegrees = 18.f;
+	FHawkeyePropGrip BatGrip;
 
-	/** Where a handle lies in a closed hand: past the knuckle line's middle by this much into the palm and along the fingers, cm. */
+	/**
+	 * The same for the pistol's grip block (its centre in the pistol's frame is PistolGripCenterCm), with the muzzle's turn out
+	 * from the fingers' line (MuzzleOutDegrees). Live override: hawkeye.Thug.PistolGrip.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
-	float FistPalmCm = 2.4f;
+	FHawkeyePropGrip PistolHandGrip;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
-	float FistAlongCm = 0.8f;
+	/** The grip in force for the bat or the pistol: the data above, with the console override applied when one is set. */
+	FHawkeyePropGrip ResolveGrip(bool bBat) const;
 
 	/** The gunner's pistol and its grip: gunmetal, where the engine cube would show its editor grid (the grey checker on a thug's wrist). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
@@ -882,9 +890,9 @@ public:
 
 	/**
 	 * The visible hand's fist in the world (Side 0 left, 1 right): where a held handle passes through it, and the hand's
-	 * axes there. False without a body look (the driver's hand socket is then what props follow).
+	 * axes there, for a handle seated by Grip. False without a body look (the driver's hand socket is then what props follow).
 	 */
-	bool GetBodyHandGrip(int32 Side, FVector& OutCenter, FVector& OutAlong, FVector& OutAcross, FVector& OutPalm) const;
+	bool GetBodyHandGrip(int32 Side, const FHawkeyePropGrip& Grip, FVector& OutCenter, FVector& OutAlong, FVector& OutAcross, FVector& OutPalm) const;
 
 protected:
 	virtual void PostInitializeComponents() override;
