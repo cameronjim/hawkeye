@@ -312,7 +312,7 @@ def main():
     bpy.ops.object.select_all(action="DESELECT")
     slide_obj.select_set(True)
     bpy.ops.export_scene.gltf(filepath=os.path.join(out_dir, "SM_Pistol.glb"), export_format="GLB", use_selection=True,
-                              export_yup=False, export_apply=True)
+                              export_yup=True, export_apply=True)
     print("PISTOL", json.dumps(info))
     if "--no-render" not in argv:
         render((slide_obj, frame_obj), renders)
