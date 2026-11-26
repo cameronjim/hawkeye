@@ -613,6 +613,28 @@ eases it into alphas over 0.12 s. Kate and Clint have no such node. Since 2026-1
   the front); `*_before2.png` are the second pass's shots. Still off: the pistol shows only its grip block and a stub of slide beside
   the fist; the bat is held in front of the fingers, not woven through them; the thumbs and fingers have no finger-to-finger contact.
 
+**Props in the hand (written 2026-11-25, code only; not yet seen).** The heavy's bat sat in front of his fingers and the gunner's hand
+hid the pistol. Cause, from the code: the handle's centre was `knuckle line + 2.4 cm into the palm + 0.8 cm out along the fingers`
+(`FistPalmCm`, `FistAlongCm`), but a closed fist is a loop (the fingers leave the knuckle line, curl palm-ward and return toward the
+wrist), so its hollow is deeper in the palm and back from the knuckles, not forward of them; one offset served both props; and the
+wrist could turn only 50 degrees whatever it held.
+- **Data per prop** (`FHawkeyePropGrip`, `Player/PropGrip.h`): `PalmCm`, `AlongCm`, `AcrossCm` (the handle's centre from the knuckle
+  line's middle, in the hand's own axes, scaled by the body), `MuzzleOutDegrees` (pistol), `WristTurnDegrees`. On the thug: `BatGrip`
+  (palm 3.2, along -1.4, wrist 60) and `PistolHandGrip` (palm 3.2, along -1.3, muzzle out 18, wrist 50); the pistol's grip block in
+  its own frame is still `PistolGripCenterCm`. `FWish::WristTurnDegrees` carries the limit to `FAnimNode_HawkeyeBodyPose` (was the
+  constant `MaxWristTurnDegrees`, still the default).
+- **Live tuning** without a rebuild: `hawkeye.Thug.BatGrip "palm along across muzzleOut wristTurn"` and `hawkeye.Thug.PistolGrip` (as
+  many numbers as you give, in that order, e.g. `hawkeye.Thug.BatGrip 3.6 -2`; empty puts the data back), read each frame by
+  `AThugCharacter::ResolveGrip`.
+- **Rules** in `HawkeyePropGrip` (pure, `Hawkeye.PropGrip.*`): `ComputeHandleCenter`, `ComputeMuzzleDirection`,
+  `ComputePistolRotation`, `ComputePistolLocation`, `DistanceToLine`, `DistanceToSegment`, `FingersWrapHandle`, `ParseOverride`.
+- **Verified by `Hawkeye.Screenshot.Bodies`**: four new hand shots (`hands_pistol_outside`, `hands_pistol_front`, `hands_bat_outside`,
+  `hands_bat_front`; the camera 38 cm from the grip centre, 30 degree lens) and a check for each prop with its numbers in the log
+  (`Bodies: the heavy's bat axis ...`, `Bodies: the gunner's pistol grip block ...`): the bat's axis within 1 cm of the fist's centre and
+  the four middle finger joints within 5.5 cm of its line; the pistol's grip block within 1.5 cm of the fist's centre, the muzzle 3 cm
+  and the slide 1 cm clear of every finger bone. If the numbers pass and the picture does not, move the prop with the console
+  variables above and put the winning numbers in the defaults.
+
 **Gut reactions, 2026-11-24.** `HitGut_Light` folded the chest 32 degrees, so on a light punch the head went 34 cm toward Kate (head
 overlapping hers, `contact_light_after2.png`) with the capsule only 1.9 cm back. It is now a flinch (`build_clips.hit_zone`, Gut: fold
 factor 0.4, about 10 degrees, the hips 8 cm back): in `contact_light_after3.png` his head is within 5 cm of where it began, his capsule
