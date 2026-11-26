@@ -46,6 +46,10 @@ static TAutoConsoleVariable<FString> CVarThugPistolGrip(TEXT("hawkeye.Thug.Pisto
 	TEXT("Live override of the gunner's pistol grip: \"palmCm alongCm acrossCm muzzleOutDeg wristTurnDeg\" (as many as given, in order). Empty: the data."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<FString> CVarThugGunLeftHand(TEXT("hawkeye.Thug.GunLeftHand"), TEXT(""),
+	TEXT("Live override of the gunner's support hand: \"x y z ex ey ez\" (as many as given): the hand's offset from the right hand along the aim (X), to the right (Y) and up (Z), then the elbow's offset from its rest point. Empty: the data."),
+	ECVF_Default);
+
 AThugCharacter::AThugCharacter()
 {
 	// Ticks to swap between the idle and walk sequences; the mannequin pack's AnimBP does not
@@ -591,6 +595,9 @@ HawkeyeBodyPose::FWish AThugCharacter::GetBodyPoseWish() const
 	const bool bBat = HeldWeaponComponent && HeldWeaponComponent->IsVisible();
 	Wish.bGrip[HawkeyeBodyPose::HandRight] = bPistol || bBat;
 	Wish.bFist[HawkeyeBodyPose::HandRight] = bSwinging && !Wish.bGrip[HawkeyeBodyPose::HandRight];
+	// The raised gunner's left hand supports the right: closed round the pistol grip's front.
+	const bool bSupport = bPistol && GunArmAlpha * GunRaiseBlend > 0.5f;
+	Wish.bGrip[HawkeyeBodyPose::HandLeft] = bSupport;
 	Wish.bFist[HawkeyeBodyPose::HandLeft] = bSwinging;
 	Wish.ArmRest = HawkeyeBodyPose::RestArmWeight(bSwinging || bWeaponRaised, GetVelocity().Size2D());
 	if (bBat)
@@ -602,6 +609,11 @@ HawkeyeBodyPose::FWish AThugCharacter::GetBodyPoseWish() const
 	{
 		Wish.PropAxis[HawkeyeBodyPose::HandRight] = PistolComponent->GetUpVector();
 		Wish.WristTurnDegrees[HawkeyeBodyPose::HandRight] = ResolveGrip(/*bBat=*/false).WristTurnDegrees;
+	}
+	if (bSupport)
+	{
+		Wish.PropAxis[HawkeyeBodyPose::HandLeft] = PistolComponent->GetUpVector();
+		Wish.WristTurnDegrees[HawkeyeBodyPose::HandLeft] = ResolveGrip(/*bBat=*/false).WristTurnDegrees;
 	}
 	return Wish;
 }
@@ -745,10 +757,24 @@ void AThugCharacter::UpdateGunArms(float DeltaSeconds)
 	Pose.RightAlpha = GunArmAlpha;
 	Pose.RightHand = FMath::Lerp(Ready, Raised, GunRaiseBlend);
 	Pose.RightElbow = FMath::Lerp(FVector(-5.f, 38.f, -12.f), Shoulder + FVector(14.f, 26.f, -24.f), GunRaiseBlend);
-	// The left hand comes up under the grip's front when raised.
+	// The left hand is the support: below and to the left of the right, its fingers closed round the front of the right hand's
+	// (GetBodyPoseWish writes its grip), the elbow bent down and a little out.
+	FVector LeftOffset = GunLeftHandOffsetCm;
+	FVector LeftElbowOffset = GunLeftElbowOffsetCm;
+	const FString LeftOverride = CVarThugGunLeftHand.GetValueOnGameThread();
+	if (!LeftOverride.IsEmpty())
+	{
+		TArray<FString> Parts;
+		LeftOverride.ParseIntoArrayWS(Parts);
+		double* Slots[6] = {&LeftOffset.X, &LeftOffset.Y, &LeftOffset.Z, &LeftElbowOffset.X, &LeftElbowOffset.Y, &LeftElbowOffset.Z};
+		for (int32 I = 0; I < Parts.Num() && I < 6; ++I)
+		{
+			*Slots[I] = FCString::Atod(*Parts[I]);
+		}
+	}
 	Pose.LeftAlpha = GunArmAlpha * GunRaiseBlend;
-	Pose.LeftHand = Pose.RightHand + Dir * 2.f + FVector(0.f, -GunLeftHandAcrossCm, -3.f);
-	Pose.LeftElbow = Shoulder * FVector(1.f, -1.f, 1.f) + FVector(14.f, -26.f, -24.f);
+	Pose.LeftHand = Pose.RightHand + LeftOffset;
+	Pose.LeftElbow = Shoulder * FVector(1.f, -1.f, 1.f) + LeftElbowOffset;
 	Hands->SetStrikePose(Pose, Frame);
 }
 

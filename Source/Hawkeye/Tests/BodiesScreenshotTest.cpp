@@ -295,7 +295,10 @@ public:
 			Step = 1;
 			return false;
 		}
-		if (Step > TotalSubjects * 2)
+		// -HawkeyeBodiesGunnerOnly: only the gunner's four shots (one launch, a few poses), no hand close-ups.
+		const bool bGunnerOnly = FParse::Param(FCommandLine::Get(), TEXT("HawkeyeBodiesGunnerOnly"));
+		const int32 RoundCount = bGunnerOnly ? 4 : TotalSubjects;
+		if (Step > RoundCount * 2)
 		{
 			Cleanup();
 			return true;
@@ -303,8 +306,8 @@ public:
 		// Odd steps stand the subject and frame it; even steps shoot it once it has settled.
 		const int32 Round = (Step - 1) / 2;
 		// The close-ups of the hands come after every full shot: the same stand and action, a camera on the hands.
-		bHandPass = Round >= NumSubjects;
-		const int32 Subject = bHandPass ? HandBase(Round) : Round;
+		bHandPass = !bGunnerOnly && Round >= NumSubjects;
+		const int32 Subject = bGunnerOnly ? GunnerSideShot + Round : bHandPass ? HandBase(Round) : Round;
 		if (Step % 2 == 1)
 		{
 			Stand(World, PC, Subject);
@@ -359,6 +362,8 @@ private:
 		FaceThugShot, FaceThugBShot, FaceThugCShot, FaceThugDShot, FaceHeavyShot, LineupShot,
 		/** The gunner at gameplay distance: idle from his right, aiming from his right, aiming seen from where he aims (his target's eye). */
 		GunnerSideShot, GunnerAimSideShot, GunnerAimFrontShot,
+		/** The same aim from 6.5 m in front and a little right, the distance and angle the player camera sees him at. */
+		GunnerAimFarShot,
 		FirstKateShot
 	};
 	/** Kate's shots, taken once by day and once by night after the others. */
@@ -394,7 +399,7 @@ private:
 		static const TCHAR* Names[FirstKateShot] = {TEXT("body_thug"), TEXT("body_heavy"), TEXT("body_clint"), TEXT("body_lucky"),
 			TEXT("body_thug_ragdoll"), TEXT("body_thug_punch"), TEXT("body_clint_draw"), TEXT("body_lucky_kate"), TEXT("body_thug_empty"),
 			TEXT("face_thug"), TEXT("face_thug_b"), TEXT("face_thug_c"), TEXT("face_thug_d"), TEXT("face_heavy"), TEXT("body_lineup"),
-			TEXT("body_gunner_side"), TEXT("body_gunner_aim_side"), TEXT("body_gunner_aim_front")};
+			TEXT("body_gunner_side"), TEXT("body_gunner_aim_side"), TEXT("body_gunner_aim_front"), TEXT("body_gunner_aim_far")};
 		static const TCHAR* KateNames[NumKateShots] = {TEXT("front"), TEXT("back"), TEXT("run"), TEXT("crouch"), TEXT("punch"),
 			TEXT("draw"), TEXT("trio")};
 		if (!IsKate(Subject))
@@ -812,6 +817,7 @@ private:
 		case GunnerSideShot:
 		case GunnerAimSideShot:
 		case GunnerAimFrontShot:
+		case GunnerAimFarShot:
 		{
 			// The gunner (his pistol is the default weapon) from his right at gameplay distance, idle or raised and aimed along
 			// the way he faces; the front shot is what his target sees.
@@ -823,7 +829,8 @@ private:
 				Gunner->SetWeaponRaised(true, Aimed);
 			}
 			const FVector Look = Chest - FVector(0.f, 0.f, 15.f);
-			const FVector Eye = Subject == GunnerAimFrontShot ? Look + Along * 330.f + Side * 40.f + FVector(0.f, 0.f, 10.f)
+			const FVector Eye = Subject == GunnerAimFarShot ? Look + Along * 650.f + Side * 90.f + FVector(0.f, 0.f, 45.f)
+				: Subject == GunnerAimFrontShot ? Look + Along * 330.f + Side * 40.f + FVector(0.f, 0.f, 10.f)
 				: Look + Side * 330.f + Along * 60.f + FVector(0.f, 0.f, 15.f);
 			Frame(PC, Look, 330.f, 45.f);
 			if (Camera)

@@ -695,9 +695,10 @@ the game's: X the muzzle, Z up, the middle of the slide at the origin; the handl
   `AThugCharacter::UpdateGunArms` reaches his right hand with the bow-IK graph's strike pose (`SetStrikePose`, the same route
   as Kate's punch): at the **low ready** (hand 34 cm ahead, 24 right, 4 above the capsule's centre, the muzzle 25 degrees down,
   forward) and, when `SetWeaponRaised`, out along the line from the right shoulder to the target (reach 50 cm, 9 in and 5 down
-  from the shoulder line) with the left hand under the grip. The pistol follows the visible fist (`GetBodyHandGrip`), turned to
+  from the shoulder line) with the left hand as the support (below and left of the right wrist, `GunLeftHandOffsetCm`, the elbow `GunLeftElbowOffsetCm`; the Body Pose node closes it in the Grip pose with its wrist turned to the pistol's up axis, so its fingers wrap the front of the right hand; live override `hawkeye.Thug.GunLeftHand`). The pistol follows the visible fist (`GetBodyHandGrip`), turned to
   `ComputeGunAim` (blended from the ready to the aim over 0.18 s), so it is always in the hand and points at the target.
-  Data on the thug (`GunReadyHand`, `GunReadyPitchDegrees`, `GunReachCm`, `GunLeftHandAcrossCm`, `GunArmBlendSeconds`, `GunRaiseSeconds`).
+  Data on the thug (`GunReadyHand`, `GunReadyPitchDegrees`, `GunReachCm`, `GunLeftHandOffsetCm`, `GunLeftElbowOffsetCm`, `GunArmBlendSeconds`, `GunRaiseSeconds`).
+- *The left hand hung open and limp below the gun, forearm crossing under the pistol* (seen in `CombatFeel2/gunner_aim_crops.png`). `GetBodyPoseWish` now gives the raised gunner's left hand the Grip pose and the pistol's up axis, and the left target moved from 7 cm across to (1, -5, -6) cm from the right wrist, the elbow bent down and in. Seen in `Saved/Screenshots/CombatFeel3/` (`-HawkeyeBodiesGunnerOnly` takes the four gunner shots in one launch): both fists closed, the left under and ahead of the right with its fingers round the grip's front. The gunner has no firing recoil of his own, so there is no recoil frame; a hit's recoil moves his spine and the hands follow their actor-frame targets.
 - *Re-tune.* The old `hawkeye.Thug.PistolGrip` numbers still pass the Bodies check with the model (grip centre 0.0 cm from the fist,
   muzzle 10.8 and slide 4.3 cm clear of the finger bones) and the pictures, so the defaults stay as they are (palm 3.2, along -1.3);
   only the grip centre in the pistol's frame moved. `MuzzleOutDegrees` no longer shows at the ready, the aim sets the direction.

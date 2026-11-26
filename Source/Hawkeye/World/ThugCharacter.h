@@ -268,9 +268,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
 	float GunReachCm = 50.f;
 
-	/** How far the supporting left hand sits across from the right, cm. */
+	/**
+	 * The supporting left hand (the wrist) relative to the right wrist when aiming, in the actor's frame (X forward, Y right, Z up),
+	 * cm; and the left elbow relative to the left shoulder. Live override: hawkeye.Thug.GunLeftHand.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
-	float GunLeftHandAcrossCm = 7.f;
+	FVector GunLeftHandOffsetCm = FVector(1.f, -5.f, -6.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
+	FVector GunLeftElbowOffsetCm = FVector(8.f, -16.f, -24.f);
 
 	/** The arms' time to settle onto the pistol, and to come up from the ready to the aim, s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Thug|Combat")
