@@ -1126,8 +1126,8 @@ private:
 		}
 		const bool bBat = Hand >= FirstPropShot + 2;
 		const bool bFront = ((Hand - FirstPropShot) % 2) == 1;
-		FVector Center(0.f), Along(0.f), Across(0.f), Palm(0.f);
-		if (!Thug->GetBodyHandGrip(HawkeyeBodyPose::HandRight, Thug->ResolveGrip(bBat), Center, Along, Across, Palm))
+		FVector Center(0.f), GripAlong(0.f), Across(0.f), Palm(0.f);
+		if (!Thug->GetBodyHandGrip(HawkeyeBodyPose::HandRight, Thug->ResolveGrip(bBat), Center, GripAlong, Across, Palm))
 		{
 			return false;
 		}
@@ -1170,10 +1170,10 @@ private:
 		const AThugCharacter* Thug = Cast<AThugCharacter>(Current.Get());
 		const bool bBat = Hand >= FirstPropShot + 2;
 		const FString Who = bBat ? TEXT("heavy's bat") : TEXT("gunner's pistol");
-		FVector Center(0.f), Along(0.f), Across(0.f), Palm(0.f);
+		FVector Center(0.f), GripAlong(0.f), Across(0.f), Palm(0.f);
 		const USkeletalMeshComponent* Seen = Thug ? Thug->GetBodyMesh() : nullptr;
 		if (!Thug || !Seen || !Thug->HasBodyLook()
-			|| !Thug->GetBodyHandGrip(HawkeyeBodyPose::HandRight, Thug->ResolveGrip(bBat), Center, Along, Across, Palm))
+			|| !Thug->GetBodyHandGrip(HawkeyeBodyPose::HandRight, Thug->ResolveGrip(bBat), Center, GripAlong, Across, Palm))
 		{
 			Test->AddWarning(FString::Printf(TEXT("Skipped (no content): the %s hand check, no visible body."), *Who));
 			return;

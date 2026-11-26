@@ -224,9 +224,9 @@ public:
 	}
 
 	/** Takes a shot at Anchor as a chain (or not) without the target pick and the reach checks, for tests. */
-	void BeginShotForTest(AGrappleAnchor* Anchor, bool bChain)
+	void BeginShotForTest(AGrappleAnchor* Anchor, bool bChain, UArrowDefinition* Definition = nullptr)
 	{
-		BeginShot(Anchor, nullptr, bChain);
+		BeginShot(Anchor, Definition, bChain);
 	}
 
 	/** The press has been taken and the arrow has not left the bow yet. */
