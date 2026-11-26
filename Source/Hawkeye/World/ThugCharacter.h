@@ -1069,6 +1069,9 @@ private:
 	FHawkeyeHitLeanClock HitLean;
 	EHawkeyeHitDirection LastHitDirection = EHawkeyeHitDirection::Front;
 
+	/** The recoil springs' offsets were last handed to the IK instance non-zero (so the next idle frame zeroes them once). */
+	bool bRecoilPushed = false;
+
 	/** Hits the shield took. */
 	int32 BlockCount = 0;
 	bool bShieldTinted = false;

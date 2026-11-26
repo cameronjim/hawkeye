@@ -820,12 +820,16 @@ void AThugCharacter::HitReaction(AActor* HitBy)
 			? HawkeyeCombatAnim::PlayHitReaction(GetMesh(), CombatAnimSet, Blow, Side, HeavyReactionWeight, Weld,
 				UHawkeyeMeleeRules::ClassifyHitDirection(GetActorForwardVector(), -Away) == EHawkeyeHitDirection::Front)
 			: HawkeyeCombatAnim::FReactionPlayed();
+		if (HitReactionComponent)
+		{
+			// The upper body takes the blow whether or not a clip played: the spine and head springs (UHitRecoil).
+			HitReactionComponent->StartRecoil(Away, Played.bHeavy);
+		}
 		if (Blow && HitReactionComponent)
 		{
-			// One eased displacement of the distance the clip's feet were authored with (or the old shove's); it starts when the
-			// freeze lets go. A reaction with no impact behind it (a parry, a boss's stagger) keeps the old shove.
-			const float Cm = Played.KnockbackCm >= 0.f ? Played.KnockbackCm : (Played.bHeavy ? Weld.KnockbackHeavyCm : Weld.KnockbackLightCm);
-			HitReactionComponent->ApplyKnockback(Away, Cm);
+			// One eased displacement by weight (a light 18 cm over 0.15 s, a heavy 52 cm over 0.3 s), swept against walls, from
+			// the freeze's release. A reaction with no impact behind it (a parry, a boss's stagger) keeps the old shove.
+			HitReactionComponent->ApplyReactionKnockback(Away, Played.KnockbackCm, Played.bHeavy);
 		}
 		else
 		{
@@ -1077,14 +1081,23 @@ void AThugCharacter::UpdateHitLean(float DeltaSeconds)
 {
 	const bool bWasLeaning = HitLean.IsActive();
 	HitLean.Advance(DeltaSeconds);
-	if (!bWasLeaning && !HitLean.IsActive())
+	const bool bRecoiling = HitReactionComponent && HitReactionComponent->GetRecoil().IsActive(HitReactionComponent->RecoilTuning);
+	if (!bWasLeaning && !HitLean.IsActive() && !bRecoiling && !bRecoilPushed)
 	{
 		return;
 	}
 	if (UHawkeyeBowIKAnimInstance* Hands = BowComponent ? BowComponent->GetHandsIKInstance() : nullptr)
 	{
 		Hands->SetHitLean(HitLean.GetDirection(), HitLean.GetAlpha());
+		if (HitReactionComponent)
+		{
+			// The blow's recoil, spine and head (UHitReactionComponent's springs), on top of the lean.
+			const FHawkeyeHitRecoil& Recoil = HitReactionComponent->GetRecoil();
+			Hands->SetHitRecoil(Recoil.GetSpineOffset(), Recoil.GetHeadOffset(), GetActorRightVector(),
+				HitReactionComponent->RecoilTuning.HeadYawShare);
+		}
 	}
+	bRecoilPushed = bRecoiling;
 }
 
 void AThugCharacter::StandUp()

@@ -4,6 +4,7 @@
 #include "Misc/App.h"
 #include "Combat/HealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Curves/CurveFloat.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -14,6 +15,13 @@
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "Player/HawkeyeCharacter.h"
+#include "HAL/IConsoleManager.h"
+
+static TAutoConsoleVariable<float> CVarHawkeyeKnockbackScale(TEXT("hawkeye.Combat.KnockbackScale"), 1.f,
+	TEXT("Multiplies every hit reaction knock-back distance (1 = the weld tuning: 18 cm light, 52 cm heavy; 0 = none)."), ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarHawkeyeRecoilScale(TEXT("hawkeye.Combat.RecoilScale"), 1.f,
+	TEXT("Multiplies the spine and head recoil a blow gives (1 = the tuning; 0 = off)."), ECVF_Default);
 
 UHitReactionComponent::UHitReactionComponent()
 {
@@ -118,7 +126,7 @@ USkeletalMeshComponent* UHitReactionComponent::GetBodyMesh() const
 
 void UHitReactionComponent::UpdateTickEnabled()
 {
-	const bool bNeed = bKnockbackPending || HitStopRemaining > 0.f || bReactionQueued || bReacting || (bKnockout && !bKnockoutSettled);
+	const bool bNeed = bKnockbackPending || RecoilState.IsActive(RecoilTuning) || HitStopRemaining > 0.f || bReactionQueued || bReacting || (bKnockout && !bKnockoutSettled);
 	if (IsComponentTickEnabled() != bNeed)
 	{
 		SetComponentTickEnabled(bNeed);
@@ -196,7 +204,7 @@ void UHitReactionComponent::FlushKnockback()
 		return;
 	}
 	bKnockbackPending = false;
-	ApplyKnockbackNow(PendingKnockbackDirection, PendingKnockbackCm);
+	ApplyKnockbackNow(PendingKnockbackDirection, PendingKnockbackCm, PendingKnockbackSeconds);
 }
 
 void UHitReactionComponent::BeginFreeze(float Seconds, const FVector& BlowDirection, float Weight, bool bFlipVibration, bool bHoldByMontage)
@@ -337,16 +345,60 @@ void UHitReactionComponent::BeginAlignment(float TurnDegrees, const FVector& Nud
 	AlignApplied = 0.f;
 }
 
-void UHitReactionComponent::ApplyKnockback(const FVector& Direction, float DistanceCm)
+void UHitReactionComponent::ApplyKnockback(const FVector& Direction, float DistanceCm, float Seconds)
 {
 	// Queued: the tick starts it once nothing holds him (a freeze begins later in the same frame, after the damage).
 	bKnockbackPending = true;
 	PendingKnockbackDirection = Direction;
 	PendingKnockbackCm = DistanceCm;
+	PendingKnockbackSeconds = Seconds;
 	UpdateTickEnabled();
 }
 
-void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float DistanceCm)
+float UHitReactionComponent::GetKnockbackScale()
+{
+	return FMath::Max(CVarHawkeyeKnockbackScale.GetValueOnGameThread(), 0.f);
+}
+
+float UHitReactionComponent::GetRecoilScale()
+{
+	return FMath::Max(CVarHawkeyeRecoilScale.GetValueOnGameThread(), 0.f);
+}
+
+void UHitReactionComponent::ApplyReactionKnockback(const FVector& Away, float ClipCm, bool bHeavy)
+{
+	const float Cm = UHawkeyeHitContactRules::ResolveKnockbackCm(ClipCm, bHeavy, Weld, GetKnockbackScale());
+	ApplyKnockback(Away, Cm, UHawkeyeHitContactRules::ResolveKnockbackSeconds(bHeavy, Weld));
+}
+
+void UHitReactionComponent::StartRecoil(const FVector& Away, bool bHeavy)
+{
+	RecoilState.Kick(Away, bHeavy, RecoilTuning, GetRecoilScale());
+	UpdateTickEnabled();
+}
+
+float UHitReactionComponent::ComputeClearanceAhead(const FVector& Flat, float ProbeCm) const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+	UWorld* World = GetWorld();
+	if (!Capsule || !World || Flat.IsNearlyZero() || ProbeCm <= 0.f)
+	{
+		return -1.f;
+	}
+	const FVector Start = Capsule->GetComponentLocation();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(HawkeyeKnockbackClearance), /*bTraceComplex=*/false, Character);
+	FHitResult Hit;
+	const bool bBlocked = World->SweepSingleByChannel(Hit, Start, Start + Flat.GetSafeNormal() * ProbeCm, FQuat::Identity, ECC_Pawn,
+		Capsule->GetCollisionShape(), Params);
+	if (!bBlocked || Hit.bStartPenetrating)
+	{
+		return -1.f;
+	}
+	return FMath::Max(Hit.Distance, 0.f);
+}
+
+void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float DistanceCm, float Seconds)
 {
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
@@ -360,10 +412,23 @@ void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float Di
 	{
 		return;
 	}
+	// Nothing is shoved through a wall (or another body): sweep his capsule along the shove and move him only what is free,
+	// less the skin. A shove into a wall is a stagger in place, not a slide along it.
+	const float Wanted = DistanceCm;
+	DistanceCm = UHawkeyeHitContactRules::ClampKnockbackToClearance(DistanceCm,
+		ComputeClearanceAhead(Flat, DistanceCm + Weld.KnockbackSkinCm), Weld.KnockbackSkinCm);
+	const float Duration = Seconds > 0.f ? Seconds : Weld.KnockbackSeconds;
+	LastKnockbackCm = DistanceCm;
+	LastKnockbackSeconds = Duration;
+	if (DistanceCm <= 0.f)
+	{
+		UE_LOG(LogHawkeye, Log, TEXT("%s: knock-back %.0f cm blocked by a wall."), *GetNameSafe(GetOwner()), Wanted);
+		return;
+	}
 	constexpr int32 Samples = 9;
 	float Peak = 0.f;
 	TArray<float> Strengths;
-	UHawkeyeHitContactRules::ComputeKnockbackProfile(DistanceCm, Weld.KnockbackSeconds, Weld.KnockbackEase, Samples, Peak, Strengths);
+	UHawkeyeHitContactRules::ComputeKnockbackProfile(DistanceCm, Duration, Weld.KnockbackEase, Samples, Peak, Strengths);
 	if (Peak <= 0.f)
 	{
 		return;
@@ -387,13 +452,13 @@ void UHitReactionComponent::ApplyKnockbackNow(const FVector& Direction, float Di
 	Shove->AccumulateMode = ERootMotionAccumulateMode::Override;
 	Shove->Priority = 5;
 	Shove->Force = Flat * Peak;
-	Shove->Duration = Weld.KnockbackSeconds;
+	Shove->Duration = Duration;
 	Shove->StrengthOverTime = KnockbackCurve;
 	Shove->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
 	Shove->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
 	Movement->ApplyRootMotionSource(Shove);
-	UE_LOG(LogHawkeye, Log, TEXT("%s: knock-back %.0f cm (tuned %.0f) over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()), DistanceCm,
-		TunedCm, Weld.KnockbackSeconds, Peak);
+	UE_LOG(LogHawkeye, Log, TEXT("%s: knock-back %.0f cm (tuned %.0f, wanted %.0f) over %.2f s (peak %.0f cm/s)."), *GetNameSafe(GetOwner()),
+		DistanceCm, TunedCm, Wanted, Duration, Peak);
 }
 
 void UHitReactionComponent::PlayHitReaction(const FHawkeyeStrikeImpact& Impact)
@@ -775,6 +840,11 @@ void UHitReactionComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
 	if (bKnockbackPending && !bFrozen)
 	{
 		FlushKnockback();
+	}
+	// The recoil waits out a freeze (the body holds its hit pose) and runs from the release, on the world's clock.
+	if (!bFrozen && HitStopRemaining <= 0.f && RecoilState.IsActive(RecoilTuning))
+	{
+		RecoilState.Advance(Step, RecoilTuning);
 	}
 	if (bReactionQueued && HitStopRemaining <= 0.f)
 	{

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Combat/HitContactRules.h"
+#include "Combat/HitRecoil.h"
 #include "HitReactionComponent.generated.h"
 
 class UAnimInstance;
@@ -90,12 +91,41 @@ public:
 	 * a root motion source on the owner's character movement. Started at the hit, it waits out the freeze by itself (the
 	 * movement's time is the owner's, which is stopped) and so starts at the release. A character only.
 	 */
-	void ApplyKnockback(const FVector& Direction, float DistanceCm);
+	void ApplyKnockback(const FVector& Direction, float DistanceCm, float Seconds = -1.f);
+
+	/**
+	 * What a landed blow does to the body's place and posture, in one call: the knock-back (distance and time from the weld's
+	 * tuning by weight, ClipCm only when Weld.bClipKnockbackWins; times hawkeye.Combat.KnockbackScale) along Away (attacker to
+	 * victim, flat). Away is where the victim goes, not where the blow came from. The recoil is StartRecoil, called separately
+	 * (it runs with no clip and no blow behind it).
+	 */
+	void ApplyReactionKnockback(const FVector& Away, float ClipCm, bool bHeavy);
+
+	/** Kicks the spine and head springs along Away (flat, world), by weight; times hawkeye.Combat.RecoilScale. Works with no clip. */
+	void StartRecoil(const FVector& Away, bool bHeavy);
+
+	/** The recoil's springs now (the owner's IK reads them each frame). */
+	const FHawkeyeHitRecoil& GetRecoil() const { return RecoilState; }
+
+	/** The knock-back last applied (after the wall clamp), cm, and how long it was spread over, s: tests and the log. */
+	float GetLastKnockbackCm() const { return LastKnockbackCm; }
+	float GetLastKnockbackSeconds() const { return LastKnockbackSeconds; }
+
+	/** The multipliers' console variables (hawkeye.Combat.KnockbackScale and .RecoilScale; 1 = the tuning as authored). */
+	static float GetKnockbackScale();
+	static float GetRecoilScale();
+
+	/**
+	 * How far the owner's capsule can move along Flat (flat) before it meets something, up to ProbeCm: the sweep's free
+	 * distance, or -1 when nothing is in the way (or there is no capsule or world). A start inside something is not a wall
+	 * (the movement depenetrates it): -1.
+	 */
+	float ComputeClearanceAhead(const FVector& Flat, float ProbeCm) const;
 
 	/** Starts the knock-back that ApplyKnockback queued (the tick does it once no freeze holds him). */
 	void FlushKnockback();
 
-	void ApplyKnockbackNow(const FVector& Direction, float DistanceCm);
+	void ApplyKnockbackNow(const FVector& Direction, float DistanceCm, float Seconds = -1.f);
 
 	/** The physical reaction to Impact; waits for a hit-stop under way to end, so the body freezes, then snaps. */
 	void PlayHitReaction(const FHawkeyeStrikeImpact& Impact);
@@ -147,6 +177,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
 	FHawkeyeKnockoutTuning Knockout;
+
+	/** The procedural recoil the spine and head take from a blow, over whatever the animation plays. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
+	FHawkeyeHitRecoilTuning RecoilTuning;
 
 	/** The weld: the freeze, the vibration, the alignment, the knock-back's ease, the physics flinch's cap. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hit Reaction")
@@ -261,6 +295,12 @@ protected:
 	/** What the last freeze's alignment moved him (flat), taken off the next knock-back so the net is the tuned distance. */
 	FVector LastAlignNudge = FVector::ZeroVector;
 	float PendingKnockbackCm = 0.f;
+	float PendingKnockbackSeconds = -1.f;
+	float LastKnockbackCm = 0.f;
+	float LastKnockbackSeconds = 0.f;
+
+	/** The spine's and head's recoil springs. */
+	FHawkeyeHitRecoil RecoilState;
 
 	void HoldMontages();
 	void ReleaseMontages();
