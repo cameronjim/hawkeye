@@ -223,19 +223,33 @@ struct HAWKEYE_API FHawkeyeWeldTuning
 	float MaxNudgeCm = 15.f;
 
 	/**
-	 * The knock-back's total distance for a light and a heavy reaction, cm: what LaunchCharacter's shove (250 and 500
-	 * cm/s) slid a thug before this, measured in the melee audit, so fight spacing and lap timing hold. A clip's own
-	 * KnockbackCm (the feet it was authored with) takes over when its data has one.
+	 * The knock-back's total distance for a light and a heavy reaction, cm. A light blow is a short, clear stagger (18 cm,
+	 * about a step's worth, over KnockbackLightSeconds) and a heavy one a step and a stumble (52 cm over KnockbackSeconds);
+	 * both were 10 and 28 cm (what LaunchCharacter's shove slid a thug) and read as nothing on screen (2026-11-25). These win
+	 * over a clip's own baked KnockbackCm unless bClipKnockbackWins; the clips' feet are authored with the same numbers
+	 * (LIGHT_SHOVE and HEAVY_SHOVE in Tools/Blender/build_clips.py) so the feet do not skate.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
-	float KnockbackLightCm = 10.f;
+	float KnockbackLightCm = 18.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
-	float KnockbackHeavyCm = 28.f;
+	float KnockbackHeavyCm = 52.f;
 
-	/** How long the eased displacement takes, s. */
+	/** How long a heavy's eased displacement takes, s. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.05"))
 	float KnockbackSeconds = 0.3f;
+
+	/** How long a light's takes, s: a snap, not a slide. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.05"))
+	float KnockbackLightSeconds = 0.15f;
+
+	/** True: a reaction clip's baked KnockbackCm replaces the tuned distance (the old behaviour). False: the tuning decides. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld")
+	bool bClipKnockbackWins = false;
+
+	/** Air kept between the victim's capsule and a wall the knock-back would run into, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "0.0"))
+	float KnockbackSkinCm = 3.f;
 
 	/** The speed's fall-off: (1 - t) to this power, so it starts fast and settles slowly (2: a hard start, a soft end). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Melee|Weld", meta = (ClampMin = "1.0", ClampMax = "4.0"))
@@ -520,6 +534,27 @@ public:
 	 * knock-back (Direction) is taken off, the part against it (a nudge toward the attacker) is added back. Never negative.
 	 */
 	static float ComputeNetKnockbackCm(float TunedCm, const FVector& Nudge, const FVector& Direction);
+
+	/**
+	 * The knock-back distance for a reaction, cm: the clip's baked ClipCm when the tuning says clips win (and it has one, 0
+	 * or more), else the tuned light or heavy distance; times Scale (the Hawkeye.Combat.KnockbackScale CVar). Never negative.
+	 */
+	static float ResolveKnockbackCm(float ClipCm, bool bHeavy, const FHawkeyeWeldTuning& Tuning, float Scale = 1.f);
+
+	/** The time the knock-back takes: KnockbackLightSeconds for a light, KnockbackSeconds for a heavy. */
+	static float ResolveKnockbackSeconds(bool bHeavy, const FHawkeyeWeldTuning& Tuning);
+
+	/**
+	 * The way a blow shoves its victim: flat, from the attacker through the victim. With no attacker (or standing on him),
+	 * Fallback flattened (the victim's back), else straight back along X.
+	 */
+	static FVector ComputeKnockbackDirection(const FVector* AttackerLocation, const FVector& VictimLocation, const FVector& Fallback);
+
+	/**
+	 * What of DesiredCm may be moved given a wall ClearanceCm ahead of the victim (the sweep's free distance; negative for
+	 * no hit): the clearance less SkinCm, never more than desired and never negative. Nothing is moved through a wall.
+	 */
+	static float ClampKnockbackToClearance(float DesiredCm, float ClearanceCm, float SkinCm);
 
 	/**
 	 * Whether a party of a landed blow plays its reaction after the hit-stop (alive, not winding up a swing: a boss
