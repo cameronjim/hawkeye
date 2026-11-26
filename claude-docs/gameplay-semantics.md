@@ -601,6 +601,17 @@ for a few frames unseen (no trail, `LaunchWithVelocity` is off for it), and the 
   `ChainTotalSeconds` (default 0 since 2026-11-25: the redirect starts at the press, as before; 0.10 delayed it 180 cm along the old line
   and the East Village lap's roof-to-roof chain then hit a wall, so a chain is the follow-through and the rope only). The old rope stays taut until the
   new arrow bites, then whips back.
+- **The chain's snap** (2026-11-25, from "mid-air chained grapple shows only the follow-through"): with `ChainTotalSeconds` 0 the
+  pull is at the press and the whole shot used to be released in the same frame, so only the bow's follow-through was seen. Now
+  `ChainSnapSeconds` (0.12; 0 turns it off) plays a compressed draw while the pull goes on: `BeginShot` sees
+  `FGrappleShotRules::ShouldPlayChainSnap` (shots on, a chain, press-to-pull 0), starts the bow's scripted shot with its draw clip
+  squeezed into the snap (`MakeChainSnapSchedule`: the arm up over `ChainSnapRaiseShare` (0.4) of it, the string back over the rest),
+  and `ReleaseShot` spawns the arrow and bites the anchor at once as before but leaves the string drawn; `AdvanceChainSnap` (first in
+  `AdvanceShot`, so the tick and `TickShotForTest` both run it) drives `SetScriptedDrawFraction` and, at the end of the snap, looses
+  (`ReleaseScriptedShot`: the fire clip, the release sound and effect, the fire sound). Upper body only: it is the bow clip and the
+  hands IK, never the legs or the pull; `UpdateBowHold` holds the bow up while the snap plays (`bChainSnap`), `CancelShot` ends it.
+  The pull is never delayed (a chain with a `ChainTotalSeconds` above 0 plays the normal shot instead, no snap). Tests:
+  `Hawkeye.Grapple.Shot.ChainSnapRules`, `.ChainSnapPlaysAsThePullBegins`.
 - The bow stays raised and aimed at the anchor (`HasScriptedAim`) while the shot, the arrow or the pull needs it
   (`bBowHeld`), and `BowHoldAfterZipSeconds` (0.15) after: the bow hand keeps the line through the jerk. The hands IK reads
   `IsDrawPose` (a real or a scripted draw).

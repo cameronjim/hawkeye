@@ -434,4 +434,125 @@ bool FHawkeyeGrappleShotPlays::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleChainSnapRules, "Hawkeye.Grapple.Shot.ChainSnapRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeGrappleChainSnapRules::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeGrappleShotTest;
+	const FHawkeyeGrappleShotSettings Settings = On();
+	TestEqual(TEXT("The snap is about 0.12 s"), Settings.ChainSnapSeconds, 0.12f, 1e-4f);
+
+	// A chain with no shot time of its own plays the snap, and the pull is still at the press.
+	const FGrappleShotSchedule Chain = FGrappleShotRules::MakeSchedule(1800.f, 0.f, true, Settings);
+	TestEqual(TEXT("The chain still pulls at the press"), Chain.TotalSeconds, 0.f);
+	TestTrue(TEXT("and plays the snap"), FGrappleShotRules::ShouldPlayChainSnap(Chain.TotalSeconds, true, Settings));
+
+	const FGrappleShotSchedule Snap = FGrappleShotRules::MakeChainSnapSchedule(Settings);
+	TestEqual(TEXT("The loose is at the end of the snap"), Snap.ReleaseSeconds, 0.12f, 1e-4f);
+	TestEqual(TEXT("Raise plus draw is the snap"), Snap.RaiseSeconds + Snap.DrawSeconds, Snap.ReleaseSeconds, 1e-4f);
+	TestEqual(TEXT("The arm takes its share"), Snap.RaiseSeconds, 0.12f * Settings.ChainSnapRaiseShare, 1e-4f);
+	TestEqual(TEXT("The snap delays nothing: no pull time of its own"), Snap.TotalSeconds, 0.f);
+	TestEqual(TEXT("and no arrow flies"), Snap.FlightSeconds, 0.f);
+
+	TestEqual(TEXT("Not drawn at the press"), FGrappleShotRules::DrawFractionAt(0.f, Snap), 0.f, 1e-4f);
+	float Last = 0.f;
+	bool bGrows = true;
+	for (float Time = 0.f; Time <= Snap.ReleaseSeconds; Time += 0.01f)
+	{
+		const float Fraction = FGrappleShotRules::DrawFractionAt(Time, Snap);
+		bGrows = bGrows && Fraction >= Last - 1e-5f;
+		Last = Fraction;
+	}
+	TestTrue(TEXT("The string comes back steadily"), bGrows);
+	TestEqual(TEXT("and is all the way back at the loose"), FGrappleShotRules::DrawFractionAt(Snap.ReleaseSeconds, Snap), 1.f, 1e-4f);
+	TestEqual(TEXT("The arm is up by the end of its raise"), FGrappleShotRules::RaiseFractionAt(Snap.RaiseSeconds, Snap), 1.f, 1e-4f);
+	TestEqual(TEXT("Raise first"), static_cast<int32>(FGrappleShotRules::PhaseAt(Snap.RaiseSeconds * 0.5f, Snap, false)),
+		static_cast<int32>(EGrappleShotPhase::Raise));
+	TestEqual(TEXT("then the draw"), static_cast<int32>(FGrappleShotRules::PhaseAt(Snap.RaiseSeconds + 0.01f, Snap, false)),
+		static_cast<int32>(EGrappleShotPhase::Draw));
+
+	// When it does not play.
+	TestFalse(TEXT("Not for a first shot off the ground (that is the full shot)"), FGrappleShotRules::ShouldPlayChainSnap(0.f, false, Settings));
+	TestFalse(TEXT("Not for a chain with a shot time (the normal shot plays)"), FGrappleShotRules::ShouldPlayChainSnap(0.1f, true, Settings));
+	FHawkeyeGrappleShotSettings NoSnap = Settings;
+	NoSnap.ChainSnapSeconds = 0.f;
+	TestFalse(TEXT("Not when switched off"), FGrappleShotRules::ShouldPlayChainSnap(0.f, true, NoSnap));
+	TestEqual(TEXT("and its schedule is empty"), FGrappleShotRules::MakeChainSnapSchedule(NoSnap).ReleaseSeconds, 0.f);
+	TestFalse(TEXT("Not with the shot system off"), FGrappleShotRules::ShouldPlayChainSnap(0.f, true, FHawkeyeGrappleShotSettings()));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeGrappleChainSnapPlays, "Hawkeye.Grapple.Shot.ChainSnapPlaysAsThePullBegins",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeGrappleChainSnapPlays::RunTest(const FString& Parameters)
+{
+	using namespace HawkeyeGrappleShotTest;
+	const FHawkeyeTestWorld TestWorld;
+	AHawkeyeAimTestCharacter* Kate = Cast<AHawkeyeAimTestCharacter>(
+		TestWorld.SpawnActor(AHawkeyeAimTestCharacter::StaticClass(), FVector(0.f, 0.f, 200.f), FRotator::ZeroRotator));
+	AGrappleAnchor* Anchor = Cast<AGrappleAnchor>(
+		TestWorld.SpawnActor(AGrappleAnchor::StaticClass(), FVector(1800.f, 0.f, 500.f), FRotator::ZeroRotator));
+	if (!Kate || !Anchor || !Kate->GetGrappleComponent() || !Kate->GetBowComponent() || !Kate->GetInventoryComponent())
+	{
+		AddError(TEXT("Could not spawn Kate and an anchor."));
+		return false;
+	}
+	TestWorld.SpawnActor(AHawkeyeTestBlocker::StaticClass(), FVector(2000.f, 0.f, 400.f), FRotator::ZeroRotator);
+	UInventoryComponent* Inventory = Kate->GetInventoryComponent();
+	UBowDefinition* Bow = NewObject<UBowDefinition>(Inventory);
+	Bow->FullDrawSeconds = 0.8f;
+	Inventory->GiveBow(Bow);
+	UArrowDefinition* GrappleArrow = NewObject<UArrowDefinition>(Inventory);
+	GrappleArrow->Slot = 2;
+	GrappleArrow->Cap = 99;
+	GrappleArrow->OnHitEffect = EArrowHitEffect::Grapple;
+	Inventory->AddArrows(GrappleArrow, 1);
+
+	UGrappleComponent* Grapple = Kate->GetGrappleComponent();
+	UBowComponent* BowComponent = Kate->GetBowComponent();
+	Grapple->Shot.bEnabled = true;
+
+	// The chain: the pull is at the press, the shot's draw is on.
+	Grapple->BeginShotForTest(Anchor, /*bChain=*/true, GrappleArrow);
+	TestTrue(TEXT("The pull has started at the press (a chain stays instant)"), Grapple->IsZipping());
+	TestFalse(TEXT("No shot is pending: the arrow already bit"), Grapple->IsShotPending());
+	TestTrue(TEXT("but the snap draw is playing"), Grapple->IsChainSnapPlaying());
+	TestTrue(TEXT("The string hand's pose is on, the bow up on the line"), BowComponent->IsDrawPose() && BowComponent->HasScriptedAim());
+	TestEqual(TEXT("Not drawn yet"), BowComponent->GetDrawFraction(), 0.f, 0.05f);
+
+	const float Frame = 1.f / 60.f;
+	float Elapsed = 0.f;
+	float LastDraw = 0.f;
+	bool bGrows = true;
+	while (Grapple->IsChainSnapPlaying() && Elapsed < 0.5f)
+	{
+		Grapple->TickShotForTest(Frame);
+		Elapsed += Frame;
+		if (Grapple->IsChainSnapPlaying())
+		{
+			bGrows = bGrows && BowComponent->GetDrawFraction() >= LastDraw - 1e-5f;
+			LastDraw = BowComponent->GetDrawFraction();
+			TestTrue(TEXT("The pull goes on under the draw"), Grapple->IsZipping());
+		}
+	}
+	TestTrue(TEXT("The string came back through the snap"), bGrows && LastDraw > 0.5f);
+	TestEqual(TEXT("and loosed at the end of it"), Elapsed, Grapple->GetChainSnapSchedule().ReleaseSeconds, 2.f * Frame);
+	TestFalse(TEXT("The draw is over"), BowComponent->IsDrawPose());
+	TestTrue(TEXT("The bow stays up and on the line for the follow-through"), BowComponent->IsBowRaised() && BowComponent->HasScriptedAim());
+	TestTrue(TEXT("and the pull has not been delayed or cut"), Grapple->IsZipping());
+
+	// A first shot (not a chain) is the normal shot, with no snap.
+	Grapple->ReleaseZip(false);
+	for (int32 Step = 0; Step < 90; ++Step)
+	{
+		Grapple->TickShotForTest(Frame);
+	}
+	Grapple->BeginShotForTest(Anchor, /*bChain=*/false, GrappleArrow);
+	TestFalse(TEXT("A normal shot plays no chain snap"), Grapple->IsChainSnapPlaying());
+	TestTrue(TEXT("it is pending until its release"), Grapple->IsShotPending());
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
