@@ -296,6 +296,7 @@ function Step-Python([string[]]$Suites) {
             $out = $log + ".out"
             $p = Start-Process -FilePath $py -ArgumentList @("-B", "-m", "unittest", $mod) -WorkingDirectory $abs -PassThru `
                 -WindowStyle Hidden -RedirectStandardError $log -RedirectStandardOutput $out
+            $null = $p.Handle   # a process that ends fast reports no ExitCode unless its handle was taken while it ran
             $procs += [pscustomobject]@{ Proc = $p; Log = $log; Name = "$dir/$mod" }
         }
     }
@@ -304,7 +305,8 @@ function Step-Python([string[]]$Suites) {
     foreach ($e in $procs) {
         $e.Proc.WaitForExit()
         $ran = Get-FirstMatch $e.Log "^Ran \d+ tests?"
-        if ($e.Proc.ExitCode -ne 0) { $bad += ($e.Name + ": " + (Get-LogTail $e.Log 6)) }
+        $okRun = ($e.Proc.ExitCode -eq 0) -or (($null -eq $e.Proc.ExitCode) -and (Get-FirstMatch $e.Log "^OK") -ne "")
+        if (-not $okRun) { $bad += ($e.Name + ": " + (Get-LogTail $e.Log 6)) }
         elseif ($ran -match "Ran (\d+)") { $total += [int]$Matches[1] }
     }
     if ($bad.Count -gt 0) { return (New-Bad ("python tests failed in " + ($bad -join " || "))) }
