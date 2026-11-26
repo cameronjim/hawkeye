@@ -66,6 +66,13 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeScreenshotBodies, "Hawkeye.Screenshot.Bodies",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ProductFilter)
 
+
+static TAutoConsoleVariable<float> CVarBodiesPropShotCm(TEXT("hawkeye.Bodies.PropShotCm"), 38.f,
+	TEXT("How far from the grip centre the prop close-ups of Hawkeye.Screenshot.Bodies are taken (cm); further shows the whole hand and prop."),
+	ECVF_Default);
+static TAutoConsoleVariable<float> CVarBodiesPropShotFov(TEXT("hawkeye.Bodies.PropShotFov"), 30.f,
+	TEXT("The prop close-ups' field of view (degrees)."), ECVF_Default);
+
 namespace HawkeyeBodyShots
 {
 	static const TCHAR* ThugClassPath = TEXT("/Game/Blueprints/AI/BP_Thug.BP_Thug_C");
@@ -1133,16 +1140,17 @@ private:
 		}
 		FVector Dir = (bFront ? Across : -Palm).GetSafeNormal() + FVector(0.f, 0.f, 0.3f);
 		Dir = Dir.GetSafeNormal();
-		FVector Eye = Center + Dir * 38.f;
+		const float ShotCm = CVarBodiesPropShotCm.GetValueOnGameThread();
+		FVector Eye = Center + Dir * ShotCm;
 		FCollisionQueryParams Query(SCENE_QUERY_STAT(BodyShotProp), false, Current.Get());
 		FHitResult Blocked;
 		if (Camera->GetWorld()->LineTraceSingleByChannel(Blocked, Center + Dir * 12.f, Eye, ECC_Visibility, Query))
 		{
 			// The thigh, the shield or a wall is in the way: from the other side of the hand.
-			Eye = Center + FVector(-Dir.X, -Dir.Y, Dir.Z) * 38.f;
+			Eye = Center + FVector(-Dir.X, -Dir.Y, Dir.Z) * ShotCm;
 		}
 		Camera->SetActorLocationAndRotation(Eye, (Center - Eye).Rotation());
-		Camera->GetCameraComponent()->SetFieldOfView(30.f);
+		Camera->GetCameraComponent()->SetFieldOfView(CVarBodiesPropShotFov.GetValueOnGameThread());
 		PC->SetViewTarget(Camera);
 		if (Light)
 		{

@@ -691,6 +691,36 @@ namespace HawkeyeTraversalShots
 			S.Start = FireShot;
 			Out.Add(S);
 		}
+		{
+			// A chained grapple from the player's camera at night: the first shot's pull is under way (1.0 s in, the arrow bit at
+			// about 0.33 s), then a second anchor 15 m past the first and 5 m higher is fired at; the pull stays instant and the bow comes up and
+			// looses in the snap (ChainSnapSeconds). Times are from the second press.
+			FScenario S;
+			S.Name = TEXT("chain_snap_player");
+			S.Times = {-0.05f, 0.f, 0.03f, 0.06f, 0.09f, 0.12f, 0.16f, 0.25f};
+			S.Reference = 1.0;
+			S.bNight = true;
+			S.bPoseOnOnly = true;
+			S.bPlayerCamera = true;
+			S.Start = FireShot;
+			S.Events.Add({1.0, [](FStage& Stage, UWorld& World)
+				{
+					AHawkeyeCharacter* Kate = Stage.Kate.Get();
+					UGrappleComponent* Grapple = Kate ? Kate->GetGrappleComponent() : nullptr;
+					if (!Grapple)
+					{
+						return;
+					}
+					const AGrappleAnchor* First = Stage.Anchor.Get();
+					const FVector Where = (First ? First->GetActorLocation() : Kate->GetActorLocation()) + Stage.Along * 1500.f + FVector(0.f, 0.f, 500.f);
+					FActorSpawnParameters Params;
+					Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+					AGrappleAnchor* Next = World.SpawnActor<AGrappleAnchor>(AGrappleAnchor::StaticClass(), FTransform(Stage.Along.Rotation(), Where), Params);
+					Grapple->SetTargetForTest(Next);
+					Grapple->TryFire();
+				}});
+			Out.Add(S);
+		}
 
 		// --- The ledge strips (2026-11-25), on the ledge stage at a fixed 60 fps. Times are seconds from the reference moment (a
 		// parkour move starting, or a fixed time) in steps of 1/60 s, around where the hands reach the edge; `_wide` is the
@@ -1389,6 +1419,14 @@ namespace HawkeyeTraversalShots
 			if (Scenario.Name.StartsWith(TEXT("shot")))
 			{
 				CheckShot(Kate, *Hands);
+			}
+			if (Scenario.Name.StartsWith(TEXT("chain_snap")) && Kate.GetGrappleComponent() && Kate.GetBowComponent())
+			{
+				const UGrappleComponent* Grapple = Kate.GetGrappleComponent();
+				Test->AddInfo(FString::Printf(TEXT("%s frame %d (%+.3f s): chain snap %d (%.3f s), bow draw %.2f raised %d, zipping %d, speed %.0f"),
+					*Scenario.Name, Hold, HeldAt, Grapple->IsChainSnapPlaying() ? 1 : 0, Grapple->GetChainSnapSeconds(),
+					Kate.GetBowComponent()->GetDrawFraction(), Kate.GetBowComponent()->IsBowRaised() ? 1 : 0, Grapple->IsZipping() ? 1 : 0,
+					Kate.GetVelocity().Size()));
 			}
 			Test->AddInfo(FString::Printf(
 				TEXT("%s pose %s frame %d (%+.2f s): phase %s weight %.2f tilt (%.1f, %.1f) arrival %s speed %.0f"),
