@@ -102,7 +102,7 @@ bool FHawkeyeHitRecoil::IsActive(const FHawkeyeHitRecoilTuning& Tuning) const
 FRotator FHawkeyeHitRecoil::MakeTipRotation(const FVector& OffsetDegrees)
 {
 	const FVector Flat(OffsetDegrees.X, OffsetDegrees.Y, 0.f);
-	const float Degrees = Flat.Size();
+	const float Degrees = static_cast<float>(Flat.Size());
 	if (Degrees <= KINDA_SMALL_NUMBER)
 	{
 		return FRotator::ZeroRotator;
