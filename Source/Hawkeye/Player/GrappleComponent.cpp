@@ -1136,9 +1136,17 @@ void UGrappleComponent::BeginShot(AGrappleAnchor* Anchor, UArrowDefinition* Defi
 	const float Distance = static_cast<float>(FVector::Dist(Bow->GetArrowSpawnLocation(), Marker));
 	ShotSchedule = FGrappleShotRules::MakeSchedule(Distance, GetArrowSpeed(Definition, bChain), bChain, Shot);
 
+	// A chain with no shot time of its own pulls at the press (it must: a 0.10 s delay broke the East Village route), but the
+	// bow still comes up and draws over a compressed snap and looses as the pull begins, upper body only.
+	bChainSnap = FGrappleShotRules::ShouldPlayChainSnap(ShotSchedule.TotalSeconds, bChain, Shot);
+	ChainSnapElapsed = 0.f;
+	ChainSnapSchedule = bChainSnap ? FGrappleShotRules::MakeChainSnapSchedule(Shot) : FGrappleShotSchedule();
+	const float DrawFit = bChainSnap ? ChainSnapSchedule.RaiseSeconds + ChainSnapSchedule.DrawSeconds
+		: ShotSchedule.RaiseSeconds + ShotSchedule.DrawSeconds;
+
 	// The bow comes up on the line now and stays there (legs keep going: the clip is upper body, the IK and the aim offset
 	// turn the chest).
-	Bow->BeginScriptedShot(Marker, ShotSchedule.RaiseSeconds + ShotSchedule.DrawSeconds);
+	Bow->BeginScriptedShot(Marker, DrawFit);
 	bBowHeld = true;
 	BowHoldRemaining = Shot.BowHoldAfterZipSeconds;
 
@@ -1155,8 +1163,32 @@ void UGrappleComponent::BeginShot(AGrappleAnchor* Anchor, UArrowDefinition* Defi
 	}
 }
 
+void UGrappleComponent::AdvanceChainSnap(float DeltaSeconds)
+{
+	if (!bChainSnap)
+	{
+		return;
+	}
+	UBowComponent* Bow = GetOwner() ? GetOwner()->FindComponentByClass<UBowComponent>() : nullptr;
+	if (!Bow)
+	{
+		bChainSnap = false;
+		return;
+	}
+	ChainSnapElapsed += FMath::Max(DeltaSeconds, 0.f);
+	Bow->SetScriptedDrawFraction(FGrappleShotRules::DrawFractionAt(ChainSnapElapsed, ChainSnapSchedule));
+	if (ChainSnapSchedule.HasReleased(ChainSnapElapsed))
+	{
+		// The loose, a few frames into the pull: the string goes, the fire clip plays, the follow-through holds the arm.
+		bChainSnap = false;
+		Bow->ReleaseScriptedShot();
+		UHawkeyeAudioSubsystem::PlayAt(this, FireSound, Bow->GetArrowSpawnLocation(), TEXT("grapple fire"));
+	}
+}
+
 void UGrappleComponent::AdvanceShot(float DeltaSeconds)
 {
+	AdvanceChainSnap(DeltaSeconds);
 	if (!bShotPending)
 	{
 		return;
@@ -1191,8 +1223,12 @@ void UGrappleComponent::ReleaseShot()
 		CancelShot();
 		return;
 	}
-	Bow->ReleaseScriptedShot();
-	UHawkeyeAudioSubsystem::PlayAt(this, FireSound, Bow->GetArrowSpawnLocation(), TEXT("grapple fire"));
+	if (!bChainSnap)
+	{
+		Bow->ReleaseScriptedShot();
+		UHawkeyeAudioSubsystem::PlayAt(this, FireSound, Bow->GetArrowSpawnLocation(), TEXT("grapple fire"));
+	}
+	// else: the chain's snap draw is on; AdvanceChainSnap looses the string (and plays the fire sound) at its end.
 
 	AGrappleArrowProjectile* Arrow = SpawnGrappleArrow(Definition, Anchor);
 	if (!Arrow)
@@ -1234,6 +1270,7 @@ void UGrappleComponent::CancelShot()
 {
 	const bool bWas = bShotPending;
 	bShotPending = false;
+	bChainSnap = false;
 	ShotDefinition = nullptr;
 	ShotAnchor.Reset();
 	if (bWas || bBowHeld)
@@ -1276,7 +1313,7 @@ void UGrappleComponent::UpdateBowHold(float DeltaSeconds)
 		return;
 	}
 	// Up and on the line while the shot, the arrow or the pull needs it: the bow hand keeps the line through the jerk.
-	const bool bNeeded = bShotPending || InFlightArrow.IsValid() || IsZipping();
+	const bool bNeeded = bShotPending || bChainSnap || InFlightArrow.IsValid() || IsZipping();
 	if (bNeeded)
 	{
 		BowHoldRemaining = Shot.BowHoldAfterZipSeconds;

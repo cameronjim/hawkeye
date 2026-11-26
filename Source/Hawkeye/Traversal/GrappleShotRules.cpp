@@ -42,6 +42,24 @@ FGrappleShotSchedule FGrappleShotRules::MakeSchedule(
 	return Out;
 }
 
+bool FGrappleShotRules::ShouldPlayChainSnap(float TotalSeconds, bool bChain, const FHawkeyeGrappleShotSettings& Settings)
+{
+	return Settings.bEnabled && bChain && TotalSeconds <= KINDA_SMALL_NUMBER && Settings.ChainSnapSeconds > KINDA_SMALL_NUMBER;
+}
+
+FGrappleShotSchedule FGrappleShotRules::MakeChainSnapSchedule(const FHawkeyeGrappleShotSettings& Settings)
+{
+	FGrappleShotSchedule Out;
+	if (!Settings.bEnabled || Settings.ChainSnapSeconds <= KINDA_SMALL_NUMBER)
+	{
+		return Out;
+	}
+	Out.ReleaseSeconds = Settings.ChainSnapSeconds;
+	Out.RaiseSeconds = Out.ReleaseSeconds * FMath::Clamp(Settings.ChainSnapRaiseShare, 0.05f, 0.9f);
+	Out.DrawSeconds = Out.ReleaseSeconds - Out.RaiseSeconds;
+	return Out;
+}
+
 float FGrappleShotRules::DrawFractionAt(float Elapsed, const FGrappleShotSchedule& Schedule)
 {
 	if (Schedule.ReleaseSeconds <= KINDA_SMALL_NUMBER)

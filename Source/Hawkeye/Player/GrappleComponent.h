@@ -207,6 +207,28 @@ public:
 		return ShotSchedule;
 	}
 
+	/** A mid-air chain's snap draw is playing (the pull has already started; the bow looses at its end). */
+	bool IsChainSnapPlaying() const
+	{
+		return bChainSnap;
+	}
+
+	/** The snap's clock (ChainSnapSeconds, raise then draw then loose) and the seconds since the press. */
+	const FGrappleShotSchedule& GetChainSnapSchedule() const
+	{
+		return ChainSnapSchedule;
+	}
+	float GetChainSnapSeconds() const
+	{
+		return bChainSnap ? ChainSnapElapsed : 0.f;
+	}
+
+	/** Takes a shot at Anchor as a chain (or not) without the target pick and the reach checks, for tests. */
+	void BeginShotForTest(AGrappleAnchor* Anchor, bool bChain)
+	{
+		BeginShot(Anchor, nullptr, bChain);
+	}
+
 	/** The press has been taken and the arrow has not left the bow yet. */
 	UFUNCTION(BlueprintPure, Category = "Grapple")
 	bool IsShotPending() const
@@ -490,6 +512,9 @@ protected:
 	/** Drops a pending shot (the anchor went, the owner is going): the bow comes down, nothing flies. */
 	void CancelShot();
 
+	/** Steps the chain snap: the string back over its draw, the loose at its end. */
+	void AdvanceChainSnap(float DeltaSeconds);
+
 	/** What an arrow of Definition flies at, cm/s: a chain's speed when bChain, else the projectile's own. */
 	float GetArrowSpeed(const UArrowDefinition* Definition, bool bChain) const;
 
@@ -531,6 +556,14 @@ protected:
 	bool bShotChain = false;
 	float ShotElapsed = 0.f;
 	FGrappleShotSchedule ShotSchedule;
+
+	/**
+	 * A chain's snap draw: the pull went at the press, the bow comes up and draws over the snap schedule and looses at its end
+	 * (AdvanceChainSnap), so the arm is seen to shoot as the pull begins.
+	 */
+	bool bChainSnap = false;
+	float ChainSnapElapsed = 0.f;
+	FGrappleShotSchedule ChainSnapSchedule;
 	TWeakObjectPtr<AGrappleAnchor> ShotAnchor;
 
 	UPROPERTY(Transient)
