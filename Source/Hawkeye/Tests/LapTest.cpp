@@ -10,6 +10,7 @@
 #include "Combat/MeleeComponent.h"
 #include "Combat/MeleeRules.h"
 #include "Components/CapsuleComponent.h"
+#include "Demo/DemoStart.h"
 #include "Engine/Engine.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/LocalPlayer.h"
@@ -3384,19 +3385,16 @@ bool FHawkeyeStreetFightRunner::Update()
 			}
 		}
 		Inventory->SelectArrowSlot(1);
-		// On the sidewalk 9 m from the pair toward the heavy: the pair first, the heavy some seconds later.
-		const FVector Toward = (HeavyThug->GetActorLocation() - PairMid).GetSafeNormal2D();
-		FVector Ground;
-		if (!FindGround(World, PairMid + Toward * 900.f, PairMid.Z + 300.f, Kate, Ground))
+		// On the sidewalk 9 m from the pair toward the heavy: the pair first, the heavy some seconds later. The same stand
+		// -HawkeyeDemoStart=street_fight uses (Demo/DemoStart.h), so the lap and the clip cannot drift.
+		FHawkeyeDemoStand Stand;
+		FString StandWhy;
+		if (!FHawkeyeDemoStart::PlanStreetFight(World, Kate, Stand, StandWhy))
 		{
-			Test->AddError(TEXT("No sidewalk between the pair and the heavy."));
+			Test->AddError(FString::Printf(TEXT("No street fight stand: %s."), *StandWhy));
 			return true;
 		}
-		const float HalfHeight = Kate->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-		const float Yaw = (-Toward).Rotation().Yaw;
-		Kate->TeleportTo(Ground + FVector(0.f, 0.f, HalfHeight + 2.f), FRotator(0.f, Yaw, 0.f));
-		PC->SetControlRotation(FRotator(-8.f, Yaw, 0.f));
-		PC->SetViewTarget(Kate);
+		FHawkeyeDemoStart::PutKate(Kate, Stand, /*bCutCamera=*/false);
 		KateHealth->SetInvulnerable(false);
 		KateHealth->Heal(1000.f);
 		LastHealth = KateHealth->GetCurrentHealth();

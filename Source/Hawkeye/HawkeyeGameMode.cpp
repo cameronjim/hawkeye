@@ -16,8 +16,10 @@
 #include "Player/HawkeyeCharacter.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Combat/HealthComponent.h"
+#include "Demo/DemoStart.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Mission/ChapterMaps.h"
 #include "Mission/MissionObjective.h"
 #include "Partner/HawkeyePartnerController.h"
 #include "Save/HawkeyeCampaignState.h"
@@ -44,6 +46,9 @@ namespace HawkeyeGameModeClock
 {
 	/** When the last level change began (the outgoing game mode's EndPlay), wall seconds; 0 before any. */
 	static double LevelChangeStartSeconds = 0.0;
+
+	/** -HawkeyeDemoStart has been looked at this process (it places Kate once, on the first map). */
+	static bool bDemoStartDone = false;
 
 	/** -HawkeyeReloadAfterPlayable has reopened the level once this process. */
 	static bool bMeasuredReloadDone = false;
@@ -128,6 +133,43 @@ void AHawkeyeGameMode::NotePlayable()
 	if (Save && Save->IsInInterior())
 	{
 		Save->RestoreCarriedQuiver(GetWorld());
+	}
+	ApplyDemoStart();
+}
+
+void AHawkeyeGameMode::ApplyDemoStart()
+{
+	if (HawkeyeGameModeClock::bDemoStartDone)
+	{
+		return;
+	}
+	FString Asked;
+	const EHawkeyeDemoClip Clip = FHawkeyeDemoStart::ClipFromCommandLine(FCommandLine::Get(), &Asked);
+	if (Asked.IsEmpty())
+	{
+		return;
+	}
+	// Once: a door into an interior, or a reload after a death, opens another map in this process and must not move her again.
+	HawkeyeGameModeClock::bDemoStartDone = true;
+	if (Clip == EHawkeyeDemoClip::None)
+	{
+		UE_LOG(LogHawkeye, Warning, TEXT("%s: -HawkeyeDemoStart=%s names no clip (street_fight, stealth_takedown or tomas_phase)."), *GetName(), *Asked);
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (UHawkeyeChapterMaps::IsInteriorWorld(World))
+	{
+		UE_LOG(LogHawkeye, Warning, TEXT("%s: -HawkeyeDemoStart=%s: %s is an interior; the clips start in the district."), *GetName(), *Asked, *GetNameSafe(World));
+		return;
+	}
+	FString What;
+	if (FHawkeyeDemoStart::Apply(World, Clip, What))
+	{
+		UE_LOG(LogHawkeye, Log, TEXT("%s: -HawkeyeDemoStart=%s: %s."), *GetName(), *Asked, *What);
+	}
+	else
+	{
+		UE_LOG(LogHawkeye, Warning, TEXT("%s: -HawkeyeDemoStart=%s: %s."), *GetName(), *Asked, *What);
 	}
 }
 

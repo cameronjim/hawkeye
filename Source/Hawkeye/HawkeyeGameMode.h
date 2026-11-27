@@ -160,6 +160,13 @@ protected:
 	/** The first tick with a possessed pawn: logs "Playable after X s" and starts the frame watch. */
 	void NotePlayable();
 
+	/**
+	 * -HawkeyeDemoStart=<street_fight|stealth_takedown|tomas_phase>: once a process, at the first playable tick (the chapter
+	 * has started and its opening has placed Kate), puts her at that demo clip's start (Demo/DemoStart.h). Nothing without
+	 * the switch; one log line says where she went or why not.
+	 */
+	void ApplyDemoStart();
+
 	/** One real frame of the watch after the playable mark. */
 	void WatchFrame(double Now);
 
