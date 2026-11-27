@@ -14,7 +14,7 @@
       "lines": [
         "Hawkeye: Kate Bishop",
         "Solo project. Work in progress.",
-        "C++ and Unreal Engine 5",
+        "C++ + Unreal Engine 5",
         {
           "text": "Non-commercial fan project. Not affiliated with Marvel, Disney or Insomniac Games.",
           "size": 28
@@ -27,14 +27,14 @@
       "source": "Saved/Demo/establish",
       "start": 0,
       "duration": 6,
-      "caption": "A block of the East Village, built from OpenStreetMap data"
+      "caption": "East Village block = generated from OpenStreetMap data"
     },
     {
       "id": "city_generation",
       "type": "terminal",
       "source": "Saved/Demo/terminal/city_generation.txt",
       "duration": 5,
-      "caption": "City generation, rerun: 526 buildings, 2457 anchors, every check passes",
+      "caption": "City generation rerun -> 526 buildings, 2457 anchors, all checks pass",
       "prompt": "PS> .\\Tools\\generate-city.ps1 -Verify"
     },
     {
@@ -43,7 +43,7 @@
       "source": "Saved/Demo/grapple_run",
       "start": 2.8,
       "duration": 5,
-      "caption": "Grapple traversal: real movement, you keep your speed into the zip"
+      "caption": "Grapple traversal: real movement, speed carries into zip"
     },
     {
       "id": "zip_two",
@@ -51,7 +51,7 @@
       "source": "Saved/Demo/grapple_run",
       "start": 5.1,
       "duration": 3.6,
-      "caption": "The body leans into the pull and brakes on arrival"
+      "caption": "Body leans into pull -> brakes on arrival"
     },
     {
       "id": "mantle_landing",
@@ -59,7 +59,7 @@
       "source": "Saved/Demo/grapple_run",
       "start": 8.0,
       "duration": 3.5,
-      "caption": "A zip to the parapet, a hand on the lip, a vault"
+      "caption": "Zip to parapet -> hand on lip -> vault"
     },
     {
       "id": "descent",
@@ -67,7 +67,7 @@
       "source": "Saved/Demo/descent",
       "start": 0.2,
       "duration": 6,
-      "caption": "Fire escape descent: hang, drop, catch"
+      "caption": "Fire escape descent: hang -> drop -> catch"
     },
     {
       "id": "traversal_debugger",
@@ -75,7 +75,7 @@
       "source": "Saved/Demo/screen/traversal_debugger.mp4",
       "start": 0,
       "duration": 6,
-      "caption": "Traversal Debugger: the editor tab, real audit rows from the district"
+      "caption": "Traversal Debugger = editor tab, real audit rows from district"
     },
     {
       "id": "lucky",
@@ -83,7 +83,7 @@
       "source": "Saved/Demo/lucky",
       "start": 5.4,
       "duration": 5,
-      "caption": "Lucky follows, trots and sits. The rules are tested pure functions"
+      "caption": "Lucky: follow, trot, sit. Rules = tested pure functions"
     },
     {
       "id": "street_fight",
@@ -92,7 +92,7 @@
       "owner": true,
       "start": 0,
       "duration": 8,
-      "caption": "Combat: attack tokens decide who swings, so no stunlocks"
+      "caption": "Combat: attack tokens decide who swings -> no stunlocks"
     },
     {
       "id": "stealth_takedown",
@@ -110,14 +110,14 @@
       "owner": true,
       "start": 0,
       "duration": 10,
-      "caption": "Boss fight: the Tomas phase change"
+      "caption": "Boss fight: Tomas phase change"
     },
     {
       "id": "tests_run",
       "type": "terminal",
       "source": "Saved/Demo/terminal/tests_run.txt",
       "duration": 5,
-      "caption": "655 automation tests, run headless (60 only in the standalone game)",
+      "caption": "655 automation tests, headless (60 = standalone game only)",
       "prompt": "PS> .\\Tools\\run-tests.ps1"
     },
     {
@@ -125,7 +125,7 @@
       "type": "terminal",
       "source": "Saved/Demo/terminal/lap_bot.txt",
       "duration": 4,
-      "caption": "Lap bots play the chapter from the menu: a real run's log",
+      "caption": "Lap bots play chapter from menu (log from real run)",
       "prompt": "PS> UnrealEditor-Cmd ... -ExecCmds=\"Automation RunTests Hawkeye.Lap.Campaign\""
     },
     {
@@ -133,19 +133,7 @@
       "type": "card",
       "duration": 4,
       "lines": [
-        "Hawkeye: Kate Bishop",
-        {
-          "text": "Built with Claude Code as a pair.",
-          "size": 40
-        },
-        {
-          "text": "I set the design and the story, play the build and decide what changes.",
-          "size": 36
-        },
-        {
-          "text": "The agent writes much of the code under the rules in CLAUDE.md.",
-          "size": 36
-        }
+        "Hawkeye: Kate Bishop"
       ]
     }
   ]
