@@ -298,4 +298,56 @@ bool FHawkeyeObjectiveToastsWaitForTheTitle::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHawkeyeObjectiveMarkerSurvivesWaypoints, "Hawkeye.Objective.MarkerSurvivesWaypoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FHawkeyeObjectiveMarkerSurvivesWaypoints::RunTest(const FString& Parameters)
+{
+	// The rule: a marked safehouse or pedestal (a waypoint) never takes the objective's marker; a crime's or a challenge's does.
+	TestFalse(TEXT("No secondary markers: the objective stays"), UObjectiveMarkerMath::SecondaryReplacesObjective(0, 0));
+	TestFalse(TEXT("A marked safehouse alone: the objective stays (chapter 3's first marker was hidden by one)"),
+		UObjectiveMarkerMath::SecondaryReplacesObjective(1, 1));
+	TestFalse(TEXT("A safehouse and a pedestal: the objective stays"), UObjectiveMarkerMath::SecondaryReplacesObjective(2, 2));
+	TestTrue(TEXT("A crime's marker takes its place"), UObjectiveMarkerMath::SecondaryReplacesObjective(1, 0));
+	TestTrue(TEXT("A crime's marker and a safehouse: the crime wins"), UObjectiveMarkerMath::SecondaryReplacesObjective(2, 1));
+	TestFalse(TEXT("More waypoints than marks is nonsense, not a task"), UObjectiveMarkerMath::SecondaryReplacesObjective(1, 5));
+
+	// An active objective always shows, from any range, except right on it or while a task's markers take its place.
+	const float Hide = 300.f;
+	TestTrue(TEXT("From 5 m"), UObjectiveMarkerMath::ShouldShowObjectiveMarker(true, 500.f, Hide, false));
+	TestTrue(TEXT("From 300 m"), UObjectiveMarkerMath::ShouldShowObjectiveMarker(true, 30000.f, Hide, false));
+	TestTrue(TEXT("From 20 km"), UObjectiveMarkerMath::ShouldShowObjectiveMarker(true, 2000000.f, Hide, false));
+	TestFalse(TEXT("Within 3 m: she is there"), UObjectiveMarkerMath::ShouldShowObjectiveMarker(true, 299.f, Hide, false));
+	TestFalse(TEXT("No point for the objective: nothing to show"), UObjectiveMarkerMath::ShouldShowObjectiveMarker(false, 5000.f, Hide, false));
+	TestFalse(TEXT("A task's markers take its place"), UObjectiveMarkerMath::ShouldShowObjectiveMarker(true, 5000.f, Hide, true));
+
+	// Far away, off to the side or behind, the marker is held at the edge with its arrow and its distance reads whole metres.
+	const FVector2D Viewport(1280.f, 720.f);
+	const FMatrix ViewProjection = UObjectiveMarkerMath::MakeViewProjection(FVector::ZeroVector, FRotator::ZeroRotator, 90.f, Viewport);
+	for (const FVector& Far : { FVector(150000.f, 90000.f, 4000.f), FVector(-90000.f, 20000.f, 0.f), FVector(1000.f, -250000.f, 9000.f), FVector(0.f, 0.f, 500000.f) })
+	{
+		const FObjectiveMarkerPlacement Placement = UObjectiveMarkerMath::PlaceMarker(Far, ViewProjection, Viewport, 48.f);
+		TestTrue(TEXT("A far point's marker is inside the screen, at least a margin from its edges"),
+			Placement.Position.X >= 47.5f && Placement.Position.X <= 1232.5f && Placement.Position.Y >= 47.5f && Placement.Position.Y <= 672.5f);
+		TestTrue(TEXT("and its arrow angle is finite"), FMath::IsFinite(Placement.ArrowAngleDegrees));
+	}
+	TestEqual(TEXT("and its distance reads in metres"), UObjectiveMarkerMath::FormatDistance(1500000.f).ToString(), FString(TEXT("15000 m")));
+
+	// In a world: a marked safehouse's secondary marker does not stop the objective having its point.
+	FHawkeyeTestWorld TestWorld;
+	UMissionSubsystem* Missions = TestWorld.Get() ? TestWorld.Get()->GetSubsystem<UMissionSubsystem>() : nullptr;
+	if (!TestNotNull(TEXT("missions"), Missions))
+	{
+		return false;
+	}
+	Missions->StartMission(HawkeyeObjectiveMarkerTest::MakeMission(Missions, { TEXT("find_sleigh"), TEXT("enter_grotto") }));
+	Missions->RegisterObjectiveLocation(TEXT("find_sleigh"), FVector(24000.f, -3000.f, 20.f));
+	Missions->SetSecondaryMarkers(TEXT("safehouse"), { FVector(500.f, 200.f, 300.f) });
+	FVector Point;
+	TestEqual(TEXT("One secondary marker is up"), Missions->GetSecondaryMarkers().Num(), 1);
+	TestTrue(TEXT("and the first objective still has its point"), Missions->GetCurrentObjectiveLocation(Point));
+	TestEqual(TEXT("the volume's"), Point, FVector(24000.f, -3000.f, 20.f));
+	return true;
+}
+
 #endif

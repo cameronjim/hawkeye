@@ -111,7 +111,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "HUD|Objective")
 	FLinearColor GetMarkerColor() const { return MarkerColor; }
 
-	/** Secondary markers drawn this frame (they replace the objective's marker while there are any). */
+	/**
+	 * Secondary markers drawn this frame. A crime's or a challenge's replace the objective's marker while they are up; a
+	 * marked safehouse or pedestal is drawn beside it (UObjectiveMarkerMath::SecondaryReplacesObjective).
+	 */
 	UFUNCTION(BlueprintPure, Category = "HUD|Objective")
 	int32 GetSecondaryMarkerCount() const { return Secondary.Num(); }
 
@@ -191,8 +194,8 @@ protected:
 	void UpdateMarker(const FGeometry& MyGeometry);
 
 	/**
-	 * Projects the mission's secondary markers (a challenge's targets or next checkpoint). True when
-	 * there are any, in which case they take the objective marker's place.
+	 * Projects the mission's secondary markers (a crime, a challenge's targets or next checkpoint, a marked safehouse or
+	 * pedestal) into Secondary. True when some of them are a task's, which take the objective marker's place.
 	 */
 	bool UpdateSecondaryMarkers(APlayerController* PC, const FVector& PawnLocation, const FVector& CameraLocation);
 

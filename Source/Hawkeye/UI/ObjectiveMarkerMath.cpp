@@ -108,3 +108,13 @@ FText UObjectiveMarkerMath::FormatDistance(float Centimetres)
 	const int32 Metres = FMath::RoundToInt(FMath::Max(Centimetres, 0.f) / 100.f);
 	return FText::FromString(FString::Printf(TEXT("%d m"), Metres));
 }
+
+bool UObjectiveMarkerMath::SecondaryReplacesObjective(int32 TotalMarks, int32 WaypointMarks)
+{
+	return TotalMarks - FMath::Clamp(WaypointMarks, 0, FMath::Max(TotalMarks, 0)) > 0;
+}
+
+bool UObjectiveMarkerMath::ShouldShowObjectiveMarker(bool bHasTarget, float DistanceCm, float HideWithinDistanceCm, bool bSecondaryReplaces)
+{
+	return bHasTarget && !bSecondaryReplaces && DistanceCm >= HideWithinDistanceCm;
+}

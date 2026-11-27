@@ -87,4 +87,21 @@ public:
 	/** "42 m": whole metres, rounded. */
 	UFUNCTION(BlueprintPure, Category = "HUD|Objective")
 	static FText FormatDistance(float Centimetres);
+
+	/**
+	 * Whether the secondary markers up this frame (TotalMarks of them) take the objective's marker place: only a task's
+	 * do (a crime's, a challenge's targets and checkpoints). WaypointMarks of them are places the player was pointed at
+	 * or marked herself (a safehouse, a pedestal); those sit beside the objective's marker and never hide it. (2026-11-27:
+	 * the "[Safehouse nearby]" mark at the start of a chapter hid chapter 3's first objective.)
+	 */
+	UFUNCTION(BlueprintPure, Category = "HUD|Objective")
+	static bool SecondaryReplacesObjective(int32 TotalMarks, int32 WaypointMarks);
+
+	/**
+	 * Whether the current objective's marker (the diamond, or at the screen's edge its chevron, with the distance) is drawn:
+	 * whenever there is an objective with a point, from any range, except within HideWithinDistance of it (she is there) or
+	 * while a task's secondary markers take its place.
+	 */
+	UFUNCTION(BlueprintPure, Category = "HUD|Objective")
+	static bool ShouldShowObjectiveMarker(bool bHasTarget, float DistanceCm, float HideWithinDistanceCm, bool bSecondaryReplaces);
 };

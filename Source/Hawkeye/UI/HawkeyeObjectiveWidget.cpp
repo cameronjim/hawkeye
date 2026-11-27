@@ -243,13 +243,10 @@ void UHawkeyeObjectiveWidget::UpdateMarker(const FGeometry& /*MyGeometry*/)
 		UpdateSafehouseIcons(Pawn->GetActorLocation(), CameraLocation);
 		UpdateChallengeIcons(PC, Pawn->GetActorLocation(), CameraLocation, Distance);
 	}
-	if (Pawn && UpdateSecondaryMarkers(PC, Pawn->GetActorLocation(), CameraLocation))
-	{
-		// A challenge's markers take the objective's place until it ends.
-		return;
-	}
-
-	if (!bHasTarget || Distance < HideWithinDistance)
+	// A crime's or a challenge's markers take the objective's place until it ends; a marked safehouse or pedestal does not
+	// (the "[Safehouse nearby]" mark at a chapter's start must not hide where the chapter goes).
+	const bool bSecondaryReplaces = Pawn && UpdateSecondaryMarkers(PC, Pawn->GetActorLocation(), CameraLocation);
+	if (!UObjectiveMarkerMath::ShouldShowObjectiveMarker(bHasTarget, Distance, HideWithinDistance, bSecondaryReplaces))
 	{
 		return;
 	}
@@ -326,7 +323,12 @@ bool UHawkeyeObjectiveWidget::UpdateSecondaryMarkers(APlayerController* PC, cons
 		Secondary.Add(Mark);
 	}
 	SecondaryDistanceText = UObjectiveMarkerMath::FormatDistance(Nearest);
-	return true;
+	int32 Waypoints = 0;
+	for (const FSecondaryMark& Mark : Secondary)
+	{
+		Waypoints += Mark.Kind != ESecondaryKind::Plain ? 1 : 0;
+	}
+	return UObjectiveMarkerMath::SecondaryReplacesObjective(Secondary.Num(), Waypoints);
 }
 
 void UHawkeyeObjectiveWidget::UpdateSafehouseIcons(const FVector& PawnLocation, const FVector& CameraLocation)
