@@ -187,6 +187,24 @@ void UCharacterLightRigSubsystem::EnsureLights()
 		Lights.Add(Light);
 	}
 	bLightsVisible = false;
+	// Forward shading, translucency, water and volumetric fog take one directional light: the level's sun/moon must win over
+	// the rig's three (priority 0), or the engine prints "Multiple directional lights are competing..." across the screen.
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (*It == Holder)
+		{
+			continue;
+		}
+		TInlineComponentArray<UDirectionalLightComponent*> Suns(*It);
+		for (UDirectionalLightComponent* Sun : Suns)
+		{
+			if (Sun->ForwardShadingPriority < 1)
+			{
+				Sun->SetForwardShadingPriority(1);
+			}
+		}
+	}
+	bLightsVisible = false;
 	UE_LOG(LogHawkeye, Log, TEXT("Character light rig: three lights in lighting channel 1."));
 }
 
