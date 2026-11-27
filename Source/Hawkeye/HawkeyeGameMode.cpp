@@ -25,10 +25,12 @@
 #include "Save/HawkeyeCampaignState.h"
 #include "Save/HawkeyeSaveSubsystem.h"
 #include "TimerManager.h"
+#include "World/ThugAIController.h"
 #include "World/ThugCharacter.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "UnrealClient.h"
 #include "Misc/AutomationTest.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMemory.h"
@@ -166,6 +168,35 @@ void AHawkeyeGameMode::ApplyDemoStart()
 	if (FHawkeyeDemoStart::Apply(World, Clip, What))
 	{
 		UE_LOG(LogHawkeye, Log, TEXT("%s: -HawkeyeDemoStart=%s: %s."), *GetName(), *Asked, *What);
+	}
+	// -HawkeyeDemoStartShot=<path>: one screenshot 8 s after the start is applied, then the game quits (a check, not a clip).
+	FString ShotPath;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-HawkeyeDemoStartShot="), ShotPath) && !ShotPath.IsEmpty())
+	{
+		FTimerHandle ShotTimer;
+		World->GetTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateLambda([ShotPath]()
+		{
+			if (const UWorld* ShotWorld = GWorld)
+			{
+				const APawn* ShotKate = ShotWorld->GetFirstPlayerController() ? ShotWorld->GetFirstPlayerController()->GetPawn() : nullptr;
+				UE_LOG(LogHawkeye, Log, TEXT("-HawkeyeDemoStartShot: Kate at %s."), ShotKate ? *ShotKate->GetActorLocation().ToCompactString() : TEXT("(none)"));
+				for (TActorIterator<AThugCharacter> It(ShotWorld); It; ++It)
+				{
+					if (ShotKate && FVector::Dist2D(It->GetActorLocation(), ShotKate->GetActorLocation()) < 10000.f)
+					{
+						UE_LOG(LogHawkeye, Log, TEXT("-HawkeyeDemoStartShot: %s %s at %s, %.1f m from Kate."), *It->GetName(), It->IsHeavy() ? TEXT("(heavy)") : TEXT(""),
+							*It->GetActorLocation().ToCompactString(), FVector::Dist2D(It->GetActorLocation(), ShotKate->GetActorLocation()) / 100.f);
+					}
+				}
+			}
+			FScreenshotRequest::RequestScreenshot(ShotPath, /*bInShowUI=*/true, /*bAddFilenameSuffix=*/false);
+			UE_LOG(LogHawkeye, Log, TEXT("-HawkeyeDemoStartShot: screenshot requested to %s."), *ShotPath);
+		}), 8.f, false);
+		FTimerHandle QuitTimer;
+		World->GetTimerManager().SetTimer(QuitTimer, FTimerDelegate::CreateLambda([]()
+		{
+			FPlatformMisc::RequestExit(false);
+		}), 12.f, false);
 	}
 	else
 	{

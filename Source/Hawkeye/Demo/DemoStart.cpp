@@ -18,6 +18,13 @@
 #include "Mission/MissionObjective.h"
 #include "Mission/MissionSubsystem.h"
 #include "Player/HawkeyeCharacter.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
+#include "UI/HawkeyeHudWidget.h"
+#include "Combat/BowComponent.h"
+#include "BrainComponent.h"
+#include "TimerManager.h"
+#include "World/ThugAIController.h"
 #include "World/ThugCharacter.h"
 
 const TCHAR* const FHawkeyeDemoStart::SwitchName = TEXT("HawkeyeDemoStart");
@@ -445,10 +452,66 @@ bool FHawkeyeDemoStart::Apply(UWorld* World, EHawkeyeDemoClip Clip, FString& Out
 			{
 				Missions->AbortMission();
 			}
+			// Aborting fires no event: repaint the HUD's objective line so the chase's title does not stay on screen.
+			TArray<UUserWidget*> Huds;
+			UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Huds, UHawkeyeHudWidget::StaticClass(), false);
+			for (UUserWidget* Hud : Huds)
+			{
+				Cast<UHawkeyeHudWidget>(Hud)->RefreshObjective();
+			}
 			Extra = TEXT("; the chapter's chase was put away (free roam)");
 		}
 	}
 	PutKate(Kate, Stand, /*bCutCamera=*/true);
+	if (Clip == EHawkeyeDemoClip::StreetFight)
+	{
+		// The group patrols on while the game loads and the owner gets ready to record, and had walked 30 m off in 8 s: hold the
+		// three where they stand (facing Kate's way, 9 m off) until she first moves or looses an arrow, then let them go.
+		TArray<TWeakObjectPtr<AThugCharacter>> Held;
+		for (TActorIterator<AThugCharacter> It(World); It; ++It)
+		{
+			if (It->ActorHasTag(StreetGroupTag) && !HawkeyeDemoStartLocal::IsDown(*It))
+			{
+				if (AThugAIController* Brain = Cast<AThugAIController>(It->GetController()))
+				{
+					// Stopping ST_Thug stops the patrol task that keeps walking (SetHeld and SetThinkingEnabled leave it running).
+					Brain->StopMovement();
+					if (UBrainComponent* Tree = Brain->FindComponentByClass<UBrainComponent>())
+					{
+						Tree->StopLogic(TEXT("clip start hold"));
+					}
+					Held.Add(*It);
+				}
+			}
+		}
+		const AHawkeyeCharacter* HawkeyeKate = Cast<AHawkeyeCharacter>(Kate);
+		const int32 LoosedAtStart = HawkeyeKate && HawkeyeKate->GetBowComponent() ? HawkeyeKate->GetBowComponent()->GetArrowsLoosed() : 0;
+		const FVector StandFeet = Kate->GetActorLocation();
+		TSharedRef<FTimerHandle> Handle = MakeShared<FTimerHandle>();
+		World->GetTimerManager().SetTimer(*Handle, FTimerDelegate::CreateLambda(
+			[World = TWeakObjectPtr<UWorld>(World), Kate = TWeakObjectPtr<APawn>(Kate), Held, LoosedAtStart, StandFeet, Handle]()
+			{
+				const AHawkeyeCharacter* Who = Cast<AHawkeyeCharacter>(Kate.Get());
+				const bool bMoved = !Who || FVector::Dist2D(Who->GetActorLocation(), StandFeet) > 300.f
+					|| (Who->GetBowComponent() && Who->GetBowComponent()->GetArrowsLoosed() != LoosedAtStart);
+				if (!bMoved || !World.IsValid())
+				{
+					return;
+				}
+				for (const TWeakObjectPtr<AThugCharacter>& Thug : Held)
+				{
+					if (AThugAIController* Brain = Thug.IsValid() ? Cast<AThugAIController>(Thug->GetController()) : nullptr)
+					{
+						if (UBrainComponent* Tree = Brain->FindComponentByClass<UBrainComponent>())
+						{
+							Tree->StartLogic();
+						}
+					}
+				}
+				World->GetTimerManager().ClearTimer(*Handle);
+			}), 0.25f, true);
+		Extra += FString::Printf(TEXT("; the %d StreetGroup thugs hold still until she moves or shoots"), Held.Num());
+	}
 	OutWhat = FString::Printf(TEXT("Kate put %s: feet %s, yaw %.0f%s"), *Stand.Where, *Stand.Feet.ToCompactString(), Stand.Yaw, *Extra);
 	return true;
 }
