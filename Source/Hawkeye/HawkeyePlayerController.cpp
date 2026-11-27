@@ -185,7 +185,16 @@ bool AHawkeyePlayerController::InputKey(const FInputKeyEventArgs& Params)
 {
 	// Every key reaches here regardless of what (if anything) it is bound to, so this is the one
 	// place that reliably knows which device was touched last.
-	bUsingGamepad = Params.Key.IsGamepadKey();
+	// A resting stick or trigger that jitters (or a virtual pad driver) sends tiny axis events: only a button, or an axis
+	// pushed past half, counts as the pad being touched. Until then the hints read keyboard and mouse.
+	if (!Params.Key.IsGamepadKey())
+	{
+		bUsingGamepad = false;
+	}
+	else if ((!Params.Key.IsAxis1D() && !Params.Key.IsAxis2D()) || FMath::Abs(Params.AmountDepressed) > 0.5f)
+	{
+		bUsingGamepad = true;
+	}
 
 	// Photo mode takes every key and axis, so nothing reaches the frozen game under it.
 	if (PhotoMode && PhotoMode->IsActive())
