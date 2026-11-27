@@ -218,6 +218,9 @@ bool FHawkeyeSaveIsolation::RunTest(const FString& Parameters)
 	TestTrue(TEXT("-ExecCmds with Automation isolates"),
 		HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -ExecCmds=\"Automation RunTests Foo; Quit\"")));
 	TestTrue(TEXT("-HawkeyeDemo isolates"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -HawkeyeDemo -game")));
+	TestTrue(TEXT("-HawkeyeDemo with a value isolates"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -HawkeyeDemo=1")));
+	TestFalse(TEXT("the clip starts play on the player's own slots (the recording script backs them up)"),
+		HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject -game -NoMainMenu -HawkeyeDemoStart=street_fight -log")));
 	TestTrue(TEXT("a lower-case flag isolates"), HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("-UNATTENDED")));
 	TestFalse(TEXT("the player's own launch does not"),
 		HawkeyeAutomation::CommandLineIsolatesSaves(TEXT("Hawkeye.uproject /Game/Maps/L_District_EastVillage -game -windowed -log")));

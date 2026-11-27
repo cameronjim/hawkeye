@@ -51,6 +51,24 @@ namespace HawkeyeAutomation
 		return IsAutomationRun() && !PlaysAsPlayer();
 	}
 
+	/**
+	 * The -HawkeyeDemo switch itself: not a longer one that starts with it (-HawkeyeDemoStart=, the owner's clip starts, plays on
+	 * the player's own slots; Tools/demo-record.ps1 backs them up).
+	 */
+	static bool HasDemoFlag(const TCHAR* CommandLine)
+	{
+		const TCHAR* Flag = TEXT("-HawkeyeDemo");
+		const int32 Length = FCString::Strlen(Flag);
+		for (const TCHAR* At = FCString::Stristr(CommandLine, Flag); At; At = FCString::Stristr(At + Length, Flag))
+		{
+			if (!FChar::IsAlpha(At[Length]))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	bool CommandLineIsolatesSaves(const TCHAR* CommandLine)
 	{
 		if (!CommandLine)
@@ -59,7 +77,7 @@ namespace HawkeyeAutomation
 		}
 		return FCString::Stristr(CommandLine, TEXT("-unattended")) != nullptr
 			|| FCString::Stristr(CommandLine, TEXT("Automation")) != nullptr
-			|| FCString::Stristr(CommandLine, TEXT("-HawkeyeDemo")) != nullptr;
+			|| HasDemoFlag(CommandLine);
 	}
 
 	bool IsolatesSaves()
