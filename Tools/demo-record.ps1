@@ -1,8 +1,8 @@
 # Starts the game for one of the owner's three demo clips and puts the campaign save back afterwards.
 #
-#   .\Tools\demo-record.ps1 -Clip street_fight       # chapter 1's district, the street group on Avenue A
-#   .\Tools\demo-record.ps1 -Clip stealth_takedown   # chapter 3 (the Grotto) from its start
-#   .\Tools\demo-record.ps1 -Clip tomas_phase        # chapter 4 (the social club) from its start
+#   .\Tools\demo-record.ps1 -Clip street_fight       # on Avenue A, 9 m from the street group (bat, gunner; the heavy behind)
+#   .\Tools\demo-record.ps1 -Clip stealth_takedown   # chapter 3 (the Grotto), on the street in front of the grotto's door
+#   .\Tools\demo-record.ps1 -Clip tomas_phase        # chapter 4 (the social club), on the club's roof facing Tomas's crew
 #   .\Tools\demo-record.ps1 -Restore <folder>        # put a backup folder's saves back by hand
 #
 # Playing the game, as opposed to running a test, writes your own campaign slot: the roaming autosave and every
@@ -13,6 +13,9 @@
 #
 # -NoMainMenu skips the boot menu, so Continue cannot load your save into the clip's chapter. -HawkeyeChapter=<asset>
 # starts that chapter's mission in the district (the asset under /Game/Missions; the laps use the same names).
+# -HawkeyeDemoStart=<clip> then puts Kate at the clip's start once the chapter has opened (Source/Hawkeye/Demo/DemoStart.h): the
+# game logs one "-HawkeyeDemoStart=..." line in Saved\Logs\Hawkeye.log saying where, or why not. From any folder:
+#   & "C:\Users\camer\code\hawkeye\Tools\demo-record.ps1" -Clip street_fight
 # Fullscreen 1920x1080 like play.ps1 -Fullscreen. Close the game with Alt+F4 or Esc, Quit, when the clip is done.
 [CmdletBinding(DefaultParameterSetName = "Clip")]
 param(
@@ -77,6 +80,8 @@ $chapter = switch ($Clip) {
 }
 $argList = @("`"$(Join-Path $Root 'Hawkeye.uproject')`"", "/Game/Maps/L_District_EastVillage", "-game", "-NoMainMenu", "-Difficulty=Normal", "-log")
 if ($chapter) { $argList += $chapter }
+# Where Kate starts: in front of the clip's action, not at the district's PlayerStart (the game mode applies it after the opening).
+$argList += "-HawkeyeDemoStart=$Clip"
 if ($Windowed) { $argList += @("-windowed", "-ResX=1920", "-ResY=1080") } else { $argList += @("-fullscreen", "-ResX=1920", "-ResY=1080") }
 
 Write-Host "Starting the game for $Clip. Record with your overlay; close the game when you have the take."

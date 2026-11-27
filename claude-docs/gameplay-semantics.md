@@ -1003,6 +1003,13 @@ parts, all in the files named:
   toast is held: queued, not drawn, its clock and sound waiting; when the card has gone the front one
   comes up for its full 2 s with its sound (`Hawkeye.Objective.ToastsWaitForTheTitle`; the campaign
   lap checks it under the card and after it). Hints wait out the card too (below).
+- Which markers draw (2026-11-27, from "the first objective had no marker, only the safehouse's"): secondary markers
+  come in two kinds. A task's (a crime's red "!", a challenge's targets and checkpoints) take the objective's marker
+  place while they are up. A waypoint (a marked safehouse or pedestal: the "[Safehouse nearby]" mark at a chapter's start,
+  "Mark nearest ...", the map) is drawn beside it and never hides it (`UObjectiveMarkerMath::SecondaryReplacesObjective`).
+  A current objective with a point always shows (`ShouldShowObjectiveMarker`): from any range, the diamond with its
+  distance, held at the screen edge with a chevron when off screen or behind; only within 3 m of it, with no point, or
+  while a task's markers are up does it not. `Hawkeye.Objective.MarkerSurvivesWaypoints`.
 - The retired Rooftops chapter's objectives each have a 1 m beacon with a purple emissive top and a 300 lm
   purple point light; tagged `objective:<id>`, they stay dark while Night Shift runs.
 - An objective may carry a `Hint`, a second line under its title in the HUD. (2026-09-28) Night Shift's
@@ -1012,6 +1019,27 @@ parts, all in the files named:
   a world marker (medal and distance) when the current objective is farther, not while a
   challenge runs. A marked safehouse's marker is a house with its distance and name, a "?"
   in it and "[Unknown safehouse]" until found; a marked pedestal's is a medal. (2026-09-28)
+
+## Demo starts (2026-11-27)
+- `-HawkeyeDemoStart=<street_fight|stealth_takedown|tomas_phase>` puts Kate at the start of one of the owner's three hand-recorded
+  clips (`Tools/demo-record.ps1 -Clip <name>` passes it; `docs/demo/recording-guide.md` says what is in front of her). It is
+  read once per process by the game mode at the first playable tick (the chapter has started and its opening has placed her),
+  logs one line, `AHawkeyeGameMode: -HawkeyeDemoStart=<clip>: Kate put <where>: feet <x y z>, yaw <deg>`, or a warning why
+  not, and does nothing without the switch, in an interior, or after the first map. It needs `-NoMainMenu` (a main menu holds
+  the chapter's opening until it is closed, and the opening would move her afterwards). It is not `-HawkeyeDemo`: the
+  clips play on the player's own save slots (the script backs them up).
+- The stands are `FHawkeyeDemoStart::Plan*` (Demo/DemoStart.h), pure over the world: `PlanStreetFight` is the stand
+  `Hawkeye.Lap.StreetFight` uses (on the Avenue A sidewalk 9 m from the StreetGroup's bat and gunner, on the heavy's side, facing
+  the pair), shared with the lap so they cannot drift. `PlanStealthTakedown`: on the street in front of the chapter site's first
+  door into an interior, facing it, outside the current objective's arrival volume (find_sleigh's reaches 11 m from the door, so
+  the nearest legal spot is about 9 m, along the pavement), the door in view; walking forward enters the volume and completes
+  `find_sleigh` as play does. `PlanTomasPhase`: on the club roof at the parapet anchor's side (2.5 to 9 m in), 4 m clear of the
+  crew, facing the crew, so the boss fight's own watch (`UpdateApproach`) completes `meet_tomas` and starts the intro; no
+  objective state is touched. Where no roof spot is free it falls back to the street stand below the anchor, looking up at it.
+- The street fight clip is free roam: the district's own chapter opens on a chase whose thief runs off (losing him reloads
+  the level), so the chase is stopped and the chapter put away; a chapter named with `-HawkeyeChapter` is left alone.
+- `Hawkeye.DemoStart.*`: the switch parses, the geometry, and each stand in a world with ground (finite, on ground a downward
+  trace finds, the stated distance from what it faces, facing it).
 
 ## Flashback
 - `Play(Definition)` with a null definition or zero slides finishes immediately and
