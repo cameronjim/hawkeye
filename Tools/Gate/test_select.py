@@ -185,6 +185,17 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("Hawkeye.Door", plan["tests"])
         self.assertIn("Hawkeye.Thug", plan["tests"])
 
+    def test_demo_start_cpp_has_its_own_rule(self):
+        plan = plan_for("Source/Hawkeye/Demo/DemoStart.cpp")
+        self.assertFalse(plan["broad"])
+        self.assertTrue(plan["build"])
+        self.assertIn("Hawkeye.DemoStart", plan["tests"])
+        self.assertIn("EastVillage", plan["laps"])
+
+    def test_the_objective_marker_files_run_the_objective_tests(self):
+        plan = plan_for("Source/Hawkeye/UI/ObjectiveMarkerMath.cpp", "Source/Hawkeye/UI/HawkeyeObjectiveWidget.cpp")
+        self.assertIn("Hawkeye.Objective", plan["tests"])
+
     def test_world_fallback(self):
         plan = plan_for("Source/Hawkeye/World/DoorActor.cpp")
         self.assertIn("Hawkeye.Door", plan["tests"])

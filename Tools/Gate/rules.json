@@ -135,6 +135,13 @@
       "laps": ["Campaign", "EastVillage"]
     },
     {
+      "name": "demo clip starts C++ (the owner's -HawkeyeDemoStart)",
+      "match": ["Source/Hawkeye/Demo/**"],
+      "build": true,
+      "tests": ["Hawkeye.DemoStart", "Hawkeye.Objective"],
+      "laps": ["EastVillage"]
+    },
+    {
       "name": "boss and chase C++",
       "match": ["Source/Hawkeye/Boss/**", "Source/Hawkeye/Chase/**"],
       "build": true,
@@ -160,7 +167,7 @@
       "match": ["Source/Hawkeye/UI/**", "Source/Hawkeye/Audio/**", "Source/Hawkeye/Dialogue/**", "Source/Hawkeye/Phone/**",
                 "Source/Hawkeye/Playtest/**"],
       "build": true,
-      "tests": ["Hawkeye.Hud", "Hawkeye.Pause", "Hawkeye.Map", "Hawkeye.Hints", "Hawkeye.ChapterTitle", "Hawkeye.Inventory",
+      "tests": ["Hawkeye.Hud", "Hawkeye.Pause", "Hawkeye.Map", "Hawkeye.Hints", "Hawkeye.ChapterTitle", "Hawkeye.Inventory", "Hawkeye.Objective",
                 "Hawkeye.Input", "Hawkeye.Accessibility", "Hawkeye.Challenge", "Hawkeye.Audio", "Hawkeye.Music", "Hawkeye.Dialogue",
                 "Hawkeye.Phone", "Hawkeye.Playtest"]
     },
