@@ -11,6 +11,7 @@
 #include "Vfx/HawkeyeVfxSubsystem.h"
 #include "World/HawkeyeResidentAssets.h"
 #include "Mission/MissionSubsystem.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "Player/HawkeyeCharacter.h"
@@ -150,6 +151,11 @@ void AHawkeyeGameMode::ApplyDemoStart()
 	if (Asked.IsEmpty())
 	{
 		return;
+	}
+	// No engine debug text in a recording (UE has no command line switch for it; the console command sets GAreScreenMessagesEnabled).
+	if (GEngine)
+	{
+		GEngine->Exec(GetWorld(), TEXT("DisableAllScreenMessages"));
 	}
 	// Once: a door into an interior, or a reload after a death, opens another map in this process and must not move her again.
 	HawkeyeGameModeClock::bDemoStartDone = true;

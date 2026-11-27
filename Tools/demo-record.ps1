@@ -78,7 +78,7 @@ $chapter = switch ($Clip) {
     "stealth_takedown" { "-HawkeyeChapter=DA_CH03_Grotto" }
     "tomas_phase" { "-HawkeyeChapter=DA_CH04_SocialClub" }
 }
-$argList = @("`"$(Join-Path $Root 'Hawkeye.uproject')`"", "/Game/Maps/L_District_EastVillage", "-game", "-NoMainMenu", "-Difficulty=Normal", "-log")
+$argList = @("`"$(Join-Path $Root 'Hawkeye.uproject')`"", "/Game/Maps/L_District_EastVillage", "-game", "-NoMainMenu", "-Difficulty=Normal", "-log", "-ExecCmds=`"DisableAllScreenMessages`"")
 if ($chapter) { $argList += $chapter }
 # Where Kate starts: in front of the clip's action, not at the district's PlayerStart (the game mode applies it after the opening).
 $argList += "-HawkeyeDemoStart=$Clip"
